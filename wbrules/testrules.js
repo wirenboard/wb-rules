@@ -19,25 +19,25 @@ defineVirtualDevice("stabSettings", {
 });
 
 defineRule("heaterOn", {
-    when: function () {
-      return dev.stabSettings.tempStabEnabled.b &&
-        dev.somedev.temp.v < dev.stabSettings.lowThreshold.v;
-    },
-    then: function () {
-      log("heateOnRule fired");
-      dev.somedev.sw.b = true;
-    }
+  when: function () {
+    return dev.stabSettings.enabled.b &&
+      dev.somedev.temp.v < dev.stabSettings.lowThreshold.v;
+  },
+  then: function () {
+    log("heaterOn fired");
+    dev.somedev.sw.b = true;
+  }
 });
 
 defineRule("heaterOff", {
-    when: function () {
-      return !dev.stabSettings.tempStabEnabled.b ||
-        dev.somedev.temp.v >= dev.stabSettings.highThreshold.v;
-    },
-    then: function () {
-      dev.somedev.sw.b = false;
-      log("heaterOff rule fired");
-    }
+  when: function () {
+    return !dev.stabSettings.enabled.b ||
+      dev.somedev.temp.v >= dev.stabSettings.highThreshold.v;
+  },
+  then: function () {
+    dev.somedev.sw.b = false;
+    log("heaterOff rule fired");
+  }
 });
 
 // TBD: edge-triggered rules

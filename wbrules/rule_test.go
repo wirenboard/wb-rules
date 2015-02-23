@@ -14,6 +14,9 @@ type ruleFixture struct {
 func NewRuleFixture(t *testing.T) *ruleFixture {
 	fixture := &ruleFixture{*NewCellFixture(t), nil}
 	fixture.engine = NewRuleEngine(fixture.model)
+	fixture.engine.SetLogFunc(func (message string) {
+		fixture.broker.Rec("[rule] %s", message)
+	})
 	assert.Equal(t, nil, fixture.engine.LoadScript("testrules.js"))
 	fixture.driver.Start()
 	fixture.publish("/devices/somedev/meta/name", "SomeDev", "")
@@ -24,10 +27,14 @@ func NewRuleFixture(t *testing.T) *ruleFixture {
 	return fixture
 }
 
-func TestRules(t *testing.T) {
+func (fixture *ruleFixture) Verify(logs... string) {
+	fixture.broker.Verify(logs...)
+}
+
+func TestDeviceDefinition(t *testing.T) {
 	fixture := NewRuleFixture(t)
 	defer fixture.tearDown()
-	fixture.broker.Verify(
+	fixture.Verify(
 		"driver -> /devices/stabSettings/meta/name: [Stabilization Settings] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/enabled/meta/type: [switch] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/enabled/meta/order: [1] (QoS 1, retained)",
@@ -52,8 +59,23 @@ func TestRules(t *testing.T) {
 	)
 }
 
+func TestRules(t *testing.T) {
+	fixture := NewRuleFixture(t)
+	defer fixture.tearDown()
+	fixture.broker.Reset()
+	fixture.model.EnsureDevice("stabSettings").EnsureCell("enabled").SetValue(true)
+	fixture.engine.RunRules()
+	fixture.Verify(
+		"driver -> /devices/stabSettings/controls/enabled: [1] (QoS 1, retained)",
+		"[rule] heaterOn fired",
+ 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
+	)
+}
+
 // TBD: proper data path:
 // http://stackoverflow.com/questions/18537257/golang-how-to-get-the-directory-of-the-currently-running-file
 // https://github.com/kardianos/osext
 // TBD: test bad device/rule defs
 // TBD: traceback
+// TBD: if rule *did* change anything (SetValue had an effect), re-run rules
+//      and do so till no values are changed

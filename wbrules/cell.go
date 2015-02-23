@@ -196,6 +196,9 @@ func (dev *CellModelExternalDevice) queryParams() {
 	// NOOP
 }
 
+func (cell *Cell) RawValue() string {
+	return cell.value
+}
 
 func (cell *Cell) Value() interface{} {
 	log.Printf("cell %s internal value = %v", cell.name, cell.value)
