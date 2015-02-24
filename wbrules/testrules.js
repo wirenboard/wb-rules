@@ -21,7 +21,8 @@ defineVirtualDevice("stabSettings", {
 defineRule("heaterOn", {
   when: function () {
     return dev.stabSettings.enabled.b &&
-      dev.somedev.temp.v < dev.stabSettings.lowThreshold.v;
+      dev.somedev.temp.v < dev.stabSettings.lowThreshold.v &&
+      !dev.somedev.sw.b; // FIXME: dev.somedev.sw check can be replaced with edge-triggered rule
   },
   then: function () {
     log("heaterOn fired");
@@ -31,12 +32,13 @@ defineRule("heaterOn", {
 
 defineRule("heaterOff", {
   when: function () {
-    return !dev.stabSettings.enabled.b ||
-      dev.somedev.temp.v >= dev.stabSettings.highThreshold.v;
+    return dev.somedev.sw.b && // FIXME: dev.somedev.sw check can be replaced with edge-triggered rule
+      (!dev.stabSettings.enabled.b ||
+       dev.somedev.temp.v >= dev.stabSettings.highThreshold.v);
   },
   then: function () {
+    log("heaterOff fired");
     dev.somedev.sw.b = false;
-    log("heaterOff rule fired");
   }
 });
 

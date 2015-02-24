@@ -59,8 +59,10 @@ var _WbRules = {
       alert("running rule: " + name);
       var rule = _WbRules.ruleMap[name];
       try {
-        if (rule.when())
+        if (rule.when()) {
+          alert("rule fired: " + name);
           rule.then();
+        }
       } catch (e) {
         alert("error running rule " + name + ": " + e.stack || e);
       }

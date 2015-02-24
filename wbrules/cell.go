@@ -9,10 +9,14 @@ import (
 	wbgo "github.com/contactless/wbgo"
 )
 
+const (
+	CELL_CHANGE_SLICE_CAPACITY = 4
+)
+
 type CellModel struct {
 	wbgo.ModelBase
 	devices map[string]CellModelDevice
-	cellChange chan string
+	cellChangeChannels []chan string
 	started bool
 }
 
@@ -49,10 +53,15 @@ type Cell struct {
 func NewCellModel() *CellModel {
 	return &CellModel{
 		devices: make(map[string]CellModelDevice),
+		cellChangeChannels: make([]chan string, 0, CELL_CHANGE_SLICE_CAPACITY),
 	}
 }
 
 func (model *CellModel) Start() error {
+	// should be called by the driver once and only once when it starts
+	if model.started {
+		panic("model already started")
+	}
 	model.started = true
 	names := make([]string, 0, len(model.devices))
 	for name := range model.devices {
@@ -65,6 +74,18 @@ func (model *CellModel) Start() error {
 		dev.queryParams()
 	}
 	return nil
+}
+
+func (model *CellModel) Stop() {
+	// should be called by the driver once and only once when it stops
+	if !model.started {
+		panic("model already stopped")
+	}
+	model.started = false
+	for _, ch := range model.cellChangeChannels {
+		close(ch)
+	}
+	model.cellChangeChannels = make([]chan string, 0, CELL_CHANGE_SLICE_CAPACITY)
 }
 
 func (model *CellModel) newCellModelDevice(name string, title string) (dev *CellModelDeviceBase) {
@@ -126,16 +147,31 @@ func (model *CellModel) AddDevice(name string) (wbgo.ExternalDeviceModel, error)
 }
 
 func (model *CellModel) AcquireCellChangeChannel() chan string {
-	if model.cellChange == nil {
-		model.cellChange = make(chan string)
+	ch := make(chan string)
+	model.cellChangeChannels = append(model.cellChangeChannels, ch)
+	return ch
+}
+
+func (model *CellModel) ReleaseCellChangeChannel(ch chan string) {
+	// FIXME: untested
+	oldChannels := model.cellChangeChannels
+	model.cellChangeChannels = make([]chan string, 0, len(model.cellChangeChannels))
+	for _, curCh := range oldChannels {
+		if ch != curCh {
+			model.cellChangeChannels = append(model.cellChangeChannels, curCh)
+		}
 	}
-	return model.cellChange
 }
 
 func (model *CellModel) notify(cellName string) {
-	if model.cellChange != nil {
-		model.cellChange <- cellName
+	for _, ch := range model.cellChangeChannels {
+		ch <- cellName
 	}
+}
+
+func (model *CellModel) CallSync(thunk func()) {
+	// FIXME: need to do it all in a more Go-like way
+	model.Observer.CallSync(thunk)
 }
 
 func (dev *CellModelDeviceBase) SetTitle(title string) {
@@ -173,6 +209,7 @@ func (dev *CellModelDeviceBase) SendValue(name, value string) bool {
 
 func (dev *CellModelDeviceBase) setValue(name, value string) {
 	dev.Observer.OnValue(dev.self, name, value)
+	dev.model.notify(name)
 }
 
 func (dev *CellModelLocalDevice) queryParams() {

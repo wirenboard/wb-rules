@@ -31,15 +31,21 @@ func NewCellFixture(t *testing.T) *cellFixture {
 	return fixture
 }
 
-func (fixture *cellFixture) publish(topic, value, expectedCellName string) {
-	retained := !strings.HasSuffix(topic, "/on")
-	fixture.client.Publish(wbgo.MQTTMessage{topic, value, 1, retained})
+func (fixture *cellFixture) expectCellChange(expectedCellName string) {
 	cellName := <- fixture.cellChange
 	assert.Equal(fixture.t, expectedCellName, cellName)
 }
 
+func (fixture *cellFixture) publish(topic, value, expectedCellName string) {
+	retained := !strings.HasSuffix(topic, "/on")
+	fixture.client.Publish(wbgo.MQTTMessage{topic, value, 1, retained})
+	fixture.expectCellChange(expectedCellName)
+}
+
 func (fixture *cellFixture) tearDown() {
 	fixture.driver.Stop()
+	_, ok := <- fixture.cellChange
+	assert.False(fixture.t, ok)
 }
 
 func TestExternalCells(t *testing.T) {
@@ -75,7 +81,11 @@ func TestExternalCells(t *testing.T) {
 
 	fixture.broker.Reset()
 	cell3 := dev.EnsureCell("paramThree")
-	cell3.SetValue(43)
+	fixture.driver.CallSync(func () {
+		cell3.SetValue(43)
+	})
+	fixture.expectCellChange("paramThree")
+
 	assert.Equal(t, "43", cell3.Value())
 	fixture.broker.Verify(
 		"driver -> /devices/somedev/controls/paramThree/on: [43] (QoS 1)",
@@ -121,6 +131,7 @@ func TestLocalCells(t *testing.T) {
 		cell2.SetValue(20) // this setting has no effect
 		cell2.SetValue(22)
 	})
+	fixture.expectCellChange("temp")
 	fixture.broker.Verify(
 		"driver -> /devices/somedev/controls/temp: [22] (QoS 1, retained)",
 	)

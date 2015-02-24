@@ -14,6 +14,7 @@ type RuleEngine struct {
 	model *CellModel
 	ctx *duktape.Context
 	logFunc LogFunc
+	cellChange chan string
 }
 
 func NewRuleEngine(model *CellModel) (engine *RuleEngine) {
@@ -167,4 +168,29 @@ func (engine *RuleEngine) LoadScript(path string) error {
 		return fmt.Errorf("failed to load %s: %s", path, engine.ctx.SafeToString(-1))
 	}
 	return nil
+}
+
+func (engine *RuleEngine) Start() {
+	if engine.cellChange != nil {
+		return
+	}
+	engine.cellChange = engine.model.AcquireCellChangeChannel()
+	go func () {
+		for {
+			select {
+			case cellName, ok := <- engine.cellChange:
+				if ok {
+					log.Printf(
+						"rule engine: running rules after cell change: %s",
+						cellName)
+					engine.model.CallSync(func () {
+						engine.RunRules()
+					})
+				} else {
+					log.Printf("engine stopped")
+					engine.cellChange = nil
+				}
+			}
+		}
+	}()
 }

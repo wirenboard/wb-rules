@@ -3,7 +3,6 @@ package wbrules
 import (
 	"testing"
 	"github.com/stretchr/testify/assert"
-//        wbgo "github.com/contactless/wbgo"
 )
 
 type ruleFixture struct {
@@ -29,6 +28,14 @@ func NewRuleFixture(t *testing.T) *ruleFixture {
 
 func (fixture *ruleFixture) Verify(logs... string) {
 	fixture.broker.Verify(logs...)
+}
+
+func (fixture *ruleFixture) SetCellValue(device, cellName string, value interface{}) {
+	fixture.driver.CallSync(func () {
+		fixture.model.EnsureDevice(device).EnsureCell(cellName).SetValue(value)
+	})
+	actualCellName := <- fixture.cellChange
+	assert.Equal(fixture.t, cellName, actualCellName)
 }
 
 func TestDeviceDefinition(t *testing.T) {
@@ -63,15 +70,49 @@ func TestRules(t *testing.T) {
 	fixture := NewRuleFixture(t)
 	defer fixture.tearDown()
 	fixture.broker.Reset()
-	fixture.model.EnsureDevice("stabSettings").EnsureCell("enabled").SetValue(true)
-	fixture.engine.RunRules()
+	fixture.engine.Start() // FIXME: should auto-start
+
+	fixture.SetCellValue("stabSettings", "enabled", true)
 	fixture.Verify(
 		"driver -> /devices/stabSettings/controls/enabled: [1] (QoS 1, retained)",
 		"[rule] heaterOn fired",
  		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
+	fixture.expectCellChange("sw")
+
+	fixture.publish("/devices/somedev/controls/temp", "21", "temp")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/temp: [21] (QoS 1, retained)",
+	)
+
+	fixture.publish("/devices/somedev/controls/temp", "22", "temp")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/temp: [22] (QoS 1, retained)",
+		"[rule] heaterOff fired",
+ 		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
+	)
+	fixture.expectCellChange("sw")
+
+	fixture.publish("/devices/somedev/controls/temp", "19", "temp")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
+		"[rule] heaterOn fired",
+ 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
+	)
+	fixture.expectCellChange("sw")
+
+	fixture.SetCellValue("stabSettings", "enabled", false)
+	fixture.Verify(
+		"driver -> /devices/stabSettings/controls/enabled: [0] (QoS 1, retained)",
+		"[rule] heaterOff fired",
+ 		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
+	)
+	fixture.expectCellChange("sw")
 }
 
+// TBD: valueOf(), no .b / .v / .s; throw an error on incomplete cell references in 'when'
+//      and catch it
+// TBD: test incomplete cells
 // TBD: proper data path:
 // http://stackoverflow.com/questions/18537257/golang-how-to-get-the-directory-of-the-currently-running-file
 // https://github.com/kardianos/osext
