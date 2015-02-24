@@ -6,6 +6,7 @@ import (
 	"strings"
 	"io/ioutil"
 	"github.com/stretchr/objx"
+	"github.com/GeertJohan/go.rice"
 	duktape "github.com/ivan4th/go-duktape"
 )
 
@@ -15,6 +16,7 @@ type RuleEngine struct {
 	ctx *duktape.Context
 	logFunc LogFunc
 	cellChange chan string
+	scriptBox *rice.Box
 }
 
 func NewRuleEngine(model *CellModel) (engine *RuleEngine) {
@@ -24,6 +26,7 @@ func NewRuleEngine(model *CellModel) (engine *RuleEngine) {
 		logFunc: func (message string) {
 			log.Printf("RULE: %s\n", message)
 		},
+		scriptBox: rice.MustFindBox("scripts"),
 	}
 	engine.ctx.PushGlobalObject()
 	engine.defineEngineFunctions(map[string]func() int {
@@ -33,10 +36,21 @@ func NewRuleEngine(model *CellModel) (engine *RuleEngine) {
 		"_wbCellObject": engine.esWbCellObject,
 	})
 	engine.ctx.Pop()
-	if err := engine.LoadScript("lib.js"); err != nil {
+	if err := engine.loadLib(); err != nil {
 		log.Panicf("failed to load runtime library: %s", err)
 	}
 	return
+}
+
+func (engine *RuleEngine) loadLib() error {
+	libStr, err := engine.scriptBox.String("lib.js")
+	if err != nil {
+		return  err
+	}
+	if r := engine.ctx.PevalString(libStr); r != 0 {
+		return fmt.Errorf("failed to load lib.js: %s", engine.ctx.SafeToString(-1))
+	}
+	return nil
 }
 
 func (engine *RuleEngine) SetLogFunc(logFunc LogFunc) {

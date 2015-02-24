@@ -25,3 +25,5 @@ _testmain.go
 
 # Tern port file
 .tern-port
+
+/wb-rules
