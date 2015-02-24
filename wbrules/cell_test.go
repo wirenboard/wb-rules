@@ -119,6 +119,7 @@ func TestLocalCells(t *testing.T) {
 		"Subscribe -- driver: /devices/+/meta/name",
 		"Subscribe -- driver: /devices/+/controls/+",
 		"Subscribe -- driver: /devices/+/controls/+/meta/type",
+		"Subscribe -- driver: /devices/+/controls/+/meta/max",
 	)
 	assert.Equal(t, "switch", cell1.Type())
 	assert.Equal(t, true, cell1.Value())
@@ -142,4 +143,40 @@ func TestLocalCells(t *testing.T) {
 	fixture.broker.Verify(
 		"driver -> /devices/somedev/controls/temp: [22] (QoS 1, retained)",
 	)
+}
+
+func TestLocalRangeCells(t *testing.T) {
+	fixture := NewCellFixture(t)
+	defer fixture.tearDown()
+	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
+	cell := dev.SetRangeCell("foo", "10", 200)
+	assert.True(t, cell.IsComplete())
+	fixture.driver.Start()
+	fixture.broker.Verify(
+		"driver -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/foo/meta/type: [range] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/foo/meta/order: [1] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/foo/meta/max: [200] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/foo: [10] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/somedev/controls/foo/on",
+		"Subscribe -- driver: /devices/+/meta/name",
+		"Subscribe -- driver: /devices/+/controls/+",
+		"Subscribe -- driver: /devices/+/controls/+/meta/type",
+		"Subscribe -- driver: /devices/+/controls/+/meta/max",
+	)
+}
+
+func TestExternalRangeCells(t *testing.T) {
+	fixture := NewCellFixture(t)
+	defer fixture.tearDown()
+	fixture.driver.Start()
+	fixture.publish("/devices/somedev/meta/name", "SomeDev", "")
+	fixture.publish("/devices/somedev/controls/foo/meta/type", "range", "foo")
+	fixture.publish("/devices/somedev/controls/foo/meta/max", "200", "foo")
+	fixture.publish("/devices/somedev/controls/foo", "10", "foo")
+	dev := fixture.model.EnsureDevice("somedev")
+	cell := dev.EnsureCell("foo")
+	assert.Equal(t, 10, cell.Value())
+	assert.Equal(t, 200, cell.Max())
+	assert.Equal(t, "range", cell.Type())
 }

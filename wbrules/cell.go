@@ -47,6 +47,7 @@ type Cell struct {
 	name string
 	title string
 	controlType string
+	max float64
 	value string
 	gotType bool
 	gotValue bool
@@ -181,12 +182,13 @@ func (dev *CellModelDeviceBase) SetTitle(title string) {
 	dev.model.notify("")
 }
 
-func (dev *CellModelDeviceBase) setCell(name, controlType string, value interface{}, complete bool) (cell *Cell) {
+func (dev *CellModelDeviceBase) setCell(name, controlType string, value interface{}, complete bool, max float64) (cell *Cell) {
 	cell = &Cell{
 		device: dev.self,
 		name: name,
 		title: name,
 		controlType: controlType,
+		max: max,
 		gotType: complete,
 		gotValue: complete,
 	}
@@ -196,14 +198,18 @@ func (dev *CellModelDeviceBase) setCell(name, controlType string, value interfac
 }
 
 func (dev *CellModelDeviceBase) SetCell(name, controlType string, value interface{}) (cell *Cell) {
-	return dev.setCell(name, controlType, value, true)
+	return dev.setCell(name, controlType, value, true, -1)
+}
+
+func (dev *CellModelDeviceBase) SetRangeCell(name string,  value interface{}, max float64) (cell *Cell) {
+	return dev.setCell(name, "range", value, true, max)
 }
 
 func (dev *CellModelDeviceBase) EnsureCell(name string) (cell *Cell) {
 	cell, found := dev.cells[name]
 	if !found {
 		log.Printf("adding cell %s", name)
-		cell = dev.setCell(name, "text", "", false)
+		cell = dev.setCell(name, "text", "", false, -1)
 	}
 	return
 }
@@ -230,7 +236,7 @@ func (dev *CellModelLocalDevice) queryParams() {
 	sort.Strings(names)
 	for _, name := range names {
 		cell := dev.cells[name]
-		dev.Observer.OnNewControl(dev, name, cell.controlType, cell.value, false)
+		dev.Observer.OnNewControl(dev, name, cell.controlType, cell.value, false, cell.max)
 	}
 }
 
@@ -241,12 +247,22 @@ func (dev *CellModelExternalDevice) SendControlType(name, controlType string) {
 	dev.model.notify(name)
 }
 
+func (dev *CellModelExternalDevice) SendControlRange(name string, max float64) {
+	cell := dev.EnsureCell(name)
+	cell.max = max
+	dev.model.notify(name)
+}
+
 func (dev *CellModelExternalDevice) queryParams() {
 	// NOOP
 }
 
 func (cell *Cell) RawValue() string {
 	return cell.value
+}
+
+func (cell *Cell) Max() float64 {
+	return cell.max
 }
 
 func (cell *Cell) Value() interface{} {

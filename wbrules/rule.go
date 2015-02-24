@@ -10,6 +10,8 @@ import (
 	duktape "github.com/ivan4th/go-duktape"
 )
 
+const DEFAULT_CELL_MAX = 255.0
+
 type LogFunc func (string)
 type RuleEngine struct {
 	model *CellModel
@@ -85,7 +87,23 @@ func (engine *RuleEngine) esDefineVirtualDevice() int {
 				if !ok {
 					return duktape.DUK_RET_ERROR
 				}
-				dev.SetCell(cellName, cellType.(string), cellValue)
+				log.Printf("cellType=%v", cellType)
+				if cellType == "range" {
+					fmax := DEFAULT_CELL_MAX
+					max, ok := cellDef["max"]
+					if ok {
+						log.Printf("--- max: %v", max)
+						fmax, ok = max.(float64)
+						if !ok {
+							return duktape.DUK_RET_ERROR
+						}
+					}
+					// FIXME: can be float
+					log.Printf("SetRangeCell: %s", cellName)
+					dev.SetRangeCell(cellName, cellValue, fmax)
+				} else {
+					dev.SetCell(cellName, cellType.(string), cellValue)
+				}
 			}
 		}
 	}

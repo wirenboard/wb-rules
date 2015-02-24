@@ -47,17 +47,20 @@ func TestDeviceDefinition(t *testing.T) {
 		"driver -> /devices/stabSettings/controls/enabled/meta/order: [1] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/enabled: [0] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/stabSettings/controls/enabled/on",
-		"driver -> /devices/stabSettings/controls/highThreshold/meta/type: [temperature] (QoS 1, retained)",
+		"driver -> /devices/stabSettings/controls/highThreshold/meta/type: [range] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/highThreshold/meta/order: [2] (QoS 1, retained)",
+		"driver -> /devices/stabSettings/controls/highThreshold/meta/max: [50] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/highThreshold: [22] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/stabSettings/controls/highThreshold/on",
-		"driver -> /devices/stabSettings/controls/lowThreshold/meta/type: [temperature] (QoS 1, retained)",
+		"driver -> /devices/stabSettings/controls/lowThreshold/meta/type: [range] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/lowThreshold/meta/order: [3] (QoS 1, retained)",
+		"driver -> /devices/stabSettings/controls/lowThreshold/meta/max: [40] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/lowThreshold: [20] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/stabSettings/controls/lowThreshold/on",
 		"Subscribe -- driver: /devices/+/meta/name",
 		"Subscribe -- driver: /devices/+/controls/+",
 		"Subscribe -- driver: /devices/+/controls/+/meta/type",
+		"Subscribe -- driver: /devices/+/controls/+/meta/max",
 		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
@@ -127,3 +130,5 @@ func TestRules(t *testing.T) {
 // TBD: traceback
 // TBD: if rule *did* change anything (SetValue had an effect), re-run rules
 //      and do so till no values are changed
+// TBD: don't hang upon bad Verify() list
+//      (deadlock detection fails due to duktape)

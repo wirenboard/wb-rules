@@ -8,11 +8,13 @@ defineVirtualDevice("stabSettings", {
       value: false
     },
     lowThreshold: {
-      type: "temperature", // FIXME: type should range
+      type: "range",
+      max: 40,
       value: 20
     },
     highThreshold: {
-      type: "temperature", // FIXME: type should range
+      type: "range",
+      max: 50,
       value: 22
     }
   }
