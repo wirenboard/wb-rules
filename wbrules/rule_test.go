@@ -119,8 +119,7 @@ func TestRules(t *testing.T) {
 }
 
 // TBD: edge-triggered rules
-// TBD: get rid of .v by using a different kind of proxy for devices
-// (and to get device / cell itself, device() / cell() should be used)
+// TBD: metadata (like, meta["devname"]["controlName"])
 // TBD: proper data path:
 // http://stackoverflow.com/questions/18537257/golang-how-to-get-the-directory-of-the-currently-running-file
 // https://github.com/kardianos/osext

@@ -31,22 +31,24 @@ var _WbRules = {
   },
 
   wrapDevice: function (name) {
-    return _WbRules.autoload(_wbDevObject(name), _WbRules.wrapCell);
-  },
-
-  wrapCell: function (name, dev) {
-    var cell = _wbCellObject(dev, name);
-    return {
-      // TBD: check for completeness
-      get v () {
+    alert("wrapDevice()");
+    var cells = {};
+    function ensureCell (dev, name) {
+      return cells.hasOwnProperty(name) ?
+        cells[name] :
+        cells[name] = _wbCellObject(dev, name);
+    }
+    return new Proxy(_wbDevObject(name), {
+      get: function (dev, name) {
+        var cell = ensureCell(dev, name);
         if (_WbRules.requireCompleteCells && !cell.isComplete())
           throw new _WbRules.IncompleteCellError(name);
         return cell.value().v;
       },
-      set v (value) {
-        cell.setValue({ v: value });
+      set: function (dev, name, value) {
+        ensureCell(dev, name).setValue({ v: value });
       }
-    };
+    });
   },
 
   defineRule: function (name, def) {

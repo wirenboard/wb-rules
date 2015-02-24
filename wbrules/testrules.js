@@ -20,31 +20,31 @@ defineVirtualDevice("stabSettings", {
 
 defineRule("heaterOn", {
   when: function () {
-    return !!dev.stabSettings.enabled.v &&
-      dev.somedev.temp.v < dev.stabSettings.lowThreshold.v &&
-      !dev.somedev.sw.v; // FIXME: dev.somedev.sw check can be replaced with edge-triggered rule
+    return !!dev.stabSettings.enabled &&
+      dev.somedev.temp < dev.stabSettings.lowThreshold &&
+      !dev.somedev.sw; // FIXME: dev.somedev.sw check can be replaced with edge-triggered rule
   },
   then: function () {
     log("heaterOn fired");
-    dev.somedev.sw.v = true;
+    dev.somedev.sw = true;
   }
 });
 
 defineRule("heaterOff", {
   when: function () {
-    return !!dev.somedev.sw.v && // FIXME: dev.somedev.sw check can be replaced with edge-triggered rule
-      (!dev.stabSettings.enabled.v ||
-       dev.somedev.temp.v >= dev.stabSettings.highThreshold.v);
+    return !!dev.somedev.sw && // FIXME: dev.somedev.sw check can be replaced with edge-triggered rule
+      (!dev.stabSettings.enabled ||
+       dev.somedev.temp >= dev.stabSettings.highThreshold);
   },
   then: function () {
     log("heaterOff fired");
-    dev.somedev.sw.v = false;
+    dev.somedev.sw = false;
   }
 });
 
 defineRule("initiallyIncomplete", {
   when: function () {
-    return dev.somedev.foobar.v;
+    return dev.somedev.foobar;
   },
   then: function () {
     log("initiallyIncomplete fired");
