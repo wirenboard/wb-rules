@@ -5,13 +5,27 @@ var _WbRules = {
 
   ruleNames: [],
 
-  autoload: function (target, acquire) {
+  requireCompleteCells: 0,
+
+  IncompleteCellError: (function () {
+    function IncompleteCellError(cellName) {
+      this.name = "IncompleteCellError";
+      this.message = "incomplete cell encountered: " + cellName;
+    }
+    IncompleteCellError.prototype = Error.prototype;
+    return IncompleteCellError;
+  })(),
+
+  autoload: function (target, acquire, setValue) {
     return new Proxy(target, {
-      get: function(o, name) {
+      get: function (o, name) {
         if (!(name in o)) {
           o[name] = acquire(name, o);
         }
         return o[name];
+      },
+      set: function (o, name, value) {
+        throw new Error("setting unsupported proxy value: " + name);
       }
     });
   },
@@ -23,23 +37,14 @@ var _WbRules = {
   wrapCell: function (name, dev) {
     var cell = _wbCellObject(dev, name);
     return {
-      get s () {
-        return cell.rawValue();
-      },
-      set s (value) {
-        cell.setValue({ v: "" + value });
-      },
+      // TBD: check for completeness
       get v () {
-        return cell.value().v; // FIXME (extra wrap due to PushJSObject limitations)
+        if (_WbRules.requireCompleteCells && !cell.isComplete())
+          throw new _WbRules.IncompleteCellError(name);
+        return cell.value().v;
       },
       set v (value) {
         cell.setValue({ v: value });
-      },
-      get b () {
-        return !!cell.value().v; // FIXME (extra wrap due to PushJSObject limitations)
-      },
-      set b (value) {
-        cell.setValue({ v: !!value });
       }
     };
   },
@@ -59,7 +64,19 @@ var _WbRules = {
       alert("running rule: " + name);
       var rule = _WbRules.ruleMap[name];
       try {
-        if (rule.when()) {
+        _WbRules.requireCompleteCells++;
+        try {
+          var shouldFire = rule.when();
+        } catch (e) {
+          if (e instanceof _WbRules.IncompleteCellError) {
+            alert("skipping rule " + name + ": " + e);
+            return;
+          }
+          throw e;
+        } finally {
+          _WbRules.requireCompleteCells--;
+        }
+        if (shouldFire) {
           alert("rule fired: " + name);
           rule.then();
         }

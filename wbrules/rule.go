@@ -134,6 +134,10 @@ func (engine *RuleEngine) esWbCellObject() int {
 			cell.SetValue(m["v"])
 			return 1
 		},
+		"isComplete": func () int {
+			engine.ctx.PushBoolean(cell.IsComplete())
+			return 1
+		},
 	})
 	return 1
 }

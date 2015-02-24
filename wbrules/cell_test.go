@@ -65,22 +65,27 @@ func TestExternalCells(t *testing.T) {
 	assert.Exactly(t, dev, fixture.model.EnsureDevice("somedev"))
 	assert.Exactly(t, cell, dev.EnsureCell("paramOne"))
 	assert.Equal(t, "text", cell.Type())
+	assert.False(t, cell.IsComplete())
 
 	fixture.publish("/devices/somedev/controls/paramOne/meta/type", "temperature", "paramOne")
 	assert.Equal(t, "temperature", cell.Type())
 	assert.Equal(t, float64(42), cell.Value())
+	assert.True(t, cell.IsComplete())
 
 	fixture.publish("/devices/somedev/controls/paramTwo/meta/type", "pressure", "paramTwo")
 	cell2 := dev.EnsureCell("paramTwo")
 	assert.Equal(t, "pressure", cell2.Type())
 	assert.Equal(t, 0, cell2.Value())
+	assert.False(t, cell2.IsComplete())
 
 	fixture.publish("/devices/somedev/controls/paramTwo", "755", "paramTwo")
 	assert.Equal(t, "pressure", cell2.Type())
 	assert.Equal(t, 755, cell2.Value())
+	assert.True(t, cell2.IsComplete())
 
 	fixture.broker.Reset()
 	cell3 := dev.EnsureCell("paramThree")
+	assert.False(t, cell3.IsComplete())
 	fixture.driver.CallSync(func () {
 		cell3.SetValue(43)
 	})
@@ -97,7 +102,9 @@ func TestLocalCells(t *testing.T) {
 	defer fixture.tearDown()
 	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
 	cell1 := dev.SetCell("sw", "switch", true)
+	assert.True(t, cell1.IsComplete())
 	cell2 := dev.SetCell("temp", "temperature", 20)
+	assert.True(t, cell2.IsComplete())
 	fixture.driver.Start()
 	fixture.broker.Verify(
 		"driver -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",

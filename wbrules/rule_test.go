@@ -108,11 +108,19 @@ func TestRules(t *testing.T) {
  		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 	)
 	fixture.expectCellChange("sw")
+
+	fixture.publish("/devices/somedev/controls/foobar", "1", "foobar")
+	fixture.publish("/devices/somedev/controls/foobar/meta/type", "switch", "foobar")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/foobar: [1] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/foobar/meta/type: [switch] (QoS 1, retained)",
+		"[rule] initiallyIncomplete fired",
+	)
 }
 
-// TBD: valueOf(), no .b / .v / .s; throw an error on incomplete cell references in 'when'
-//      and catch it
-// TBD: test incomplete cells
+// TBD: edge-triggered rules
+// TBD: get rid of .v by using a different kind of proxy for devices
+// (and to get device / cell itself, device() / cell() should be used)
 // TBD: proper data path:
 // http://stackoverflow.com/questions/18537257/golang-how-to-get-the-directory-of-the-currently-running-file
 // https://github.com/kardianos/osext

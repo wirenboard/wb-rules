@@ -20,32 +20,33 @@ defineVirtualDevice("stabSettings", {
 
 defineRule("heaterOn", {
   when: function () {
-    return dev.stabSettings.enabled.b &&
+    return !!dev.stabSettings.enabled.v &&
       dev.somedev.temp.v < dev.stabSettings.lowThreshold.v &&
-      !dev.somedev.sw.b; // FIXME: dev.somedev.sw check can be replaced with edge-triggered rule
+      !dev.somedev.sw.v; // FIXME: dev.somedev.sw check can be replaced with edge-triggered rule
   },
   then: function () {
     log("heaterOn fired");
-    dev.somedev.sw.b = true;
+    dev.somedev.sw.v = true;
   }
 });
 
 defineRule("heaterOff", {
   when: function () {
-    return dev.somedev.sw.b && // FIXME: dev.somedev.sw check can be replaced with edge-triggered rule
-      (!dev.stabSettings.enabled.b ||
+    return !!dev.somedev.sw.v && // FIXME: dev.somedev.sw check can be replaced with edge-triggered rule
+      (!dev.stabSettings.enabled.v ||
        dev.somedev.temp.v >= dev.stabSettings.highThreshold.v);
   },
   then: function () {
     log("heaterOff fired");
-    dev.somedev.sw.b = false;
+    dev.somedev.sw.v = false;
   }
 });
 
-// TBD: edge-triggered rules
-// TBD: dev.somedev.whatever.s (string value)
-// TBD: perhaps should abolish .v / .b / .s, use method valueOf()
-// and never apply rules before .../meta/type is received for all
-// the cells (during expression evaluation, set something.gotIncompleteCells = true
-// when cells without type are encountered; type should be "incomplete" not
-// "text" until the type is actually received)
+defineRule("initiallyIncomplete", {
+  when: function () {
+    return dev.somedev.foobar.v;
+  },
+  then: function () {
+    log("initiallyIncomplete fired");
+  }
+});

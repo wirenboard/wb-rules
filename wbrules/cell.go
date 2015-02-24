@@ -48,6 +48,8 @@ type Cell struct {
 	title string
 	controlType string
 	value string
+	gotType bool
+	gotValue bool
 }
 
 func NewCellModel() *CellModel {
@@ -179,30 +181,38 @@ func (dev *CellModelDeviceBase) SetTitle(title string) {
 	dev.model.notify("")
 }
 
-func (dev *CellModelDeviceBase) SetCell(name, controlType string, value interface{}) (cell *Cell) {
+func (dev *CellModelDeviceBase) setCell(name, controlType string, value interface{}, complete bool) (cell *Cell) {
 	cell = &Cell{
 		device: dev.self,
 		name: name,
 		title: name,
 		controlType: controlType,
+		gotType: complete,
+		gotValue: complete,
 	}
 	cell.setValueQuiet(value)
 	dev.cells[name] = cell
 	return
 }
 
+func (dev *CellModelDeviceBase) SetCell(name, controlType string, value interface{}) (cell *Cell) {
+	return dev.setCell(name, controlType, value, true)
+}
+
 func (dev *CellModelDeviceBase) EnsureCell(name string) (cell *Cell) {
 	cell, found := dev.cells[name]
 	if !found {
 		log.Printf("adding cell %s", name)
-		cell = dev.SetCell(name, "text", "")
+		cell = dev.setCell(name, "text", "", false)
 	}
 	return
 }
 
 func (dev *CellModelDeviceBase) SendValue(name, value string) bool {
 	log.Printf("cell %s <- %v", name, value)
-	dev.EnsureCell(name).value = value
+	cell := dev.EnsureCell(name)
+	cell.value = value
+	cell.gotValue = true
 	dev.model.notify(name)
 	return true
 }
@@ -225,7 +235,9 @@ func (dev *CellModelLocalDevice) queryParams() {
 }
 
 func (dev *CellModelExternalDevice) SendControlType(name, controlType string) {
-	dev.EnsureCell(name).controlType = controlType
+	cell := dev.EnsureCell(name)
+	cell.gotType = true
+	cell.controlType = controlType
 	dev.model.notify(name)
 }
 
@@ -276,6 +288,7 @@ func (cell *Cell) setValueQuiet(value interface{}) bool {
 }
 
 func (cell *Cell) SetValue(value interface{}) {
+	cell.gotValue = true
 	if cell.setValueQuiet(value) {
 		cell.device.setValue(cell.name, cell.value)
 	}
@@ -283,4 +296,8 @@ func (cell *Cell) SetValue(value interface{}) {
 
 func (cell *Cell) Type() string {
 	return cell.controlType
+}
+
+func (cell *Cell) IsComplete() bool {
+	return cell.gotValue && cell.gotType
 }
