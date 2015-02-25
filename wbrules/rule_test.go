@@ -96,13 +96,19 @@ func TestRules(t *testing.T) {
 	)
 	fixture.expectCellChange("sw")
 
-	fixture.publish("/devices/somedev/controls/temp", "19", "temp")
+	fixture.publish("/devices/somedev/controls/temp", "18", "temp")
 	fixture.Verify(
-		"tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/temp: [18] (QoS 1, retained)",
 		"[rule] heaterOn fired",
  		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	fixture.expectCellChange("sw")
+
+	// edge-triggered rule doesn't fire
+	fixture.publish("/devices/somedev/controls/temp", "19", "temp")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
+	)
 
 	fixture.SetCellValue("stabSettings", "enabled", false)
 	fixture.Verify(
@@ -113,15 +119,21 @@ func TestRules(t *testing.T) {
 	fixture.expectCellChange("sw")
 
 	fixture.publish("/devices/somedev/controls/foobar", "1", "foobar")
-	fixture.publish("/devices/somedev/controls/foobar/meta/type", "switch", "foobar")
+	fixture.publish("/devices/somedev/controls/foobar/meta/type", "text", "foobar")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/foobar: [1] (QoS 1, retained)",
-		"tst -> /devices/somedev/controls/foobar/meta/type: [switch] (QoS 1, retained)",
-		"[rule] initiallyIncomplete fired",
+		"tst -> /devices/somedev/controls/foobar/meta/type: [text] (QoS 1, retained)",
+		"[rule] initiallyIncompleteLevelTriggered fired",
+	)
+
+	// level-triggered rule fires again here
+	fixture.publish("/devices/somedev/controls/foobar", "2", "foobar")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/foobar: [2] (QoS 1, retained)",
+		"[rule] initiallyIncompleteLevelTriggered fired",
 	)
 }
 
-// TBD: edge-triggered rules
 // TBD: metadata (like, meta["devname"]["controlName"])
 // TBD: proper data path:
 // http://stackoverflow.com/questions/18537257/golang-how-to-get-the-directory-of-the-currently-running-file

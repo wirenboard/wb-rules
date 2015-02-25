@@ -57,6 +57,7 @@ var _WbRules = {
 
     if (!_WbRules.ruleMap.hasOwnProperty(name))
       _WbRules.ruleNames.push(name);
+    def.cached = null;
     _WbRules.ruleMap[name] = def;
   },
 
@@ -68,10 +69,20 @@ var _WbRules = {
       try {
         _WbRules.requireCompleteCells++;
         try {
-          var shouldFire = rule.when();
+          var shouldFire;
+          if (rule.asSoonAs) {
+            var cur = rule.asSoonAs();
+            shouldFire = cur && (!rule.cached || !!rule.cached.value != !!cur);
+            if (rule.cached) {
+              rule.cached.value = !!cur;
+            } else {
+              rule.cached = { value: !!cur };
+            }
+          } else
+            shouldFire = !!rule.when();
         } catch (e) {
           if (e instanceof _WbRules.IncompleteCellError) {
-            alert("skipping rule " + name + ": " + e);
+            alert("skipping rule due to incomplete cells " + name + ": " + e);
             return;
           }
           throw e;

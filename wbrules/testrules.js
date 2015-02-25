@@ -21,10 +21,8 @@ defineVirtualDevice("stabSettings", {
 });
 
 defineRule("heaterOn", {
-  when: function () {
-    return !!dev.stabSettings.enabled &&
-      dev.somedev.temp < dev.stabSettings.lowThreshold &&
-      !dev.somedev.sw; // FIXME: dev.somedev.sw check can be replaced with edge-triggered rule
+  asSoonAs: function () {
+    return dev.stabSettings.enabled && dev.somedev.temp < dev.stabSettings.lowThreshold;
   },
   then: function () {
     log("heaterOn fired");
@@ -33,10 +31,8 @@ defineRule("heaterOn", {
 });
 
 defineRule("heaterOff", {
-  when: function () {
-    return !!dev.somedev.sw && // FIXME: dev.somedev.sw check can be replaced with edge-triggered rule
-      (!dev.stabSettings.enabled ||
-       dev.somedev.temp >= dev.stabSettings.highThreshold);
+  asSoonAs: function () {
+    return !dev.stabSettings.enabled || dev.somedev.temp >= dev.stabSettings.highThreshold;
   },
   then: function () {
     log("heaterOff fired");
@@ -44,11 +40,11 @@ defineRule("heaterOff", {
   }
 });
 
-defineRule("initiallyIncomplete", {
+defineRule("initiallyIncompleteLevelTriggered", {
   when: function () {
-    return dev.somedev.foobar;
+    return dev.somedev.foobar != "0";
   },
   then: function () {
-    log("initiallyIncomplete fired");
+    log("initiallyIncompleteLevelTriggered fired");
   }
 });

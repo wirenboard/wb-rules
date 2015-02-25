@@ -21,10 +21,8 @@ defineVirtualDevice("stabSettings", {
 });
 
 defineRule("heaterOn", {
-  when: function () {
-    return !!dev.stabSettings.enabled &&
-      dev.Weather["Temp 1"] < dev.stabSettings.lowThreshold &&
-      !dev.Relays["Relay 1"]; // FIXME: dev.Relays["Relay 1"] check can be replaced with edge-triggered rule
+  asSoonAs: function () {
+    return dev.stabSettings.enabled && dev.Weather["Temp 1"] < dev.stabSettings.lowThreshold;
   },
   then: function () {
     log("heaterOn fired");
@@ -33,10 +31,8 @@ defineRule("heaterOn", {
 });
 
 defineRule("heaterOff", {
-  when: function () {
-    return !!dev.Relays["Relay 1"] && // FIXME: dev.Relays["Relay 1"] check can be replaced with edge-triggered rule
-      (!dev.stabSettings.enabled ||
-       dev.Weather["Temp 1"] >= dev.stabSettings.highThreshold);
+  asSoonAs: function () {
+    return !dev.stabSettings.enabled || dev.Weather["Temp 1"] >= dev.stabSettings.highThreshold;
   },
   then: function () {
     log("heaterOff fired");
