@@ -179,7 +179,7 @@ func (model *CellModel) CallSync(thunk func()) {
 
 func (dev *CellModelDeviceBase) SetTitle(title string) {
 	dev.DevTitle = title
-	dev.model.notify("")
+	go dev.model.notify("")
 }
 
 func (dev *CellModelDeviceBase) setCell(name, controlType string, value interface{}, complete bool, max float64) (cell *Cell) {
@@ -219,13 +219,13 @@ func (dev *CellModelDeviceBase) SendValue(name, value string) bool {
 	cell := dev.EnsureCell(name)
 	cell.value = value
 	cell.gotValue = true
-	dev.model.notify(name)
+	go dev.model.notify(name)
 	return true
 }
 
 func (dev *CellModelDeviceBase) setValue(name, value string) {
 	dev.Observer.OnValue(dev.self, name, value)
-	dev.model.notify(name)
+	go dev.model.notify(name)
 }
 
 func (dev *CellModelLocalDevice) queryParams() {
@@ -244,13 +244,13 @@ func (dev *CellModelExternalDevice) SendControlType(name, controlType string) {
 	cell := dev.EnsureCell(name)
 	cell.gotType = true
 	cell.controlType = controlType
-	dev.model.notify(name)
+	go dev.model.notify(name)
 }
 
 func (dev *CellModelExternalDevice) SendControlRange(name string, max float64) {
 	cell := dev.EnsureCell(name)
 	cell.max = max
-	dev.model.notify(name)
+	go dev.model.notify(name)
 }
 
 func (dev *CellModelExternalDevice) queryParams() {
