@@ -31,8 +31,9 @@ defineRule("heaterOn", {
 });
 
 defineRule("heaterOff", {
-  asSoonAs: function () {
-    return !dev.stabSettings.enabled || dev.somedev.temp >= dev.stabSettings.highThreshold;
+  when: function () {
+    return dev.somedev.sw &&
+      (!dev.stabSettings.enabled || dev.somedev.temp >= dev.stabSettings.highThreshold);
   },
   then: function () {
     log("heaterOff fired");
@@ -46,5 +47,41 @@ defineRule("initiallyIncompleteLevelTriggered", {
   },
   then: function () {
     log("initiallyIncompleteLevelTriggered fired");
+  }
+});
+
+defineRule("startTimer", {
+  asSoonAs: function () {
+    return dev.somedev.foo == "t";
+  },
+  then: function () {
+    startTimer("sometimer", 500);
+  }
+});
+
+defineRule("startTicker", {
+  asSoonAs: function () {
+    return dev.somedev.foo == "p";
+  },
+  then: function () {
+    startTicker("sometimer", 500);
+  }
+});
+
+defineRule("stopTimer", {
+  asSoonAs: function () {
+    return dev.somedev.foo != "p" && dev.somedev.foo != "t";
+  },
+  then: function () {
+    timers.sometimer.stop();
+  }
+});
+
+defineRule("timer", {
+  when: function () {
+    return timers.sometimer.firing;
+  },
+  then: function () {
+    log("timer fired");
   }
 });

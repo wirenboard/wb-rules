@@ -1,18 +1,16 @@
 // rule engine runtime
-
 var _WbRules = {
   ruleMap: {},
-
   ruleNames: [],
-
   requireCompleteCells: 0,
+  timers: {},
 
   IncompleteCellError: (function () {
     function IncompleteCellError(cellName) {
       this.name = "IncompleteCellError";
       this.message = "incomplete cell encountered: " + cellName;
     }
-    IncompleteCellError.prototype = Error.prototype;
+    IncompleteCellError.prototype = Object.create(Error.prototype);
     return IncompleteCellError;
   })(),
 
@@ -31,7 +29,6 @@ var _WbRules = {
   },
 
   wrapDevice: function (name) {
-    alert("wrapDevice()");
     var cells = {};
     function ensureCell (dev, name) {
       return cells.hasOwnProperty(name) ?
@@ -64,7 +61,7 @@ var _WbRules = {
   runRules: function () {
     alert("runRules()");
     _WbRules.ruleNames.forEach(function (name) {
-      alert("running rule: " + name);
+      alert("checking rule: " + name);
       var rule = _WbRules.ruleMap[name];
       try {
         _WbRules.requireCompleteCells++;
@@ -73,6 +70,7 @@ var _WbRules = {
           if (rule.asSoonAs) {
             var cur = rule.asSoonAs();
             shouldFire = cur && (!rule.cached || !!rule.cached.value != !!cur);
+            alert((shouldFire ? "(firing)" : "(not firing)") + "caching rule value: " + name + ": " + !!cur);
             if (rule.cached) {
               rule.cached.value = !!cur;
             } else {
@@ -97,9 +95,57 @@ var _WbRules = {
         alert("error running rule " + name + ": " + e.stack || e);
       }
     });
+  },
+
+  runTimer: function runTimer(name) {
+    alert("runTimer(): " + name);
+    if (!_WbRules.timers.hasOwnProperty(name)) {
+      alert("WARNING: unknown timer fired: " + name);
+      return;
+    }
+    _WbRules.timers[name]._fire();
+  },
+
+  startTimer: function startTimer(name, ms, periodic) {
+    if (_WbRules.timers.hasOwnProperty(name))
+      _WbRules.timers[name].stop();
+    alert("starting timer: " + name);
+    _WbRules.timers[name] = {
+      firing: false,
+      stop: function () {
+        _wbStopTimer(name);
+        alert("deleting timer: " + name);
+        delete _WbRules.timers[name];
+      },
+      _fire: function () {
+        this.firing = true;
+        try {
+          _WbRules.runRules();
+        } finally {
+          this.firing = false;
+        }
+      }
+    };
+    _wbStartTimer(name, ms, !!periodic);
   }
 };
 
 var dev = _WbRules.autoload({}, _WbRules.wrapDevice);
+var timers = _WbRules.autoload(_WbRules.timers, function () {
+  return {
+    firing: false,
+    stop: function () {}
+  };
+});
+
 defineRule = _WbRules.defineRule;
 runRules = _WbRules.runRules;
+_runTimer = _WbRules.runTimer;
+
+function startTimer (name, ms) {
+  _WbRules.startTimer(name, ms, false);
+}
+
+function startTicker (name, ms) {
+  _WbRules.startTimer(name, ms, true);
+}

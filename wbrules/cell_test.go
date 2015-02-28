@@ -1,10 +1,15 @@
 package wbrules
 
 import (
+	"time"
 	"strings"
 	"testing"
         wbgo "github.com/contactless/wbgo"
 	"github.com/stretchr/testify/assert"
+)
+
+const (
+	EXTRA_CELL_CHANGE_WAIT_TIME_MS = 50
 )
 
 type cellFixture struct {
@@ -31,15 +36,26 @@ func NewCellFixture(t *testing.T) *cellFixture {
 	return fixture
 }
 
-func (fixture *cellFixture) expectCellChange(expectedCellName string) {
-	cellName := <- fixture.cellChange
-	assert.Equal(fixture.t, expectedCellName, cellName)
+func (fixture *cellFixture) expectCellChange(expectedCellNames... string) {
+	if expectedCellNames[0] == "gavno" {
+		panic("GoVno")
+	}
+	for _, expectedCellName := range expectedCellNames {
+		cellName := <- fixture.cellChange
+		assert.Equal(fixture.t, expectedCellName, cellName)
+	}
+	timer := time.NewTimer(EXTRA_CELL_CHANGE_WAIT_TIME_MS * time.Millisecond)
+	select {
+	case <- timer.C:
+	case cellName := <- fixture.cellChange:
+		fixture.t.Fatalf("unexpected cell change: %s", cellName)
+	}
 }
 
-func (fixture *cellFixture) publish(topic, value, expectedCellName string) {
+func (fixture *cellFixture) publish(topic, value string, expectedCellNames... string) {
 	retained := !strings.HasSuffix(topic, "/on")
 	fixture.client.Publish(wbgo.MQTTMessage{topic, value, 1, retained})
-	fixture.expectCellChange(expectedCellName)
+	fixture.expectCellChange(expectedCellNames...)
 }
 
 func (fixture *cellFixture) tearDown() {
@@ -83,7 +99,7 @@ func TestExternalCells(t *testing.T) {
 	assert.Equal(t, 755, cell2.Value())
 	assert.True(t, cell2.IsComplete())
 
-	fixture.broker.Reset()
+	fixture.broker.SkipTill("tst -> /devices/somedev/controls/paramTwo: [755] (QoS 1, retained)")
 	cell3 := dev.EnsureCell("paramThree")
 	assert.False(t, cell3.IsComplete())
 	fixture.driver.CallSync(func () {

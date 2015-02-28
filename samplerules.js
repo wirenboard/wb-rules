@@ -31,8 +31,9 @@ defineRule("heaterOn", {
 });
 
 defineRule("heaterOff", {
-  asSoonAs: function () {
-    return !dev.stabSettings.enabled || dev.Weather["Temp 1"] >= dev.stabSettings.highThreshold;
+  when: function () {
+    return dev.Relays["Relay 1"] &&
+      (!dev.stabSettings.enabled || dev.Weather["Temp 1"] >= dev.stabSettings.highThreshold);
   },
   then: function () {
     log("heaterOff fired");
