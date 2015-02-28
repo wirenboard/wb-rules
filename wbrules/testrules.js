@@ -85,3 +85,15 @@ defineRule("timer", {
     log("timer fired");
   }
 });
+
+defineRule("sendmqtt", {
+  asSoonAs: function () {
+    return dev.somedev.sendit;
+  },
+  then: function () {
+    publish("/abc/def/ghi", "0", 0);
+    publish("/misc/whatever", "abcdef", 1);
+    publish("/zzz/foo", "qqq", 2);
+    publish("/zzz/foo/qwerty", "42", 2, true);
+  }
+});

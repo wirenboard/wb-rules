@@ -16,7 +16,7 @@ type cellFixture struct {
 	t *testing.T
 	driver *wbgo.Driver
 	broker *wbgo.FakeMQTTBroker
-	client wbgo.MQTTClient
+	client, driverClient wbgo.MQTTClient
 	model *CellModel
 	cellChange chan string
 }
@@ -29,7 +29,8 @@ func NewCellFixture(t *testing.T) *cellFixture {
 	}
 	fixture.client = fixture.broker.MakeClient("tst")
 	fixture.client.Start()
-	fixture.driver = wbgo.NewDriver(fixture.model, fixture.broker.MakeClient("driver"))
+	fixture.driverClient = fixture.broker.MakeClient("driver")
+	fixture.driver = wbgo.NewDriver(fixture.model, fixture.driverClient)
 	fixture.driver.SetAutoPoll(false)
 	fixture.driver.SetAcceptsExternalDevices(true)
 	fixture.cellChange = fixture.model.AcquireCellChangeChannel()

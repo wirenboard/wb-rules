@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/objx"
 	"github.com/GeertJohan/go.rice"
 	duktape "github.com/ivan4th/go-duktape"
+	wbgo "github.com/contactless/wbgo"
 )
 
 const (
@@ -73,6 +74,7 @@ type TimerEntry struct {
 type LogFunc func (string)
 type RuleEngine struct {
 	model *CellModel
+	mqttClient wbgo.MQTTClient
 	ctx *duktape.Context
 	logFunc LogFunc
 	cellChange chan string
@@ -81,9 +83,10 @@ type RuleEngine struct {
 	timers map[string]*TimerEntry
 }
 
-func NewRuleEngine(model *CellModel) (engine *RuleEngine) {
+func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
 	engine = &RuleEngine{
 		model: model,
+		mqttClient: mqttClient,
 		ctx: duktape.NewContext(),
 		logFunc: func (message string) {
 			log.Printf("RULE: %s\n", message)
@@ -96,6 +99,7 @@ func NewRuleEngine(model *CellModel) (engine *RuleEngine) {
 	engine.defineEngineFunctions(map[string]func() int {
 		"defineVirtualDevice": engine.esDefineVirtualDevice,
 		"log": engine.esLog,
+		"publish": engine.esPublish,
 		"_wbDevObject": engine.esWbDevObject,
 		"_wbCellObject": engine.esWbCellObject,
 		"_wbStartTimer": engine.esWbStartTimer,
@@ -190,6 +194,35 @@ func (engine *RuleEngine) esLog() int {
 	if len(strs) > 0 {
 		engine.logFunc(strings.Join(strs, " "))
 	}
+	return 0
+}
+
+func (engine *RuleEngine) esPublish() int {
+	retain := false
+	qos := 0
+	if engine.ctx.GetTop() == 4 {
+		retain = engine.ctx.ToBoolean(-1)
+		engine.ctx.Pop()
+	}
+	if engine.ctx.GetTop() == 3 {
+		qos = int(engine.ctx.ToNumber(-1))
+		engine.ctx.Pop()
+		if qos < 0 || qos > 2 {
+			return duktape.DUK_RET_ERROR
+		}
+	}
+	if engine.ctx.GetTop() != 2 {
+		return duktape.DUK_RET_ERROR
+	}
+	if !engine.ctx.IsString(-2) {
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+	engine.mqttClient.Publish(wbgo.MQTTMessage{
+		Topic: engine.ctx.GetString(-2),
+		Payload: engine.ctx.SafeToString(-1),
+		QoS: byte(qos),
+		Retained: retain,
+	})
 	return 0
 }
 

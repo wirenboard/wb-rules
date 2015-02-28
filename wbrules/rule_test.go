@@ -55,7 +55,7 @@ func NewRuleFixture(t *testing.T) *ruleFixture {
 		nil,
 		make(map[string]*fakeTimer),
 	}
-	fixture.engine = NewRuleEngine(fixture.model)
+	fixture.engine = NewRuleEngine(fixture.model, fixture.driverClient)
 	fixture.engine.SetTimerFunc(fixture.newFakeTimer)
 	fixture.engine.SetLogFunc(func (message string) {
 		fixture.broker.Rec("[rule] %s", message)
@@ -205,11 +205,11 @@ func TestTimers(t *testing.T) {
 	fixture := NewRuleFixtureSkippingDefs(t)
 	defer fixture.tearDown()
 
-	fixture.publish("/devices/somedev/controls/foo", "t", "foo")
 	fixture.publish("/devices/somedev/controls/foo/meta/type", "text", "foo")
+	fixture.publish("/devices/somedev/controls/foo", "t", "foo")
 	fixture.Verify(
-		"tst -> /devices/somedev/controls/foo: [t] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/foo/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/foo: [t] (QoS 1, retained)",
 		"newFakeTimer(): sometimer, 500, false",
 	)
 
@@ -259,6 +259,22 @@ func TestTimers(t *testing.T) {
 	fixture.Verify(
 		"timer.fire(): sometimer",
 		"[rule] timer fired",
+	)
+}
+
+func TestDirectMQTTMessages(t *testing.T) {
+	fixture := NewRuleFixtureSkippingDefs(t)
+	defer fixture.tearDown()
+
+	fixture.publish("/devices/somedev/controls/sendit/meta/type", "switch", "sendit")
+	fixture.publish("/devices/somedev/controls/sendit", "1", "sendit")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/sendit/meta/type: [switch] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/sendit: [1] (QoS 1, retained)",
+		"driver -> /abc/def/ghi: [0] (QoS 0)",
+		"driver -> /misc/whatever: [abcdef] (QoS 1)",
+		"driver -> /zzz/foo: [qqq] (QoS 2)",
+		"driver -> /zzz/foo/qwerty: [42] (QoS 2, retained)",
 	)
 }
 

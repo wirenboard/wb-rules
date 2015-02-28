@@ -18,10 +18,11 @@ func main () {
 		log.Fatal("must specify rule file name(s)")
 	}
 	model := wbrules.NewCellModel()
-	driver := wbgo.NewDriver(model, wbgo.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID))
+	mqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID)
+	driver := wbgo.NewDriver(model, mqttClient)
 	driver.SetAutoPoll(false)
 	driver.SetAcceptsExternalDevices(true)
-	engine := wbrules.NewRuleEngine(model)
+	engine := wbrules.NewRuleEngine(model, mqttClient)
 	for _, path := range flag.Args() {
 		if err := engine.LoadScript(path); err != nil {
 			log.Fatalf("error loading script file %s: %s", path, err);
