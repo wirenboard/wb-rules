@@ -10,7 +10,10 @@ import (
 	duktape "github.com/ivan4th/go-duktape"
 )
 
-const DEFAULT_CELL_MAX = 255.0
+const (
+	LIB_FILE = "lib.js"
+	DEFAULT_CELL_MAX = 255.0
+)
 
 type LogFunc func (string)
 type RuleEngine struct {
@@ -45,12 +48,19 @@ func NewRuleEngine(model *CellModel) (engine *RuleEngine) {
 }
 
 func (engine *RuleEngine) loadLib() error {
-	libStr, err := engine.scriptBox.String("lib.js")
+	libStr, err := engine.scriptBox.String(LIB_FILE)
 	if err != nil {
 		return  err
 	}
-	if r := engine.ctx.PevalString(libStr); r != 0 {
-		return fmt.Errorf("failed to load lib.js: %s", engine.ctx.SafeToString(-1))
+	engine.ctx.PushString(LIB_FILE)
+	// we use PcompileStringFilename here to get readable stacktraces
+	if r := engine.ctx.PcompileStringFilename(0, libStr); r != 0 {
+		defer engine.ctx.Pop()
+		return fmt.Errorf("failed to compile lib.js: %s", engine.ctx.SafeToString(-1))
+	}
+	defer engine.ctx.Pop()
+	if r := engine.ctx.Pcall(0); r != 0 {
+		return fmt.Errorf("failed to run lib.js: %s", engine.ctx.SafeToString(-1))
 	}
 	return nil
 }
@@ -195,13 +205,9 @@ func (engine *RuleEngine) RunRules() error {
 }
 
 func (engine *RuleEngine) LoadScript(path string) error {
-	bs, err := ioutil.ReadFile(path)
-	if err != nil {
-		return err
-	}
 	defer engine.ctx.Pop()
-	if r := engine.ctx.PevalString(string(bs)); r != 0 {
-		return fmt.Errorf("failed to load %s: %s", path, engine.ctx.SafeToString(-1))
+	if r := engine.ctx.PevalFile(path); r != 0 {
+		return fmt.Errorf("failed to load lib.js: %s", engine.ctx.SafeToString(-1))
 	}
 	return nil
 }
