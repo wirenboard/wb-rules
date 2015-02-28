@@ -101,7 +101,7 @@ func (fixture *ruleFixture) SetCellValue(device, cellName string, value interfac
 	assert.Equal(fixture.t, cellName, actualCellName)
 }
 
-func _TestDeviceDefinition(t *testing.T) {
+func TestDeviceDefinition(t *testing.T) {
 	fixture := NewRuleFixture(t)
 	defer fixture.tearDown()
 	fixture.Verify(
