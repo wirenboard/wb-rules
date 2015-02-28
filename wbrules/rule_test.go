@@ -70,6 +70,13 @@ func NewRuleFixture(t *testing.T) *ruleFixture {
 	return fixture
 }
 
+func NewRuleFixtureSkippingDefs(t *testing.T) (fixture *ruleFixture) {
+	fixture = NewRuleFixture(t)
+	fixture.broker.SkipTill("tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)")
+	fixture.engine.Start() // FIXME: should auto-start
+	return
+}
+
 func (fixture *ruleFixture) newFakeTimer(name string, d time.Duration, periodic bool) Timer {
 	timer := &fakeTimer{
 		t: fixture.t,
@@ -132,12 +139,10 @@ func TestDeviceDefinition(t *testing.T) {
 	)
 }
 
+
 func TestRules(t *testing.T) {
-	fixture := NewRuleFixture(t)
+	fixture := NewRuleFixtureSkippingDefs(t)
 	defer fixture.tearDown()
-	fixture.broker.SkipTill("tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)")
-	fixture.engine.Start() // FIXME: should auto-start
-	t.Log("QQQQQQQQQQQQQQ")
 
 	fixture.SetCellValue("stabSettings", "enabled", true)
 	fixture.Verify(
@@ -145,9 +150,7 @@ func TestRules(t *testing.T) {
 		"[rule] heaterOn fired",
  		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
-	t.Log("RRRRR0")
 	fixture.expectCellChange("sw")
-	t.Log("RRRRR1")
 
 	fixture.publish("/devices/somedev/controls/temp", "21", "temp")
 	fixture.Verify(
@@ -199,10 +202,8 @@ func TestRules(t *testing.T) {
 }
 
 func TestTimers(t *testing.T) {
-	fixture := NewRuleFixture(t)
+	fixture := NewRuleFixtureSkippingDefs(t)
 	defer fixture.tearDown()
-	fixture.broker.SkipTill("tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)")
-	fixture.engine.Start() // FIXME: should auto-start
 
 	fixture.publish("/devices/somedev/controls/foo", "t", "foo")
 	fixture.publish("/devices/somedev/controls/foo/meta/type", "text", "foo")
