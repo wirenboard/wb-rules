@@ -27,6 +27,7 @@ defineRule("heaterOn", {
   then: function () {
     log("heaterOn fired");
     dev.Relays["Relay 1"] = true;
+    startTicker("heating", 3000);
   }
 });
 
@@ -38,5 +39,25 @@ defineRule("heaterOff", {
   then: function () {
     log("heaterOff fired");
     dev.Relays["Relay 1"] = false;
+    timers.heating.stop();
+    startTimer("heatingOff", 1000);
+  }
+});
+
+defineRule("ht", {
+  when: function () {
+    return timers.heating.firing;
+  },
+  then: function () {
+    log("heating timer fired");
+  }
+});
+
+defineRule("htoff", {
+  when: function () {
+    return timers.heatingOff.firing;
+  },
+  then: function () {
+    log("heating-off timer fired");
   }
 });
