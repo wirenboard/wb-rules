@@ -27,3 +27,9 @@ _testmain.go
 .tern-port
 
 /wb-rules
+
+_vendor
+*.rice-box.go
+
+debian/files
+debian/wb-rules*

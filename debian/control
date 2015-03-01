@@ -1,0 +1,11 @@
+Source: wb-rules
+Maintainer: Ivan Shvedunov <ivan4th@gmail.com>
+Section: misc
+Priority: optional
+Standards-Version: 3.9.2
+Build-Depends: debhelper (>= 9), pkg-config
+
+Package: wb-rules
+Architecture: armel
+Depends: libc6 (>= 2.13), ${misc:Depends}
+Description: Smart-Bus suppoirt

@@ -1,0 +1,3 @@
+#!/bin/sh
+
+invoke-rc.d wb-rules stop

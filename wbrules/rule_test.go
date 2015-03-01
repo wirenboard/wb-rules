@@ -329,7 +329,6 @@ func TestRetainedState(t *testing.T) {
 // TBD: metadata (like, meta["devname"]["controlName"])
 // TBD: proper data path:
 // http://stackoverflow.com/questions/18537257/golang-how-to-get-the-directory-of-the-currently-running-file
-// https://github.com/kardianos/osext
 // TBD: test bad device/rule defs
 // TBD: traceback
 // TBD: if rule *did* change anything (SetValue had an effect), re-run rules
