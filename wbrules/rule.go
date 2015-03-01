@@ -352,14 +352,13 @@ func (engine *RuleEngine) defineEngineFunctions(fns map[string]func() int) {
 	}
 }
 
-func (engine *RuleEngine) RunRules() error {
+func (engine *RuleEngine) RunRules() {
 	engine.ctx.PushGlobalObject()
 	engine.ctx.PushString("runRules")
 	defer engine.ctx.Pop2()
 	if r := engine.ctx.PcallProp(-2, 0); r != 0 {
-		return fmt.Errorf("failed to run rules: %s", engine.ctx.SafeToString(-1))
+		log.Printf("WARNING: failed to run rules: %s", engine.ctx.SafeToString(-1))
 	}
-	return nil
 }
 
 func (engine *RuleEngine) LoadScript(path string) error {
@@ -375,7 +374,13 @@ func (engine *RuleEngine) Start() {
 		return
 	}
 	engine.cellChange = engine.model.AcquireCellChangeChannel()
+	ready := make(chan struct{})
+	engine.model.WhenReady(func () {
+		engine.RunRules()
+		close(ready)
+	})
 	go func () {
+		_, _ = <- ready
 		for {
 			select {
 			case cellName, ok := <- engine.cellChange:
@@ -383,9 +388,7 @@ func (engine *RuleEngine) Start() {
 					log.Printf(
 						"rule engine: running rules after cell change: %s",
 						cellName)
-					engine.model.CallSync(func () {
-						engine.RunRules()
-					})
+					engine.model.CallSync(engine.RunRules)
 				} else {
 					log.Printf("engine stopped")
 					for _, entry := range engine.timers {

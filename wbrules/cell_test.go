@@ -21,11 +21,14 @@ type cellFixture struct {
 	cellChange chan string
 }
 
-func NewCellFixture(t *testing.T) *cellFixture {
+func NewCellFixture(t *testing.T, waitForRetained bool) *cellFixture {
 	fixture := &cellFixture{
 		t: t,
 		broker: wbgo.NewFakeMQTTBroker(t),
 		model: NewCellModel(),
+	}
+	if waitForRetained {
+		fixture.broker.SetWaitForRetained(true)
 	}
 	fixture.client = fixture.broker.MakeClient("tst")
 	fixture.client.Start()
@@ -38,9 +41,6 @@ func NewCellFixture(t *testing.T) *cellFixture {
 }
 
 func (fixture *cellFixture) expectCellChange(expectedCellNames... string) {
-	if expectedCellNames[0] == "gavno" {
-		panic("GoVno")
-	}
 	for _, expectedCellName := range expectedCellNames {
 		cellName := <- fixture.cellChange
 		assert.Equal(fixture.t, expectedCellName, cellName)
@@ -66,7 +66,7 @@ func (fixture *cellFixture) tearDown() {
 }
 
 func TestExternalCells(t *testing.T) {
-	fixture := NewCellFixture(t)
+	fixture := NewCellFixture(t, false)
 	defer fixture.tearDown()
 	fixture.driver.Start()
 	dev := fixture.model.EnsureDevice("somedev")
@@ -115,7 +115,7 @@ func TestExternalCells(t *testing.T) {
 }
 
 func TestLocalCells(t *testing.T) {
-	fixture := NewCellFixture(t)
+	fixture := NewCellFixture(t, false)
 	defer fixture.tearDown()
 	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
 	cell1 := dev.SetCell("sw", "switch", true)
@@ -125,6 +125,10 @@ func TestLocalCells(t *testing.T) {
 	fixture.driver.Start()
 	fixture.broker.Verify(
 		"driver -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/+/meta/name",
+		"Subscribe -- driver: /devices/+/controls/+",
+		"Subscribe -- driver: /devices/+/controls/+/meta/type",
+		"Subscribe -- driver: /devices/+/controls/+/meta/max",
 		"driver -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
 		"driver -> /devices/somedev/controls/sw/meta/order: [1] (QoS 1, retained)",
 		"driver -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
@@ -133,10 +137,6 @@ func TestLocalCells(t *testing.T) {
 		"driver -> /devices/somedev/controls/temp/meta/order: [2] (QoS 1, retained)",
 		"driver -> /devices/somedev/controls/temp: [20] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/somedev/controls/temp/on",
-		"Subscribe -- driver: /devices/+/meta/name",
-		"Subscribe -- driver: /devices/+/controls/+",
-		"Subscribe -- driver: /devices/+/controls/+/meta/type",
-		"Subscribe -- driver: /devices/+/controls/+/meta/max",
 	)
 	assert.Equal(t, "switch", cell1.Type())
 	assert.Equal(t, true, cell1.Value())
@@ -163,7 +163,7 @@ func TestLocalCells(t *testing.T) {
 }
 
 func TestLocalRangeCells(t *testing.T) {
-	fixture := NewCellFixture(t)
+	fixture := NewCellFixture(t, false)
 	defer fixture.tearDown()
 	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
 	cell := dev.SetRangeCell("foo", "10", 200)
@@ -171,20 +171,20 @@ func TestLocalRangeCells(t *testing.T) {
 	fixture.driver.Start()
 	fixture.broker.Verify(
 		"driver -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/+/meta/name",
+		"Subscribe -- driver: /devices/+/controls/+",
+		"Subscribe -- driver: /devices/+/controls/+/meta/type",
+		"Subscribe -- driver: /devices/+/controls/+/meta/max",
 		"driver -> /devices/somedev/controls/foo/meta/type: [range] (QoS 1, retained)",
 		"driver -> /devices/somedev/controls/foo/meta/order: [1] (QoS 1, retained)",
 		"driver -> /devices/somedev/controls/foo/meta/max: [200] (QoS 1, retained)",
 		"driver -> /devices/somedev/controls/foo: [10] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/somedev/controls/foo/on",
-		"Subscribe -- driver: /devices/+/meta/name",
-		"Subscribe -- driver: /devices/+/controls/+",
-		"Subscribe -- driver: /devices/+/controls/+/meta/type",
-		"Subscribe -- driver: /devices/+/controls/+/meta/max",
 	)
 }
 
 func TestExternalRangeCells(t *testing.T) {
-	fixture := NewCellFixture(t)
+	fixture := NewCellFixture(t, false)
 	defer fixture.tearDown()
 	fixture.driver.Start()
 	fixture.publish("/devices/somedev/meta/name", "SomeDev", "")
@@ -196,4 +196,63 @@ func TestExternalRangeCells(t *testing.T) {
 	assert.Equal(t, 10, cell.Value())
 	assert.Equal(t, 200, cell.Max())
 	assert.Equal(t, "range", cell.Type())
+}
+
+func TestAcceptRetainedValuesForLocalCells(t *testing.T) {
+	fixture := NewCellFixture(t, true)
+	defer fixture.tearDown()
+
+	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
+	cell1 := dev.SetCell("sw1", "switch", true)
+
+	cell2 := dev.SetCell("sw2", "switch", false)
+
+	fixture.driver.Start()
+	fixture.broker.Verify(
+		// device .../meta/name being published first is actually
+		// an unwanted side-effect of OnNewDevice(), but it doesn't
+		// do much harm, so I'm not fixing it right now
+		"driver -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/+/meta/name",
+		"Subscribe -- driver: /devices/+/controls/+",
+		"Subscribe -- driver: /devices/+/controls/+/meta/type",
+		"Subscribe -- driver: /devices/+/controls/+/meta/max",
+	)
+	fixture.broker.VerifyEmpty()
+
+	assert.True(t, cell1.IsComplete())
+	assert.True(t, cell1.Value().(bool))
+	assert.True(t, cell2.IsComplete())
+	assert.False(t, cell2.Value().(bool))
+
+	fixture.publish("/devices/somedev/controls/sw1", "0", "sw1")
+	fixture.publish("/devices/somedev/controls/sw2", "1", "sw2")
+
+	fixture.broker.Verify(
+		"tst -> /devices/somedev/controls/sw1: [0] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/sw2: [1] (QoS 1, retained)",
+	)
+	fixture.broker.VerifyEmpty()
+
+	fixture.broker.SetReady()
+	fixture.broker.Verify(
+		"driver -> /devices/somedev/controls/sw1/meta/type: [switch] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw1/meta/order: [1] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw1: [0] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/somedev/controls/sw1/on",
+		"driver -> /devices/somedev/controls/sw2/meta/type: [switch] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw2/meta/order: [2] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw2: [1] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/somedev/controls/sw2/on",
+	)
+	fixture.broker.VerifyEmpty()
+
+	assert.True(t, cell1.IsComplete())
+	assert.False(t, cell1.Value().(bool))
+	assert.True(t, cell2.IsComplete())
+	assert.True(t, cell2.Value().(bool))
+
+	fixture.publish("/devices/somedev/controls/sw2/on", "0", "sw2")
+	assert.False(t, cell1.Value().(bool))
+	assert.False(t, cell2.Value().(bool))
 }

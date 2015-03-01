@@ -18,7 +18,7 @@ func main () {
 		log.Fatal("must specify rule file name(s)")
 	}
 	model := wbrules.NewCellModel()
-	mqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID)
+	mqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID, true)
 	driver := wbgo.NewDriver(model, mqttClient)
 	driver.SetAutoPoll(false)
 	driver.SetAcceptsExternalDevices(true)

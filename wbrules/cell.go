@@ -72,10 +72,13 @@ func (model *CellModel) Start() error {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		dev := model.devices[name]
-		model.Observer.OnNewDevice(dev)
-		dev.queryParams()
+		model.Observer.OnNewDevice(model.devices[name])
 	}
+	model.Observer.WhenReady(func () {
+		for _, name := range names {
+			model.devices[name].queryParams()
+		}
+	})
 	return nil
 }
 
@@ -141,7 +144,7 @@ func (model *CellModel) EnsureLocalDevice(name, title string) *CellModelLocalDev
 	}
 }
 
-func (model *CellModel) AddDevice(name string) (wbgo.ExternalDeviceModel, error) {
+func (model *CellModel) AddExternalDevice(name string) (wbgo.ExternalDeviceModel, error) {
 	dev, _ := model.EnsureDevice(name).(wbgo.ExternalDeviceModel)
 	if dev != nil {
 		return dev, nil
@@ -175,6 +178,10 @@ func (model *CellModel) notify(cellName string) {
 func (model *CellModel) CallSync(thunk func()) {
 	// FIXME: need to do it all in a more Go-like way
 	model.Observer.CallSync(thunk)
+}
+
+func (model *CellModel) WhenReady(thunk func()) {
+	model.Observer.WhenReady(thunk)
 }
 
 func (dev *CellModelDeviceBase) SetTitle(title string) {
@@ -214,18 +221,26 @@ func (dev *CellModelDeviceBase) EnsureCell(name string) (cell *Cell) {
 	return
 }
 
-func (dev *CellModelDeviceBase) SendValue(name, value string) bool {
+func (dev *CellModelDeviceBase) AcceptValue(name, value string) {
 	log.Printf("cell %s <- %v", name, value)
 	cell := dev.EnsureCell(name)
 	cell.value = value
 	cell.gotValue = true
 	go dev.model.notify(name)
-	return true
 }
 
 func (dev *CellModelDeviceBase) setValue(name, value string) {
 	dev.Observer.OnValue(dev.self, name, value)
 	go dev.model.notify(name)
+}
+
+func (dev *CellModelLocalDevice) AcceptOnValue(name, value string) bool {
+	log.Printf("cell %s <- %v [.../on]", name, value)
+	cell := dev.EnsureCell(name)
+	cell.value = value
+	cell.gotValue = true
+	go dev.model.notify(name)
+	return true
 }
 
 func (dev *CellModelLocalDevice) queryParams() {
@@ -240,14 +255,14 @@ func (dev *CellModelLocalDevice) queryParams() {
 	}
 }
 
-func (dev *CellModelExternalDevice) SendControlType(name, controlType string) {
+func (dev *CellModelExternalDevice) AcceptControlType(name, controlType string) {
 	cell := dev.EnsureCell(name)
 	cell.gotType = true
 	cell.controlType = controlType
 	go dev.model.notify(name)
 }
 
-func (dev *CellModelExternalDevice) SendControlRange(name string, max float64) {
+func (dev *CellModelExternalDevice) AcceptControlRange(name string, max float64) {
 	cell := dev.EnsureCell(name)
 	cell.max = max
 	go dev.model.notify(name)

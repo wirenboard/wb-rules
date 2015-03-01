@@ -49,9 +49,9 @@ type ruleFixture struct {
 	timers map[string]*fakeTimer
 }
 
-func NewRuleFixture(t *testing.T) *ruleFixture {
+func NewRuleFixture(t *testing.T, waitForRetained bool) *ruleFixture {
 	fixture := &ruleFixture{
-		*NewCellFixture(t),
+		*NewCellFixture(t, waitForRetained),
 		nil,
 		make(map[string]*fakeTimer),
 	}
@@ -71,7 +71,7 @@ func NewRuleFixture(t *testing.T) *ruleFixture {
 }
 
 func NewRuleFixtureSkippingDefs(t *testing.T) (fixture *ruleFixture) {
-	fixture = NewRuleFixture(t)
+	fixture = NewRuleFixture(t, false)
 	fixture.broker.SkipTill("tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)")
 	fixture.engine.Start() // FIXME: should auto-start
 	return
@@ -109,10 +109,15 @@ func (fixture *ruleFixture) SetCellValue(device, cellName string, value interfac
 }
 
 func TestDeviceDefinition(t *testing.T) {
-	fixture := NewRuleFixture(t)
+	fixture := NewRuleFixture(t, false)
 	defer fixture.tearDown()
 	fixture.Verify(
 		"driver -> /devices/stabSettings/meta/name: [Stabilization Settings] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/+/meta/name",
+		"Subscribe -- driver: /devices/+/controls/+",
+		"Subscribe -- driver: /devices/+/controls/+/meta/type",
+		"Subscribe -- driver: /devices/+/controls/+/meta/max",
+		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/enabled/meta/type: [switch] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/enabled/meta/order: [1] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/enabled: [0] (QoS 1, retained)",
@@ -127,11 +132,6 @@ func TestDeviceDefinition(t *testing.T) {
 		"driver -> /devices/stabSettings/controls/lowThreshold/meta/max: [40] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/lowThreshold: [20] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/stabSettings/controls/lowThreshold/on",
-		"Subscribe -- driver: /devices/+/meta/name",
-		"Subscribe -- driver: /devices/+/controls/+",
-		"Subscribe -- driver: /devices/+/controls/+/meta/type",
-		"Subscribe -- driver: /devices/+/controls/+/meta/max",
-		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
@@ -276,6 +276,54 @@ func TestDirectMQTTMessages(t *testing.T) {
 		"driver -> /zzz/foo: [qqq] (QoS 2)",
 		"driver -> /zzz/foo/qwerty: [42] (QoS 2, retained)",
 	)
+}
+
+func TestRetainedState(t *testing.T) {
+	fixture := NewRuleFixture(t, true)
+	defer fixture.tearDown()
+	fixture.engine.Start() // FIXME: should auto-start
+
+	fixture.Verify(
+		"driver -> /devices/stabSettings/meta/name: [Stabilization Settings] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/+/meta/name",
+		"Subscribe -- driver: /devices/+/controls/+",
+		"Subscribe -- driver: /devices/+/controls/+/meta/type",
+		"Subscribe -- driver: /devices/+/controls/+/meta/max",
+		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
+	)
+	fixture.broker.VerifyEmpty()
+
+	fixture.publish("/devices/stabSettings/controls/enabled", "1", "enabled")
+	fixture.broker.Verify(
+		"tst -> /devices/stabSettings/controls/enabled: [1] (QoS 1, retained)",
+	)
+	fixture.broker.VerifyEmpty()
+
+	fixture.broker.SetReady()
+	fixture.broker.Verify(
+		"driver -> /devices/stabSettings/controls/enabled/meta/type: [switch] (QoS 1, retained)",
+		"driver -> /devices/stabSettings/controls/enabled/meta/order: [1] (QoS 1, retained)",
+		"driver -> /devices/stabSettings/controls/enabled: [1] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/stabSettings/controls/enabled/on",
+		"driver -> /devices/stabSettings/controls/highThreshold/meta/type: [range] (QoS 1, retained)",
+		"driver -> /devices/stabSettings/controls/highThreshold/meta/order: [2] (QoS 1, retained)",
+		"driver -> /devices/stabSettings/controls/highThreshold/meta/max: [50] (QoS 1, retained)",
+		"driver -> /devices/stabSettings/controls/highThreshold: [22] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/stabSettings/controls/highThreshold/on",
+		"driver -> /devices/stabSettings/controls/lowThreshold/meta/type: [range] (QoS 1, retained)",
+		"driver -> /devices/stabSettings/controls/lowThreshold/meta/order: [3] (QoS 1, retained)",
+		"driver -> /devices/stabSettings/controls/lowThreshold/meta/max: [40] (QoS 1, retained)",
+		"driver -> /devices/stabSettings/controls/lowThreshold: [20] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/stabSettings/controls/lowThreshold/on",
+		"[rule] heaterOn fired",
+ 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
+	)
+	fixture.broker.VerifyEmpty()
+	fixture.expectCellChange("sw")
 }
 
 // TBD: metadata (like, meta["devname"]["controlName"])
