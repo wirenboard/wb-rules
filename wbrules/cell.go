@@ -2,7 +2,6 @@ package wbrules
 
 import (
         "fmt"
-	"log"
 	"sort"
 	"errors"
 	"strconv"
@@ -215,14 +214,14 @@ func (dev *CellModelDeviceBase) SetRangeCell(name string,  value interface{}, ma
 func (dev *CellModelDeviceBase) EnsureCell(name string) (cell *Cell) {
 	cell, found := dev.cells[name]
 	if !found {
-		log.Printf("adding cell %s", name)
+		wbgo.Debug.Printf("adding cell %s", name)
 		cell = dev.setCell(name, "text", "", false, -1)
 	}
 	return
 }
 
 func (dev *CellModelDeviceBase) AcceptValue(name, value string) {
-	log.Printf("cell %s <- %v", name, value)
+	wbgo.Debug.Printf("cell %s <- %v", name, value)
 	cell := dev.EnsureCell(name)
 	cell.value = value
 	cell.gotValue = true
@@ -235,7 +234,7 @@ func (dev *CellModelDeviceBase) setValue(name, value string) {
 }
 
 func (dev *CellModelLocalDevice) AcceptOnValue(name, value string) bool {
-	log.Printf("cell %s <- %v [.../on]", name, value)
+	wbgo.Debug.Printf("cell %s <- %v [.../on]", name, value)
 	cell := dev.EnsureCell(name)
 	cell.value = value
 	cell.gotValue = true
@@ -281,7 +280,7 @@ func (cell *Cell) Max() float64 {
 }
 
 func (cell *Cell) Value() interface{} {
-	log.Printf("cell %s internal value = %v", cell.name, cell.value)
+	wbgo.Debug.Printf("cell %s internal value = %v", cell.name, cell.value)
 	switch cell.controlType {
 	case "text":
 		return cell.value

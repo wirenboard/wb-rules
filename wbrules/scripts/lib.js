@@ -59,9 +59,9 @@ var _WbRules = {
   },
 
   runRules: function () {
-    alert("runRules()");
+    debug("runRules()");
     _WbRules.ruleNames.forEach(function (name) {
-      alert("checking rule: " + name);
+      debug("checking rule: " + name);
       var rule = _WbRules.ruleMap[name];
       try {
         _WbRules.requireCompleteCells++;
@@ -70,7 +70,7 @@ var _WbRules = {
           if (rule.asSoonAs) {
             var cur = rule.asSoonAs();
             shouldFire = cur && (!rule.cached || !!rule.cached.value != !!cur);
-            alert((shouldFire ? "(firing)" : "(not firing)") + "caching rule value: " + name + ": " + !!cur);
+            debug((shouldFire ? "(firing)" : "(not firing)") + "caching rule value: " + name + ": " + !!cur);
             if (rule.cached) {
               rule.cached.value = !!cur;
             } else {
@@ -80,7 +80,7 @@ var _WbRules = {
             shouldFire = !!rule.when();
         } catch (e) {
           if (e instanceof _WbRules.IncompleteCellError) {
-            alert("skipping rule due to incomplete cells " + name + ": " + e);
+            debug("skipping rule due to incomplete cells " + name + ": " + e);
             return;
           }
           throw e;
@@ -88,19 +88,19 @@ var _WbRules = {
           _WbRules.requireCompleteCells--;
         }
         if (shouldFire) {
-          alert("rule fired: " + name);
+          debug("rule fired: " + name);
           rule.then();
         }
       } catch (e) {
-        alert("error running rule " + name + ": " + e.stack || e);
+        debug("error running rule " + name + ": " + e.stack || e);
       }
     });
   },
 
   runTimer: function runTimer(name) {
-    alert("runTimer(): " + name);
+    debug("runTimer(): " + name);
     if (!_WbRules.timers.hasOwnProperty(name)) {
-      alert("WARNING: unknown timer fired: " + name);
+      debug("WARNING: unknown timer fired: " + name);
       return;
     }
     _WbRules.timers[name]._fire();
@@ -109,12 +109,12 @@ var _WbRules = {
   startTimer: function startTimer(name, ms, periodic) {
     if (_WbRules.timers.hasOwnProperty(name))
       _WbRules.timers[name].stop();
-    alert("starting timer: " + name);
+    debug("starting timer: " + name);
     _WbRules.timers[name] = {
       firing: false,
       stop: function () {
         _wbStopTimer(name);
-        alert("deleting timer: " + name);
+        debug("deleting timer: " + name);
         delete _WbRules.timers[name];
       },
       _fire: function () {

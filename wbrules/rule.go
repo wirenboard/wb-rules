@@ -2,7 +2,6 @@ package wbrules
 
 import (
 	"fmt"
-	"log"
 	"time"
 	"strings"
 	"github.com/stretchr/objx"
@@ -89,7 +88,7 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		mqttClient: mqttClient,
 		ctx: duktape.NewContext(),
 		logFunc: func (message string) {
-			log.Printf("RULE: %s\n", message)
+			wbgo.Info.Printf("RULE: %s\n", message)
 		},
 		scriptBox: rice.MustFindBox("scripts"),
 		timerFunc: newTimer,
@@ -99,6 +98,7 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 	engine.defineEngineFunctions(map[string]func() int {
 		"defineVirtualDevice": engine.esDefineVirtualDevice,
 		"log": engine.esLog,
+		"debug": engine.esDebug,
 		"publish": engine.esPublish,
 		"_wbDevObject": engine.esWbDevObject,
 		"_wbCellObject": engine.esWbCellObject,
@@ -107,7 +107,7 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 	})
 	engine.ctx.Pop()
 	if err := engine.loadLib(); err != nil {
-		log.Panicf("failed to load runtime library: %s", err)
+		wbgo.Error.Panicf("failed to load runtime library: %s", err)
 	}
 	return
 }
@@ -186,13 +186,29 @@ func (engine *RuleEngine) esDefineVirtualDevice() int {
 	return 0
 }
 
-func (engine *RuleEngine) esLog() int {
+func (engine *RuleEngine) getLogStrArg() (string, bool) {
 	strs := make([]string, 0, 100)
 	for n := -engine.ctx.GetTop(); n < 0; n++ {
 		strs = append(strs, engine.ctx.SafeToString(n))
 	}
 	if len(strs) > 0 {
-		engine.logFunc(strings.Join(strs, " "))
+		return strings.Join(strs, " "), true
+	}
+	return "", false
+}
+
+func (engine *RuleEngine) esLog() int {
+	s, show := engine.getLogStrArg()
+	if show {
+		engine.logFunc(s)
+	}
+	return 0
+}
+
+func (engine *RuleEngine) esDebug() int {
+	s, show := engine.getLogStrArg()
+	if show {
+		wbgo.Debug.Printf("[rule debug] %s", s)
 	}
 	return 0
 }
@@ -227,7 +243,7 @@ func (engine *RuleEngine) esPublish() int {
 }
 
 func (engine *RuleEngine) esWbDevObject() int {
-	log.Printf("esWbDevObject(): top=%d isString=%v", engine.ctx.GetTop(), engine.ctx.IsString(-1))
+	wbgo.Debug.Printf("esWbDevObject(): top=%d isString=%v", engine.ctx.GetTop(), engine.ctx.IsString(-1))
 	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(-1) {
 		return duktape.DUK_RET_ERROR
 	}
@@ -242,7 +258,7 @@ func (engine *RuleEngine) esWbCellObject() int {
 	}
 	dev, ok := engine.ctx.GetGoObject(-2).(CellModelDevice)
 	if !ok {
-		log.Printf("WARNING: invalid _wbCellObject call")
+		wbgo.Error.Printf("invalid _wbCellObject call")
 		return duktape.DUK_RET_TYPE_ERROR
 	}
 	cell := dev.EnsureCell(engine.ctx.GetString(-1))
@@ -265,7 +281,7 @@ func (engine *RuleEngine) esWbCellObject() int {
 			}
 			m, ok := GetJSObject(engine.ctx, -1).(objx.Map)
 			if !ok || !m.Has("v") {
-				log.Printf("WARNING: invalid cell definition")
+				wbgo.Error.Printf("invalid cell definition")
 				return duktape.DUK_RET_TYPE_ERROR
 			}
 			cell.SetValue(m["v"])
@@ -284,7 +300,7 @@ func (engine *RuleEngine) fireTimer(name string) {
 	engine.ctx.PushString("_runTimer")
 	engine.ctx.PushString(name)
 	if r := engine.ctx.PcallProp(-3, 1); r != 0 {
-		log.Printf("failed to fire timer '%s': %s", name, engine.ctx.SafeToString(-1))
+		wbgo.Error.Printf("failed to fire timer '%s': %s", name, engine.ctx.SafeToString(-1))
 	}
 	engine.ctx.Pop2()
 }
@@ -337,7 +353,7 @@ func (engine *RuleEngine) esWbStopTimer() int {
 	if found {
 		close(entry.quit)
 	} else {
-		log.Printf("warning: trying to stop unknown timer: %s", name)
+		wbgo.Error.Printf("trying to stop unknown timer: %s", name)
 	}
 	return 0
 }
@@ -357,7 +373,7 @@ func (engine *RuleEngine) RunRules() {
 	engine.ctx.PushString("runRules")
 	defer engine.ctx.Pop2()
 	if r := engine.ctx.PcallProp(-2, 0); r != 0 {
-		log.Printf("WARNING: failed to run rules: %s", engine.ctx.SafeToString(-1))
+		wbgo.Error.Printf("failed to run rules: %s", engine.ctx.SafeToString(-1))
 	}
 }
 
@@ -385,12 +401,12 @@ func (engine *RuleEngine) Start() {
 			select {
 			case cellName, ok := <- engine.cellChange:
 				if ok {
-					log.Printf(
+					wbgo.Debug.Printf(
 						"rule engine: running rules after cell change: %s",
 						cellName)
 					engine.model.CallSync(engine.RunRules)
 				} else {
-					log.Printf("engine stopped")
+					wbgo.Debug.Printf("engine stopped")
 					for _, entry := range engine.timers {
 						close(entry.quit)
 					}

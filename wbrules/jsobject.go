@@ -1,9 +1,9 @@
 package wbrules
 
 import (
-	"log"
 	"github.com/stretchr/objx"
 	duktape "github.com/ivan4th/go-duktape"
+	wbgo "github.com/contactless/wbgo"
 )
 
 func getObject(ctx *duktape.Context, objIndex int) map[string]interface{} {
@@ -53,12 +53,12 @@ func getJSObject(ctx *duktape.Context, objIndex int, top bool) interface{} {
 			return m
 		}
 	case t.IsBuffer():
-		log.Println("WARNING: buffers aren't supported yet")
+		wbgo.Error.Println("buffers aren't supported yet")
 		return nil
 	case t.IsPointer():
 		return ctx.GetPointer(objIndex)
 	default:
-		log.Panicf("bad object type %d", t)
+		wbgo.Error.Panicf("bad object type %d", t)
 		return nil // avoid compiler warning
 	}
 }
