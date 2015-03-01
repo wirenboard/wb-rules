@@ -6,13 +6,16 @@ clean:
 
 prepare:
 	go get -u github.com/mattn/gom
-	$(GOM) install
+	go get -u github.com/GeertJohan/go.rice
+	go get -u github.com/GeertJohan/go.rice/rice
+	PATH=$(HOME)/progs/go/bin:$(PATH) GOARM=5 GOARCH=arm GOOS=linux \
+	  CC_FOR_TARGET=arm-linux-gnueabi-gcc CGO_ENABLED=1 $(GOM) install
 
 clean:
 	rm -f wb-rules wbrules/*.rice-box.go
 
 wb-rules: main.go wbrules/*.go
-	(cd wbrules && rice embed-go)
+	(cd wbrules && $(HOME)/go/bin/rice embed-go)
 	PATH=$(HOME)/progs/go/bin:$(PATH) GOARM=5 GOARCH=arm GOOS=linux \
 	  CC_FOR_TARGET=arm-linux-gnueabi-gcc CGO_ENABLED=1 $(GOM) build
 	rm -f wbrules/*.rice-box.go
