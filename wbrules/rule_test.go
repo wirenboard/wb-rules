@@ -15,7 +15,7 @@ func makeTime(d time.Duration) time.Time {
 
 type fakeTimer struct {
 	t *testing.T
-	name string
+	id int
 	c chan time.Time
 	d time.Duration
 	periodic bool
@@ -28,7 +28,7 @@ func (timer *fakeTimer) GetChannel() <-chan time.Time {
 }
 
 func (timer *fakeTimer) fire(t time.Time) {
-	timer.rec.Rec("timer.fire(): %s", timer.name)
+	timer.rec.Rec("timer.fire(): %d", timer.id)
 	assert.True(timer.t, timer.active)
 	timer.c <- t
 	if !timer.periodic {
@@ -40,20 +40,20 @@ func (timer *fakeTimer) Stop() {
 	// note that we don't close timer here,
 	// mimicking the behavior of real timers and tickers
 	timer.active = false
-	timer.rec.Rec("timer.Stop(): %s", timer.name)
+	timer.rec.Rec("timer.Stop(): %d", timer.id)
 }
 
 type ruleFixture struct {
 	cellFixture
 	engine *RuleEngine
-	timers map[string]*fakeTimer
+	timers map[int]*fakeTimer
 }
 
 func NewRuleFixture(t *testing.T, waitForRetained bool) *ruleFixture {
 	fixture := &ruleFixture{
 		*NewCellFixture(t, waitForRetained),
 		nil,
-		make(map[string]*fakeTimer),
+		make(map[int]*fakeTimer),
 	}
 	fixture.engine = NewRuleEngine(fixture.model, fixture.driverClient)
 	fixture.engine.SetTimerFunc(fixture.newFakeTimer)
@@ -77,18 +77,18 @@ func NewRuleFixtureSkippingDefs(t *testing.T) (fixture *ruleFixture) {
 	return
 }
 
-func (fixture *ruleFixture) newFakeTimer(name string, d time.Duration, periodic bool) Timer {
+func (fixture *ruleFixture) newFakeTimer(id int, d time.Duration, periodic bool) Timer {
 	timer := &fakeTimer{
 		t: fixture.t,
-		name: name,
+		id: id,
 		c: make(chan time.Time),
 		d: d,
 		periodic: periodic,
 		active: true,
 		rec: &fixture.broker.Recorder,
 	}
-	fixture.timers[name] = timer
-	fixture.broker.Rec("newFakeTimer(): %s, %d, %v", name, d / time.Millisecond, periodic)
+	fixture.timers[id] = timer
+	fixture.broker.Rec("newFakeTimer(): %d, %d, %v", id, d / time.Millisecond, periodic)
 	return timer
 }
 
@@ -201,65 +201,76 @@ func TestRules(t *testing.T) {
 	)
 }
 
-func TestTimers(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t)
-	defer fixture.tearDown()
-
+func (fixture *ruleFixture) VerifyTimers(prefix string) {
 	fixture.publish("/devices/somedev/controls/foo/meta/type", "text", "foo")
-	fixture.publish("/devices/somedev/controls/foo", "t", "foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix + "t", "foo")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/foo/meta/type: [text] (QoS 1, retained)",
-		"tst -> /devices/somedev/controls/foo: [t] (QoS 1, retained)",
-		"newFakeTimer(): sometimer, 500, false",
+		"tst -> /devices/somedev/controls/foo: [" + prefix + "t] (QoS 1, retained)",
+		"newFakeTimer(): 1, 500, false",
 	)
 
-	fixture.publish("/devices/somedev/controls/foo", "-", "foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix + "s", "foo")
 	fixture.Verify(
-		"tst -> /devices/somedev/controls/foo: [-] (QoS 1, retained)",
-		"timer.Stop(): sometimer",
+		"tst -> /devices/somedev/controls/foo: [" + prefix + "s] (QoS 1, retained)",
+		"timer.Stop(): 1",
 	)
 
-	fixture.publish("/devices/somedev/controls/foo", "t", "foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix + "t", "foo")
 	fixture.Verify(
-		"tst -> /devices/somedev/controls/foo: [t] (QoS 1, retained)",
-		"newFakeTimer(): sometimer, 500, false",
+		"tst -> /devices/somedev/controls/foo: [" + prefix + "t] (QoS 1, retained)",
+		"newFakeTimer(): 1, 500, false",
 	)
 
-	fixture.timers["sometimer"].fire(makeTime(500 * time.Millisecond))
+	fixture.timers[1].fire(makeTime(500 * time.Millisecond))
 	fixture.Verify(
-		"timer.fire(): sometimer",
+		"timer.fire(): 1",
 		"[rule] timer fired",
 	)
 
-	fixture.publish("/devices/somedev/controls/foo", "p", "foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix + "p", "foo")
 	fixture.Verify(
-		"tst -> /devices/somedev/controls/foo: [p] (QoS 1, retained)",
-		"newFakeTimer(): sometimer, 500, true",
+		"tst -> /devices/somedev/controls/foo: [" + prefix + "p] (QoS 1, retained)",
+		"newFakeTimer(): 1, 500, true",
 	)
 
 	for i := 1; i < 4; i++ {
 		targetTime := makeTime(time.Duration(500 * i) * time.Millisecond)
-		fixture.timers["sometimer"].fire(targetTime)
+		fixture.timers[1].fire(targetTime)
 		fixture.Verify(
-			"timer.fire(): sometimer",
+			"timer.fire(): 1",
 			"[rule] timer fired",
 		)
 	}
 
-	fixture.publish("/devices/somedev/controls/foo", "t", "foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix + "t", "foo")
 	fixture.Verify(
-		"tst -> /devices/somedev/controls/foo: [t] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/foo: [" + prefix + "t] (QoS 1, retained)",
 	)
 	fixture.VerifyUnordered(
-		"timer.Stop(): sometimer",
-		"newFakeTimer(): sometimer, 500, false",
+		"timer.Stop(): 1",
+		"newFakeTimer(): 1, 500, false",
 	)
 
-	fixture.timers["sometimer"].fire(makeTime(5 * 500 * time.Millisecond))
+	fixture.timers[1].fire(makeTime(5 * 500 * time.Millisecond))
 	fixture.Verify(
-		"timer.fire(): sometimer",
+		"timer.fire(): 1",
 		"[rule] timer fired",
 	)
+}
+
+func TestTimers(t *testing.T) {
+	fixture := NewRuleFixtureSkippingDefs(t)
+	defer fixture.tearDown()
+
+	fixture.VerifyTimers("")
+}
+
+func TestDirectTimers(t *testing.T) {
+	fixture := NewRuleFixtureSkippingDefs(t)
+	defer fixture.tearDown()
+
+	fixture.VerifyTimers("+")
 }
 
 func TestDirectMQTTMessages(t *testing.T) {

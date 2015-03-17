@@ -97,36 +97,32 @@ var _WbRules = {
     });
   },
 
-  runTimer: function runTimer(name) {
-    debug("runTimer(): " + name);
-    if (!_WbRules.timers.hasOwnProperty(name)) {
-      debug("WARNING: unknown timer fired: " + name);
-      return;
-    }
-    _WbRules.timers[name]._fire();
-  },
-
   startTimer: function startTimer(name, ms, periodic) {
     if (_WbRules.timers.hasOwnProperty(name))
       _WbRules.timers[name].stop();
     debug("starting timer: " + name);
-    _WbRules.timers[name] = {
+    var timer = _WbRules.timers[name] = {
       firing: false,
       stop: function () {
-        _wbStopTimer(name);
+        if (!this.id)
+          return;
+        _wbStopTimer(this.id);
         debug("deleting timer: " + name);
         delete _WbRules.timers[name];
+        this.id = null;
       },
       _fire: function () {
         this.firing = true;
         try {
           _WbRules.runRules();
         } finally {
+          if (!periodic)
+            delete _WbRules.timers[name];
           this.firing = false;
         }
       }
     };
-    _wbStartTimer(name, ms, !!periodic);
+    timer.id =_wbStartTimer(timer._fire.bind(timer), ms, !!periodic);
   }
 };
 
@@ -140,7 +136,6 @@ var timers = _WbRules.autoload(_WbRules.timers, function () {
 
 defineRule = _WbRules.defineRule;
 runRules = _WbRules.runRules;
-_runTimer = _WbRules.runTimer;
 
 function startTimer (name, ms) {
   _WbRules.startTimer(name, ms, false);
@@ -148,4 +143,20 @@ function startTimer (name, ms) {
 
 function startTicker (name, ms) {
   _WbRules.startTimer(name, ms, true);
+}
+
+function setTimeout(callback, ms) {
+  return _wbStartTimer(callback, ms, false);
+}
+
+function setInterval(callback, ms) {
+  return _wbStartTimer(callback, ms, true);
+}
+
+function clearTimeout(id) {
+  _wbStopTimer(id);
+}
+
+function clearInterval(id) {
+  clearTimeout(id);
 }

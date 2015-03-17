@@ -13,13 +13,14 @@ import (
 const (
 	LIB_FILE = "lib.js"
 	DEFAULT_CELL_MAX = 255.0
+	TIMERS_CAPACITY = 128
 )
 
 type Timer interface {
 	GetChannel() <-chan time.Time
 	Stop()
 }
-type TimerFunc func (name string, d time.Duration, periodic bool) Timer
+type TimerFunc func (id int, d time.Duration, periodic bool) Timer
 
 type RealTicker struct {
 	innerTicker *time.Ticker
@@ -57,7 +58,7 @@ func (timer *RealTimer) Stop() {
 	}
 }
 
-func newTimer(name string, d time.Duration, periodic bool) Timer {
+func newTimer(id int, d time.Duration, periodic bool) Timer {
 	if periodic {
 		return &RealTicker{time.NewTicker(d)}
 	} else {
@@ -67,6 +68,7 @@ func newTimer(name string, d time.Duration, periodic bool) Timer {
 
 type TimerEntry struct {
 	timer Timer
+	periodic bool
 	quit chan struct{}
 }
 
@@ -79,7 +81,7 @@ type RuleEngine struct {
 	cellChange chan string
 	scriptBox *rice.Box
 	timerFunc TimerFunc
-	timers map[string]*TimerEntry
+	timers []*TimerEntry
 }
 
 func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
@@ -92,8 +94,16 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		},
 		scriptBox: rice.MustFindBox("scripts"),
 		timerFunc: newTimer,
-		timers: make(map[string]*TimerEntry),
+		timers: make([]*TimerEntry, 0, TIMERS_CAPACITY),
 	}
+
+	// ruleEngineTimers stash property is for holding
+	// timers referenced by their ids
+	engine.ctx.PushGlobalStash()
+	engine.ctx.PushObject()
+	engine.ctx.PutPropString(-2, "ruleEngineTimers")
+	engine.ctx.Pop()
+
 	engine.ctx.PushGlobalObject()
 	engine.defineEngineFunctions(map[string]func() int {
 		"defineVirtualDevice": engine.esDefineVirtualDevice,
@@ -295,41 +305,65 @@ func (engine *RuleEngine) esWbCellObject() int {
 	return 1
 }
 
-func (engine *RuleEngine) fireTimer(name string) {
-	engine.ctx.PushGlobalObject()
-	engine.ctx.PushString("_runTimer")
-	engine.ctx.PushString(name)
-	if r := engine.ctx.PcallProp(-3, 1); r != 0 {
-		wbgo.Error.Printf("failed to fire timer '%s': %s", name, engine.ctx.SafeToString(-1))
+func (engine *RuleEngine) fireTimer(n int) {
+	entry := engine.timers[n - 1]
+	if entry == nil {
+		wbgo.Error.Printf("firing unknown timer %d", n)
+		return
 	}
-	engine.ctx.Pop2()
+	engine.ctx.PushGlobalStash()
+	engine.ctx.GetPropString(-1, "ruleEngineTimers")
+	engine.ctx.PushNumber(float64(n))
+	if r := engine.ctx.PcallProp(-2, 0); r != 0 {
+		wbgo.Error.Printf("failed to fire timer %d: %s", n, engine.ctx.SafeToString(-1))
+	}
+	engine.ctx.Pop3() // pop: result, ruleEngineTimers, global stash
+
+	if !entry.periodic {
+		engine.removeTimer(n)
+	}
 }
 
 func (engine *RuleEngine) esWbStartTimer() int {
-	if engine.ctx.GetTop() != 3 || !engine.ctx.IsString(-3) || !engine.ctx.IsNumber(-2) {
+	if engine.ctx.GetTop() != 3 || !engine.ctx.IsFunction(-3) || !engine.ctx.IsNumber(-2) {
 		return duktape.DUK_RET_ERROR
 	}
 
-	name := engine.ctx.GetString(-3)
 	ms := engine.ctx.GetNumber(-2)
 	periodic := engine.ctx.ToBoolean(-1)
-	entry, found := engine.timers[name]
-	if found {
-		close(entry.quit)
+
+	entry := &TimerEntry{
+		//,
+		periodic: periodic,
+		quit: make(chan struct{}, 2),
 	}
 
-	entry = &TimerEntry{
-		engine.timerFunc(name, time.Duration(ms * float64(time.Millisecond)), periodic),
-		make(chan struct{}, 2),
+	var n int
+	for n = 1; n <= len(engine.timers); n++ {
+		if engine.timers[n - 1] == nil {
+			engine.timers[n - 1] = entry
+		}
+		break
 	}
-	engine.timers[name] = entry
+	if n > len(engine.timers) {
+		engine.timers = append(engine.timers, entry)
+	}
+
+	engine.ctx.PushGlobalStash()
+	engine.ctx.GetPropString(-1, "ruleEngineTimers")
+	engine.ctx.PushNumber(float64(n))
+	engine.ctx.Dup(0)
+	engine.ctx.PutProp(-3) // ruleEngineTimers[i] = callback
+	engine.ctx.Pop2()
+
+	entry.timer = engine.timerFunc(n, time.Duration(ms * float64(time.Millisecond)), periodic)
 	tickCh := entry.timer.GetChannel()
 	go func () {
 		for {
 			select {
 			case <- tickCh:
 				engine.model.CallSync(func () {
-					engine.fireTimer(name)
+					engine.fireTimer(n)
 				})
 				if !periodic {
 					return
@@ -340,20 +374,34 @@ func (engine *RuleEngine) esWbStartTimer() int {
 			}
 		}
 	}()
-	return 0
+
+	engine.ctx.PushNumber(float64(n))
+	return 1
+}
+
+func (engine *RuleEngine) removeTimer(n int) {
+	engine.ctx.PushGlobalStash()
+	engine.ctx.GetPropString(-1, "ruleEngineTimers")
+	engine.ctx.PushNumber(float64(n))
+	engine.ctx.DelProp(-2)
+	engine.ctx.Pop()
+	engine.timers[n - 1] = nil
 }
 
 func (engine *RuleEngine) esWbStopTimer() int {
-	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(-1) {
+	if engine.ctx.GetTop() != 1 || !engine.ctx.IsNumber(-1) {
 		return duktape.DUK_RET_ERROR
 	}
-	name := engine.ctx.GetString(-1)
-	entry, found := engine.timers[name]
-	delete(engine.timers, name)
-	if found {
+	n := engine.ctx.GetInt(-1)
+	if n == 0 {
+		wbgo.Error.Printf("timer id cannot be zero")
+		return 0
+	}
+	if entry := engine.timers[n - 1]; entry != nil {
+		engine.removeTimer(n)
 		close(entry.quit)
 	} else {
-		wbgo.Error.Printf("trying to stop unknown timer: %s", name)
+		wbgo.Error.Printf("trying to stop unknown timer: %d", n)
 	}
 	return 0
 }
@@ -408,9 +456,11 @@ func (engine *RuleEngine) Start() {
 				} else {
 					wbgo.Debug.Printf("engine stopped")
 					for _, entry := range engine.timers {
-						close(entry.quit)
+						if entry != nil {
+							close(entry.quit)
+						}
 					}
-					engine.timers = make(map[string]*TimerEntry)
+					engine.timers = engine.timers[:0]
 					engine.cellChange = nil
 				}
 			}
