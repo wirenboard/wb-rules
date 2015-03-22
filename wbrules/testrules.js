@@ -166,6 +166,13 @@ defineRule("runCommand", {
   onCellChange: "somedev/cmd",
   then: function (devName, cellName, cmd) {
     log("cmd: " + cmd);
-    runShellCommand(cmd);
+    if (dev.somedev.cmdNoCallback) {
+      runShellCommand(cmd);
+      log("(no callback)"); // make sure the rule didn't fail before here
+    } else {
+      runShellCommand(cmd, function (exitCode) {
+        log("exit(" + exitCode + "): " + cmd);
+      });
+    }
   }
 });

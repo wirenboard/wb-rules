@@ -362,6 +362,23 @@ func TestCellChange(t *testing.T) {
 	)
 }
 
+func fileExists(t *testing.T, path string) bool {
+	if _, err := os.Stat(path); err != nil {
+		if os.IsNotExist(err) {
+			return false
+		} else {
+			t.Fatalf("unexpected error when checking for samplefile: %s", err)
+		}
+	}
+	return true
+}
+
+func verifyFileExists(t *testing.T, path string) {
+	if !fileExists(t, path) {
+		t.Fatalf("file does not exist: %s", path)
+	}
+}
+
 func TestRunShellCommand(t *testing.T) {
 	fixture := NewRuleFixtureSkippingDefs(t)
 	defer fixture.tearDown()
@@ -381,21 +398,38 @@ func TestRunShellCommand(t *testing.T) {
 	defer os.Chdir(wd)
 
 	fixture.publish("/devices/somedev/controls/cmd/meta/type", "text", "somedev/cmd")
+	fixture.publish("/devices/somedev/controls/cmdNoCallback/meta/type", "text",
+		"somedev/cmdNoCallback")
 	fixture.publish("/devices/somedev/controls/cmd", "touch samplefile.txt", "somedev/cmd")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/cmd/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/cmdNoCallback/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmd: [touch samplefile.txt] (QoS 1, retained)",
 		"[rule] cmd: touch samplefile.txt",
+		"[rule] exit(0): touch samplefile.txt",
 	)
 
+	verifyFileExists(t, path.Join(dir, "samplefile.txt"))
+
+	fixture.publish("/devices/somedev/controls/cmd", "touch nosuchdir/samplefile.txt", "somedev/cmd")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/cmd: [touch nosuchdir/samplefile.txt] (QoS 1, retained)",
+		"[rule] cmd: touch nosuchdir/samplefile.txt",
+		"[rule] exit(1): touch nosuchdir/samplefile.txt", // no such file or directory
+	)
+
+	fixture.publish("/devices/somedev/controls/cmdNoCallback", "1", "somedev/cmdNoCallback")
+	fixture.publish("/devices/somedev/controls/cmd", "touch samplefile1.txt", "somedev/cmd")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/cmdNoCallback: [1] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/cmd: [touch samplefile1.txt] (QoS 1, retained)",
+		"[rule] cmd: touch samplefile1.txt",
+		"[rule] (no callback)",
+	)
 	wbgo.WaitFor(t, func () bool {
-		_, err = os.Stat(path.Join(dir, "samplefile.txt"))
-		if err != nil && !os.IsNotExist(err) {
-			t.Fatalf("unexpected error when checking for samplefile: %s", err)
-		}
-		return err == nil
+		return fileExists(t, path.Join(dir, "samplefile1.txt"))
 	})
-	// TBD: exit code
+
 	// TBD: capture output
 	// TBD: provide input
 	// TBD: spawn instead of shell command

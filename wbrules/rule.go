@@ -2,9 +2,12 @@ package wbrules
 
 import (
 	"fmt"
+	"log"
 	"time"
 	"os/exec"
+	"strconv"
 	"strings"
+	"syscall"
 	"github.com/stretchr/objx"
 	"github.com/GeertJohan/go.rice"
 	duktape "github.com/ivan4th/go-duktape"
@@ -83,6 +86,7 @@ type RuleEngine struct {
 	scriptBox *rice.Box
 	timerFunc TimerFunc
 	timers []*TimerEntry
+	callbackIndex uint64
 }
 
 func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
@@ -96,14 +100,11 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		scriptBox: rice.MustFindBox("scripts"),
 		timerFunc: newTimer,
 		timers: make([]*TimerEntry, 0, TIMERS_CAPACITY),
+		callbackIndex: 1,
 	}
 
-	// ruleEngineTimers stash property is for holding
-	// timers referenced by their ids
-	engine.ctx.PushGlobalStash()
-	engine.ctx.PushObject()
-	engine.ctx.PutPropString(-2, "ruleEngineTimers")
-	engine.ctx.Pop()
+	engine.initCallbackList("ruleEngineTimers")
+	engine.initCallbackList("processes")
 
 	engine.ctx.PushGlobalObject()
 	engine.defineEngineFunctions(map[string]func() int {
@@ -122,6 +123,71 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		wbgo.Error.Panicf("failed to load runtime library: %s", err)
 	}
 	return
+}
+
+func (engine *RuleEngine) initCallbackList(propName string) {
+	// callback list stash property holds callback functions referenced by ids
+	engine.ctx.PushGlobalStash()
+	engine.ctx.PushObject()
+	engine.ctx.PutPropString(-2, propName)
+	engine.ctx.Pop()
+}
+
+func (engine *RuleEngine) pushCallbackKey(key interface{}) {
+	switch key.(type) {
+	case int:
+		engine.ctx.PushNumber(float64(key.(int)))
+	case uint64:
+		engine.ctx.PushString(strconv.FormatUint(key.(uint64), 16))
+	default:
+		log.Panicf("bad callback key: %v", key)
+	}
+}
+
+func (engine *RuleEngine) invokeCallback(propName string, key interface{}, args objx.Map) {
+	engine.ctx.PushGlobalStash()
+	engine.ctx.GetPropString(-1, propName)
+	engine.pushCallbackKey(key)
+	argCount := 0
+	if args != nil {
+		PushJSObject(engine.ctx, args)
+		argCount++
+	}
+	if r := engine.ctx.PcallProp(-2 - argCount, argCount); r != 0 {
+		wbgo.Error.Printf("failed to invoke %s[%v]: %s",
+			propName, key, engine.ctx.SafeToString(-1))
+	}
+	engine.ctx.Pop3() // pop: result, callback list object, global stash
+}
+
+// storeCallback stores the callback from the specified stack index
+// (which should be >= 0) at 'key' in the callback list specified as propName.
+// If key is specified as nil, a new callback key is generated and returned
+// as uint64. In this case the returned value is guaranteed to be
+// greater than zero.
+func (engine *RuleEngine) storeCallback(propName string, callbackIndex int, key interface{}) uint64 {
+	var r uint64 = 0
+	if key == nil {
+		r = engine.callbackIndex
+		key = r
+		engine.callbackIndex++
+	}
+
+	engine.ctx.PushGlobalStash()
+	engine.ctx.GetPropString(-1, propName)
+	engine.pushCallbackKey(key)
+	engine.ctx.Dup(callbackIndex)
+	engine.ctx.PutProp(-3) // callbackList[key] = callback
+	engine.ctx.Pop2()
+	return r
+}
+
+func (engine *RuleEngine) removeCallback(propName string, key interface{}) {
+	engine.ctx.PushGlobalStash()
+	engine.ctx.GetPropString(-1, propName)
+	engine.pushCallbackKey(key)
+	engine.ctx.DelProp(-2)
+	engine.ctx.Pop()
 }
 
 func (engine *RuleEngine) SetTimerFunc(timerFunc TimerFunc) {
@@ -313,13 +379,7 @@ func (engine *RuleEngine) fireTimer(n int) {
 		wbgo.Error.Printf("firing unknown timer %d", n)
 		return
 	}
-	engine.ctx.PushGlobalStash()
-	engine.ctx.GetPropString(-1, "ruleEngineTimers")
-	engine.ctx.PushNumber(float64(n))
-	if r := engine.ctx.PcallProp(-2, 0); r != 0 {
-		wbgo.Error.Printf("failed to fire timer %d: %s", n, engine.ctx.SafeToString(-1))
-	}
-	engine.ctx.Pop3() // pop: result, ruleEngineTimers, global stash
+	engine.invokeCallback("ruleEngineTimers", n, nil)
 
 	if !entry.periodic {
 		engine.removeTimer(n)
@@ -351,12 +411,7 @@ func (engine *RuleEngine) esWbStartTimer() int {
 		engine.timers = append(engine.timers, entry)
 	}
 
-	engine.ctx.PushGlobalStash()
-	engine.ctx.GetPropString(-1, "ruleEngineTimers")
-	engine.ctx.PushNumber(float64(n))
-	engine.ctx.Dup(0)
-	engine.ctx.PutProp(-3) // ruleEngineTimers[i] = callback
-	engine.ctx.Pop2()
+	engine.storeCallback("ruleEngineTimers", 0, n)
 
 	entry.timer = engine.timerFunc(n, time.Duration(ms * float64(time.Millisecond)), periodic)
 	tickCh := entry.timer.GetChannel()
@@ -382,11 +437,7 @@ func (engine *RuleEngine) esWbStartTimer() int {
 }
 
 func (engine *RuleEngine) removeTimer(n int) {
-	engine.ctx.PushGlobalStash()
-	engine.ctx.GetPropString(-1, "ruleEngineTimers")
-	engine.ctx.PushNumber(float64(n))
-	engine.ctx.DelProp(-2)
-	engine.ctx.Pop()
+	engine.removeCallback("ruleEngineTimers", n)
 	engine.timers[n - 1] = nil
 }
 
@@ -409,13 +460,38 @@ func (engine *RuleEngine) esWbStopTimer() int {
 }
 
 func (engine *RuleEngine) esWbShellCommand() int {
-	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(-1) {
+	if engine.ctx.GetTop() != 2 || !engine.ctx.IsString(-2) {
 		return duktape.DUK_RET_ERROR
 	}
-	cmd := engine.ctx.GetString(-1)
+
+	callbackIndex := uint64(0)
+
+	if engine.ctx.IsFunction(-1) {
+		callbackIndex = engine.storeCallback("processes", 1, nil)
+	} else if !engine.ctx.IsNullOrUndefined(-1) {
+		return duktape.DUK_RET_ERROR
+	}
+
+	cmd := engine.ctx.GetString(-2)
 	go func () {
+		status := 0
 		if err := exec.Command("sh", "-c", cmd).Run(); err != nil {
-			wbgo.Error.Printf("command '%s' failed: %s", cmd, err)
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				status = exitErr.Sys().(syscall.WaitStatus).ExitStatus()
+				wbgo.Debug.Printf("command '%s': error: exit status: %d", cmd, status)
+			} else {
+				wbgo.Error.Printf("command '%s' failed: %s", cmd, err)
+				status = 255
+			}
+		}
+		if callbackIndex > 0 {
+			engine.model.CallSync(func () {
+				args := objx.New(map[string]interface{} {
+					"exitStatus": status,
+				})
+				engine.invokeCallback("processes", callbackIndex, args)
+				engine.removeCallback("processes", callbackIndex)
+			})
 		}
 	}()
 	return 0
