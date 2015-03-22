@@ -160,3 +160,12 @@ defineRule("cellChange2", {
     log("cellChange2: " + devName + "/" + cellName + "=" + v + " (" + typeof(v) + ")");
   }
 });
+
+
+defineRule("runCommand", {
+  onCellChange: "somedev/cmd",
+  then: function (devName, cellName, cmd) {
+    log("cmd: " + cmd);
+    runShellCommand(cmd);
+  }
+});

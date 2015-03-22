@@ -3,6 +3,7 @@ package wbrules
 import (
 	"fmt"
 	"time"
+	"os/exec"
 	"strings"
 	"github.com/stretchr/objx"
 	"github.com/GeertJohan/go.rice"
@@ -114,6 +115,7 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		"_wbCellObject": engine.esWbCellObject,
 		"_wbStartTimer": engine.esWbStartTimer,
 		"_wbStopTimer": engine.esWbStopTimer,
+		"_wbShellCommand": engine.esWbShellCommand,
 	})
 	engine.ctx.Pop()
 	if err := engine.loadLib(); err != nil {
@@ -403,6 +405,19 @@ func (engine *RuleEngine) esWbStopTimer() int {
 	} else {
 		wbgo.Error.Printf("trying to stop unknown timer: %d", n)
 	}
+	return 0
+}
+
+func (engine *RuleEngine) esWbShellCommand() int {
+	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(-1) {
+		return duktape.DUK_RET_ERROR
+	}
+	cmd := engine.ctx.GetString(-1)
+	go func () {
+		if err := exec.Command("sh", "-c", cmd).Run(); err != nil {
+			wbgo.Error.Printf("command '%s' failed: %s", cmd, err)
+		}
+	}()
 	return 0
 }
 

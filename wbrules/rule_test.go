@@ -1,7 +1,10 @@
 package wbrules
 
 import (
+	"os"
+	"path"
 	"time"
+	"io/ioutil"
 	"testing"
 	"github.com/stretchr/testify/assert"
 	wbgo "github.com/contactless/wbgo"
@@ -357,6 +360,45 @@ func TestCellChange(t *testing.T) {
 		"tst -> /devices/somedev/controls/tempx: [42] (QoS 1, retained)",
 		"[rule] cellChange2: somedev/tempx=42 (number)",
 	)
+}
+
+func TestRunShellCommand(t *testing.T) {
+	fixture := NewRuleFixtureSkippingDefs(t)
+	defer fixture.tearDown()
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("couldn't get the current directory")
+	}
+
+	dir, err := ioutil.TempDir(os.TempDir(), "ruletest")
+	if err != nil {
+		t.Fatalf("couldn't create temporary directory")
+		return
+	}
+	os.Chdir(dir)
+	defer os.RemoveAll(dir)
+	defer os.Chdir(wd)
+
+	fixture.publish("/devices/somedev/controls/cmd/meta/type", "text", "somedev/cmd")
+	fixture.publish("/devices/somedev/controls/cmd", "touch samplefile.txt", "somedev/cmd")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/cmd/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/cmd: [touch samplefile.txt] (QoS 1, retained)",
+		"[rule] cmd: touch samplefile.txt",
+	)
+
+	wbgo.WaitFor(t, func () bool {
+		_, err = os.Stat(path.Join(dir, "samplefile.txt"))
+		if err != nil && !os.IsNotExist(err) {
+			t.Fatalf("unexpected error when checking for samplefile: %s", err)
+		}
+		return err == nil
+	})
+	// TBD: exit code
+	// TBD: capture output
+	// TBD: provide input
+	// TBD: spawn instead of shell command
 }
 
 // TBD: metadata (like, meta["devname"]["controlName"])

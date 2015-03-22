@@ -189,3 +189,7 @@ function clearTimeout(id) {
 function clearInterval(id) {
   clearTimeout(id);
 }
+
+function runShellCommand(cmd) {
+  _wbShellCommand(cmd);
+}
