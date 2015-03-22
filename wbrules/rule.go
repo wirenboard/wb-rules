@@ -416,11 +416,12 @@ func (engine *RuleEngine) defineEngineFunctions(fns map[string]func() int) {
 	}
 }
 
-func (engine *RuleEngine) RunRules() {
+func (engine *RuleEngine) RunRules(changedCellName string) {
 	engine.ctx.PushGlobalObject()
 	engine.ctx.PushString("runRules")
+	engine.ctx.PushString(changedCellName)
 	defer engine.ctx.Pop2()
-	if r := engine.ctx.PcallProp(-2, 0); r != 0 {
+	if r := engine.ctx.PcallProp(-3, 1); r != 0 {
 		wbgo.Error.Printf("failed to run rules: %s", engine.ctx.SafeToString(-1))
 	}
 }
@@ -440,7 +441,7 @@ func (engine *RuleEngine) Start() {
 	engine.cellChange = engine.model.AcquireCellChangeChannel()
 	ready := make(chan struct{})
 	engine.model.WhenReady(func () {
-		engine.RunRules()
+		engine.RunRules("")
 		close(ready)
 	})
 	go func () {
@@ -452,7 +453,9 @@ func (engine *RuleEngine) Start() {
 					wbgo.Debug.Printf(
 						"rule engine: running rules after cell change: %s",
 						cellName)
-					engine.model.CallSync(engine.RunRules)
+					engine.model.CallSync(func () {
+						engine.RunRules(cellName)
+					})
 				} else {
 					wbgo.Debug.Printf("engine stopped")
 					for _, entry := range engine.timers {

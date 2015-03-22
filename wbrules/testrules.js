@@ -140,3 +140,23 @@ defineRule("sendmqtt", {
     publish("/zzz/foo/qwerty", "42", 2, true);
   }
 });
+
+defineRule("cellChange1", {
+  onCellChange: "somedev/foobarbaz",
+  then: function (devName, cellName, newValue) {
+    var v = dev[devName][cellName];
+    if (v !== newValue)
+      throw new Error("bad newValue! " + newValue);
+    log("cellChange1: " + devName + "/" + cellName + "=" + v + " (" + typeof(v) + ")");
+  }
+});
+
+defineRule("cellChange2", {
+  onCellChange: ["somedev/foobarbaz", "somedev/tempx"],
+  then: function (devName, cellName, newValue) {
+    var v = dev[devName][cellName];
+    if (v !== newValue)
+      throw new Error("bad newValue! " + newValue);
+    log("cellChange2: " + devName + "/" + cellName + "=" + v + " (" + typeof(v) + ")");
+  }
+});

@@ -63,10 +63,10 @@ func NewRuleFixture(t *testing.T, waitForRetained bool) *ruleFixture {
 	assert.Equal(t, nil, fixture.engine.LoadScript("testrules.js"))
 	fixture.driver.Start()
 	fixture.publish("/devices/somedev/meta/name", "SomeDev", "")
-	fixture.publish("/devices/somedev/controls/sw/meta/type", "switch", "sw")
-	fixture.publish("/devices/somedev/controls/sw", "0", "sw")
-	fixture.publish("/devices/somedev/controls/temp/meta/type", "temperature", "temp")
-	fixture.publish("/devices/somedev/controls/temp", "19", "temp")
+	fixture.publish("/devices/somedev/controls/sw/meta/type", "switch", "somedev/sw")
+	fixture.publish("/devices/somedev/controls/sw", "0", "somedev/sw")
+	fixture.publish("/devices/somedev/controls/temp/meta/type", "temperature", "somedev/temp")
+	fixture.publish("/devices/somedev/controls/temp", "19", "somedev/temp")
 	return fixture
 }
 
@@ -105,7 +105,7 @@ func (fixture *ruleFixture) SetCellValue(device, cellName string, value interfac
 		fixture.model.EnsureDevice(device).EnsureCell(cellName).SetValue(value)
 	})
 	actualCellName := <- fixture.cellChange
-	assert.Equal(fixture.t, cellName, actualCellName)
+	assert.Equal(fixture.t, device + "/" + cellName, actualCellName)
 }
 
 func TestDeviceDefinition(t *testing.T) {
@@ -150,21 +150,21 @@ func TestRules(t *testing.T) {
 		"[rule] heaterOn fired",
  		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
-	fixture.expectCellChange("sw")
+	fixture.expectCellChange("somedev/sw")
 
-	fixture.publish("/devices/somedev/controls/temp", "21", "temp")
+	fixture.publish("/devices/somedev/controls/temp", "21", "somedev/temp")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/temp: [21] (QoS 1, retained)",
 	)
 
-	fixture.publish("/devices/somedev/controls/temp", "22", "temp", "sw")
+	fixture.publish("/devices/somedev/controls/temp", "22", "somedev/temp", "somedev/sw")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/temp: [22] (QoS 1, retained)",
 		"[rule] heaterOff fired",
  		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 	)
 
-	fixture.publish("/devices/somedev/controls/temp", "18", "temp", "sw")
+	fixture.publish("/devices/somedev/controls/temp", "18", "somedev/temp", "somedev/sw")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/temp: [18] (QoS 1, retained)",
 		"[rule] heaterOn fired",
@@ -172,7 +172,7 @@ func TestRules(t *testing.T) {
 	)
 
 	// edge-triggered rule doesn't fire
-	fixture.publish("/devices/somedev/controls/temp", "19", "temp")
+	fixture.publish("/devices/somedev/controls/temp", "19", "somedev/temp")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
 	)
@@ -183,10 +183,10 @@ func TestRules(t *testing.T) {
 		"[rule] heaterOff fired",
  		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 	)
-	fixture.expectCellChange("sw")
+	fixture.expectCellChange("somedev/sw")
 
-	fixture.publish("/devices/somedev/controls/foobar", "1", "foobar")
-	fixture.publish("/devices/somedev/controls/foobar/meta/type", "text", "foobar")
+	fixture.publish("/devices/somedev/controls/foobar", "1", "somedev/foobar")
+	fixture.publish("/devices/somedev/controls/foobar/meta/type", "text", "somedev/foobar")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/foobar: [1] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/foobar/meta/type: [text] (QoS 1, retained)",
@@ -194,7 +194,7 @@ func TestRules(t *testing.T) {
 	)
 
 	// level-triggered rule fires again here
-	fixture.publish("/devices/somedev/controls/foobar", "2", "foobar")
+	fixture.publish("/devices/somedev/controls/foobar", "2", "somedev/foobar")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/foobar: [2] (QoS 1, retained)",
 		"[rule] initiallyIncompleteLevelTriggered fired",
@@ -202,21 +202,21 @@ func TestRules(t *testing.T) {
 }
 
 func (fixture *ruleFixture) VerifyTimers(prefix string) {
-	fixture.publish("/devices/somedev/controls/foo/meta/type", "text", "foo")
-	fixture.publish("/devices/somedev/controls/foo", prefix + "t", "foo")
+	fixture.publish("/devices/somedev/controls/foo/meta/type", "text", "somedev/foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix + "t", "somedev/foo")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/foo/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/foo: [" + prefix + "t] (QoS 1, retained)",
 		"newFakeTimer(): 1, 500, false",
 	)
 
-	fixture.publish("/devices/somedev/controls/foo", prefix + "s", "foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix + "s", "somedev/foo")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/foo: [" + prefix + "s] (QoS 1, retained)",
 		"timer.Stop(): 1",
 	)
 
-	fixture.publish("/devices/somedev/controls/foo", prefix + "t", "foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix + "t", "somedev/foo")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/foo: [" + prefix + "t] (QoS 1, retained)",
 		"newFakeTimer(): 1, 500, false",
@@ -228,7 +228,7 @@ func (fixture *ruleFixture) VerifyTimers(prefix string) {
 		"[rule] timer fired",
 	)
 
-	fixture.publish("/devices/somedev/controls/foo", prefix + "p", "foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix + "p", "somedev/foo")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/foo: [" + prefix + "p] (QoS 1, retained)",
 		"newFakeTimer(): 1, 500, true",
@@ -243,7 +243,7 @@ func (fixture *ruleFixture) VerifyTimers(prefix string) {
 		)
 	}
 
-	fixture.publish("/devices/somedev/controls/foo", prefix + "t", "foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix + "t", "somedev/foo")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/foo: [" + prefix + "t] (QoS 1, retained)",
 	)
@@ -277,8 +277,8 @@ func TestDirectMQTTMessages(t *testing.T) {
 	fixture := NewRuleFixtureSkippingDefs(t)
 	defer fixture.tearDown()
 
-	fixture.publish("/devices/somedev/controls/sendit/meta/type", "switch", "sendit")
-	fixture.publish("/devices/somedev/controls/sendit", "1", "sendit")
+	fixture.publish("/devices/somedev/controls/sendit/meta/type", "switch", "somedev/sendit")
+	fixture.publish("/devices/somedev/controls/sendit", "1", "somedev/sendit")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/sendit/meta/type: [switch] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sendit: [1] (QoS 1, retained)",
@@ -308,7 +308,7 @@ func TestRetainedState(t *testing.T) {
 	)
 	fixture.broker.VerifyEmpty()
 
-	fixture.publish("/devices/stabSettings/controls/enabled", "1", "enabled")
+	fixture.publish("/devices/stabSettings/controls/enabled", "1", "stabSettings/enabled")
 	fixture.broker.Verify(
 		"tst -> /devices/stabSettings/controls/enabled: [1] (QoS 1, retained)",
 	)
@@ -334,7 +334,29 @@ func TestRetainedState(t *testing.T) {
  		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	fixture.broker.VerifyEmpty()
-	fixture.expectCellChange("sw")
+	fixture.expectCellChange("somedev/sw")
+}
+
+func TestCellChange(t *testing.T) {
+	fixture := NewRuleFixtureSkippingDefs(t)
+	defer fixture.tearDown()
+
+	fixture.publish("/devices/somedev/controls/foobarbaz/meta/type", "text", "somedev/foobarbaz")
+	fixture.publish("/devices/somedev/controls/foobarbaz", "abc", "somedev/foobarbaz")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/foobarbaz/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/foobarbaz: [abc] (QoS 1, retained)",
+		"[rule] cellChange1: somedev/foobarbaz=abc (string)",
+		"[rule] cellChange2: somedev/foobarbaz=abc (string)",
+	)
+
+	fixture.publish("/devices/somedev/controls/tempx/meta/type", "temperature", "somedev/tempx")
+	fixture.publish("/devices/somedev/controls/tempx", "42", "somedev/tempx")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/tempx/meta/type: [temperature] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/tempx: [42] (QoS 1, retained)",
+		"[rule] cellChange2: somedev/tempx=42 (number)",
+	)
 }
 
 // TBD: metadata (like, meta["devname"]["controlName"])

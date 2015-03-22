@@ -250,7 +250,7 @@ func (dev *CellModelDeviceBase) AcceptValue(name, value string) {
 	cell := dev.EnsureCell(name)
 	cell.value = value
 	cell.gotValue = true
-	go dev.model.notify(name)
+	go dev.model.notify(dev.DevName + "/" + name)
 }
 
 func (dev *CellModelDeviceBase) setValue(name, value string) {
@@ -258,7 +258,7 @@ func (dev *CellModelDeviceBase) setValue(name, value string) {
 		panic("setValue -- but model not active!!!")
 	}
 	dev.Observer.OnValue(dev.self, name, value)
-	go dev.model.notify(name)
+	go dev.model.notify(dev.DevName + "/" + name)
 }
 
 func (dev *CellModelLocalDevice) AcceptOnValue(name, value string) bool {
@@ -266,7 +266,7 @@ func (dev *CellModelLocalDevice) AcceptOnValue(name, value string) bool {
 	cell := dev.EnsureCell(name)
 	cell.value = value
 	cell.gotValue = true
-	go dev.model.notify(name)
+	go dev.model.notify(dev.DevName + "/" + name)
 	return true
 }
 
@@ -286,13 +286,13 @@ func (dev *CellModelExternalDevice) AcceptControlType(name, controlType string) 
 	cell := dev.EnsureCell(name)
 	cell.gotType = true
 	cell.controlType = controlType
-	go dev.model.notify(name)
+	go dev.model.notify(dev.DevName + "/" + name)
 }
 
 func (dev *CellModelExternalDevice) AcceptControlRange(name string, max float64) {
 	cell := dev.EnsureCell(name)
 	cell.max = max
-	go dev.model.notify(name)
+	go dev.model.notify(dev.DevName + "/" + name)
 }
 
 func (dev *CellModelExternalDevice) queryParams() {

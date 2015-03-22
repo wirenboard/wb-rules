@@ -61,3 +61,17 @@ defineRule("htoff", {
     log("heating-off timer fired");
   }
 });
+
+defineRule("tempChange", {
+  onCellChange: ["Weather/Temp 1", "Weather/Temp 2"],
+  then: function (devName, cellName, newValue) {
+    log(devName + "/" + cellName + " = " + newValue);
+  }
+});
+
+defineRule("pressureChange", {
+  onCellChange: "Weather/Pressure",
+  then: function (devName, cellName, newValue) {
+    log("pressure = " + newValue);
+  }
+});

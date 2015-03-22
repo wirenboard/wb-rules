@@ -58,16 +58,39 @@ var _WbRules = {
     _WbRules.ruleMap[name] = def;
   },
 
-  runRules: function () {
-    debug("runRules()");
+  runRules: function (cellName) {
+    debug("runRules(): " + (cellName ? "cell changed: " + cellName : "(no cells changed)"));
     _WbRules.ruleNames.forEach(function (name) {
       debug("checking rule: " + name);
-      var rule = _WbRules.ruleMap[name];
+      var rule = _WbRules.ruleMap[name], thenArgs = null;
+      if (typeof rule.then != "function") {
+        log("invalid rule " + name + ": no proper 'then' clause");
+        return;
+      }
       try {
         _WbRules.requireCompleteCells++;
         try {
-          var shouldFire;
-          if (rule.asSoonAs) {
+          var shouldFire = false;
+          if (rule.onCellChange) {
+            if (typeof rule.onCellChange == "string")
+              shouldFire = rule.onCellChange == cellName;
+            else if (rule.onCellChange.indexOf)
+              shouldFire = cellName && rule.onCellChange.indexOf(cellName) >= 0;
+            else
+              log("invalid onCellChange value in rule " + name);
+            if (shouldFire) {
+              var p = cellName.indexOf("/");
+              if (p < 0) {
+                log("INTERNAL ERROR -- invalid cell name: " + cellName);
+                return;
+              }
+              var devName = cellName.substring(0, p),
+                  actualCellName = cellName.substring(p + 1);
+              // this will cause IncompleteCellError if the cell is not complete
+              var value = dev[devName][actualCellName];
+              thenArgs = [ devName, actualCellName, value ];
+            }
+          } else if (typeof rule.asSoonAs == "function") {
             var cur = rule.asSoonAs();
             shouldFire = cur && (!rule.cached || !!rule.cached.value != !!cur);
             debug((shouldFire ? "(firing)" : "(not firing)") + "caching rule value: " + name + ": " + !!cur);
@@ -76,8 +99,11 @@ var _WbRules = {
             } else {
               rule.cached = { value: !!cur };
             }
-          } else
+          } else if (typeof rule.when == "function") {
             shouldFire = !!rule.when();
+          } else {
+            log("invalid rule " + name + " -- no proper condition clause");
+          }
         } catch (e) {
           if (e instanceof _WbRules.IncompleteCellError) {
             debug("skipping rule due to incomplete cells " + name + ": " + e);
@@ -89,10 +115,13 @@ var _WbRules = {
         }
         if (shouldFire) {
           debug("rule fired: " + name);
-          rule.then();
+          if (!thenArgs)
+            rule.then();
+          else
+            rule.then.apply(rule, thenArgs);
         }
       } catch (e) {
-        debug("error running rule " + name + ": " + e.stack || e);
+        log("error running rule " + name + ": " + e.stack || e);
       }
     });
   },
