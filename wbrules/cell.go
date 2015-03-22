@@ -2,7 +2,9 @@ package wbrules
 
 import (
         "fmt"
+	"sync"
 	"sort"
+	"time"
 	"errors"
 	"strconv"
 	wbgo "github.com/contactless/wbgo"
@@ -10,6 +12,7 @@ import (
 
 const (
 	CELL_CHANGE_SLICE_CAPACITY = 4
+	CELL_CHANGE_CLOSE_TIMEOUT_MS = 200
 )
 
 type CellModel struct {
@@ -87,10 +90,18 @@ func (model *CellModel) Stop() {
 		panic("model already stopped")
 	}
 	model.started = false
-	for _, ch := range model.cellChangeChannels {
-		close(ch)
-	}
+	chs := model.cellChangeChannels
 	model.cellChangeChannels = make([]chan string, 0, CELL_CHANGE_SLICE_CAPACITY)
+
+	var wg sync.WaitGroup
+	wg.Add(len(chs))
+	for _, ch := range chs {
+		go func (c chan string) {
+			model.closeCellChangeChannel(c)
+			wg.Done()
+		}(ch)
+	}
+	wg.Wait()
 }
 
 func (model *CellModel) newCellModelDevice(name string, title string) (dev *CellModelDeviceBase) {
@@ -158,12 +169,26 @@ func (model *CellModel) AcquireCellChangeChannel() chan string {
 }
 
 func (model *CellModel) ReleaseCellChangeChannel(ch chan string) {
-	// FIXME: untested
 	oldChannels := model.cellChangeChannels
 	model.cellChangeChannels = make([]chan string, 0, len(model.cellChangeChannels))
 	for _, curCh := range oldChannels {
 		if ch != curCh {
 			model.cellChangeChannels = append(model.cellChangeChannels, curCh)
+		}
+	}
+	model.closeCellChangeChannel(ch)
+}
+
+func (model *CellModel) closeCellChangeChannel(ch chan string) {
+	timer := time.NewTimer(CELL_CHANGE_CLOSE_TIMEOUT_MS * time.Millisecond)
+	select {
+	case <- timer.C:
+		close(ch)
+		return
+	case _, ok := <- ch:
+		if !ok {
+			timer.Stop()
+			return
 		}
 	}
 }
@@ -229,6 +254,9 @@ func (dev *CellModelDeviceBase) AcceptValue(name, value string) {
 }
 
 func (dev *CellModelDeviceBase) setValue(name, value string) {
+	if !dev.model.started {
+		panic("setValue -- but model not active!!!")
+	}
 	dev.Observer.OnValue(dev.self, name, value)
 	go dev.model.notify(name)
 }

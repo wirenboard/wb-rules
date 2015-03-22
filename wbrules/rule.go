@@ -461,6 +461,7 @@ func (engine *RuleEngine) Start() {
 						}
 					}
 					engine.timers = engine.timers[:0]
+					engine.model.ReleaseCellChangeChannel(engine.cellChange)
 					engine.cellChange = nil
 				}
 			}
