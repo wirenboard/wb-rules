@@ -30,12 +30,18 @@ func captureCommandOutput(pipe io.ReadCloser, wg *sync.WaitGroup, result *string
 	}()
 }
 
-func Spawn(name string, args []string, captureOutput bool, captureErrorOutput bool) (*CommandResult, error) {
+func Spawn(name string, args []string, captureOutput bool, captureErrorOutput bool, input *string) (*CommandResult, error) {
 	r := &CommandResult{0, "", ""}
 	var err error
+	var stdinPipe io.WriteCloser
 	var stdoutPipe io.ReadCloser
 	var stderrPipe io.ReadCloser
 	cmd := exec.Command(name, args...)
+	if input != nil {
+		if stdinPipe, err = cmd.StdinPipe(); err != nil {
+			return nil, fmt.Errorf("cmd.StdinPipe() failed: %s", err)
+		}
+	}
 	if captureOutput {
 		if stdoutPipe, err = cmd.StdoutPipe(); err != nil {
 			return nil, fmt.Errorf("cmd.StdoutPipe() failed: %s", err)
@@ -53,12 +59,20 @@ func Spawn(name string, args []string, captureOutput bool, captureErrorOutput bo
 		return nil, fmt.Errorf("cmd.Start() failed: %s", err)
 	}
 
-	if captureOutput || captureErrorOutput {
+	if stdinPipe != nil || stdoutPipe != nil || stderrPipe != nil {
 		var wg sync.WaitGroup
-		if captureErrorOutput {
+		if stdinPipe != nil {
+			wg.Add(1)
+			go func () {
+				io.WriteString(stdinPipe, *input)
+				stdinPipe.Close()
+				wg.Done()
+			}()
+		}
+		if stderrPipe != nil {
 			captureCommandOutput(stderrPipe, &wg, &r.CapturedErrorOutput, &err)
 		}
-		if captureOutput {
+		if stdoutPipe != nil {
 			captureCommandOutput(stdoutPipe, &wg, &r.CapturedOutput, &err)
 		}
 		wg.Wait()

@@ -458,7 +458,7 @@ func (engine *RuleEngine) esWbStopTimer() int {
 }
 
 func (engine *RuleEngine) esWbShellCommand() int {
-	if engine.ctx.GetTop() != 4 || !engine.ctx.IsString(0) || !engine.ctx.IsBoolean(2) ||
+	if engine.ctx.GetTop() != 5 || !engine.ctx.IsString(0) || !engine.ctx.IsBoolean(2) ||
 		!engine.ctx.IsBoolean(3) {
 		return duktape.DUK_RET_ERROR
 	}
@@ -471,11 +471,20 @@ func (engine *RuleEngine) esWbShellCommand() int {
 		return duktape.DUK_RET_ERROR
 	}
 
+	var input *string
+	if engine.ctx.IsString(4) {
+		instr := engine.ctx.GetString(4)
+		input = &instr
+	} else if !engine.ctx.IsNullOrUndefined(4) {
+		return duktape.DUK_RET_ERROR
+	}
+
 	captureOutput := engine.ctx.GetBoolean(2)
 	captureErrorOutput := engine.ctx.GetBoolean(3)
 	command := engine.ctx.GetString(0)
 	go func () {
-		r, err := Spawn("sh", []string{"-c", command}, captureOutput, captureErrorOutput)
+		r, err := Spawn("sh", []string{"-c", command},
+			captureOutput, captureErrorOutput, input)
 		if err != nil {
 			wbgo.Error.Printf("external command failed: %s", err)
 			return

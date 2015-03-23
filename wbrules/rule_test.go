@@ -458,7 +458,15 @@ func TestRunShellCommandIO(t *testing.T) {
 		"[rule] error: qqq",
 	)
 
-	// TBD: provide input
+	fixture.publish("/devices/somedev/controls/cmdWithOutput", "xxyz!sed s/x/y/g",
+		"somedev/cmdWithOutput")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/cmdWithOutput: [xxyz!sed s/x/y/g] (QoS 1, retained)",
+		"[rule] cmdWithOutput: sed s/x/y/g",
+		"[rule] exit(0): sed s/x/y/g",
+		"[rule] output: yyyz",
+	)
+
 	// TBD: "sh -c" thing should be on js side (also, provide spawn() func)
 	// TBD: docs
 }

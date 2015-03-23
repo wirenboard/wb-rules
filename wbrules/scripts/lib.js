@@ -210,6 +210,9 @@ function runShellCommand(cmd, options) {
       options.captureErrorOutput = false;
   }
 
+  if (options.input != null)
+    options.input = "" + options.input;
+
   _wbShellCommand(cmd, options.exitCallback ? function (args) {
     try {
       options.exitCallback(
@@ -220,5 +223,5 @@ function runShellCommand(cmd, options) {
     } catch (e) {
       log("error running command callback for " + cmd + ": " + e.stack || e);
     }
-  } : null, !!options.captureOutput, !!options.captureErrorOutput);
+  } : null, !!options.captureOutput, !!options.captureErrorOutput, options.input);
 }

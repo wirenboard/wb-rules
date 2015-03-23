@@ -187,8 +187,7 @@ function displayOutput(prefix, out) {
 defineRule("runCommandWithOutput", {
   onCellChange: "somedev/cmdWithOutput",
   then: function (devName, cellName, cmd) {
-    log("cmdWithOutput: " + cmd);
-    runShellCommand(cmd, {
+    var options = {
       captureOutput: true,
       captureErrorOutput: true,
       exitCallback: function (exitCode, capturedOutput, capturedErrorOutput) {
@@ -197,6 +196,13 @@ defineRule("runCommandWithOutput", {
         if (exitCode != 0)
           displayOutput("error: ", capturedErrorOutput);
       }
-    });
+    };
+    var p = cmd.indexOf("!");
+    if (p >= 0) {
+      options.input = cmd.substring(0, p);
+      cmd = cmd.substring(p + 1);
+    }
+    log("cmdWithOutput: " + cmd);
+    runShellCommand(cmd, options);
   }
 });
