@@ -190,7 +190,7 @@ function clearInterval(id) {
   clearTimeout(id);
 }
 
-function runShellCommand(cmd, options) {
+function spawn(cmd, args, options) {
   if (typeof options == "function")
     options = {
       exitCallback: options,
@@ -213,7 +213,7 @@ function runShellCommand(cmd, options) {
   if (options.input != null)
     options.input = "" + options.input;
 
-  _wbShellCommand(cmd, options.exitCallback ? function (args) {
+  _wbSpawn([cmd].concat(args || []), options.exitCallback ? function (args) {
     try {
       options.exitCallback(
         args.exitStatus,
@@ -224,4 +224,8 @@ function runShellCommand(cmd, options) {
       log("error running command callback for " + cmd + ": " + e.stack || e);
     }
   } : null, !!options.captureOutput, !!options.captureErrorOutput, options.input);
+}
+
+function runShellCommand(cmd, options) {
+  spawn("/bin/sh", ["-c", cmd], options);
 }

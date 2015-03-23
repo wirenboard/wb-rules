@@ -466,11 +466,9 @@ func TestRunShellCommandIO(t *testing.T) {
 		"[rule] exit(0): sed s/x/y/g",
 		"[rule] output: yyyz",
 	)
-
-	// TBD: "sh -c" thing should be on js side (also, provide spawn() func)
-	// TBD: docs
 }
 
+// TBD: runShellCommand() / spawn() docs & example
 // TBD: metadata (like, meta["devname"]["controlName"])
 // TBD: proper data path:
 // http://stackoverflow.com/questions/18537257/golang-how-to-get-the-directory-of-the-currently-running-file

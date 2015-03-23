@@ -114,7 +114,7 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		"_wbCellObject": engine.esWbCellObject,
 		"_wbStartTimer": engine.esWbStartTimer,
 		"_wbStopTimer": engine.esWbStopTimer,
-		"_wbShellCommand": engine.esWbShellCommand,
+		"_wbSpawn": engine.esWbSpawn,
 	})
 	engine.ctx.Pop()
 	if err := engine.loadLib(); err != nil {
@@ -457,10 +457,22 @@ func (engine *RuleEngine) esWbStopTimer() int {
 	return 0
 }
 
-func (engine *RuleEngine) esWbShellCommand() int {
-	if engine.ctx.GetTop() != 5 || !engine.ctx.IsString(0) || !engine.ctx.IsBoolean(2) ||
+func (engine *RuleEngine) esWbSpawn() int {
+	if engine.ctx.GetTop() != 5 || !engine.ctx.IsArray(0) || !engine.ctx.IsBoolean(2) ||
 		!engine.ctx.IsBoolean(3) {
 		return duktape.DUK_RET_ERROR
+	}
+
+	nArgs := engine.ctx.GetLength(0)
+	if nArgs == 0 {
+		return duktape.DUK_RET_ERROR
+	}
+
+	args := make([]string, nArgs)
+	for i := 0; i < nArgs; i++ {
+		engine.ctx.GetPropIndex(0, uint(i))
+		args[i] = engine.ctx.SafeToString(-1)
+		engine.ctx.Pop()
 	}
 
 	callbackIndex := uint64(0)
@@ -483,8 +495,7 @@ func (engine *RuleEngine) esWbShellCommand() int {
 	captureErrorOutput := engine.ctx.GetBoolean(3)
 	command := engine.ctx.GetString(0)
 	go func () {
-		r, err := Spawn("sh", []string{"-c", command},
-			captureOutput, captureErrorOutput, input)
+		r, err := Spawn(args[0], args[1:], captureOutput, captureErrorOutput, input)
 		if err != nil {
 			wbgo.Error.Printf("external command failed: %s", err)
 			return
