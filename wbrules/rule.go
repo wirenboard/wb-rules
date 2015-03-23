@@ -154,7 +154,7 @@ func (engine *RuleEngine) invokeCallback(propName string, key interface{}, args 
 		argCount++
 	}
 	if r := engine.ctx.PcallProp(-2 - argCount, argCount); r != 0 {
-		wbgo.Error.Printf("failed to invoke %s[%v]: %s",
+		wbgo.Error.Printf("failed to invoke callback %s[%v]: %s",
 			propName, key, engine.ctx.SafeToString(-1))
 	}
 	engine.ctx.Pop3() // pop: result, callback list object, global stash
@@ -460,22 +460,31 @@ func (engine *RuleEngine) esWbStopTimer() int {
 }
 
 func (engine *RuleEngine) esWbShellCommand() int {
-	if engine.ctx.GetTop() != 2 || !engine.ctx.IsString(-2) {
+	if engine.ctx.GetTop() != 3 || !engine.ctx.IsString(0) || !engine.ctx.IsBoolean(2) {
 		return duktape.DUK_RET_ERROR
 	}
 
 	callbackIndex := uint64(0)
 
-	if engine.ctx.IsFunction(-1) {
+	if engine.ctx.IsFunction(1) {
 		callbackIndex = engine.storeCallback("processes", 1, nil)
-	} else if !engine.ctx.IsNullOrUndefined(-1) {
+	} else if !engine.ctx.IsNullOrUndefined(1) {
 		return duktape.DUK_RET_ERROR
 	}
 
-	cmd := engine.ctx.GetString(-2)
+	captureOutput := engine.ctx.GetBoolean(2)
+	cmd := engine.ctx.GetString(0)
 	go func () {
 		status := 0
-		if err := exec.Command("sh", "-c", cmd).Run(); err != nil {
+		var out []byte
+		var err error
+		cmd := exec.Command("sh", "-c", cmd)
+		if captureOutput {
+			out, err = cmd.Output()
+		} else {
+			err = cmd.Run()
+		}
+		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				status = exitErr.Sys().(syscall.WaitStatus).ExitStatus()
 				wbgo.Debug.Printf("command '%s': error: exit status: %d", cmd, status)
@@ -489,6 +498,9 @@ func (engine *RuleEngine) esWbShellCommand() int {
 				args := objx.New(map[string]interface{} {
 					"exitStatus": status,
 				})
+				if out != nil {
+					args["capturedOutput"] = string(out)
+				}
 				engine.invokeCallback("processes", callbackIndex, args)
 				engine.removeCallback("processes", callbackIndex)
 			})

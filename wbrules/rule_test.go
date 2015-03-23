@@ -429,10 +429,29 @@ func TestRunShellCommand(t *testing.T) {
 	wbgo.WaitFor(t, func () bool {
 		return fileExists(t, path.Join(dir, "samplefile1.txt"))
 	})
+}
 
-	// TBD: capture output
+func TestRunShellCommandIO(t *testing.T) {
+	fixture := NewRuleFixtureSkippingDefs(t)
+	defer fixture.tearDown()
+
+	fixture.publish("/devices/somedev/controls/cmdWithOutput/meta/type", "text",
+		"somedev/cmdWithOutput")
+	fixture.publish("/devices/somedev/controls/cmdWithOutput", "echo abc; echo qqq",
+		"somedev/cmdWithOutput")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/cmdWithOutput/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/cmdWithOutput: [echo abc; echo qqq] (QoS 1, retained)",
+		"[rule] cmdWithOutput: echo abc; echo qqq",
+		"[rule] exit(0): echo abc; echo qqq",
+		"[rule] output: abc",
+		"[rule] output: qqq",
+	)
+	
+	// TBD: capture error output upon non-zero exit status
 	// TBD: provide input
-	// TBD: spawn instead of shell command
+	// TBD: "sh -c" thing should be on js side (also, provide spawn() func)
+	// TBD: docs
 }
 
 // TBD: metadata (like, meta["devname"]["controlName"])

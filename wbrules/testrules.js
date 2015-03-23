@@ -176,3 +176,20 @@ defineRule("runCommand", {
     }
   }
 });
+
+defineRule("runCommandWithOutput", {
+  onCellChange: "somedev/cmdWithOutput",
+  then: function (devName, cellName, cmd) {
+    log("cmdWithOutput: " + cmd);
+    runShellCommand(cmd, {
+      captureOutput: true,
+      exitCallback: function (exitCode, capturedOutput) {
+        log("exit(" + exitCode + "): " + cmd);
+        capturedOutput.split("\n").forEach(function (line) {
+          if (line)
+            log("output: " + line);
+        });
+      }
+    });
+  }
+});

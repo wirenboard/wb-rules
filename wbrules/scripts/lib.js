@@ -190,8 +190,22 @@ function clearInterval(id) {
   clearTimeout(id);
 }
 
-function runShellCommand(cmd, callback) {
-  _wbShellCommand(cmd, function (args) {
-    callback(args.exitStatus);
-  });
+function runShellCommand(cmd, options) {
+  if (typeof options == "function")
+    options = {
+      exitCallback: options,
+      captureOutput: false
+    };
+  else if (options && !options.hasOwnProperty("captureOutput"))
+    options.captureOutput = false;
+
+  _wbShellCommand(cmd, options && options.exitCallback ? function (args) {
+    try {
+      options.exitCallback(
+        args.exitStatus,
+        options.captureOutput ? args.capturedOutput : null);
+    } catch (e) {
+      log("error running command callback for " + cmd + ": " + e.stack || e);
+    }
+  } : null, !!(options && options.captureOutput));
 }
