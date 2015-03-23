@@ -411,11 +411,11 @@ func TestRunShellCommand(t *testing.T) {
 
 	verifyFileExists(t, path.Join(dir, "samplefile.txt"))
 
-	fixture.publish("/devices/somedev/controls/cmd", "touch nosuchdir/samplefile.txt", "somedev/cmd")
+	fixture.publish("/devices/somedev/controls/cmd", "touch nosuchdir/samplefile.txt 2>/dev/null", "somedev/cmd")
 	fixture.Verify(
-		"tst -> /devices/somedev/controls/cmd: [touch nosuchdir/samplefile.txt] (QoS 1, retained)",
-		"[rule] cmd: touch nosuchdir/samplefile.txt",
-		"[rule] exit(1): touch nosuchdir/samplefile.txt", // no such file or directory
+		"tst -> /devices/somedev/controls/cmd: [touch nosuchdir/samplefile.txt 2>/dev/null] (QoS 1, retained)",
+		"[rule] cmd: touch nosuchdir/samplefile.txt 2>/dev/null",
+		"[rule] exit(1): touch nosuchdir/samplefile.txt 2>/dev/null", // no such file or directory
 	)
 
 	fixture.publish("/devices/somedev/controls/cmdNoCallback", "1", "somedev/cmdNoCallback")
@@ -447,8 +447,17 @@ func TestRunShellCommandIO(t *testing.T) {
 		"[rule] output: abc",
 		"[rule] output: qqq",
 	)
-	
-	// TBD: capture error output upon non-zero exit status
+
+	fixture.publish("/devices/somedev/controls/cmdWithOutput", "echo abc; echo qqq 1>&2; exit 1",
+		"somedev/cmdWithOutput")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/cmdWithOutput: [echo abc; echo qqq 1>&2; exit 1] (QoS 1, retained)",
+		"[rule] cmdWithOutput: echo abc; echo qqq 1>&2; exit 1",
+		"[rule] exit(1): echo abc; echo qqq 1>&2; exit 1",
+		"[rule] output: abc",
+		"[rule] error: qqq",
+	)
+
 	// TBD: provide input
 	// TBD: "sh -c" thing should be on js side (also, provide spawn() func)
 	// TBD: docs

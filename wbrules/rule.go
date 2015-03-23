@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"log"
 	"time"
-	"os/exec"
 	"strconv"
 	"strings"
-	"syscall"
 	"github.com/stretchr/objx"
 	"github.com/GeertJohan/go.rice"
 	duktape "github.com/ivan4th/go-duktape"
@@ -460,7 +458,8 @@ func (engine *RuleEngine) esWbStopTimer() int {
 }
 
 func (engine *RuleEngine) esWbShellCommand() int {
-	if engine.ctx.GetTop() != 3 || !engine.ctx.IsString(0) || !engine.ctx.IsBoolean(2) {
+	if engine.ctx.GetTop() != 4 || !engine.ctx.IsString(0) || !engine.ctx.IsBoolean(2) ||
+		!engine.ctx.IsBoolean(3) {
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -473,37 +472,28 @@ func (engine *RuleEngine) esWbShellCommand() int {
 	}
 
 	captureOutput := engine.ctx.GetBoolean(2)
-	cmd := engine.ctx.GetString(0)
+	captureErrorOutput := engine.ctx.GetBoolean(3)
+	command := engine.ctx.GetString(0)
 	go func () {
-		status := 0
-		var out []byte
-		var err error
-		cmd := exec.Command("sh", "-c", cmd)
-		if captureOutput {
-			out, err = cmd.Output()
-		} else {
-			err = cmd.Run()
-		}
+		r, err := Spawn("sh", []string{"-c", command}, captureOutput, captureErrorOutput)
 		if err != nil {
-			if exitErr, ok := err.(*exec.ExitError); ok {
-				status = exitErr.Sys().(syscall.WaitStatus).ExitStatus()
-				wbgo.Debug.Printf("command '%s': error: exit status: %d", cmd, status)
-			} else {
-				wbgo.Error.Printf("command '%s' failed: %s", cmd, err)
-				status = 255
-			}
+			wbgo.Error.Printf("external command failed: %s", err)
+			return
 		}
 		if callbackIndex > 0 {
 			engine.model.CallSync(func () {
 				args := objx.New(map[string]interface{} {
-					"exitStatus": status,
+					"exitStatus": r.ExitStatus,
 				})
-				if out != nil {
-					args["capturedOutput"] = string(out)
+				if captureOutput {
+					args["capturedOutput"] = r.CapturedOutput
 				}
+				args["capturedErrorOutput"] = r.CapturedErrorOutput
 				engine.invokeCallback("processes", callbackIndex, args)
 				engine.removeCallback("processes", callbackIndex)
 			})
+		} else if r.ExitStatus != 0 {
+			wbgo.Error.Printf("command '%s' failed: %s", command, err)
 		}
 	}()
 	return 0

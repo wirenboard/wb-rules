@@ -194,18 +194,31 @@ function runShellCommand(cmd, options) {
   if (typeof options == "function")
     options = {
       exitCallback: options,
-      captureOutput: false
+      captureOutput: false,
+      captureErrorOutput: false
     };
-  else if (options && !options.hasOwnProperty("captureOutput"))
-    options.captureOutput = false;
+  else if (!options)
+    options = {
+      exitCallback: null,
+      captureOutput: false,
+      captureErrorOutput: false
+    };
+  else {
+    if (!options.hasOwnProperty("captureOutput"))
+      options.captureOutput = false;
+    if (!options.hasOwnProperty("captureErrorOutput"))
+      options.captureErrorOutput = false;
+  }
 
-  _wbShellCommand(cmd, options && options.exitCallback ? function (args) {
+  _wbShellCommand(cmd, options.exitCallback ? function (args) {
     try {
       options.exitCallback(
         args.exitStatus,
-        options.captureOutput ? args.capturedOutput : null);
+        options.captureOutput ? args.capturedOutput : null,
+        args.capturedErrorOutput
+      );
     } catch (e) {
       log("error running command callback for " + cmd + ": " + e.stack || e);
     }
-  } : null, !!(options && options.captureOutput));
+  } : null, !!options.captureOutput, !!options.captureErrorOutput);
 }

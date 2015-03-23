@@ -177,18 +177,25 @@ defineRule("runCommand", {
   }
 });
 
+function displayOutput(prefix, out) {
+  out.split("\n").forEach(function (line) {
+    if (line)
+      log(prefix + line);
+  });
+}
+
 defineRule("runCommandWithOutput", {
   onCellChange: "somedev/cmdWithOutput",
   then: function (devName, cellName, cmd) {
     log("cmdWithOutput: " + cmd);
     runShellCommand(cmd, {
       captureOutput: true,
-      exitCallback: function (exitCode, capturedOutput) {
+      captureErrorOutput: true,
+      exitCallback: function (exitCode, capturedOutput, capturedErrorOutput) {
         log("exit(" + exitCode + "): " + cmd);
-        capturedOutput.split("\n").forEach(function (line) {
-          if (line)
-            log("output: " + line);
-        });
+        displayOutput("output: ", capturedOutput);
+        if (exitCode != 0)
+          displayOutput("error: ", capturedErrorOutput);
       }
     });
   }
