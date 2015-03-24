@@ -73,5 +73,15 @@ defineRule("pressureChange", {
   onCellChange: "Weather/Pressure",
   then: function (devName, cellName, newValue) {
     log("pressure = " + newValue);
+    runShellCommand(
+      "echo -n 'sampleerr' 1>&2; echo -n " + devName + "/" + cellName + "=" + newValue, {
+        captureOutput: true,
+        captureErrorOutput: true,
+        exitCallback: function (exitCode, capturedOutput, capturedErrorOutput) {
+          log("cmd exit code: " + exitCode);
+          log("cmd output: " + capturedOutput);
+          log("cmd error ouput: " + capturedErrorOutput);
+        }
+      });
   }
 });

@@ -34,3 +34,15 @@ defineRule("doClick", {
     dev.uchm121rx["Relay 0"] = !dev.uchm121rx["Relay 0"];
   }
 });
+
+defineRule("echo", {
+  onCellChange: "wb-w1/00042d40ffff",
+  then: function (devName, cellName, newValue) {
+    runShellCommand("echo " + devName + "/" + cellName + "=" + newValue, {
+      captureOutput: true,
+      exitCallback: function (exitCode, capturedOutput) {
+        log("cmd output: " + capturedOutput);
+      }
+    });
+  }
+});
