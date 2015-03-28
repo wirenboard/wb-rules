@@ -1,17 +1,15 @@
 // rule engine runtime
 var _WbRules = {
-  ruleMap: {},
-  ruleNames: [],
   requireCompleteCells: 0,
   timers: {},
 
-  IncompleteCellError: (function () {
-    function IncompleteCellError(cellName) {
-      this.name = "IncompleteCellError";
+  IncompleteCellCaught: (function () {
+    function IncompleteCellCaught(cellName) {
+      this.name = "IncompleteCellCaught";
       this.message = "incomplete cell encountered: " + cellName;
     }
-    IncompleteCellError.prototype = Object.create(Error.prototype);
-    return IncompleteCellError;
+    IncompleteCellCaught.prototype = Object.create(Error.prototype);
+    return IncompleteCellCaught;
   })(),
 
   autoload: function (target, acquire, setValue) {
@@ -39,7 +37,7 @@ var _WbRules = {
       get: function (dev, name) {
         var cell = ensureCell(dev, name);
         if (_WbRules.requireCompleteCells && !cell.isComplete())
-          throw new _WbRules.IncompleteCellError(name);
+          throw new _WbRules.IncompleteCellCaught(name);
         return cell.value().v;
       },
       set: function (dev, name, value) {
@@ -49,81 +47,42 @@ var _WbRules = {
   },
 
   defineRule: function (name, def) {
-    if (typeof name != "string" || !def)
+    debug("defineRule: " + name);
+    if (typeof name != "string" || typeof def != "object")
       throw new Error("invalid rule definition");
-
-    if (!_WbRules.ruleMap.hasOwnProperty(name))
-      _WbRules.ruleNames.push(name);
-    def.cached = null;
-    _WbRules.ruleMap[name] = def;
-  },
-
-  runRules: function (cellName) {
-    debug("runRules(): " + (cellName ? "cell changed: " + cellName : "(no cells changed)"));
-    _WbRules.ruleNames.forEach(function (name) {
-      debug("checking rule: " + name);
-      var rule = _WbRules.ruleMap[name], thenArgs = null;
-      if (typeof rule.then != "function") {
-        log("invalid rule " + name + ": no proper 'then' clause");
-        return;
-      }
-      try {
-        _WbRules.requireCompleteCells++;
-        try {
-          var shouldFire = false;
-          if (rule.onCellChange) {
-            if (typeof rule.onCellChange == "string")
-              shouldFire = rule.onCellChange == cellName;
-            else if (rule.onCellChange.indexOf)
-              shouldFire = cellName && rule.onCellChange.indexOf(cellName) >= 0;
-            else
-              log("invalid onCellChange value in rule " + name);
-            if (shouldFire) {
-              var p = cellName.indexOf("/");
-              if (p < 0) {
-                log("INTERNAL ERROR -- invalid cell name: " + cellName);
-                return;
-              }
-              var devName = cellName.substring(0, p),
-                  actualCellName = cellName.substring(p + 1);
-              // this will cause IncompleteCellError if the cell is not complete
-              var value = dev[devName][actualCellName];
-              thenArgs = [ devName, actualCellName, value ];
+    var d = Object.create(def);
+    Object.keys(def).forEach(function (k) {
+      var orig = d[k];
+      switch(k) {
+      case "asSoonAs":
+      case "when":
+        d[k] = function () {
+          _WbRules.requireCompleteCells++;
+          try {
+            return orig.apply(d, arguments);
+          } catch (e) {
+            if (e instanceof _WbRules.IncompleteCellCaught) {
+              debug("skipping rule due to incomplete cells " + name + ": " + e);
+              return false;
             }
-          } else if (typeof rule.asSoonAs == "function") {
-            var cur = rule.asSoonAs();
-            shouldFire = cur && (!rule.cached || !!rule.cached.value != !!cur);
-            debug((shouldFire ? "(firing)" : "(not firing)") + "caching rule value: " + name + ": " + !!cur);
-            if (rule.cached) {
-              rule.cached.value = !!cur;
-            } else {
-              rule.cached = { value: !!cur };
-            }
-          } else if (typeof rule.when == "function") {
-            shouldFire = !!rule.when();
-          } else {
-            log("invalid rule " + name + " -- no proper condition clause");
+            throw e;
+          } finally {
+            _WbRules.requireCompleteCells--;
           }
-        } catch (e) {
-          if (e instanceof _WbRules.IncompleteCellError) {
-            debug("skipping rule due to incomplete cells " + name + ": " + e);
-            return;
-          }
-          throw e;
-        } finally {
-          _WbRules.requireCompleteCells--;
-        }
-        if (shouldFire) {
-          debug("rule fired: " + name);
-          if (!thenArgs)
-            rule.then();
+        };
+        break;
+      case "then":
+        d[k] = function (options) {
+          if (options)
+            // TBD: pass options.oldValue too (needs test, do it
+            // when implementing onValueChange)
+            orig.call(d, options.device, options.cell, options.newValue);
           else
-            rule.then.apply(rule, thenArgs);
-        }
-      } catch (e) {
-        log("error running rule " + name + ": " + e.stack || e);
+            orig.call(d);
+        };
       }
     });
+    _wbDefineRule(name, d);
   },
 
   startTimer: function startTimer(name, ms, periodic) {
@@ -143,7 +102,7 @@ var _WbRules = {
       _fire: function () {
         this.firing = true;
         try {
-          _WbRules.runRules();
+          runRules();
         } finally {
           if (!periodic)
             delete _WbRules.timers[name];
@@ -164,7 +123,6 @@ var timers = _WbRules.autoload(_WbRules.timers, function () {
 });
 
 defineRule = _WbRules.defineRule;
-runRules = _WbRules.runRules;
 
 function startTimer (name, ms) {
   _WbRules.startTimer(name, ms, false);
@@ -221,7 +179,7 @@ function spawn(cmd, args, options) {
         args.capturedErrorOutput
       );
     } catch (e) {
-      log("error running command callback for " + cmd + ": " + e.stack || e);
+      log("error running command callback for " + cmd + ": " + (e.stack || e));
     }
   } : null, !!options.captureOutput, !!options.captureErrorOutput, options.input);
 }
@@ -229,3 +187,5 @@ function spawn(cmd, args, options) {
 function runShellCommand(cmd, options) {
   spawn("/bin/sh", ["-c", cmd], options);
 }
+
+// TBD: perhaps in non-debug mode, shouldn't even call go on debug()

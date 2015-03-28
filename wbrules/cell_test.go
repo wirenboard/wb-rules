@@ -2,6 +2,7 @@ package wbrules
 
 import (
 	"log"
+	"fmt"
 	"time"
 	"strings"
 	"testing"
@@ -19,7 +20,7 @@ type cellFixture struct {
 	broker *wbgo.FakeMQTTBroker
 	client, driverClient wbgo.MQTTClient
 	model *CellModel
-	cellChange chan string
+	cellChange chan *CellSpec
 }
 
 func NewCellFixture(t *testing.T, waitForRetained bool) *cellFixture {
@@ -44,14 +45,18 @@ func NewCellFixture(t *testing.T, waitForRetained bool) *cellFixture {
 
 func (fixture *cellFixture) expectCellChange(expectedCellNames... string) {
 	for _, expectedCellName := range expectedCellNames {
-		cellName := <- fixture.cellChange
-		assert.Equal(fixture.t, expectedCellName, cellName)
+		cellSpec := <- fixture.cellChange
+		fullName := ""
+		if cellSpec != nil {
+			fullName = fmt.Sprintf("%s/%s", cellSpec.DevName, cellSpec.CellName)
+		}
+		assert.Equal(fixture.t, expectedCellName, fullName)
 	}
 	timer := time.NewTimer(EXTRA_CELL_CHANGE_WAIT_TIME_MS * time.Millisecond)
 	select {
 	case <- timer.C:
-	case cellName := <- fixture.cellChange:
-		fixture.t.Fatalf("unexpected cell change: %s", cellName)
+	case cellSpec := <- fixture.cellChange:
+		fixture.t.Fatalf("unexpected cell change: %v", cellSpec)
 	}
 }
 
@@ -63,9 +68,9 @@ func (fixture *cellFixture) publish(topic, value string, expectedCellNames... st
 
 func (fixture *cellFixture) tearDown() {
 	fixture.driver.Stop()
-	cellName, ok := <- fixture.cellChange
+	cellSpec, ok := <- fixture.cellChange
 	if ok {
-		log.Printf("WARNING! unexpected cell change at the end of the test: %s", cellName)
+		log.Printf("WARNING! unexpected cell change at the end of the test: %v", cellSpec)
 	}
 }
 

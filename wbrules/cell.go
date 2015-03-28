@@ -15,10 +15,15 @@ const (
 	CELL_CHANGE_CLOSE_TIMEOUT_MS = 200
 )
 
+type CellSpec struct {
+	DevName string
+	CellName string
+}
+
 type CellModel struct {
 	wbgo.ModelBase
 	devices map[string]CellModelDevice
-	cellChangeChannels []chan string
+	cellChangeChannels []chan *CellSpec
 	started bool
 }
 
@@ -58,7 +63,7 @@ type Cell struct {
 func NewCellModel() *CellModel {
 	return &CellModel{
 		devices: make(map[string]CellModelDevice),
-		cellChangeChannels: make([]chan string, 0, CELL_CHANGE_SLICE_CAPACITY),
+		cellChangeChannels: make([]chan *CellSpec, 0, CELL_CHANGE_SLICE_CAPACITY),
 	}
 }
 
@@ -91,12 +96,12 @@ func (model *CellModel) Stop() {
 	}
 	model.started = false
 	chs := model.cellChangeChannels
-	model.cellChangeChannels = make([]chan string, 0, CELL_CHANGE_SLICE_CAPACITY)
+	model.cellChangeChannels = make([]chan *CellSpec, 0, CELL_CHANGE_SLICE_CAPACITY)
 
 	var wg sync.WaitGroup
 	wg.Add(len(chs))
 	for _, ch := range chs {
-		go func (c chan string) {
+		go func (c chan *CellSpec) {
 			model.closeCellChangeChannel(c)
 			wg.Done()
 		}(ch)
@@ -162,15 +167,15 @@ func (model *CellModel) AddExternalDevice(name string) (wbgo.ExternalDeviceModel
 	return nil, errors.New("Device %s is registered as a local device")
 }
 
-func (model *CellModel) AcquireCellChangeChannel() chan string {
-	ch := make(chan string)
+func (model *CellModel) AcquireCellChangeChannel() chan *CellSpec {
+	ch := make(chan *CellSpec)
 	model.cellChangeChannels = append(model.cellChangeChannels, ch)
 	return ch
 }
 
-func (model *CellModel) ReleaseCellChangeChannel(ch chan string) {
+func (model *CellModel) ReleaseCellChangeChannel(ch chan *CellSpec) {
 	oldChannels := model.cellChangeChannels
-	model.cellChangeChannels = make([]chan string, 0, len(model.cellChangeChannels))
+	model.cellChangeChannels = make([]chan *CellSpec, 0, len(model.cellChangeChannels))
 	for _, curCh := range oldChannels {
 		if ch != curCh {
 			model.cellChangeChannels = append(model.cellChangeChannels, curCh)
@@ -179,7 +184,7 @@ func (model *CellModel) ReleaseCellChangeChannel(ch chan string) {
 	model.closeCellChangeChannel(ch)
 }
 
-func (model *CellModel) closeCellChangeChannel(ch chan string) {
+func (model *CellModel) closeCellChangeChannel(ch chan *CellSpec) {
 	timer := time.NewTimer(CELL_CHANGE_CLOSE_TIMEOUT_MS * time.Millisecond)
 	select {
 	case <- timer.C:
@@ -193,9 +198,9 @@ func (model *CellModel) closeCellChangeChannel(ch chan string) {
 	}
 }
 
-func (model *CellModel) notify(cellName string) {
+func (model *CellModel) notify(cellSpec *CellSpec) {
 	for _, ch := range model.cellChangeChannels {
-		ch <- cellName
+		ch <- cellSpec
 	}
 }
 
@@ -210,7 +215,7 @@ func (model *CellModel) WhenReady(thunk func()) {
 
 func (dev *CellModelDeviceBase) SetTitle(title string) {
 	dev.DevTitle = title
-	go dev.model.notify("")
+	go dev.model.notify(nil)
 }
 
 func (dev *CellModelDeviceBase) setCell(name, controlType string, value interface{}, complete bool, max float64) (cell *Cell) {
@@ -250,7 +255,7 @@ func (dev *CellModelDeviceBase) AcceptValue(name, value string) {
 	cell := dev.EnsureCell(name)
 	cell.value = value
 	cell.gotValue = true
-	go dev.model.notify(dev.DevName + "/" + name)
+	go dev.model.notify(&CellSpec{dev.DevName, name})
 }
 
 func (dev *CellModelDeviceBase) setValue(name, value string) {
@@ -258,7 +263,7 @@ func (dev *CellModelDeviceBase) setValue(name, value string) {
 		panic("setValue -- but model not active!!!")
 	}
 	dev.Observer.OnValue(dev.self, name, value)
-	go dev.model.notify(dev.DevName + "/" + name)
+	go dev.model.notify(&CellSpec{dev.DevName, name})
 }
 
 func (dev *CellModelLocalDevice) AcceptOnValue(name, value string) bool {
@@ -266,7 +271,7 @@ func (dev *CellModelLocalDevice) AcceptOnValue(name, value string) bool {
 	cell := dev.EnsureCell(name)
 	cell.value = value
 	cell.gotValue = true
-	go dev.model.notify(dev.DevName + "/" + name)
+	go dev.model.notify(&CellSpec{dev.DevName, name})
 	return true
 }
 
@@ -286,13 +291,13 @@ func (dev *CellModelExternalDevice) AcceptControlType(name, controlType string) 
 	cell := dev.EnsureCell(name)
 	cell.gotType = true
 	cell.controlType = controlType
-	go dev.model.notify(dev.DevName + "/" + name)
+	go dev.model.notify(&CellSpec{dev.DevName, name})
 }
 
 func (dev *CellModelExternalDevice) AcceptControlRange(name string, max float64) {
 	cell := dev.EnsureCell(name)
 	cell.max = max
-	go dev.model.notify(dev.DevName + "/" + name)
+	go dev.model.notify(&CellSpec{dev.DevName, name})
 }
 
 func (dev *CellModelExternalDevice) queryParams() {
@@ -358,4 +363,12 @@ func (cell *Cell) Type() string {
 
 func (cell *Cell) IsComplete() bool {
 	return cell.gotValue && cell.gotType
+}
+
+func (cell *Cell) DevName() string {
+	return cell.device.Name()
+}
+
+func (cell *Cell) Name() string {
+	return cell.name
 }

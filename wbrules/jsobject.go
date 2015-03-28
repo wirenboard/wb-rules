@@ -73,6 +73,21 @@ func PushJSObject(ctx *duktape.Context, m objx.Map) {
 	ctx.JsonDecode(-1)
 }
 
+func StringArrayToGo(ctx *duktape.Context, arrIndex int) []string {
+	if !ctx.IsArray(arrIndex) {
+		panic("string array expected")
+	}
+
+	n := ctx.GetLength(arrIndex)
+	r := make([]string, n)
+	for i := 0; i < n; i++ {
+		ctx.GetPropIndex(arrIndex, uint(i))
+		r[i] = ctx.SafeToString(-1)
+		ctx.Pop()
+	}
+	return r
+}
+
 // TBD: proper PushJSObject
 // TBD: handle loops
 // TBD: handle Go objects

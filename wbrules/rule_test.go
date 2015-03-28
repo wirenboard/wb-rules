@@ -107,8 +107,9 @@ func (fixture *ruleFixture) SetCellValue(device, cellName string, value interfac
 	fixture.driver.CallSync(func () {
 		fixture.model.EnsureDevice(device).EnsureCell(cellName).SetValue(value)
 	})
-	actualCellName := <- fixture.cellChange
-	assert.Equal(fixture.t, device + "/" + cellName, actualCellName)
+	actualCellSpec := <- fixture.cellChange
+	assert.Equal(fixture.t, device + "/" + cellName,
+		actualCellSpec.DevName + "/" + actualCellSpec.CellName)
 }
 
 func TestDeviceDefinition(t *testing.T) {
@@ -141,7 +142,6 @@ func TestDeviceDefinition(t *testing.T) {
 		"tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
 	)
 }
-
 
 func TestRules(t *testing.T) {
 	fixture := NewRuleFixtureSkippingDefs(t)
@@ -475,7 +475,7 @@ func TestRunShellCommandIO(t *testing.T) {
 // TBD: test bad device/rule defs
 // TBD: traceback
 // TBD: if rule *did* change anything (SetValue had an effect), re-run rules
-//      and do so till no values are changed
+//      and do so till no va\lues are changed
 // TBD: don't hang upon bad Verify() list
 //      (deadlock detection fails due to duktape)
 // TBD: should use separate recorder for the fixture, not abuse the fake broker
