@@ -1,4 +1,7 @@
+// -*- mode: js2-mode -*-
+
 var asSoonAsCount = 0, runRuleWithoutCells = false;
+
 defineRule("condCount", {
   asSoonAs: function () {
     ++asSoonAsCount;

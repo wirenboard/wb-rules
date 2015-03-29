@@ -263,14 +263,14 @@ func (fixture *ruleFixture) VerifyTimers(prefix string) {
 }
 
 func TestTimers(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules_timers.js")
 	defer fixture.tearDown()
 
 	fixture.VerifyTimers("")
 }
 
 func TestDirectTimers(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules_timers.js")
 	defer fixture.tearDown()
 
 	fixture.VerifyTimers("+")
@@ -380,7 +380,7 @@ func verifyFileExists(t *testing.T, path string) {
 }
 
 func TestRunShellCommand(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules_command.js")
 	defer fixture.tearDown()
 
 	wd, err := os.Getwd()
@@ -432,7 +432,7 @@ func TestRunShellCommand(t *testing.T) {
 }
 
 func TestRunShellCommandIO(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules_command.js")
 	defer fixture.tearDown()
 
 	fixture.publish("/devices/somedev/controls/cmdWithOutput/meta/type", "text",
