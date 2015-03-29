@@ -511,6 +511,15 @@ func TestRuleCheckOptimization(t *testing.T) {
 		"[rule] condCount fired, count=5")
 }
 
+// TBD: idea concerning rule reload:
+//     Two reload kinds (configurable by command line switch):
+//     'soft reload' = reeval the rule file
+//     'hard reload' = restart the rule engine
+//
+//      When cell/timer -> rule maps are nil, don't use the
+//      maps in the engine but populate them instead by running
+//      checks of every rule.
+//      When 'soft reloading' a rule file, reset maps to nil.
 // TBD: metadata (like, meta["devname"]["controlName"])
 // TBD: proper data path:
 // http://stackoverflow.com/questions/18537257/golang-how-to-get-the-directory-of-the-currently-running-file

@@ -16,6 +16,7 @@ import (
 type esCallback uint64
 
 const (
+	NO_TIMER_NAME = ""
 	LIB_FILE = "lib.js"
 	DEFAULT_CELL_MAX = 255.0
 	TIMERS_CAPACITY = 128
@@ -84,6 +85,7 @@ type TimerEntry struct {
 	timer Timer
 	periodic bool
 	quit chan struct{}
+	name string
 }
 
 type Rule struct {
@@ -168,8 +170,8 @@ func newRule(engine *RuleEngine, name string, defIndex int) (*Rule, error) {
 }
 
 func (rule *Rule) invokeCond() bool {
-	rule.engine.startTrackingCells()
-	defer rule.engine.storeRuleTrackedCells(rule)
+	rule.engine.startTrackingDeps()
+	defer rule.engine.storeRuleDeps(rule)
 	return rule.engine.invokeCallback("ruleFuncs", rule.cond, nil)
 }
 
@@ -253,8 +255,11 @@ type RuleEngine struct {
 	ruleMap map[string]*Rule
 	ruleList []string
 	notedCells map[*Cell]bool
+	notedTimers map[string]bool
 	cellToRuleMap map[*Cell][]*Rule
 	rulesWithoutCells map[*Rule]bool
+	timerRules map[string][]*Rule
+	currentTimer string
 }
 
 func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
@@ -272,8 +277,11 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		ruleMap: make(map[string]*Rule),
 		ruleList: make([]string, 0, RULES_CAPACITY),
 		notedCells: nil,
+		notedTimers: nil,
 		cellToRuleMap: make(map[*Cell][]*Rule),
 		rulesWithoutCells: make(map[*Rule]bool),
+		timerRules: make(map[string][]*Rule),
+		currentTimer: NO_TIMER_NAME,
 	}
 
 	engine.initCallbackList("ruleEngineTimers")
@@ -290,6 +298,7 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		"_wbCellObject": engine.esWbCellObject,
 		"_wbStartTimer": engine.esWbStartTimer,
 		"_wbStopTimer": engine.esWbStopTimer,
+		"_wbCheckCurrentTimer": engine.esWbCheckCurrentTimer,
 		"_wbSpawn": engine.esWbSpawn,
 		"_wbDefineRule": engine.esWbDefineRule,
 		"runRules": engine.esWbRunRules,
@@ -515,8 +524,9 @@ func (engine *RuleEngine) esWbDevObject() int {
 	return 1
 }
 
-func (engine *RuleEngine) startTrackingCells() {
+func (engine *RuleEngine) startTrackingDeps() {
 	engine.notedCells = make(map[*Cell]bool)
+	engine.notedTimers = make(map[string]bool)
 }
 
 func (engine *RuleEngine) storeRuleCell(rule *Rule, cell *Cell) {
@@ -527,7 +537,15 @@ func (engine *RuleEngine) storeRuleCell(rule *Rule, cell *Cell) {
 	engine.cellToRuleMap[cell] = append(list, rule)
 }
 
-func (engine *RuleEngine) storeRuleTrackedCells(rule *Rule) {
+func (engine *RuleEngine) storeRuleTimer(rule *Rule, timerName string) {
+	list, found := engine.timerRules[timerName]
+	if !found {
+		list = make([]*Rule, 0, CELL_RULES_CAPACITY)
+	}
+	engine.timerRules[timerName] = append(list, rule)
+}
+
+func (engine *RuleEngine) storeRuleDeps(rule *Rule) {
 	if len(engine.notedCells) > 0 {
 		for cell, _ := range engine.notedCells {
 			engine.storeRuleCell(rule, cell)
@@ -536,12 +554,22 @@ func (engine *RuleEngine) storeRuleTrackedCells(rule *Rule) {
 		wbgo.Debug.Printf("rule %s doesn't use any cells", rule.name)
 		engine.rulesWithoutCells[rule] = true
 	}
+	for timerName, _ := range engine.notedTimers {
+		engine.storeRuleTimer(rule, timerName)
+	}
 	engine.notedCells = nil
+	engine.notedTimers = nil
 }
 
 func (engine *RuleEngine) trackCell(cell *Cell) {
 	if engine.notedCells != nil {
 		engine.notedCells[cell] = true
+	}
+}
+
+func (engine *RuleEngine) trackTimer(timerName string) {
+	if engine.notedTimers != nil {
+		engine.notedTimers[timerName] = true
 	}
 }
 
@@ -598,7 +626,11 @@ func (engine *RuleEngine) fireTimer(n int) {
 		wbgo.Error.Printf("firing unknown timer %d", n)
 		return
 	}
-	engine.invokeCallback("ruleEngineTimers", n, nil)
+	if entry.name == NO_TIMER_NAME {
+		engine.invokeCallback("ruleEngineTimers", n, nil)
+	} else {
+		engine.RunRules(nil, entry.name)
+	}
 
 	if !entry.periodic {
 		engine.removeTimer(n)
@@ -606,17 +638,32 @@ func (engine *RuleEngine) fireTimer(n int) {
 }
 
 func (engine *RuleEngine) esWbStartTimer() int {
-	if engine.ctx.GetTop() != 3 || !engine.ctx.IsFunction(-3) || !engine.ctx.IsNumber(-2) {
+	if engine.ctx.GetTop() != 3 || !engine.ctx.IsNumber(1) {
+		// FIXME: need to throw proper exception here
+		wbgo.Error.Println("bad _wbStartTimer call")
 		return duktape.DUK_RET_ERROR
 	}
 
-	ms := engine.ctx.GetNumber(-2)
-	periodic := engine.ctx.ToBoolean(-1)
+	name := NO_TIMER_NAME
+	if engine.ctx.IsString(0) {
+		name = engine.ctx.ToString(0)
+		if name == "" {
+			wbgo.Error.Println("empty timer name")
+			return duktape.DUK_RET_ERROR
+		}
+		engine.stopTimerByName(name)
+	} else if !engine.ctx.IsFunction(0) {
+		wbgo.Error.Println("invalid timer spec")
+		return duktape.DUK_RET_ERROR
+	}
+
+	ms := engine.ctx.GetNumber(1)
+	periodic := engine.ctx.ToBoolean(2)
 
 	entry := &TimerEntry{
-		//,
 		periodic: periodic,
 		quit: make(chan struct{}, 2),
+		name: name,
 	}
 
 	var n int
@@ -630,7 +677,9 @@ func (engine *RuleEngine) esWbStartTimer() int {
 		engine.timers = append(engine.timers, entry)
 	}
 
-	engine.storeCallback("ruleEngineTimers", 0, n)
+	if name == NO_TIMER_NAME {
+		engine.storeCallback("ruleEngineTimers", 0, n)
+	}
 
 	entry.timer = engine.timerFunc(n, time.Duration(ms * float64(time.Millisecond)), periodic)
 	tickCh := entry.timer.GetChannel()
@@ -656,18 +705,26 @@ func (engine *RuleEngine) esWbStartTimer() int {
 }
 
 func (engine *RuleEngine) removeTimer(n int) {
+	// note that n may not be present in ruleEngineTimers, but
+	// it shouldn't cause any problems as deleting nonexistent
+	// property is not an error
 	engine.removeCallback("ruleEngineTimers", n)
 	engine.timers[n - 1] = nil
 }
 
-func (engine *RuleEngine) esWbStopTimer() int {
-	if engine.ctx.GetTop() != 1 || !engine.ctx.IsNumber(-1) {
-		return duktape.DUK_RET_ERROR
+func (engine *RuleEngine) stopTimerByName(name string) {
+	for i, entry := range engine.timers {
+		if entry != nil && name == entry.name {
+			engine.removeTimer(i + 1)
+			close(entry.quit)
+			break
+		}
 	}
-	n := engine.ctx.GetInt(-1)
-	if n == 0 {
-		wbgo.Error.Printf("timer id cannot be zero")
-		return 0
+}
+
+func (engine *RuleEngine) stopTimerByIndex(n int) {
+	if n == 0 || n > len(engine.timers) {
+		return
 	}
 	if entry := engine.timers[n - 1]; entry != nil {
 		engine.removeTimer(n)
@@ -675,7 +732,39 @@ func (engine *RuleEngine) esWbStopTimer() int {
 	} else {
 		wbgo.Error.Printf("trying to stop unknown timer: %d", n)
 	}
+}
+
+func (engine *RuleEngine) esWbStopTimer() int {
+	if engine.ctx.GetTop() != 1 {
+		return duktape.DUK_RET_ERROR
+	}
+	if engine.ctx.IsNumber(0) {
+		n := engine.ctx.GetInt(-1)
+		if n == 0 {
+			wbgo.Error.Printf("timer id cannot be zero")
+			return 0
+		}
+		engine.stopTimerByIndex(n)
+	} else if engine.ctx.IsString(0) {
+		engine.stopTimerByName(engine.ctx.ToString(0))
+	} else {
+		return duktape.DUK_RET_ERROR
+	}
 	return 0
+}
+
+func (engine *RuleEngine) esWbCheckCurrentTimer() int {
+	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(0) {
+		return duktape.DUK_RET_ERROR
+	}
+	timerName := engine.ctx.ToString(0)
+	engine.trackTimer(timerName)
+	if engine.currentTimer == NO_TIMER_NAME || engine.currentTimer != timerName {
+		engine.ctx.PushFalse()
+	} else {
+		engine.ctx.PushTrue()
+	}
+	return 1
 }
 
 func (engine *RuleEngine) esWbSpawn() int {
@@ -757,11 +846,11 @@ func (engine *RuleEngine) esWbDefineRule() int {
 func (engine *RuleEngine) esWbRunRules() int {
 	switch engine.ctx.GetTop() {
 	case 0:
-		engine.RunRules(nil)
+		engine.RunRules(nil, NO_TIMER_NAME)
 	case 2:
 		devName := engine.ctx.SafeToString(0)
 		cellName := engine.ctx.SafeToString(1)
-		engine.RunRules(&CellSpec{devName, cellName})
+		engine.RunRules(&CellSpec{devName, cellName}, NO_TIMER_NAME)
 	default:
 		return duktape.DUK_RET_ERROR
 	}
@@ -782,7 +871,7 @@ func (engine *RuleEngine) getCell(devName, cellName string) *Cell {
 	return engine.model.EnsureDevice(devName).EnsureCell(cellName)
 }
 
-func (engine *RuleEngine) RunRules(cellSpec *CellSpec) {
+func (engine *RuleEngine) RunRules(cellSpec *CellSpec, timerName string) {
 	var cell *Cell
 	if cellSpec != nil {
 		cell = engine.getCell(cellSpec.DevName, cellSpec.CellName)
@@ -800,9 +889,19 @@ func (engine *RuleEngine) RunRules(cellSpec *CellSpec) {
 		}
 	}
 
+	if timerName != NO_TIMER_NAME {
+		engine.currentTimer = timerName
+		if list, found := engine.timerRules[timerName]; found {
+			for _, rule := range list {
+				rule.ShouldCheck()
+			}
+		}
+	}
+
 	for _, name := range engine.ruleList {
 		engine.ruleMap[name].Check(cell)
 	}
+	engine.currentTimer = NO_TIMER_NAME
 }
 
 func (engine *RuleEngine) LoadScript(path string) error {
@@ -820,7 +919,7 @@ func (engine *RuleEngine) Start() {
 	engine.cellChange = engine.model.AcquireCellChangeChannel()
 	ready := make(chan struct{})
 	engine.model.WhenReady(func () {
-		engine.RunRules(nil)
+		engine.RunRules(nil, NO_TIMER_NAME)
 		close(ready)
 	})
 	go func () {
@@ -838,7 +937,7 @@ func (engine *RuleEngine) Start() {
 							"rule engine: running rules")
 					}
 					engine.model.CallSync(func () {
-						engine.RunRules(cellSpec)
+						engine.RunRules(cellSpec, NO_TIMER_NAME)
 					})
 				} else {
 					wbgo.Debug.Printf("engine stopped")

@@ -86,39 +86,20 @@ var _WbRules = {
   },
 
   startTimer: function startTimer(name, ms, periodic) {
-    if (_WbRules.timers.hasOwnProperty(name))
-      _WbRules.timers[name].stop();
     debug("starting timer: " + name);
-    var timer = _WbRules.timers[name] = {
-      firing: false,
-      stop: function () {
-        if (!this.id)
-          return;
-        _wbStopTimer(this.id);
-        debug("deleting timer: " + name);
-        delete _WbRules.timers[name];
-        this.id = null;
-      },
-      _fire: function () {
-        this.firing = true;
-        try {
-          runRules();
-        } finally {
-          if (!periodic)
-            delete _WbRules.timers[name];
-          this.firing = false;
-        }
-      }
-    };
-    timer.id =_wbStartTimer(timer._fire.bind(timer), ms, !!periodic);
+    _wbStartTimer(name, ms, !!periodic);
   }
 };
 
 var dev = _WbRules.autoload({}, _WbRules.wrapDevice);
-var timers = _WbRules.autoload(_WbRules.timers, function () {
+var timers = _WbRules.autoload(_WbRules.timers, function (name) {
   return {
-    firing: false,
-    stop: function () {}
+    get firing() {
+      return _wbCheckCurrentTimer(name);
+    },
+    stop: function () {
+      _wbStopTimer(name);
+    }
   };
 });
 
