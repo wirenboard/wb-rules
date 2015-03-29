@@ -550,12 +550,13 @@ func (engine *RuleEngine) storeRuleDeps(rule *Rule) {
 		for cell, _ := range engine.notedCells {
 			engine.storeRuleCell(rule, cell)
 		}
+	} else if len(engine.notedTimers) > 0 {
+		for timerName, _ := range engine.notedTimers {
+			engine.storeRuleTimer(rule, timerName)
+		}
 	} else {
 		wbgo.Debug.Printf("rule %s doesn't use any cells", rule.name)
 		engine.rulesWithoutCells[rule] = true
-	}
-	for timerName, _ := range engine.notedTimers {
-		engine.storeRuleTimer(rule, timerName)
 	}
 	engine.notedCells = nil
 	engine.notedTimers = nil
