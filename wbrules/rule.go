@@ -20,6 +20,7 @@ const (
 	DEFAULT_CELL_MAX = 255.0
 	TIMERS_CAPACITY = 128
 	RULES_CAPACITY = 256
+	CELL_RULES_CAPACITY = 8
 	NO_CALLBACK = esCallback(0)
 	RULE_TYPE_NONE = iota
 	RULE_TYPE_LEVEL_TRIGGERED
@@ -90,13 +91,15 @@ type Rule struct {
 	name string
 	cond esCallback
 	then esCallback
-	onCellChange []string
+	onCellChange []*Cell
 	ruleType RuleType
 	firstRun bool
 	prevCondValue bool
 	oldCellValue interface{}
+	shouldCheck bool
 }
 
+// TBD: reduce the spaghetti, use distinct Rule subtypes
 func newRule(engine *RuleEngine, name string, defIndex int) (*Rule, error) {
 	rule := &Rule{
 		engine: engine,
@@ -106,6 +109,7 @@ func newRule(engine *RuleEngine, name string, defIndex int) (*Rule, error) {
 		firstRun: true,
 		prevCondValue: false,
 		oldCellValue: nil,
+		shouldCheck: false,
 	}
 	ctx := engine.ctx
 
@@ -134,13 +138,27 @@ func newRule(engine *RuleEngine, name string, defIndex int) (*Rule, error) {
 		rule.ruleType = RULE_TYPE_EDGE_TRIGGERED
 	} else if hasOnCellChange {
 		ctx.GetPropString(defIndex, "onCellChange")
+		var cellNames []string
 		if ctx.IsString(-1) {
-			rule.onCellChange = []string{ ctx.ToString(-1) }
+			cellNames = []string{ ctx.ToString(-1) }
 		} else {
-			rule.onCellChange = StringArrayToGo(ctx, -1)
+			cellNames = StringArrayToGo(ctx, -1)
+			if len(cellNames) == 0 {
+				return nil, errors.New("empty onCellChange")
+			}
 		}
 		ctx.Pop()
 		rule.ruleType = RULE_TYPE_ON_CELL_CHANGE
+		rule.onCellChange = make([]*Cell, len(cellNames))
+		for i, fullName := range cellNames {
+			parts := strings.SplitN(fullName, "/", 2)
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("invalid onCellChange spec: '%s'", fullName)
+			}
+			cell := engine.getCell(parts[0], parts[1])
+			rule.onCellChange[i] = cell
+			engine.storeRuleCell(rule, cell)
+		}
 	} else {
 		return nil, errors.New(
 			"invalid rule -- must provide one of 'when', 'asSoonAs' or 'onCellChange'")
@@ -149,7 +167,24 @@ func newRule(engine *RuleEngine, name string, defIndex int) (*Rule, error) {
 	return rule, nil
 }
 
+func (rule *Rule) invokeCond() bool {
+	rule.engine.startTrackingCells()
+	defer rule.engine.storeRuleTrackedCells(rule)
+	return rule.engine.invokeCallback("ruleFuncs", rule.cond, nil)
+}
+
+func (rule *Rule) ShouldCheck() {
+	rule.shouldCheck = true
+}
+
 func (rule *Rule) Check(cell *Cell) {
+	if cell != nil && !rule.shouldCheck {
+		// Don't invoke js if no cells mentioned in the
+		// condition callback changed. If rules are run
+		// not due to a cell being changed, still need
+		// to call JS though.
+		return
+	}
 	if rule.ruleType == RULE_TYPE_NONE {
 		panic("invoking a destroyed rule")
 	}
@@ -157,16 +192,15 @@ func (rule *Rule) Check(cell *Cell) {
 	args := objx.Map(nil)
 	switch (rule.ruleType) {
 	case RULE_TYPE_LEVEL_TRIGGERED:
-		shouldFire = rule.engine.invokeCallback("ruleFuncs", rule.cond, nil)
+		shouldFire = rule.invokeCond()
 	case RULE_TYPE_EDGE_TRIGGERED:
-		current := rule.engine.invokeCallback("ruleFuncs", rule.cond, nil)
+		current := rule.invokeCond()
 		shouldFire = current && (rule.firstRun || current != rule.prevCondValue)
 		rule.prevCondValue = current
 	case RULE_TYPE_ON_CELL_CHANGE:
 		if cell != nil && cell.IsComplete() {
-			key := cell.DevName() + "/" + cell.Name()
-			for _, changeKey := range rule.onCellChange {
-				if changeKey == key {
+			for _, checkCell := range rule.onCellChange {
+				if cell == checkCell {
 					shouldFire = true
 					args = objx.New(map[string]interface{} {
 						"device": cell.DevName(),
@@ -182,6 +216,7 @@ func (rule *Rule) Check(cell *Cell) {
 	}
 
 	rule.firstRun = false
+	rule.shouldCheck = false
 	if shouldFire {
 		rule.engine.invokeCallback("ruleFuncs", rule.then, args)
 	}
@@ -204,6 +239,7 @@ func (rule *Rule) Destroy() {
 }
 
 type LogFunc func (string)
+
 type RuleEngine struct {
 	model *CellModel
 	mqttClient wbgo.MQTTClient
@@ -216,6 +252,9 @@ type RuleEngine struct {
 	callbackIndex esCallback
 	ruleMap map[string]*Rule
 	ruleList []string
+	notedCells map[*Cell]bool
+	cellToRuleMap map[*Cell][]*Rule
+	rulesWithoutCells map[*Rule]bool
 }
 
 func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
@@ -232,6 +271,9 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		callbackIndex: 1,
 		ruleMap: make(map[string]*Rule),
 		ruleList: make([]string, 0, RULES_CAPACITY),
+		notedCells: nil,
+		cellToRuleMap: make(map[*Cell][]*Rule),
+		rulesWithoutCells: make(map[*Rule]bool),
 	}
 
 	engine.initCallbackList("ruleEngineTimers")
@@ -473,6 +515,36 @@ func (engine *RuleEngine) esWbDevObject() int {
 	return 1
 }
 
+func (engine *RuleEngine) startTrackingCells() {
+	engine.notedCells = make(map[*Cell]bool)
+}
+
+func (engine *RuleEngine) storeRuleCell(rule *Rule, cell *Cell) {
+	list, found := engine.cellToRuleMap[cell]
+	if !found {
+		list = make([]*Rule, 0, CELL_RULES_CAPACITY)
+	}
+	engine.cellToRuleMap[cell] = append(list, rule)
+}
+
+func (engine *RuleEngine) storeRuleTrackedCells(rule *Rule) {
+	if len(engine.notedCells) > 0 {
+		for cell, _ := range engine.notedCells {
+			engine.storeRuleCell(rule, cell)
+		}
+	} else {
+		wbgo.Debug.Printf("rule %s doesn't use any cells", rule.name)
+		engine.rulesWithoutCells[rule] = true
+	}
+	engine.notedCells = nil
+}
+
+func (engine *RuleEngine) trackCell(cell *Cell) {
+	if engine.notedCells != nil {
+		engine.notedCells[cell] = true
+	}
+}
+
 func (engine *RuleEngine) esWbCellObject() int {
 	if engine.ctx.GetTop() != 2 || !engine.ctx.IsString(-1) || !engine.ctx.IsObject(-2) {
 		return duktape.DUK_RET_ERROR
@@ -486,10 +558,12 @@ func (engine *RuleEngine) esWbCellObject() int {
 	engine.ctx.PushGoObject(cell)
 	engine.defineEngineFunctions(map[string]func() int {
 		"rawValue": func () int {
+			engine.trackCell(cell)
 			engine.ctx.PushString(cell.RawValue())
 			return 1
 		},
 		"value": func () int {
+			engine.trackCell(cell)
 			m := objx.New(map[string]interface{} {
 				"v": cell.Value(),
 			})
@@ -497,6 +571,7 @@ func (engine *RuleEngine) esWbCellObject() int {
 			return 1
 		},
 		"setValue": func () int {
+			engine.trackCell(cell)
 			if engine.ctx.GetTop() != 1 || !engine.ctx.IsObject(-1) {
 				return duktape.DUK_RET_ERROR
 			}
@@ -509,6 +584,7 @@ func (engine *RuleEngine) esWbCellObject() int {
 			return 1
 		},
 		"isComplete": func () int {
+			engine.trackCell(cell)
 			engine.ctx.PushBoolean(cell.IsComplete())
 			return 1
 		},
@@ -702,13 +778,29 @@ func (engine *RuleEngine) defineEngineFunctions(fns map[string]func() int) {
 	}
 }
 
+func (engine *RuleEngine) getCell(devName, cellName string) *Cell {
+	return engine.model.EnsureDevice(devName).EnsureCell(cellName)
+}
+
 func (engine *RuleEngine) RunRules(cellSpec *CellSpec) {
-	for _, name := range engine.ruleList {
-		var cell *Cell
-		if cellSpec != nil {
-			cell = engine.model.EnsureDevice(cellSpec.DevName).
-				EnsureCell(cellSpec.CellName)
+	var cell *Cell
+	if cellSpec != nil {
+		cell = engine.getCell(cellSpec.DevName, cellSpec.CellName)
+		if cell.IsComplete() {
+			// cell-dependent rules aren't run when any of their
+			// condition cells are incomplete
+			if list, found := engine.cellToRuleMap[cell]; found {
+				for _, rule := range list {
+					rule.ShouldCheck()
+				}
+			}
 		}
+		for rule, _ := range engine.rulesWithoutCells {
+			rule.ShouldCheck()
+		}
+	}
+
+	for _, name := range engine.ruleList {
 		engine.ruleMap[name].Check(cell)
 	}
 }

@@ -52,7 +52,7 @@ type ruleFixture struct {
 	timers map[int]*fakeTimer
 }
 
-func NewRuleFixture(t *testing.T, waitForRetained bool) *ruleFixture {
+func NewRuleFixture(t *testing.T, waitForRetained bool, ruleFile string) *ruleFixture {
 	fixture := &ruleFixture{
 		*NewCellFixture(t, waitForRetained),
 		nil,
@@ -63,7 +63,7 @@ func NewRuleFixture(t *testing.T, waitForRetained bool) *ruleFixture {
 	fixture.engine.SetLogFunc(func (message string) {
 		fixture.broker.Rec("[rule] %s", message)
 	})
-	assert.Equal(t, nil, fixture.engine.LoadScript("testrules.js"))
+	assert.Equal(t, nil, fixture.engine.LoadScript(ruleFile))
 	fixture.driver.Start()
 	fixture.publish("/devices/somedev/meta/name", "SomeDev", "")
 	fixture.publish("/devices/somedev/controls/sw/meta/type", "switch", "somedev/sw")
@@ -73,8 +73,8 @@ func NewRuleFixture(t *testing.T, waitForRetained bool) *ruleFixture {
 	return fixture
 }
 
-func NewRuleFixtureSkippingDefs(t *testing.T) (fixture *ruleFixture) {
-	fixture = NewRuleFixture(t, false)
+func NewRuleFixtureSkippingDefs(t *testing.T, ruleFile string) (fixture *ruleFixture) {
+	fixture = NewRuleFixture(t, false, ruleFile)
 	fixture.broker.SkipTill("tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)")
 	fixture.engine.Start() // FIXME: should auto-start
 	return
@@ -113,7 +113,7 @@ func (fixture *ruleFixture) SetCellValue(device, cellName string, value interfac
 }
 
 func TestDeviceDefinition(t *testing.T) {
-	fixture := NewRuleFixture(t, false)
+	fixture := NewRuleFixture(t, false, "testrules.js")
 	defer fixture.tearDown()
 	fixture.Verify(
 		"driver -> /devices/stabSettings/meta/name: [Stabilization Settings] (QoS 1, retained)",
@@ -144,7 +144,7 @@ func TestDeviceDefinition(t *testing.T) {
 }
 
 func TestRules(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t)
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()
 
 	fixture.SetCellValue("stabSettings", "enabled", true)
@@ -263,21 +263,21 @@ func (fixture *ruleFixture) VerifyTimers(prefix string) {
 }
 
 func TestTimers(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t)
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()
 
 	fixture.VerifyTimers("")
 }
 
 func TestDirectTimers(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t)
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()
 
 	fixture.VerifyTimers("+")
 }
 
 func TestDirectMQTTMessages(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t)
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()
 
 	fixture.publish("/devices/somedev/controls/sendit/meta/type", "switch", "somedev/sendit")
@@ -293,7 +293,7 @@ func TestDirectMQTTMessages(t *testing.T) {
 }
 
 func TestRetainedState(t *testing.T) {
-	fixture := NewRuleFixture(t, true)
+	fixture := NewRuleFixture(t, true, "testrules.js")
 	defer fixture.tearDown()
 	fixture.engine.Start() // FIXME: should auto-start
 
@@ -341,7 +341,7 @@ func TestRetainedState(t *testing.T) {
 }
 
 func TestCellChange(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t)
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()
 
 	fixture.publish("/devices/somedev/controls/foobarbaz/meta/type", "text", "somedev/foobarbaz")
@@ -380,7 +380,7 @@ func verifyFileExists(t *testing.T, path string) {
 }
 
 func TestRunShellCommand(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t)
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()
 
 	wd, err := os.Getwd()
@@ -432,7 +432,7 @@ func TestRunShellCommand(t *testing.T) {
 }
 
 func TestRunShellCommandIO(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t)
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()
 
 	fixture.publish("/devices/somedev/controls/cmdWithOutput/meta/type", "text",
@@ -468,7 +468,49 @@ func TestRunShellCommandIO(t *testing.T) {
 	)
 }
 
-// TBD: runShellCommand() / spawn() docs & example
+func TestRuleCheckOptimization(t *testing.T) {
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules_opt.js")
+	defer fixture.tearDown()
+
+	fixture.publish("/devices/somedev/controls/countIt/meta/type", "text", "somedev/countIt")
+	fixture.publish("/devices/somedev/controls/countIt", "0", "somedev/countIt")
+	fixture.Verify(
+		// That's the first time when all rules are run.
+		// somedev/countIt is incomplete here, but
+		// the engine notes that rule's condition depends
+		// on the cell
+		"[rule] condCount: asSoonAs()",
+		"tst -> /devices/somedev/controls/countIt/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/countIt: [0] (QoS 1, retained)",
+		// here the value of the cell changes, so the rule is invoked
+		"[rule] condCount: asSoonAs()")
+
+	fixture.publish("/devices/somedev/controls/temp", "25", "somedev/temp")
+	fixture.publish("/devices/somedev/controls/countIt", "42", "somedev/countIt")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/temp: [25] (QoS 1, retained)",
+		// changing unrelated cell doesn't cause the rule to be invoked
+		"tst -> /devices/somedev/controls/countIt: [42] (QoS 1, retained)",
+		"[rule] condCount: asSoonAs()",
+		// asSoonAs function called during the first run + when countIt
+		// value changed to 42
+		"[rule] condCount fired, count=3",
+		// ruleWithoutCells follows condCount rule in testrules.js
+		// and doesn't utilize any cells. It's run just once when condCount
+		// rule sets a global variable to true.
+		"[rule] ruleWithoutCells fired")
+
+	fixture.publish("/devices/somedev/controls/countIt", "0", "somedev/countIt")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/countIt: [0] (QoS 1, retained)",
+		"[rule] condCount: asSoonAs()")
+	fixture.publish("/devices/somedev/controls/countIt", "42", "somedev/countIt")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/countIt: [42] (QoS 1, retained)",
+		"[rule] condCount: asSoonAs()",
+		"[rule] condCount fired, count=5")
+}
+
 // TBD: metadata (like, meta["devname"]["controlName"])
 // TBD: proper data path:
 // http://stackoverflow.com/questions/18537257/golang-how-to-get-the-directory-of-the-currently-running-file
