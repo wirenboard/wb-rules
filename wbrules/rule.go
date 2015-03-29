@@ -923,7 +923,17 @@ func (engine *RuleEngine) Start() {
 		close(ready)
 	})
 	go func () {
-		_, _ = <- ready
+		// cell changes are ignored until the engine is ready
+		// FIXME: some very small probability of race condition is
+		// present here
+	ReadyWaitLoop:
+		for {
+			select {
+			case <- ready:
+				break ReadyWaitLoop
+			case <- engine.cellChange:
+			}
+		}
 		for {
 			select {
 			case cellSpec, ok := <- engine.cellChange:
