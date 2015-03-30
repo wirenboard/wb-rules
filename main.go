@@ -12,9 +12,13 @@ const DRIVER_CLIENT_ID = "rules"
 func main () {
 	brokerAddress := flag.String("broker", "tcp://localhost:1883", "MQTT broker url")
 	debug := flag.Bool("debug", false, "Enable debugging")
+	useSyslog := flag.Bool("syslog", false, "Use syslog for logging")
 	flag.Parse()
 	if flag.NArg() < 1 {
 		wbgo.Error.Fatal("must specify rule file name(s)")
+	}
+	if *useSyslog {
+		wbgo.UseSyslog()
 	}
 	if *debug {
 		wbgo.SetDebuggingEnabled(true)
