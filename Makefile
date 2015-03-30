@@ -1,7 +1,7 @@
 GOM=gom
 .PHONY: all clean
 
-all: wb-rules
+all: clean wb-rules
 clean:
 
 prepare:
@@ -12,7 +12,11 @@ prepare:
 	  CC_FOR_TARGET=arm-linux-gnueabi-gcc CGO_ENABLED=1 $(GOM) install
 
 clean:
-	rm -f wb-rules wbrules/*.rice-box.go
+	rm -f wb-rules wbrules/*.rice-box.go _vendor/
+
+# We remove the box file after build because
+# it may cause problems during development
+# (changes in lib.js being ignored)
 
 wb-rules: main.go wbrules/*.go
 	(cd wbrules && $(HOME)/go/bin/rice embed-go)
