@@ -908,7 +908,13 @@ func (engine *RuleEngine) RunRules(cellSpec *CellSpec, timerName string) {
 func (engine *RuleEngine) LoadScript(path string) error {
 	defer engine.ctx.Pop()
 	if r := engine.ctx.PevalFile(path); r != 0 {
-		return fmt.Errorf("failed to load %s: %s", path, engine.ctx.SafeToString(-1))
+		engine.ctx.GetPropString(-1, "stack")
+		message := engine.ctx.SafeToString(-1)
+		engine.ctx.Pop()
+		if message == "" {
+			message = engine.ctx.SafeToString(-1)
+		}
+		return fmt.Errorf("failed to load %s: %s", path, message)
 	}
 	return nil
 }
