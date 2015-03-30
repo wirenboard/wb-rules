@@ -1,5 +1,9 @@
 // -*- mode: js2-mode -*-
 
+defineAlias("stabEnabled", "stabSettings/enabled");
+defineAlias("temp", "somedev/temp");
+defineAlias("sw", "somedev/sw");
+
 defineVirtualDevice("stabSettings", {
   title: "Stabilization Settings",
   cells: {
@@ -22,22 +26,21 @@ defineVirtualDevice("stabSettings", {
 
 defineRule("heaterOn", {
   asSoonAs: function () {
-    return dev.stabSettings.enabled && dev.somedev.temp < dev.stabSettings.lowThreshold;
+    return stabEnabled && temp < dev.stabSettings.lowThreshold;
   },
   then: function () {
     log("heaterOn fired");
-    dev.somedev.sw = true;
+    sw = true;
   }
 });
 
 defineRule("heaterOff", {
   when: function () {
-    return dev.somedev.sw &&
-      (!dev.stabSettings.enabled || dev.somedev.temp >= dev.stabSettings.highThreshold);
+    return sw && (!stabEnabled || temp >= dev.stabSettings.highThreshold);
   },
   then: function () {
     log("heaterOff fired");
-    dev.somedev.sw = false;
+    sw = false;
   }
 });
 

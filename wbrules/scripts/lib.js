@@ -46,6 +46,30 @@ var _WbRules = {
     });
   },
 
+  defineAlias: function (name, fullName) {
+    if (!name || !fullName)
+      throw new Error("invalid alias definition");
+    var m = fullName.match(/([^\/]+)+\/([^\/]+)+$/);
+    if (!m)
+      throw new Error("invalid cell full name for alias");
+    var devName = m[1], cellName = m[2], d = null;
+    Object.defineProperty(
+      (function () { return this; })(),
+      name,
+      {
+        get: function () {
+          if (!d)
+            d = dev[devName];
+          return d[cellName];
+        },
+        set: function (value) {
+          if (!d)
+            d = dev[devName];
+          d[cellName] = value;
+        }
+      });
+  },
+
   defineRule: function (name, def) {
     debug("defineRule: " + name);
     if (typeof name != "string" || typeof def != "object")
@@ -168,5 +192,7 @@ function spawn(cmd, args, options) {
 function runShellCommand(cmd, options) {
   spawn("/bin/sh", ["-c", cmd], options);
 }
+
+defineAlias = _WbRules.defineAlias;
 
 // TBD: perhaps in non-debug mode, shouldn't even call go on debug()
