@@ -125,6 +125,10 @@ defineRule("doClick", {
 Значение параметра зависит от его типа: `switch`, `wo-switch` -
 булевский тип, "text" - строковой, остальные типы параметров считаются числовыми.
 
+`defineAlias(name, "device/param")` задаёт альтернативное имя для параметра.
+Например, после выполнения `defineAlias("heaterRelayOn", "Relays/Relay 1");` выражение
+`heaterRelayOn = true` означает то же самое, что `dev["Relays"]["Relay 1"] = true`.
+
 `startTimer(name, milliseconds)`
 запускает однократный таймер с указанным именем. 
 

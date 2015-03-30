@@ -20,25 +20,28 @@ defineVirtualDevice("stabSettings", {
   }
 });
 
+defineAlias("stabEnabled", "stabSettings/enabled");
+defineAlias("roomTemp", "Weather/Temp 1");
+defineAlias("heaterRelayOn", "Relays/Relay 1");
+
 defineRule("heaterOn", {
   asSoonAs: function () {
-    return dev.stabSettings.enabled && dev.Weather["Temp 1"] < dev.stabSettings.lowThreshold;
+    return stabEnabled && roomTemp < dev.stabSettings.lowThreshold;
   },
   then: function () {
     log("heaterOn fired");
-    dev.Relays["Relay 1"] = true;
+    heaterRelayOn = true;
     startTicker("heating", 3000);
   }
 });
 
 defineRule("heaterOff", {
   when: function () {
-    return dev.Relays["Relay 1"] &&
-      (!dev.stabSettings.enabled || dev.Weather["Temp 1"] >= dev.stabSettings.highThreshold);
+    return heaterRelayOn && (!stabEnabled || roomTemp >= dev.stabSettings.highThreshold);
   },
   then: function () {
     log("heaterOff fired");
-    dev.Relays["Relay 1"] = false;
+    heaterRelayOn = false;
     timers.heating.stop();
     startTimer("heatingOff", 1000);
   }
