@@ -1,25 +1,25 @@
 package wbrules
 
 import (
+	"bytes"
+	"fmt"
+	wbgo "github.com/contactless/wbgo"
 	"io"
 	"os"
-	"fmt"
-	"sync"
-	"bytes"
-	"syscall"
 	"os/exec"
-	wbgo "github.com/contactless/wbgo"
+	"sync"
+	"syscall"
 )
 
 type CommandResult struct {
-	ExitStatus int
-	CapturedOutput string
+	ExitStatus          int
+	CapturedOutput      string
 	CapturedErrorOutput string
 }
 
 func captureCommandOutput(pipe io.ReadCloser, wg *sync.WaitGroup, result *string, e *error) {
 	wg.Add(1)
-	go func () {
+	go func() {
 		var buf bytes.Buffer
 		if _, err := io.Copy(&buf, pipe); err == nil {
 			*result = string(buf.Bytes())
@@ -63,7 +63,7 @@ func Spawn(name string, args []string, captureOutput bool, captureErrorOutput bo
 		var wg sync.WaitGroup
 		if stdinPipe != nil {
 			wg.Add(1)
-			go func () {
+			go func() {
 				io.WriteString(stdinPipe, *input)
 				stdinPipe.Close()
 				wg.Done()

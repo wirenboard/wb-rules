@@ -1,29 +1,29 @@
 package wbrules
 
 import (
-	"fmt"
-	"log"
-	"time"
 	"errors"
+	"fmt"
+	"github.com/GeertJohan/go.rice"
+	wbgo "github.com/contactless/wbgo"
+	duktape "github.com/ivan4th/go-duktape"
+	"github.com/stretchr/objx"
+	"log"
 	"strconv"
 	"strings"
-	"github.com/stretchr/objx"
-	"github.com/GeertJohan/go.rice"
-	duktape "github.com/ivan4th/go-duktape"
-	wbgo "github.com/contactless/wbgo"
+	"time"
 )
 
 type esCallback uint64
 
 const (
-	NO_TIMER_NAME = ""
-	LIB_FILE = "lib.js"
-	DEFAULT_CELL_MAX = 255.0
-	TIMERS_CAPACITY = 128
-	RULES_CAPACITY = 256
+	NO_TIMER_NAME       = ""
+	LIB_FILE            = "lib.js"
+	DEFAULT_CELL_MAX    = 255.0
+	TIMERS_CAPACITY     = 128
+	RULES_CAPACITY      = 256
 	CELL_RULES_CAPACITY = 8
-	NO_CALLBACK = esCallback(0)
-	RULE_TYPE_NONE = iota
+	NO_CALLBACK         = esCallback(0)
+	RULE_TYPE_NONE      = iota
 	RULE_TYPE_LEVEL_TRIGGERED
 	RULE_TYPE_EDGE_TRIGGERED
 	RULE_TYPE_ON_CELL_CHANGE
@@ -35,7 +35,7 @@ type Timer interface {
 	GetChannel() <-chan time.Time
 	Stop()
 }
-type TimerFunc func (id int, d time.Duration, periodic bool) Timer
+type TimerFunc func(id int, d time.Duration, periodic bool) Timer
 
 type RealTicker struct {
 	innerTicker *time.Ticker
@@ -82,36 +82,36 @@ func newTimer(id int, d time.Duration, periodic bool) Timer {
 }
 
 type TimerEntry struct {
-	timer Timer
+	timer    Timer
 	periodic bool
-	quit chan struct{}
-	name string
+	quit     chan struct{}
+	name     string
 }
 
 type Rule struct {
-	engine *RuleEngine
-	name string
-	cond esCallback
-	then esCallback
-	onCellChange []*Cell
-	ruleType RuleType
-	firstRun bool
+	engine        *RuleEngine
+	name          string
+	cond          esCallback
+	then          esCallback
+	onCellChange  []*Cell
+	ruleType      RuleType
+	firstRun      bool
 	prevCondValue bool
-	oldCellValue interface{}
-	shouldCheck bool
+	oldCellValue  interface{}
+	shouldCheck   bool
 }
 
 // TBD: reduce the spaghetti, use distinct Rule subtypes
 func newRule(engine *RuleEngine, name string, defIndex int) (*Rule, error) {
 	rule := &Rule{
-		engine: engine,
-		name: name,
-		cond: 0,
-		then: 0,
-		firstRun: true,
+		engine:        engine,
+		name:          name,
+		cond:          0,
+		then:          0,
+		firstRun:      true,
 		prevCondValue: false,
-		oldCellValue: nil,
-		shouldCheck: false,
+		oldCellValue:  nil,
+		shouldCheck:   false,
 	}
 	ctx := engine.ctx
 
@@ -142,7 +142,7 @@ func newRule(engine *RuleEngine, name string, defIndex int) (*Rule, error) {
 		ctx.GetPropString(defIndex, "onCellChange")
 		var cellNames []string
 		if ctx.IsString(-1) {
-			cellNames = []string{ ctx.ToString(-1) }
+			cellNames = []string{ctx.ToString(-1)}
 		} else {
 			cellNames = StringArrayToGo(ctx, -1)
 			if len(cellNames) == 0 {
@@ -192,7 +192,7 @@ func (rule *Rule) Check(cell *Cell) {
 	}
 	shouldFire := false
 	args := objx.Map(nil)
-	switch (rule.ruleType) {
+	switch rule.ruleType {
 	case RULE_TYPE_LEVEL_TRIGGERED:
 		shouldFire = rule.invokeCond()
 	case RULE_TYPE_EDGE_TRIGGERED:
@@ -204,9 +204,9 @@ func (rule *Rule) Check(cell *Cell) {
 			for _, checkCell := range rule.onCellChange {
 				if cell == checkCell {
 					shouldFire = true
-					args = objx.New(map[string]interface{} {
-						"device": cell.DevName(),
-						"cell": cell.Name(),
+					args = objx.New(map[string]interface{}{
+						"device":   cell.DevName(),
+						"cell":     cell.Name(),
 						"newValue": cell.Value(),
 						"oldValue": rule.oldCellValue,
 					})
@@ -234,54 +234,54 @@ func (rule *Rule) Destroy() {
 	if rule.cond != 0 {
 		rule.engine.removeCallback("ruleFuncs", rule.cond)
 	}
-	if rule.then != 0{
+	if rule.then != 0 {
 		rule.engine.removeCallback("ruleFuncs", rule.then)
 	}
 	rule.ruleType = RULE_TYPE_NONE
 }
 
-type LogFunc func (string)
+type LogFunc func(string)
 
 type RuleEngine struct {
-	model *CellModel
-	mqttClient wbgo.MQTTClient
-	ctx *duktape.Context
-	logFunc LogFunc
-	cellChange chan *CellSpec
-	scriptBox *rice.Box
-	timerFunc TimerFunc
-	timers []*TimerEntry
-	callbackIndex esCallback
-	ruleMap map[string]*Rule
-	ruleList []string
-	notedCells map[*Cell]bool
-	notedTimers map[string]bool
-	cellToRuleMap map[*Cell][]*Rule
+	model             *CellModel
+	mqttClient        wbgo.MQTTClient
+	ctx               *duktape.Context
+	logFunc           LogFunc
+	cellChange        chan *CellSpec
+	scriptBox         *rice.Box
+	timerFunc         TimerFunc
+	timers            []*TimerEntry
+	callbackIndex     esCallback
+	ruleMap           map[string]*Rule
+	ruleList          []string
+	notedCells        map[*Cell]bool
+	notedTimers       map[string]bool
+	cellToRuleMap     map[*Cell][]*Rule
 	rulesWithoutCells map[*Rule]bool
-	timerRules map[string][]*Rule
-	currentTimer string
+	timerRules        map[string][]*Rule
+	currentTimer      string
 }
 
 func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
 	engine = &RuleEngine{
-		model: model,
+		model:      model,
 		mqttClient: mqttClient,
-		ctx: duktape.NewContext(),
-		logFunc: func (message string) {
+		ctx:        duktape.NewContext(),
+		logFunc: func(message string) {
 			wbgo.Info.Printf("RULE: %s\n", message)
 		},
-		scriptBox: rice.MustFindBox("scripts"),
-		timerFunc: newTimer,
-		timers: make([]*TimerEntry, 0, TIMERS_CAPACITY),
-		callbackIndex: 1,
-		ruleMap: make(map[string]*Rule),
-		ruleList: make([]string, 0, RULES_CAPACITY),
-		notedCells: nil,
-		notedTimers: nil,
-		cellToRuleMap: make(map[*Cell][]*Rule),
+		scriptBox:         rice.MustFindBox("scripts"),
+		timerFunc:         newTimer,
+		timers:            make([]*TimerEntry, 0, TIMERS_CAPACITY),
+		callbackIndex:     1,
+		ruleMap:           make(map[string]*Rule),
+		ruleList:          make([]string, 0, RULES_CAPACITY),
+		notedCells:        nil,
+		notedTimers:       nil,
+		cellToRuleMap:     make(map[*Cell][]*Rule),
 		rulesWithoutCells: make(map[*Rule]bool),
-		timerRules: make(map[string][]*Rule),
-		currentTimer: NO_TIMER_NAME,
+		timerRules:        make(map[string][]*Rule),
+		currentTimer:      NO_TIMER_NAME,
 	}
 
 	engine.initCallbackList("ruleEngineTimers")
@@ -289,19 +289,19 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 	engine.initCallbackList("ruleFuncs")
 
 	engine.ctx.PushGlobalObject()
-	engine.defineEngineFunctions(map[string]func() int {
+	engine.defineEngineFunctions(map[string]func() int{
 		"defineVirtualDevice": engine.esDefineVirtualDevice,
-		"log": engine.esLog,
-		"debug": engine.esDebug,
-		"publish": engine.esPublish,
-		"_wbDevObject": engine.esWbDevObject,
-		"_wbCellObject": engine.esWbCellObject,
-		"_wbStartTimer": engine.esWbStartTimer,
-		"_wbStopTimer": engine.esWbStopTimer,
+		"log":                  engine.esLog,
+		"debug":                engine.esDebug,
+		"publish":              engine.esPublish,
+		"_wbDevObject":         engine.esWbDevObject,
+		"_wbCellObject":        engine.esWbCellObject,
+		"_wbStartTimer":        engine.esWbStartTimer,
+		"_wbStopTimer":         engine.esWbStopTimer,
 		"_wbCheckCurrentTimer": engine.esWbCheckCurrentTimer,
-		"_wbSpawn": engine.esWbSpawn,
-		"_wbDefineRule": engine.esWbDefineRule,
-		"runRules": engine.esWbRunRules,
+		"_wbSpawn":             engine.esWbSpawn,
+		"_wbDefineRule":        engine.esWbDefineRule,
+		"runRules":             engine.esWbRunRules,
 	})
 	engine.ctx.Pop()
 	if err := engine.loadLib(); err != nil {
@@ -339,7 +339,7 @@ func (engine *RuleEngine) invokeCallback(propName string, key interface{}, args 
 		argCount++
 	}
 	r := false
-	if s := engine.ctx.PcallProp(-2 - argCount, argCount); s != 0 {
+	if s := engine.ctx.PcallProp(-2-argCount, argCount); s != 0 {
 		wbgo.Error.Printf("failed to invoke callback %s[%v]: %s",
 			propName, key, engine.ctx.SafeToString(-1))
 	} else {
@@ -391,7 +391,7 @@ func (engine *RuleEngine) SetTimerFunc(timerFunc TimerFunc) {
 func (engine *RuleEngine) loadLib() error {
 	libStr, err := engine.scriptBox.String(LIB_FILE)
 	if err != nil {
-		return  err
+		return err
 	}
 	engine.ctx.PushString(LIB_FILE)
 	// we use PcompileStringFilename here to get readable stacktraces
@@ -506,9 +506,9 @@ func (engine *RuleEngine) esPublish() int {
 		return duktape.DUK_RET_TYPE_ERROR
 	}
 	engine.mqttClient.Publish(wbgo.MQTTMessage{
-		Topic: engine.ctx.GetString(-2),
-		Payload: engine.ctx.SafeToString(-1),
-		QoS: byte(qos),
+		Topic:    engine.ctx.GetString(-2),
+		Payload:  engine.ctx.SafeToString(-1),
+		QoS:      byte(qos),
 		Retained: retain,
 	})
 	return 0
@@ -585,21 +585,21 @@ func (engine *RuleEngine) esWbCellObject() int {
 	}
 	cell := dev.EnsureCell(engine.ctx.GetString(-1))
 	engine.ctx.PushGoObject(cell)
-	engine.defineEngineFunctions(map[string]func() int {
-		"rawValue": func () int {
+	engine.defineEngineFunctions(map[string]func() int{
+		"rawValue": func() int {
 			engine.trackCell(cell)
 			engine.ctx.PushString(cell.RawValue())
 			return 1
 		},
-		"value": func () int {
+		"value": func() int {
 			engine.trackCell(cell)
-			m := objx.New(map[string]interface{} {
+			m := objx.New(map[string]interface{}{
 				"v": cell.Value(),
 			})
 			PushJSObject(engine.ctx, m)
 			return 1
 		},
-		"setValue": func () int {
+		"setValue": func() int {
 			engine.trackCell(cell)
 			if engine.ctx.GetTop() != 1 || !engine.ctx.IsObject(-1) {
 				return duktape.DUK_RET_ERROR
@@ -612,7 +612,7 @@ func (engine *RuleEngine) esWbCellObject() int {
 			cell.SetValue(m["v"])
 			return 1
 		},
-		"isComplete": func () int {
+		"isComplete": func() int {
 			engine.trackCell(cell)
 			engine.ctx.PushBoolean(cell.IsComplete())
 			return 1
@@ -622,7 +622,7 @@ func (engine *RuleEngine) esWbCellObject() int {
 }
 
 func (engine *RuleEngine) fireTimer(n int) {
-	entry := engine.timers[n - 1]
+	entry := engine.timers[n-1]
 	if entry == nil {
 		wbgo.Error.Printf("firing unknown timer %d", n)
 		return
@@ -663,14 +663,14 @@ func (engine *RuleEngine) esWbStartTimer() int {
 
 	entry := &TimerEntry{
 		periodic: periodic,
-		quit: make(chan struct{}, 2),
-		name: name,
+		quit:     make(chan struct{}, 2),
+		name:     name,
 	}
 
 	var n int
 	for n = 1; n <= len(engine.timers); n++ {
-		if engine.timers[n - 1] == nil {
-			engine.timers[n - 1] = entry
+		if engine.timers[n-1] == nil {
+			engine.timers[n-1] = entry
 		}
 		break
 	}
@@ -682,19 +682,19 @@ func (engine *RuleEngine) esWbStartTimer() int {
 		engine.storeCallback("ruleEngineTimers", 0, n)
 	}
 
-	entry.timer = engine.timerFunc(n, time.Duration(ms * float64(time.Millisecond)), periodic)
+	entry.timer = engine.timerFunc(n, time.Duration(ms*float64(time.Millisecond)), periodic)
 	tickCh := entry.timer.GetChannel()
-	go func () {
+	go func() {
 		for {
 			select {
-			case <- tickCh:
-				engine.model.CallSync(func () {
+			case <-tickCh:
+				engine.model.CallSync(func() {
 					engine.fireTimer(n)
 				})
 				if !periodic {
 					return
 				}
-			case <- entry.quit:
+			case <-entry.quit:
 				entry.timer.Stop()
 				return
 			}
@@ -710,7 +710,7 @@ func (engine *RuleEngine) removeTimer(n int) {
 	// it shouldn't cause any problems as deleting nonexistent
 	// property is not an error
 	engine.removeCallback("ruleEngineTimers", n)
-	engine.timers[n - 1] = nil
+	engine.timers[n-1] = nil
 }
 
 func (engine *RuleEngine) stopTimerByName(name string) {
@@ -727,7 +727,7 @@ func (engine *RuleEngine) stopTimerByIndex(n int) {
 	if n == 0 || n > len(engine.timers) {
 		return
 	}
-	if entry := engine.timers[n - 1]; entry != nil {
+	if entry := engine.timers[n-1]; entry != nil {
 		engine.removeTimer(n)
 		close(entry.quit)
 	} else {
@@ -798,15 +798,15 @@ func (engine *RuleEngine) esWbSpawn() int {
 	captureOutput := engine.ctx.GetBoolean(2)
 	captureErrorOutput := engine.ctx.GetBoolean(3)
 	command := engine.ctx.GetString(0)
-	go func () {
+	go func() {
 		r, err := Spawn(args[0], args[1:], captureOutput, captureErrorOutput, input)
 		if err != nil {
 			wbgo.Error.Printf("external command failed: %s", err)
 			return
 		}
 		if callbackIndex > 0 {
-			engine.model.CallSync(func () {
-				args := objx.New(map[string]interface{} {
+			engine.model.CallSync(func() {
+				args := objx.New(map[string]interface{}{
 					"exitStatus": r.ExitStatus,
 				})
 				if captureOutput {
@@ -861,7 +861,7 @@ func (engine *RuleEngine) esWbRunRules() int {
 func (engine *RuleEngine) defineEngineFunctions(fns map[string]func() int) {
 	for name, fn := range fns {
 		f := fn
-		engine.ctx.PushGoFunc(func (*duktape.Context) int {
+		engine.ctx.PushGoFunc(func(*duktape.Context) int {
 			return f()
 		})
 		engine.ctx.PutPropString(-2, name)
@@ -925,25 +925,25 @@ func (engine *RuleEngine) Start() {
 	}
 	engine.cellChange = engine.model.AcquireCellChangeChannel()
 	ready := make(chan struct{})
-	engine.model.WhenReady(func () {
+	engine.model.WhenReady(func() {
 		engine.RunRules(nil, NO_TIMER_NAME)
 		close(ready)
 	})
-	go func () {
+	go func() {
 		// cell changes are ignored until the engine is ready
 		// FIXME: some very small probability of race condition is
 		// present here
 	ReadyWaitLoop:
 		for {
 			select {
-			case <- ready:
+			case <-ready:
 				break ReadyWaitLoop
-			case <- engine.cellChange:
+			case <-engine.cellChange:
 			}
 		}
 		for {
 			select {
-			case cellSpec, ok := <- engine.cellChange:
+			case cellSpec, ok := <-engine.cellChange:
 				if ok {
 					if cellSpec != nil {
 						wbgo.Debug.Printf(
@@ -953,7 +953,7 @@ func (engine *RuleEngine) Start() {
 						wbgo.Debug.Printf(
 							"rule engine: running rules")
 					}
-					engine.model.CallSync(func () {
+					engine.model.CallSync(func() {
 						engine.RunRules(cellSpec, NO_TIMER_NAME)
 					})
 				} else {

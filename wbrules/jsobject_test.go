@@ -1,13 +1,13 @@
 package wbrules
 
 import (
-	"testing"
+	duktape "github.com/ivan4th/go-duktape"
 	"github.com/stretchr/objx"
 	"github.com/stretchr/testify/assert"
-	duktape "github.com/ivan4th/go-duktape"
+	"testing"
 )
 
-var objTests = []string {
+var objTests = []string{
 	`{}`,
 	`{
            "x": 3,
@@ -15,7 +15,7 @@ var objTests = []string {
            "z": { "rr": 42 },
            "arrKey": [ 1, 2, "x", { "y": "zz" } ]
          }`,
-};
+}
 
 func TestJSToObjx(t *testing.T) { // TBD: -> TestJSToObjxAndBack
 	ctx := duktape.NewContext()

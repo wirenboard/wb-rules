@@ -1,9 +1,9 @@
 package wbrules
 
 import (
-	"github.com/stretchr/objx"
-	duktape "github.com/ivan4th/go-duktape"
 	wbgo "github.com/contactless/wbgo"
+	duktape "github.com/ivan4th/go-duktape"
+	"github.com/stretchr/objx"
 )
 
 func getObject(ctx *duktape.Context, objIndex int) map[string]interface{} {

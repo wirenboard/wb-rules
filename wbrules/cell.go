@@ -1,30 +1,30 @@
 package wbrules
 
 import (
-        "fmt"
-	"sync"
-	"sort"
-	"time"
 	"errors"
-	"strconv"
+	"fmt"
 	wbgo "github.com/contactless/wbgo"
+	"sort"
+	"strconv"
+	"sync"
+	"time"
 )
 
 const (
-	CELL_CHANGE_SLICE_CAPACITY = 4
+	CELL_CHANGE_SLICE_CAPACITY   = 4
 	CELL_CHANGE_CLOSE_TIMEOUT_MS = 200
 )
 
 type CellSpec struct {
-	DevName string
+	DevName  string
 	CellName string
 }
 
 type CellModel struct {
 	wbgo.ModelBase
-	devices map[string]CellModelDevice
+	devices            map[string]CellModelDevice
 	cellChangeChannels []chan *CellSpec
-	started bool
+	started            bool
 }
 
 type CellModelDevice interface {
@@ -38,7 +38,7 @@ type CellModelDeviceBase struct {
 	wbgo.DeviceBase
 	model *CellModel
 	cells map[string]*Cell
-	self CellModelDevice
+	self  CellModelDevice
 }
 
 type CellModelLocalDevice struct {
@@ -50,19 +50,19 @@ type CellModelExternalDevice struct {
 }
 
 type Cell struct {
-	device CellModelDevice
-	name string
-	title string
+	device      CellModelDevice
+	name        string
+	title       string
 	controlType string
-	max float64
-	value string
-	gotType bool
-	gotValue bool
+	max         float64
+	value       string
+	gotType     bool
+	gotValue    bool
 }
 
 func NewCellModel() *CellModel {
 	return &CellModel{
-		devices: make(map[string]CellModelDevice),
+		devices:            make(map[string]CellModelDevice),
 		cellChangeChannels: make([]chan *CellSpec, 0, CELL_CHANGE_SLICE_CAPACITY),
 	}
 }
@@ -81,7 +81,7 @@ func (model *CellModel) Start() error {
 	for _, name := range names {
 		model.Observer.OnNewDevice(model.devices[name])
 	}
-	model.Observer.WhenReady(func () {
+	model.Observer.WhenReady(func() {
 		for _, name := range names {
 			model.devices[name].queryParams()
 		}
@@ -101,7 +101,7 @@ func (model *CellModel) Stop() {
 	var wg sync.WaitGroup
 	wg.Add(len(chs))
 	for _, ch := range chs {
-		go func (c chan *CellSpec) {
+		go func(c chan *CellSpec) {
 			model.closeCellChangeChannel(c)
 			wg.Done()
 		}(ch)
@@ -187,10 +187,10 @@ func (model *CellModel) ReleaseCellChangeChannel(ch chan *CellSpec) {
 func (model *CellModel) closeCellChangeChannel(ch chan *CellSpec) {
 	timer := time.NewTimer(CELL_CHANGE_CLOSE_TIMEOUT_MS * time.Millisecond)
 	select {
-	case <- timer.C:
+	case <-timer.C:
 		close(ch)
 		return
-	case _, ok := <- ch:
+	case _, ok := <-ch:
 		if !ok {
 			timer.Stop()
 			return
@@ -220,13 +220,13 @@ func (dev *CellModelDeviceBase) SetTitle(title string) {
 
 func (dev *CellModelDeviceBase) setCell(name, controlType string, value interface{}, complete bool, max float64) (cell *Cell) {
 	cell = &Cell{
-		device: dev.self,
-		name: name,
-		title: name,
+		device:      dev.self,
+		name:        name,
+		title:       name,
 		controlType: controlType,
-		max: max,
-		gotType: complete,
-		gotValue: complete,
+		max:         max,
+		gotType:     complete,
+		gotValue:    complete,
 	}
 	cell.setValueQuiet(value)
 	dev.cells[name] = cell
@@ -237,7 +237,7 @@ func (dev *CellModelDeviceBase) SetCell(name, controlType string, value interfac
 	return dev.setCell(name, controlType, value, true, -1)
 }
 
-func (dev *CellModelDeviceBase) SetRangeCell(name string,  value interface{}, max float64) (cell *Cell) {
+func (dev *CellModelDeviceBase) SetRangeCell(name string, value interface{}, max float64) (cell *Cell) {
 	return dev.setCell(name, "range", value, true, max)
 }
 

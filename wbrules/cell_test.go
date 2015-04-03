@@ -1,13 +1,13 @@
 package wbrules
 
 import (
-	"log"
 	"fmt"
-	"time"
+	wbgo "github.com/contactless/wbgo"
+	"github.com/stretchr/testify/assert"
+	"log"
 	"strings"
 	"testing"
-        wbgo "github.com/contactless/wbgo"
-	"github.com/stretchr/testify/assert"
+	"time"
 )
 
 const (
@@ -15,19 +15,19 @@ const (
 )
 
 type cellFixture struct {
-	t *testing.T
-	driver *wbgo.Driver
-	broker *wbgo.FakeMQTTBroker
+	t                    *testing.T
+	driver               *wbgo.Driver
+	broker               *wbgo.FakeMQTTBroker
 	client, driverClient wbgo.MQTTClient
-	model *CellModel
-	cellChange chan *CellSpec
+	model                *CellModel
+	cellChange           chan *CellSpec
 }
 
 func NewCellFixture(t *testing.T, waitForRetained bool) *cellFixture {
 	fixture := &cellFixture{
-		t: t,
+		t:      t,
 		broker: wbgo.NewFakeMQTTBroker(t),
-		model: NewCellModel(),
+		model:  NewCellModel(),
 	}
 	if waitForRetained {
 		fixture.broker.SetWaitForRetained(true)
@@ -43,9 +43,9 @@ func NewCellFixture(t *testing.T, waitForRetained bool) *cellFixture {
 	return fixture
 }
 
-func (fixture *cellFixture) expectCellChange(expectedCellNames... string) {
+func (fixture *cellFixture) expectCellChange(expectedCellNames ...string) {
 	for _, expectedCellName := range expectedCellNames {
-		cellSpec := <- fixture.cellChange
+		cellSpec := <-fixture.cellChange
 		fullName := ""
 		if cellSpec != nil {
 			fullName = fmt.Sprintf("%s/%s", cellSpec.DevName, cellSpec.CellName)
@@ -54,13 +54,13 @@ func (fixture *cellFixture) expectCellChange(expectedCellNames... string) {
 	}
 	timer := time.NewTimer(EXTRA_CELL_CHANGE_WAIT_TIME_MS * time.Millisecond)
 	select {
-	case <- timer.C:
-	case cellSpec := <- fixture.cellChange:
+	case <-timer.C:
+	case cellSpec := <-fixture.cellChange:
 		fixture.t.Fatalf("unexpected cell change: %v", cellSpec)
 	}
 }
 
-func (fixture *cellFixture) publish(topic, value string, expectedCellNames... string) {
+func (fixture *cellFixture) publish(topic, value string, expectedCellNames ...string) {
 	retained := !strings.HasSuffix(topic, "/on")
 	fixture.client.Publish(wbgo.MQTTMessage{topic, value, 1, retained})
 	fixture.expectCellChange(expectedCellNames...)
@@ -68,7 +68,7 @@ func (fixture *cellFixture) publish(topic, value string, expectedCellNames... st
 
 func (fixture *cellFixture) tearDown() {
 	fixture.driver.Stop()
-	cellSpec, ok := <- fixture.cellChange
+	cellSpec, ok := <-fixture.cellChange
 	if ok {
 		log.Printf("WARNING! unexpected cell change at the end of the test: %v", cellSpec)
 	}
@@ -115,7 +115,7 @@ func TestExternalCells(t *testing.T) {
 	fixture.broker.SkipTill("tst -> /devices/somedev/controls/paramTwo: [755] (QoS 1, retained)")
 	cell3 := dev.EnsureCell("paramThree")
 	assert.False(t, cell3.IsComplete())
-	fixture.driver.CallSync(func () {
+	fixture.driver.CallSync(func() {
 		cell3.SetValue(43)
 	})
 	fixture.expectCellChange("somedev/paramThree")
@@ -164,7 +164,7 @@ func TestLocalCells(t *testing.T) {
 		"driver -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
 	)
 
-	fixture.driver.CallSync(func () {
+	fixture.driver.CallSync(func() {
 		cell2.SetValue(20) // this setting has no effect
 		cell2.SetValue(22)
 	})

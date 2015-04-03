@@ -1,13 +1,13 @@
 package wbrules
 
 import (
+	wbgo "github.com/contactless/wbgo"
+	"github.com/stretchr/testify/assert"
+	"io/ioutil"
 	"os"
 	"path"
-	"time"
-	"io/ioutil"
 	"testing"
-	"github.com/stretchr/testify/assert"
-	wbgo "github.com/contactless/wbgo"
+	"time"
 )
 
 var baseRuleTestTime = time.Date(2015, 2, 27, 19, 33, 17, 0, time.UTC)
@@ -17,13 +17,13 @@ func makeTime(d time.Duration) time.Time {
 }
 
 type fakeTimer struct {
-	t *testing.T
-	id int
-	c chan time.Time
-	d time.Duration
+	t        *testing.T
+	id       int
+	c        chan time.Time
+	d        time.Duration
 	periodic bool
-	active bool
-	rec *wbgo.Recorder
+	active   bool
+	rec      *wbgo.Recorder
 }
 
 func (timer *fakeTimer) GetChannel() <-chan time.Time {
@@ -60,7 +60,7 @@ func NewRuleFixture(t *testing.T, waitForRetained bool, ruleFile string) *ruleFi
 	}
 	fixture.engine = NewRuleEngine(fixture.model, fixture.driverClient)
 	fixture.engine.SetTimerFunc(fixture.newFakeTimer)
-	fixture.engine.SetLogFunc(func (message string) {
+	fixture.engine.SetLogFunc(func(message string) {
 		fixture.broker.Rec("[rule] %s", message)
 	})
 	assert.Equal(t, nil, fixture.engine.LoadScript(ruleFile))
@@ -82,34 +82,34 @@ func NewRuleFixtureSkippingDefs(t *testing.T, ruleFile string) (fixture *ruleFix
 
 func (fixture *ruleFixture) newFakeTimer(id int, d time.Duration, periodic bool) Timer {
 	timer := &fakeTimer{
-		t: fixture.t,
-		id: id,
-		c: make(chan time.Time),
-		d: d,
+		t:        fixture.t,
+		id:       id,
+		c:        make(chan time.Time),
+		d:        d,
 		periodic: periodic,
-		active: true,
-		rec: &fixture.broker.Recorder,
+		active:   true,
+		rec:      &fixture.broker.Recorder,
 	}
 	fixture.timers[id] = timer
-	fixture.broker.Rec("newFakeTimer(): %d, %d, %v", id, d / time.Millisecond, periodic)
+	fixture.broker.Rec("newFakeTimer(): %d, %d, %v", id, d/time.Millisecond, periodic)
 	return timer
 }
 
-func (fixture *ruleFixture) Verify(logs... string) {
+func (fixture *ruleFixture) Verify(logs ...string) {
 	fixture.broker.Verify(logs...)
 }
 
-func (fixture *ruleFixture) VerifyUnordered(logs... string) {
+func (fixture *ruleFixture) VerifyUnordered(logs ...string) {
 	fixture.broker.VerifyUnordered(logs...)
 }
 
 func (fixture *ruleFixture) SetCellValue(device, cellName string, value interface{}) {
-	fixture.driver.CallSync(func () {
+	fixture.driver.CallSync(func() {
 		fixture.model.EnsureDevice(device).EnsureCell(cellName).SetValue(value)
 	})
-	actualCellSpec := <- fixture.cellChange
-	assert.Equal(fixture.t, device + "/" + cellName,
-		actualCellSpec.DevName + "/" + actualCellSpec.CellName)
+	actualCellSpec := <-fixture.cellChange
+	assert.Equal(fixture.t, device+"/"+cellName,
+		actualCellSpec.DevName+"/"+actualCellSpec.CellName)
 }
 
 func TestDeviceDefinition(t *testing.T) {
@@ -151,7 +151,7 @@ func TestRules(t *testing.T) {
 	fixture.Verify(
 		"driver -> /devices/stabSettings/controls/enabled: [1] (QoS 1, retained)",
 		"[rule] heaterOn fired",
- 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
+		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	fixture.expectCellChange("somedev/sw")
 
@@ -164,14 +164,14 @@ func TestRules(t *testing.T) {
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/temp: [22] (QoS 1, retained)",
 		"[rule] heaterOff fired",
- 		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
+		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 	)
 
 	fixture.publish("/devices/somedev/controls/temp", "18", "somedev/temp", "somedev/sw")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/temp: [18] (QoS 1, retained)",
 		"[rule] heaterOn fired",
- 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
+		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 
 	// edge-triggered rule doesn't fire
@@ -184,7 +184,7 @@ func TestRules(t *testing.T) {
 	fixture.Verify(
 		"driver -> /devices/stabSettings/controls/enabled: [0] (QoS 1, retained)",
 		"[rule] heaterOff fired",
- 		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
+		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 	)
 	fixture.expectCellChange("somedev/sw")
 
@@ -206,22 +206,22 @@ func TestRules(t *testing.T) {
 
 func (fixture *ruleFixture) VerifyTimers(prefix string) {
 	fixture.publish("/devices/somedev/controls/foo/meta/type", "text", "somedev/foo")
-	fixture.publish("/devices/somedev/controls/foo", prefix + "t", "somedev/foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix+"t", "somedev/foo")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/foo/meta/type: [text] (QoS 1, retained)",
-		"tst -> /devices/somedev/controls/foo: [" + prefix + "t] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/foo: ["+prefix+"t] (QoS 1, retained)",
 		"newFakeTimer(): 1, 500, false",
 	)
 
-	fixture.publish("/devices/somedev/controls/foo", prefix + "s", "somedev/foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix+"s", "somedev/foo")
 	fixture.Verify(
-		"tst -> /devices/somedev/controls/foo: [" + prefix + "s] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/foo: ["+prefix+"s] (QoS 1, retained)",
 		"timer.Stop(): 1",
 	)
 
-	fixture.publish("/devices/somedev/controls/foo", prefix + "t", "somedev/foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix+"t", "somedev/foo")
 	fixture.Verify(
-		"tst -> /devices/somedev/controls/foo: [" + prefix + "t] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/foo: ["+prefix+"t] (QoS 1, retained)",
 		"newFakeTimer(): 1, 500, false",
 	)
 
@@ -231,14 +231,14 @@ func (fixture *ruleFixture) VerifyTimers(prefix string) {
 		"[rule] timer fired",
 	)
 
-	fixture.publish("/devices/somedev/controls/foo", prefix + "p", "somedev/foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix+"p", "somedev/foo")
 	fixture.Verify(
-		"tst -> /devices/somedev/controls/foo: [" + prefix + "p] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/foo: ["+prefix+"p] (QoS 1, retained)",
 		"newFakeTimer(): 1, 500, true",
 	)
 
 	for i := 1; i < 4; i++ {
-		targetTime := makeTime(time.Duration(500 * i) * time.Millisecond)
+		targetTime := makeTime(time.Duration(500*i) * time.Millisecond)
 		fixture.timers[1].fire(targetTime)
 		fixture.Verify(
 			"timer.fire(): 1",
@@ -246,7 +246,7 @@ func (fixture *ruleFixture) VerifyTimers(prefix string) {
 		)
 	}
 
-	fixture.publish("/devices/somedev/controls/foo", prefix + "t", "somedev/foo")
+	fixture.publish("/devices/somedev/controls/foo", prefix+"t", "somedev/foo")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/foo: [" + prefix + "t] (QoS 1, retained)",
 	)
@@ -334,7 +334,7 @@ func TestRetainedState(t *testing.T) {
 		"driver -> /devices/stabSettings/controls/lowThreshold: [20] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/stabSettings/controls/lowThreshold/on",
 		"[rule] heaterOn fired",
- 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
+		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	fixture.broker.VerifyEmpty()
 	fixture.expectCellChange("somedev/sw")
@@ -426,7 +426,7 @@ func TestRunShellCommand(t *testing.T) {
 		"[rule] cmd: touch samplefile1.txt",
 		"[rule] (no callback)",
 	)
-	wbgo.WaitFor(t, func () bool {
+	wbgo.WaitFor(t, func() bool {
 		return fileExists(t, path.Join(dir, "samplefile1.txt"))
 	})
 }
