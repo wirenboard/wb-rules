@@ -1,15 +1,15 @@
 package main
 
 import (
-	"flag"
-	"time"
 	wbrules "./wbrules"
+	"flag"
 	"github.com/contactless/wbgo"
+	"time"
 )
 
 const DRIVER_CLIENT_ID = "rules"
 
-func main () {
+func main() {
 	brokerAddress := flag.String("broker", "tcp://localhost:1883", "MQTT broker url")
 	debug := flag.Bool("debug", false, "Enable debugging")
 	useSyslog := flag.Bool("syslog", false, "Use syslog for logging")
@@ -32,7 +32,7 @@ func main () {
 	gotSome := false
 	for _, path := range flag.Args() {
 		if err := engine.LoadScript(path); err != nil {
-			wbgo.Error.Printf("error loading script file %s: %s", path, err);
+			wbgo.Error.Printf("error loading script file %s: %s", path, err)
 		} else {
 			gotSome = true
 		}
