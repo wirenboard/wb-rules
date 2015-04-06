@@ -66,7 +66,7 @@ defineRule("sendmqtt", {
 });
 
 defineRule("cellChange1", {
-  onCellChange: "somedev/foobarbaz",
+  whenChanged: "somedev/foobarbaz",
   then: function (devName, cellName, newValue) {
     var v = dev[devName][cellName];
     if (v !== newValue)
@@ -76,7 +76,7 @@ defineRule("cellChange1", {
 });
 
 defineRule("cellChange2", {
-  onCellChange: ["somedev/foobarbaz", "somedev/tempx"],
+  whenChanged: ["somedev/foobarbaz", "somedev/tempx"],
   then: function (devName, cellName, newValue) {
     var v = dev[devName][cellName];
     if (v !== newValue)

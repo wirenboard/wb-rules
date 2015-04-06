@@ -66,14 +66,14 @@ defineRule("htoff", {
 });
 
 defineRule("tempChange", {
-  onCellChange: ["Weather/Temp 1", "Weather/Temp 2"],
+  whenChanged: ["Weather/Temp 1", "Weather/Temp 2"],
   then: function (devName, cellName, newValue) {
     log(devName + "/" + cellName + " = " + newValue);
   }
 });
 
 defineRule("pressureChange", {
-  onCellChange: "Weather/Pressure",
+  whenChanged: "Weather/Pressure",
   then: function (devName, cellName, newValue) {
     log("pressure = " + newValue);
     runShellCommand(

@@ -36,7 +36,7 @@ defineRule("doClick", {
 });
 
 defineRule("echo", {
-  onCellChange: "wb-w1/00042d40ffff",
+  whenChanged: "wb-w1/00042d40ffff",
   then: function (devName, cellName, newValue) {
     runShellCommand("echo " + devName + "/" + cellName + "=" + newValue, {
       captureOutput: true,

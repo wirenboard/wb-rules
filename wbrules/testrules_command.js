@@ -1,7 +1,7 @@
 // -*- mode: js2-mode -*-
 
 defineRule("runCommand", {
-  onCellChange: "somedev/cmd",
+  whenChanged: "somedev/cmd",
   then: function (devName, cellName, cmd) {
     log("cmd: " + cmd);
     if (dev.somedev.cmdNoCallback) {
@@ -23,7 +23,7 @@ function displayOutput(prefix, out) {
 }
 
 defineRule("runCommandWithOutput", {
-  onCellChange: "somedev/cmdWithOutput",
+  whenChanged: "somedev/cmdWithOutput",
   then: function (devName, cellName, cmd) {
     var options = {
       captureOutput: true,
