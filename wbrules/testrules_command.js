@@ -2,7 +2,7 @@
 
 defineRule("runCommand", {
   whenChanged: "somedev/cmd",
-  then: function (devName, cellName, cmd) {
+  then: function (cmd, devName, cellName) {
     log("cmd: " + cmd);
     if (dev.somedev.cmdNoCallback) {
       runShellCommand(cmd);
@@ -24,7 +24,7 @@ function displayOutput(prefix, out) {
 
 defineRule("runCommandWithOutput", {
   whenChanged: "somedev/cmdWithOutput",
-  then: function (devName, cellName, cmd) {
+  then: function (cmd, devName, cellName) {
     var options = {
       captureOutput: true,
       captureErrorOutput: true,

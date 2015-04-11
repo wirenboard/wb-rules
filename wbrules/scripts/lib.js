@@ -83,7 +83,7 @@ var _WbRules = {
         d[k] = function () {
           _WbRules.requireCompleteCells++;
           try {
-            return orig.apply(d, arguments);
+            return !!orig.apply(d, arguments);
           } catch (e) {
             if (e instanceof _WbRules.IncompleteCellCaught) {
               debug("skipping rule due to incomplete cells " + name + ": " + e);
@@ -100,7 +100,7 @@ var _WbRules = {
           if (options)
             // TBD: pass options.oldValue too (needs test, do it
             // when implementing onValueChange)
-            orig.call(d, options.device, options.cell, options.newValue);
+            orig.call(d, options.newValue, options.device, options.cell);
           else
             orig.call(d);
         };
