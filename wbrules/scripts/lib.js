@@ -74,34 +74,57 @@ var _WbRules = {
     debug("defineRule: " + name);
     if (typeof name != "string" || typeof def != "object")
       throw new Error("invalid rule definition");
+
+    function wrapConditionFunc (f, incompleteValue) {
+      var conv = typeof incompleteValue == "boolean" ?
+            function (v) { return !!v; } : function (v) { return v; };
+      return function () {
+        _WbRules.requireCompleteCells++;
+        try {
+          return conv(f.apply(d, arguments));
+        } catch (e) {
+          if (e instanceof _WbRules.IncompleteCellCaught) {
+            debug("skipping rule due to incomplete cells " + name + ": " + e);
+            return incompleteValue;
+          }
+          throw e;
+        } finally {
+          _WbRules.requireCompleteCells--;
+        }
+      };
+    }
+
     var d = Object.create(def);
+    function transformWhenChangedItem (item) {
+      if (typeof item == "string")
+        return item;
+      if (typeof item != "function")
+        throw new Error("invalid whenChanged spec");
+      return wrapConditionFunc(item, undefined);
+    }
+
     Object.keys(def).forEach(function (k) {
       var orig = d[k];
       switch(k) {
       case "asSoonAs":
       case "when":
-        d[k] = function () {
-          _WbRules.requireCompleteCells++;
-          try {
-            return !!orig.apply(d, arguments);
-          } catch (e) {
-            if (e instanceof _WbRules.IncompleteCellCaught) {
-              debug("skipping rule due to incomplete cells " + name + ": " + e);
-              return false;
-            }
-            throw e;
-          } finally {
-            _WbRules.requireCompleteCells--;
-          }
-        };
+        d[k] = wrapConditionFunc(orig, false);
+        break;
+      case "whenChanged":
+        if (Array.isArray(orig))
+          d[k] = orig.map(transformWhenChangedItem);
+        else
+          d[k] = transformWhenChangedItem(orig);
         break;
       case "then":
         d[k] = function (options) {
-          if (options)
-            // TBD: pass options.oldValue too (needs test, do it
-            // when implementing onValueChange)
-            orig.call(d, options.newValue, options.device, options.cell);
-          else
+          if (options) {
+            if (options.hasOwnProperty("device"))
+              // TBD: pass options.oldValue right after newValue here -- for consistency
+              orig.call(d, options.newValue, options.device, options.cell, options.oldValue);
+            else
+              orig.call(d, options.newValue, options.oldValue);
+          } else
             orig.call(d);
         };
       }
@@ -195,4 +218,4 @@ function runShellCommand(cmd, options) {
 
 defineAlias = _WbRules.defineAlias;
 
-// TBD: perhaps in non-debug mode, shouldn't even call go on debug()
+// TBD: perhaps in non-debug mode, shouldn't even call Go code on debug()

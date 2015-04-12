@@ -84,3 +84,17 @@ defineRule("cellChange2", {
     log("cellChange2: " + devName + "/" + cellName + "=" + v + " (" + typeof(v) + ")");
   }
 });
+
+defineRule("funcValueChange", {
+  whenChanged: function () {
+    debug("funcValueChange: whenChanged: v=" + (dev.somedev.cellforfunc > 3));
+    return dev.somedev.cellforfunc > 3;
+  },
+  then: function (newValue, oldValue) {
+    log("funcValueChange: " + oldValue + " (" + typeof(oldValue)  + ") -> " +
+        newValue + " (" + typeof(newValue) + ")");
+  }
+});
+
+// TBD: test whenChanged array
+// TBD: oldValue for named cells

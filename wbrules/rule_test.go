@@ -362,6 +362,47 @@ func TestCellChange(t *testing.T) {
 	)
 }
 
+func TestFuncValueChange(t *testing.T) {
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
+	defer fixture.tearDown()
+
+	fixture.publish("/devices/somedev/controls/cellforfunc", "2", "somedev/cellforfunc")
+	fixture.Verify(
+		// the cell is incomplete here
+		"tst -> /devices/somedev/controls/cellforfunc: [2] (QoS 1, retained)",
+	)
+
+	fixture.publish("/devices/somedev/controls/cellforfunc/meta/type", "temperature", "somedev/cellforfunc")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/cellforfunc/meta/type: [temperature] (QoS 1, retained)",
+		"[rule] funcValueChange: undefined (undefined) -> false (boolean)",
+	)
+
+	fixture.publish("/devices/somedev/controls/cellforfunc", "5", "somedev/cellforfunc")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/cellforfunc: [5] (QoS 1, retained)",
+		"[rule] funcValueChange: false (boolean) -> true (boolean)",
+	)
+
+	fixture.publish("/devices/somedev/controls/cellforfunc", "7", "somedev/cellforfunc")
+	fixture.Verify(
+		// expression value not changed
+		"tst -> /devices/somedev/controls/cellforfunc: [7] (QoS 1, retained)",
+	)
+
+	fixture.publish("/devices/somedev/controls/cellforfunc", "1", "somedev/cellforfunc")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/cellforfunc: [1] (QoS 1, retained)",
+		"[rule] funcValueChange: true (boolean) -> false (boolean)",
+	)
+
+	fixture.publish("/devices/somedev/controls/cellforfunc", "0", "somedev/cellforfunc")
+	fixture.Verify(
+		// expression value not changed
+		"tst -> /devices/somedev/controls/cellforfunc: [0] (QoS 1, retained)",
+	)
+}
+
 func fileExists(t *testing.T, path string) bool {
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {

@@ -88,7 +88,7 @@ type RuleCondition interface {
 	Destroy()
 }
 
-type RuleConditionBase struct {}
+type RuleConditionBase struct{}
 
 func (ruleCond *RuleConditionBase) GetCells() []*Cell {
 	return []*Cell{}
@@ -99,26 +99,27 @@ func (ruleCond *RuleConditionBase) Destroy() {}
 type SimpleCallbackCondition struct {
 	RuleConditionBase
 	engine *RuleEngine
-	cond esCallback
+	cond   esCallback
 }
 
 func (ruleCond *SimpleCallbackCondition) invokeCond() bool {
-	return ruleCond.engine.invokeCallback("ruleFuncs", ruleCond.cond, nil)
+	r, ok := ruleCond.engine.invokeCallback("ruleFuncs", ruleCond.cond, nil).(bool)
+	return ok && r
 }
 
 func (ruleCond *SimpleCallbackCondition) Destroy() {
- 	ruleCond.engine.removeCallback("ruleFuncs", ruleCond.cond)
+	ruleCond.engine.removeCallback("ruleFuncs", ruleCond.cond)
 }
 
 type LevelTriggeredRuleCondition struct {
 	SimpleCallbackCondition
 }
 
-func newLevelTriggeredRuleCondition (engine *RuleEngine, defIndex int) *LevelTriggeredRuleCondition {
+func newLevelTriggeredRuleCondition(engine *RuleEngine, defIndex int) *LevelTriggeredRuleCondition {
 	return &LevelTriggeredRuleCondition{
 		SimpleCallbackCondition: SimpleCallbackCondition{
 			engine: engine,
-			cond: engine.storeRuleCallback(defIndex, "when"),
+			cond:   engine.storeRuleCallback(defIndex, "when"),
 		},
 	}
 }
@@ -142,17 +143,17 @@ func (ruleCond *DestroyedRuleCondition) Check(cell *Cell) (bool, objx.Map) {
 type EdgeTriggeredRuleCondition struct {
 	SimpleCallbackCondition
 	prevCondValue bool
-	firstRun bool
+	firstRun      bool
 }
 
-func newEdgeTriggeredRuleCondition (engine *RuleEngine, defIndex int) *EdgeTriggeredRuleCondition {
+func newEdgeTriggeredRuleCondition(engine *RuleEngine, defIndex int) *EdgeTriggeredRuleCondition {
 	return &EdgeTriggeredRuleCondition{
 		SimpleCallbackCondition: SimpleCallbackCondition{
 			engine: engine,
-			cond: engine.storeRuleCallback(defIndex, "asSoonAs"),
+			cond:   engine.storeRuleCallback(defIndex, "asSoonAs"),
 		},
 		prevCondValue: false,
-		firstRun: false,
+		firstRun:      false,
 	}
 }
 
@@ -166,20 +167,22 @@ func (ruleCond *EdgeTriggeredRuleCondition) Check(cell *Cell) (bool, objx.Map) {
 
 type CellChangedRuleCondition struct {
 	RuleConditionBase
-	engine *RuleEngine
-	cell *Cell
+	engine       *RuleEngine
+	cell         *Cell
 	oldCellValue interface{}
 }
 
-func newCellChangedRuleCondition(engine *RuleEngine, cellFullName string) (*CellChangedRuleCondition, error) {
+func newCellChangedRuleCondition(engine *RuleEngine, cellNameIndex int) (*CellChangedRuleCondition, error) {
+	cellFullName := engine.ctx.SafeToString(cellNameIndex)
+
 	parts := strings.SplitN(cellFullName, "/", 2)
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("invalid whenChanged spec: '%s'", cellFullName)
 	}
 
 	return &CellChangedRuleCondition{
-		engine: engine,
-		cell: engine.getCell(parts[0], parts[1]),
+		engine:       engine,
+		cell:         engine.getCell(parts[0], parts[1]),
 		oldCellValue: nil,
 	}, nil
 }
@@ -207,6 +210,36 @@ func (ruleCond *CellChangedRuleCondition) Check(cell *Cell) (bool, objx.Map) {
 	return false, nil
 }
 
+type FuncValueChangedRuleCondition struct {
+	RuleConditionBase
+	engine   *RuleEngine
+	thunk    esCallback
+	oldValue interface{}
+}
+
+func newFuncValueChangedRuleCondition(engine *RuleEngine, funcIndex int) *FuncValueChangedRuleCondition {
+	return &FuncValueChangedRuleCondition{
+		engine:   engine,
+		thunk:    engine.storeCallback("ruleFuncs", -1, nil),
+		oldValue: nil,
+	}
+}
+
+func (ruleCond *FuncValueChangedRuleCondition) Check(cell *Cell) (bool, objx.Map) {
+	var args objx.Map
+	v := ruleCond.engine.invokeCallback("ruleFuncs", ruleCond.thunk, nil)
+	if ruleCond.oldValue == v {
+		return false, nil
+	}
+	args = objx.New(map[string]interface{}{
+		"newValue": v,
+	})
+	if ruleCond.oldValue != nil {
+		args["oldValue"] = ruleCond.oldValue
+	}
+	ruleCond.oldValue = v
+	return true, args
+}
 
 type OrRuleCondition struct {
 	conds []RuleCondition
@@ -239,26 +272,32 @@ func (ruleCond *OrRuleCondition) Check(cell *Cell) (bool, objx.Map) {
 	return false, nil
 }
 
+func newSingleWhenChangedRuleCondition(engine *RuleEngine, defIndex int) (RuleCondition, error) {
+	if engine.ctx.IsString(defIndex) {
+		return newCellChangedRuleCondition(engine, defIndex)
+	}
+	if engine.ctx.IsFunction(-1) {
+		return newFuncValueChangedRuleCondition(engine, defIndex), nil
+	}
+	return nil, errors.New("whenChanged: array expected")
+}
+
 func newWhenChangedRuleCondition(engine *RuleEngine, defIndex int) (RuleCondition, error) {
 	ctx := engine.ctx
 	ctx.GetPropString(defIndex, "whenChanged")
 	defer ctx.Pop()
 
-	if ctx.IsString(-1) {
-		return newCellChangedRuleCondition(engine, ctx.ToString(-1))
+	if !ctx.IsArray(-1) {
+		return newSingleWhenChangedRuleCondition(engine, -1)
 	}
 
-	if !ctx.IsArray(-1) {
-		return nil, errors.New("whenChanged: array expected")
-	}
 	conds := make([]RuleCondition, ctx.GetLength(-1))
 
 	for i := range conds {
 		ctx.GetPropIndex(-1, uint(i))
-		cellFullName := ctx.SafeToString(-1)
+		cond, err := newSingleWhenChangedRuleCondition(engine, -1)
 		ctx.Pop()
-
-		if cond, err := newCellChangedRuleCondition(engine, cellFullName); err != nil {
+		if err != nil {
 			return nil, err
 		} else {
 			conds[i] = cond
@@ -269,19 +308,19 @@ func newWhenChangedRuleCondition(engine *RuleEngine, defIndex int) (RuleConditio
 }
 
 type Rule struct {
-	engine        *RuleEngine
-	name          string
-	cond          RuleCondition
-	then          esCallback
-	shouldCheck   bool
+	engine      *RuleEngine
+	name        string
+	cond        RuleCondition
+	then        esCallback
+	shouldCheck bool
 }
 
 func newRule(engine *RuleEngine, name string, defIndex int) (*Rule, error) {
 	rule := &Rule{
-		engine:        engine,
-		name:          name,
-		then:          0,
-		shouldCheck:   false,
+		engine:      engine,
+		name:        name,
+		then:        0,
+		shouldCheck: false,
 	}
 	ctx := engine.ctx
 
@@ -442,7 +481,7 @@ func (engine *RuleEngine) pushCallbackKey(key interface{}) {
 	}
 }
 
-func (engine *RuleEngine) invokeCallback(propName string, key interface{}, args objx.Map) bool {
+func (engine *RuleEngine) invokeCallback(propName string, key interface{}, args objx.Map) interface{} {
 	engine.ctx.PushGlobalStash()
 	engine.ctx.GetPropString(-1, propName)
 	engine.pushCallbackKey(key)
@@ -451,16 +490,20 @@ func (engine *RuleEngine) invokeCallback(propName string, key interface{}, args 
 		PushJSObject(engine.ctx, args)
 		argCount++
 	}
-	r := false
+	defer engine.ctx.Pop3() // pop: result, callback list object, global stash
 	if s := engine.ctx.PcallProp(-2-argCount, argCount); s != 0 {
 		wbgo.Error.Printf("failed to invoke callback %s[%v]: %s",
 			propName, key, engine.ctx.SafeToString(-1))
+		return nil
+	} else if engine.ctx.IsBoolean(-1) {
+		return engine.ctx.ToBoolean(-1)
+	} else if engine.ctx.IsString(-1) {
+		return engine.ctx.ToString(-1)
+	} else if engine.ctx.IsNumber(-1) {
+		return engine.ctx.ToNumber(-1)
 	} else {
-		r = engine.ctx.ToBoolean(-1)
+		return nil
 	}
-
-	engine.ctx.Pop3() // pop: result, callback list object, global stash
-	return r
 }
 
 func (engine *RuleEngine) storeRuleCallback(defIndex int, propName string) esCallback {
@@ -652,7 +695,14 @@ func (engine *RuleEngine) storeRuleCell(rule *Rule, cell *Cell) {
 	list, found := engine.cellToRuleMap[cell]
 	if !found {
 		list = make([]*Rule, 0, CELL_RULES_CAPACITY)
+	} else {
+		for _, item := range list {
+			if item == rule {
+				return
+			}
+		}
 	}
+	wbgo.Debug.Printf("adding cell %s for rule %s", cell.Name(), rule.name)
 	engine.cellToRuleMap[cell] = append(list, rule)
 }
 
@@ -674,7 +724,7 @@ func (engine *RuleEngine) storeRuleDeps(rule *Rule) {
 			engine.storeRuleTimer(rule, timerName)
 		}
 	} else {
-		wbgo.Debug.Printf("rule %s doesn't use any cells", rule.name)
+		wbgo.Debug.Printf("rule %s doesn't use any cells inside condition functions", rule.name)
 		engine.rulesWithoutCells[rule] = true
 	}
 	engine.notedCells = nil
