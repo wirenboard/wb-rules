@@ -218,4 +218,9 @@ function runShellCommand(cmd, options) {
 
 defineAlias = _WbRules.defineAlias;
 
-// TBD: perhaps in non-debug mode, shouldn't even call Go code on debug()
+String.prototype.format = function () {
+  var args = [ this ];
+  for (var i = 0; i < arguments.length; ++i)
+    args.push(arguments[i]);
+  return format.apply(null, args);
+};

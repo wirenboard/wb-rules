@@ -1,6 +1,7 @@
 package wbrules
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/GeertJohan/go.rice"
@@ -442,7 +443,8 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 
 	engine.ctx.PushGlobalObject()
 	engine.defineEngineFunctions(map[string]func() int{
-		"defineVirtualDevice": engine.esDefineVirtualDevice,
+		"defineVirtualDevice":  engine.esDefineVirtualDevice,
+		"format":               engine.esFormat,
 		"log":                  engine.esLog,
 		"debug":                engine.esDebug,
 		"publish":              engine.esPublish,
@@ -620,30 +622,47 @@ func (engine *RuleEngine) esDefineVirtualDevice() int {
 	return 0
 }
 
-func (engine *RuleEngine) getLogStrArg() (string, bool) {
-	strs := make([]string, 0, 100)
-	for n := -engine.ctx.GetTop(); n < 0; n++ {
-		strs = append(strs, engine.ctx.SafeToString(n))
+func (engine *RuleEngine) format() string {
+	top := engine.ctx.GetTop()
+	if top < 1 {
+		return ""
 	}
-	if len(strs) > 0 {
-		return strings.Join(strs, " "), true
+	s := engine.ctx.SafeToString(0)
+	p := 1
+	parts := strings.Split(s, "{{")
+	buf := new(bytes.Buffer)
+	for i, part := range parts {
+		if i > 0 {
+			buf.WriteString("{")
+		}
+		for j, subpart := range strings.Split(part, "{}") {
+			if j > 0 && p < top {
+				buf.WriteString(engine.ctx.SafeToString(p))
+				p++
+			}
+			buf.WriteString(subpart)
+		}
 	}
-	return "", false
+	// write remaining parts
+	for ; p < top; p++ {
+		buf.WriteString(" ")
+		buf.WriteString(engine.ctx.SafeToString(p))
+	}
+	return buf.String()
+}
+
+func (engine *RuleEngine) esFormat() int {
+	engine.ctx.PushString(engine.format())
+	return 1
 }
 
 func (engine *RuleEngine) esLog() int {
-	s, show := engine.getLogStrArg()
-	if show {
-		engine.logFunc(s)
-	}
+	engine.logFunc(engine.format())
 	return 0
 }
 
 func (engine *RuleEngine) esDebug() int {
-	s, show := engine.getLogStrArg()
-	if show {
-		wbgo.Debug.Printf("[rule debug] %s", s)
-	}
+	wbgo.Debug.Printf("[rule debug] %s", engine.format())
 	return 0
 }
 

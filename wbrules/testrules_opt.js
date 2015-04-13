@@ -9,7 +9,7 @@ defineRule("condCount", {
     return dev.somedev.countIt == "42";
   },
   then: function () {
-    log("condCount fired, count=" + asSoonAsCount);
+    log("condCount fired, count={}", asSoonAsCount);
     runRuleWithoutCells = true;
   }
 });

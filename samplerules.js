@@ -67,23 +67,23 @@ defineRule("htoff", {
 
 defineRule("tempChange", {
   whenChanged: ["Weather/Temp 1", "Weather/Temp 2"],
-  then: function (devName, cellName, newValue) {
-    log(devName + "/" + cellName + " = " + newValue);
+  then: function (newValue, devName, cellName) {
+    log("{}/{} = {}", devName, cellName, newValue);
   }
 });
 
 defineRule("pressureChange", {
   whenChanged: "Weather/Pressure",
-  then: function (devName, cellName, newValue) {
-    log("pressure = " + newValue);
+  then: function (newValue, devName, cellName) {
+    log("pressure = {}", newValue);
     runShellCommand(
-      "echo -n 'sampleerr' 1>&2; echo -n " + devName + "/" + cellName + "=" + newValue, {
+      "echo -n 'sampleerr' 1>&2; echo -n {}/{}={}".format(devName, cellName, newValue), {
         captureOutput: true,
         captureErrorOutput: true,
         exitCallback: function (exitCode, capturedOutput, capturedErrorOutput) {
-          log("cmd exit code: " + exitCode);
-          log("cmd output: " + capturedOutput);
-          log("cmd error ouput: " + capturedErrorOutput);
+          log("cmd exit code: {}", exitCode);
+          log("cmd output: {}", capturedOutput);
+          log("cmd error ouput: {}", capturedErrorOutput);
         }
       });
   }

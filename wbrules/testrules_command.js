@@ -9,7 +9,7 @@ defineRule("runCommand", {
       log("(no callback)"); // make sure the rule didn't fail before here
     } else {
       runShellCommand(cmd, function (exitCode) {
-        log("exit(" + exitCode + "): " + cmd);
+        log("exit({}): {}", exitCode, cmd);
       });
     }
   }
@@ -29,7 +29,7 @@ defineRule("runCommandWithOutput", {
       captureOutput: true,
       captureErrorOutput: true,
       exitCallback: function (exitCode, capturedOutput, capturedErrorOutput) {
-        log("exit(" + exitCode + "): " + cmd);
+        log("exit({}): {}", exitCode, cmd);
         displayOutput("output: ", capturedOutput);
         if (exitCode != 0)
           displayOutput("error: ", capturedErrorOutput);

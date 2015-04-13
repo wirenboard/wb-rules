@@ -1,5 +1,12 @@
 // -*- mode: js2-mode -*-
 
+// extra test for format()
+(function () {
+  var formatted = "{{}abc {{} {} {{}".format(1);
+  if (formatted != "{}abc {} 1 {}")
+    throw new Error("oops! format error: " + formatted);
+})();
+
 defineAlias("stabEnabled", "stabSettings/enabled");
 defineAlias("temp", "somedev/temp");
 defineAlias("sw", "somedev/sw");
@@ -71,7 +78,7 @@ defineRule("cellChange1", {
     var v = dev[devName][cellName];
     if (v !== newValue)
       throw new Error("bad newValue! " + newValue);
-    log("cellChange1: " + devName + "/" + cellName + "=" + v + " (" + typeof(v) + ")");
+    log("cellChange1: {}/{}={} ({})", devName, cellName, v, typeof(v));
   }
 });
 
@@ -81,20 +88,22 @@ defineRule("cellChange2", {
     var v = dev[devName][cellName];
     if (v !== newValue)
       throw new Error("bad newValue! " + newValue);
-    log("cellChange2: " + devName + "/" + cellName + "=" + v + " (" + typeof(v) + ")");
+    // just make sure that format works here, too
+    log("cellChange2: {}/{}={} ({})".format(devName, cellName, v, typeof(v)));
   }
 });
 
 defineRule("funcValueChange", {
   whenChanged: function () {
-    debug("funcValueChange: whenChanged: v=" + (dev.somedev.cellforfunc > 3));
+    debug("funcValueChange: whenChanged: v={}", (dev.somedev.cellforfunc > 3));
     return dev.somedev.cellforfunc > 3;
   },
   then: function (newValue, oldValue) {
-    log("funcValueChange: " + oldValue + " (" + typeof(oldValue)  + ") -> " +
-        newValue + " (" + typeof(newValue) + ")");
+    log("funcValueChange: {} ({}) -> {} ({})", oldValue, typeof(oldValue),
+        newValue, typeof(newValue));
   }
 });
 
 // TBD: test whenChanged array
 // TBD: oldValue for named cells
+// TBD: pass changed cell info
