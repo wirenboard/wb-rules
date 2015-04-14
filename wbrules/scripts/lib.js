@@ -121,9 +121,9 @@ var _WbRules = {
           if (options) {
             if (options.hasOwnProperty("device"))
               // TBD: pass options.oldValue right after newValue here -- for consistency
-              orig.call(d, options.newValue, options.device, options.cell, options.oldValue);
+              orig.call(d, options.newValue, options.device, options.cell);
             else
-              orig.call(d, options.newValue, options.oldValue);
+              orig.call(d, options.newValue);
           } else
             orig.call(d);
         };

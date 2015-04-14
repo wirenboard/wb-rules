@@ -75,6 +75,8 @@ defineRule("sendmqtt", {
 defineRule("cellChange1", {
   whenChanged: "somedev/foobarbaz",
   then: function (newValue, devName, cellName) {
+    if (arguments.length != 3)
+      throw new Error("invalid arguments for then");
     var v = dev[devName][cellName];
     if (v !== newValue)
       throw new Error("bad newValue! " + newValue);
@@ -85,6 +87,8 @@ defineRule("cellChange1", {
 defineRule("cellChange2", {
   whenChanged: ["somedev/foobarbaz", "somedev/tempx"],
   then: function (newValue, devName, cellName) {
+    if (arguments.length != 3)
+      throw new Error("invalid arguments for then");
     var v = dev[devName][cellName];
     if (v !== newValue)
       throw new Error("bad newValue! " + newValue);
@@ -98,12 +102,12 @@ defineRule("funcValueChange", {
     debug("funcValueChange: whenChanged: v={}", (dev.somedev.cellforfunc > 3));
     return dev.somedev.cellforfunc > 3;
   },
-  then: function (newValue, oldValue) {
-    log("funcValueChange: {} ({}) -> {} ({})", oldValue, typeof(oldValue),
-        newValue, typeof(newValue));
+  then: function (newValue, devName, cellName) {
+    if (arguments.length != 1)
+      throw new Error("invalid arguments for then");
+    log("funcValueChange: {} ({})", newValue, typeof(newValue));
   }
 });
 
 // TBD: test whenChanged array
-// TBD: oldValue for named cells
-// TBD: pass changed cell info
+// TBD: pass changed cell info for plain rules

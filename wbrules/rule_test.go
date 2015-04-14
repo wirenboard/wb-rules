@@ -375,13 +375,13 @@ func TestFuncValueChange(t *testing.T) {
 	fixture.publish("/devices/somedev/controls/cellforfunc/meta/type", "temperature", "somedev/cellforfunc")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/cellforfunc/meta/type: [temperature] (QoS 1, retained)",
-		"[rule] funcValueChange: undefined (undefined) -> false (boolean)",
+		"[rule] funcValueChange: false (boolean)",
 	)
 
 	fixture.publish("/devices/somedev/controls/cellforfunc", "5", "somedev/cellforfunc")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/cellforfunc: [5] (QoS 1, retained)",
-		"[rule] funcValueChange: false (boolean) -> true (boolean)",
+		"[rule] funcValueChange: true (boolean)",
 	)
 
 	fixture.publish("/devices/somedev/controls/cellforfunc", "7", "somedev/cellforfunc")
@@ -393,7 +393,7 @@ func TestFuncValueChange(t *testing.T) {
 	fixture.publish("/devices/somedev/controls/cellforfunc", "1", "somedev/cellforfunc")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/cellforfunc: [1] (QoS 1, retained)",
-		"[rule] funcValueChange: true (boolean) -> false (boolean)",
+		"[rule] funcValueChange: false (boolean)",
 	)
 
 	fixture.publish("/devices/somedev/controls/cellforfunc", "0", "somedev/cellforfunc")
