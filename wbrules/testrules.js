@@ -7,6 +7,10 @@
     throw new Error("oops! format error: " + formatted);
 })();
 
+function cellSpec(devName, cellName) {
+  return devName === undefined ? "(no cell)" : "{}/{}".format(devName, cellName);
+}
+
 defineAlias("stabEnabled", "stabSettings/enabled");
 defineAlias("temp", "somedev/temp");
 defineAlias("sw", "somedev/sw");
@@ -35,8 +39,9 @@ defineRule("heaterOn", {
   asSoonAs: function () {
     return stabEnabled && temp < dev.stabSettings.lowThreshold;
   },
-  then: function () {
-    log("heaterOn fired");
+  then: function (newValue, devName, cellName) {
+    log("heaterOn fired, changed: {} -> {}", cellSpec(devName, cellName),
+       newValue === undefined ? "(none)" : newValue);
     sw = true;
   }
 });
@@ -45,8 +50,9 @@ defineRule("heaterOff", {
   when: function () {
     return sw && (!stabEnabled || temp >= dev.stabSettings.highThreshold);
   },
-  then: function () {
-    log("heaterOff fired");
+  then: function (newValue, devName, cellName) {
+    log("heaterOff fired, changed: {} -> {}", cellSpec(devName, cellName),
+       newValue === undefined ? "(none)" : newValue);
     sw = false;
   }
 });
@@ -116,12 +122,7 @@ defineRule("funcValueChange2", {
     }
   ],
   then: function (newValue, devName, cellName) {
-    var cellSpec = devName === undefined ? "(no cell)" :
-          "{}/{}:".format(devName, cellName);
-    log("funcValueChange2: {} {} ({})", cellSpec, newValue, typeof(newValue));
+    log("funcValueChange2: {}: {} ({})", cellSpec(devName, cellName),
+        newValue, typeof(newValue));
   }
 });
-
-// TBD: pass changed cell info for plain rules
-// TBD: fix 'when' optimization
-// TBD: document rule optimization in README.md

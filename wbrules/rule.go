@@ -84,7 +84,13 @@ type TimerEntry struct {
 }
 
 type RuleCondition interface {
-	Check(cell *Cell) (bool, objx.Map)
+	// Check checks whether the rule should be run
+	// and returns a boolean value indicating whether
+	// it should be run and an optional value
+	// to be passed as newValue to the rule. In
+	// case nil is returned as the optional value,
+	// the value of cell must be used.
+	Check(cell *Cell) (bool, interface{})
 	GetCells() []*Cell
 	Destroy()
 }
@@ -125,7 +131,7 @@ func newLevelTriggeredRuleCondition(engine *RuleEngine, defIndex int) *LevelTrig
 	}
 }
 
-func (ruleCond *LevelTriggeredRuleCondition) Check(cell *Cell) (bool, objx.Map) {
+func (ruleCond *LevelTriggeredRuleCondition) Check(cell *Cell) (bool, interface{}) {
 	return ruleCond.invokeCond(), nil
 }
 
@@ -137,7 +143,7 @@ func newDestroyedRuleCondition() *DestroyedRuleCondition {
 	return &DestroyedRuleCondition{}
 }
 
-func (ruleCond *DestroyedRuleCondition) Check(cell *Cell) (bool, objx.Map) {
+func (ruleCond *DestroyedRuleCondition) Check(cell *Cell) (bool, interface{}) {
 	panic("invoking a destroyed rule")
 }
 
@@ -158,7 +164,7 @@ func newEdgeTriggeredRuleCondition(engine *RuleEngine, defIndex int) *EdgeTrigge
 	}
 }
 
-func (ruleCond *EdgeTriggeredRuleCondition) Check(cell *Cell) (bool, objx.Map) {
+func (ruleCond *EdgeTriggeredRuleCondition) Check(cell *Cell) (bool, interface{}) {
 	current := ruleCond.invokeCond()
 	shouldFire := current && (ruleCond.firstRun || current != ruleCond.prevCondValue)
 	ruleCond.prevCondValue = current
@@ -168,9 +174,8 @@ func (ruleCond *EdgeTriggeredRuleCondition) Check(cell *Cell) (bool, objx.Map) {
 
 type CellChangedRuleCondition struct {
 	RuleConditionBase
-	engine       *RuleEngine
-	cell         *Cell
-	oldCellValue interface{}
+	engine *RuleEngine
+	cell   *Cell
 }
 
 func newCellChangedRuleCondition(engine *RuleEngine, cellNameIndex int) (*CellChangedRuleCondition, error) {
@@ -182,9 +187,8 @@ func newCellChangedRuleCondition(engine *RuleEngine, cellNameIndex int) (*CellCh
 	}
 
 	return &CellChangedRuleCondition{
-		engine:       engine,
-		cell:         engine.getCell(parts[0], parts[1]),
-		oldCellValue: nil,
+		engine: engine,
+		cell:   engine.getCell(parts[0], parts[1]),
 	}, nil
 }
 
@@ -192,23 +196,12 @@ func (ruleCond *CellChangedRuleCondition) GetCells() []*Cell {
 	return []*Cell{ruleCond.cell}
 }
 
-func (ruleCond *CellChangedRuleCondition) Check(cell *Cell) (bool, objx.Map) {
+func (ruleCond *CellChangedRuleCondition) Check(cell *Cell) (bool, interface{}) {
 	if cell == nil || !cell.IsComplete() {
 		return false, nil
 	}
 
-	if cell == ruleCond.cell {
-		args := objx.New(map[string]interface{}{
-			"device":   cell.DevName(),
-			"cell":     cell.Name(),
-			"newValue": cell.Value(),
-			"oldValue": ruleCond.oldCellValue,
-		})
-		ruleCond.oldCellValue = cell.Value()
-		return true, args
-	}
-
-	return false, nil
+	return cell == ruleCond.cell, nil
 }
 
 type FuncValueChangedRuleCondition struct {
@@ -226,20 +219,13 @@ func newFuncValueChangedRuleCondition(engine *RuleEngine, funcIndex int) *FuncVa
 	}
 }
 
-func (ruleCond *FuncValueChangedRuleCondition) Check(cell *Cell) (bool, objx.Map) {
-	var args objx.Map
+func (ruleCond *FuncValueChangedRuleCondition) Check(cell *Cell) (bool, interface{}) {
 	v := ruleCond.engine.invokeCallback("ruleFuncs", ruleCond.thunk, nil)
 	if ruleCond.oldValue == v {
 		return false, nil
 	}
-	args = objx.New(map[string]interface{}{
-		"newValue": v,
-	})
-	if ruleCond.oldValue != nil {
-		args["oldValue"] = ruleCond.oldValue
-	}
 	ruleCond.oldValue = v
-	return true, args
+	return true, v
 }
 
 type OrRuleCondition struct {
@@ -264,10 +250,10 @@ func (ruleCond *OrRuleCondition) Destroy() {
 	}
 }
 
-func (ruleCond *OrRuleCondition) Check(cell *Cell) (bool, objx.Map) {
+func (ruleCond *OrRuleCondition) Check(cell *Cell) (bool, interface{}) {
 	for _, cond := range ruleCond.conds {
-		if shouldFire, args := cond.Check(cell); shouldFire {
-			return true, args
+		if shouldFire, newValue := cond.Check(cell); shouldFire {
+			return true, newValue
 		}
 	}
 	return false, nil
@@ -376,13 +362,26 @@ func (rule *Rule) Check(cell *Cell) {
 		return
 	}
 	rule.engine.startTrackingDeps()
-	shouldFire, args := rule.cond.Check(cell)
+	shouldFire, newValue := rule.cond.Check(cell)
+	var args objx.Map
 	rule.engine.storeRuleDeps(rule)
 	rule.shouldCheck = false
 
-	if shouldFire {
-		rule.engine.invokeCallback("ruleFuncs", rule.then, args)
+	switch {
+	case !shouldFire:
+		return
+	case newValue != nil:
+		args = objx.New(map[string]interface{}{
+			"newValue": newValue,
+		})
+	case cell != nil:
+		args = objx.New(map[string]interface{}{
+			"device":   cell.DevName(),
+			"cell":     cell.Name(),
+			"newValue": cell.Value(),
+		})
 	}
+	rule.engine.invokeCallback("ruleFuncs", rule.then, args)
 }
 
 func (rule *Rule) Destroy() {

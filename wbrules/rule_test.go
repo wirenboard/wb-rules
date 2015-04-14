@@ -150,7 +150,7 @@ func TestRules(t *testing.T) {
 	fixture.SetCellValue("stabSettings", "enabled", true)
 	fixture.Verify(
 		"driver -> /devices/stabSettings/controls/enabled: [1] (QoS 1, retained)",
-		"[rule] heaterOn fired",
+		"[rule] heaterOn fired, changed: stabSettings/enabled -> true",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	fixture.expectCellChange("somedev/sw")
@@ -163,14 +163,14 @@ func TestRules(t *testing.T) {
 	fixture.publish("/devices/somedev/controls/temp", "22", "somedev/temp", "somedev/sw")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/temp: [22] (QoS 1, retained)",
-		"[rule] heaterOff fired",
+		"[rule] heaterOff fired, changed: somedev/temp -> 22",
 		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 	)
 
 	fixture.publish("/devices/somedev/controls/temp", "18", "somedev/temp", "somedev/sw")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/temp: [18] (QoS 1, retained)",
-		"[rule] heaterOn fired",
+		"[rule] heaterOn fired, changed: somedev/temp -> 18",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 
@@ -183,7 +183,7 @@ func TestRules(t *testing.T) {
 	fixture.SetCellValue("stabSettings", "enabled", false)
 	fixture.Verify(
 		"driver -> /devices/stabSettings/controls/enabled: [0] (QoS 1, retained)",
-		"[rule] heaterOff fired",
+		"[rule] heaterOff fired, changed: stabSettings/enabled -> false",
 		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 	)
 	fixture.expectCellChange("somedev/sw")
@@ -333,7 +333,7 @@ func TestRetainedState(t *testing.T) {
 		"driver -> /devices/stabSettings/controls/lowThreshold/meta/max: [40] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/lowThreshold: [20] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/stabSettings/controls/lowThreshold/on",
-		"[rule] heaterOn fired",
+		"[rule] heaterOn fired, changed: (no cell) -> (none)",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	fixture.broker.VerifyEmpty()
@@ -420,13 +420,13 @@ func TestFuncValueChange(t *testing.T) {
 	fixture.publish("/devices/somedev/controls/cellforfunc2/meta/type", "temperature", "somedev/cellforfunc2")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/cellforfunc2/meta/type: [temperature] (QoS 1, retained)",
-		"[rule] funcValueChange2: (no cell) false (boolean)",
+		"[rule] funcValueChange2: (no cell): false (boolean)",
 	)
 
 	fixture.publish("/devices/somedev/controls/cellforfunc2", "5", "somedev/cellforfunc2")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/cellforfunc2: [5] (QoS 1, retained)",
-		"[rule] funcValueChange2: (no cell) true (boolean)",
+		"[rule] funcValueChange2: (no cell): true (boolean)",
 	)
 }
 
