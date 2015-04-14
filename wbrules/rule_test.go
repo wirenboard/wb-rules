@@ -401,6 +401,33 @@ func TestFuncValueChange(t *testing.T) {
 		// expression value not changed
 		"tst -> /devices/somedev/controls/cellforfunc: [0] (QoS 1, retained)",
 	)
+
+	// somedev/cellforfunc1 is listed by name
+	fixture.publish("/devices/somedev/controls/cellforfunc1", "2", "somedev/cellforfunc1")
+	fixture.publish("/devices/somedev/controls/cellforfunc2", "2", "somedev/cellforfunc2")
+	fixture.Verify(
+		// the cell is incomplete here
+		"tst -> /devices/somedev/controls/cellforfunc1: [2] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/cellforfunc2: [2] (QoS 1, retained)",
+	)
+
+	fixture.publish("/devices/somedev/controls/cellforfunc1/meta/type", "temperature", "somedev/cellforfunc1")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/cellforfunc1/meta/type: [temperature] (QoS 1, retained)",
+		"[rule] funcValueChange2: somedev/cellforfunc1: 2 (number)",
+	)
+
+	fixture.publish("/devices/somedev/controls/cellforfunc2/meta/type", "temperature", "somedev/cellforfunc2")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/cellforfunc2/meta/type: [temperature] (QoS 1, retained)",
+		"[rule] funcValueChange2: (no cell) false (boolean)",
+	)
+
+	fixture.publish("/devices/somedev/controls/cellforfunc2", "5", "somedev/cellforfunc2")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/cellforfunc2: [5] (QoS 1, retained)",
+		"[rule] funcValueChange2: (no cell) true (boolean)",
+	)
 }
 
 func fileExists(t *testing.T, path string) bool {

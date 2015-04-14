@@ -99,7 +99,6 @@ defineRule("cellChange2", {
 
 defineRule("funcValueChange", {
   whenChanged: function () {
-    debug("funcValueChange: whenChanged: v={}", (dev.somedev.cellforfunc > 3));
     return dev.somedev.cellforfunc > 3;
   },
   then: function (newValue, devName, cellName) {
@@ -109,5 +108,20 @@ defineRule("funcValueChange", {
   }
 });
 
-// TBD: test whenChanged array
+defineRule("funcValueChange2", {
+  whenChanged: [
+    "somedev/cellforfunc1",
+    function () {
+      return dev.somedev.cellforfunc2 > 3;
+    }
+  ],
+  then: function (newValue, devName, cellName) {
+    var cellSpec = devName === undefined ? "(no cell)" :
+          "{}/{}:".format(devName, cellName);
+    log("funcValueChange2: {} {} ({})", cellSpec, newValue, typeof(newValue));
+  }
+});
+
 // TBD: pass changed cell info for plain rules
+// TBD: fix 'when' optimization
+// TBD: document rule optimization in README.md
