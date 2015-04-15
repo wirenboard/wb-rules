@@ -1,6 +1,6 @@
 // -*- mode: js2-mode -*-
 
-var asSoonAsCount = 0, runRuleWithoutCells = false;
+var asSoonAsCount = 0, whenCount = 0, runRuleWithoutCells = false;
 
 defineRule("condCount", {
   asSoonAs: function () {
@@ -20,5 +20,16 @@ defineRule("ruleWithoutCells", {
   },
   then: function () {
     log("ruleWithoutCells fired");
+  }
+});
+
+defineRule("condCountLT", { // LT = LevelTriggered
+  when: function () {
+    ++whenCount;
+    log("condCountLT: when()");
+    return dev.somedev.countItLT - 0 >= 42;
+  },
+  then: function () {
+    log("condCountLT fired, count={}", whenCount);
   }
 });

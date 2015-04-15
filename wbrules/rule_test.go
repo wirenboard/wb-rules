@@ -544,10 +544,10 @@ func TestRuleCheckOptimization(t *testing.T) {
 	fixture.publish("/devices/somedev/controls/countIt", "0", "somedev/countIt")
 	fixture.Verify(
 		// That's the first time when all rules are run.
-		// somedev/countIt is incomplete here, but
-		// the engine notes that rule's condition depends
-		// on the cell
+		// somedev/countIt and somedev/countItLT are incomplete here, but
+		// the engine notes that rules' conditions depend on the cells
 		"[rule] condCount: asSoonAs()",
+		"[rule] condCountLT: when()",
 		"tst -> /devices/somedev/controls/countIt/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/countIt: [0] (QoS 1, retained)",
 		// here the value of the cell changes, so the rule is invoked
@@ -577,6 +577,39 @@ func TestRuleCheckOptimization(t *testing.T) {
 		"tst -> /devices/somedev/controls/countIt: [42] (QoS 1, retained)",
 		"[rule] condCount: asSoonAs()",
 		"[rule] condCount fired, count=5")
+
+	// now check optimization of level-triggered rules
+	fixture.publish("/devices/somedev/controls/countItLT/meta/type", "text", "somedev/countItLT")
+	fixture.publish("/devices/somedev/controls/countItLT", "0", "somedev/countItLT")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/countItLT/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/countItLT: [0] (QoS 1, retained)",
+		// here the value of the cell changes, so the rule is invoked
+		"[rule] condCountLT: when()")
+
+	fixture.publish("/devices/somedev/controls/countItLT", "42", "somedev/countItLT")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/countItLT: [42] (QoS 1, retained)",
+		"[rule] condCountLT: when()",
+		// when function called during the first run + when countItLT
+		// value changed to 42
+		"[rule] condCountLT fired, count=3")
+
+	fixture.publish("/devices/somedev/controls/countItLT", "43", "somedev/countItLT")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/countItLT: [43] (QoS 1, retained)",
+		"[rule] condCountLT: when()",
+		"[rule] condCountLT fired, count=4")
+
+	fixture.publish("/devices/somedev/controls/countItLT", "0", "somedev/countItLT")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/countItLT: [0] (QoS 1, retained)",
+		"[rule] condCountLT: when()")
+
+	fixture.publish("/devices/somedev/controls/countItLT", "1", "somedev/countItLT")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/countItLT: [1] (QoS 1, retained)",
+		"[rule] condCountLT: when()")
 }
 
 // TBD: idea concerning rule reload:
