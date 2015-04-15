@@ -37,8 +37,8 @@ defineRule("doClick", {
 
 defineRule("echo", {
   whenChanged: "wb-w1/00042d40ffff",
-  then: function (devName, cellName, newValue) {
-    runShellCommand("echo " + devName + "/" + cellName + "=" + newValue, {
+  then: function (newValue, devName, cellName) {
+    runShellCommand("echo {}/{} = {}".format(devName, cellName, newValue), {
       captureOutput: true,
       exitCallback: function (exitCode, capturedOutput) {
         log("cmd output: " + capturedOutput);
