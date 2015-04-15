@@ -232,7 +232,7 @@ defineRule("funcValueChange2", {
 так и тип (`.../meta/type`). В отладочном режиме попытки
 обращения к неполным параметрам в функциях, фигурирующих
 в `when`, `asSoonAs` и `whenChanged` приводят к записи
-в лог сообщения *"skipping rule due to incomplete cells"*.
+в лог сообщения *"skipping rule due to incomplete cell"*.
 
 Далее описаны способы просмотра правил различного типа.
 Следует обратить внимание на оптимизацию просмотра правил

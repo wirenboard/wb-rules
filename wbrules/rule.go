@@ -199,7 +199,13 @@ func (ruleCond *CellChangedRuleCondition) GetCells() []*Cell {
 }
 
 func (ruleCond *CellChangedRuleCondition) Check(cell *Cell) (bool, interface{}) {
-	if cell == nil || !cell.IsComplete() || cell != ruleCond.cell {
+	if cell == nil || cell != ruleCond.cell {
+		return false, nil
+	}
+
+	if !cell.IsComplete() {
+		wbgo.Debug.Printf("skipping rule due to incomplete cell in whenChanged: %s/%s",
+			cell.DevName(), cell.Name())
 		return false, nil
 	}
 

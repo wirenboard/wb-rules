@@ -84,7 +84,7 @@ var _WbRules = {
           return conv(f.apply(d, arguments));
         } catch (e) {
           if (e instanceof _WbRules.IncompleteCellCaught) {
-            debug("skipping rule due to incomplete cells " + name + ": " + e);
+            debug("skipping rule due to incomplete cell " + name + ": " + e);
             return incompleteValue;
           }
           throw e;
