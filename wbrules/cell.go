@@ -24,6 +24,7 @@ var cellTypeMap map[string]CellType = map[string]CellType{
 	"text":                 CELL_TYPE_TEXT,
 	"switch":               CELL_TYPE_BOOLEAN,
 	"wo-switch":            CELL_TYPE_BOOLEAN,
+	"pushbutton":           CELL_TYPE_BOOLEAN,
 	"temperature":          CELL_TYPE_FLOAT,
 	"rel_humidity":         CELL_TYPE_FLOAT,
 	"atmospheric_pressure": CELL_TYPE_FLOAT,
@@ -404,4 +405,8 @@ func (cell *Cell) DevName() string {
 
 func (cell *Cell) Name() string {
 	return cell.name
+}
+
+func (cell *Cell) IsButton() bool {
+	return cell.controlType == "pushbutton"
 }

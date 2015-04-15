@@ -91,7 +91,7 @@ defineRule("cellChange1", {
 });
 
 defineRule("cellChange2", {
-  whenChanged: ["somedev/foobarbaz", "somedev/tempx"],
+  whenChanged: ["somedev/foobarbaz", "somedev/tempx", "somedev/abutton"],
   then: function (newValue, devName, cellName) {
     if (arguments.length != 3)
       throw new Error("invalid arguments for then");

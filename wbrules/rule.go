@@ -174,8 +174,9 @@ func (ruleCond *EdgeTriggeredRuleCondition) Check(cell *Cell) (bool, interface{}
 
 type CellChangedRuleCondition struct {
 	RuleConditionBase
-	engine *RuleEngine
-	cell   *Cell
+	engine   *RuleEngine
+	cell     *Cell
+	oldValue interface{}
 }
 
 func newCellChangedRuleCondition(engine *RuleEngine, cellNameIndex int) (*CellChangedRuleCondition, error) {
@@ -187,8 +188,9 @@ func newCellChangedRuleCondition(engine *RuleEngine, cellNameIndex int) (*CellCh
 	}
 
 	return &CellChangedRuleCondition{
-		engine: engine,
-		cell:   engine.getCell(parts[0], parts[1]),
+		engine:   engine,
+		cell:     engine.getCell(parts[0], parts[1]),
+		oldValue: nil,
 	}, nil
 }
 
@@ -197,11 +199,16 @@ func (ruleCond *CellChangedRuleCondition) GetCells() []*Cell {
 }
 
 func (ruleCond *CellChangedRuleCondition) Check(cell *Cell) (bool, interface{}) {
-	if cell == nil || !cell.IsComplete() {
+	if cell == nil || !cell.IsComplete() || cell != ruleCond.cell {
 		return false, nil
 	}
 
-	return cell == ruleCond.cell, nil
+	v := cell.Value()
+	if ruleCond.oldValue == v && !cell.IsButton() {
+		return false, nil
+	}
+	ruleCond.oldValue = v
+	return true, nil
 }
 
 type FuncValueChangedRuleCondition struct {

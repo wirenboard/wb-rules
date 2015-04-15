@@ -360,6 +360,28 @@ func TestCellChange(t *testing.T) {
 		"tst -> /devices/somedev/controls/tempx: [42] (QoS 1, retained)",
 		"[rule] cellChange2: somedev/tempx=42 (number)",
 	)
+	// no change
+	fixture.publish("/devices/somedev/controls/tempx", "42", "somedev/tempx")
+	fixture.publish("/devices/somedev/controls/tempx", "42", "somedev/tempx")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/tempx: [42] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/tempx: [42] (QoS 1, retained)",
+	)
+
+	// Now try the button. The change rule must be fired on each
+	// button press ('1' value message)
+	fixture.publish("/devices/somedev/controls/abutton/meta/type", "pushbutton", "somedev/abutton")
+	fixture.publish("/devices/somedev/controls/abutton", "1", "somedev/abutton")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/abutton/meta/type: [pushbutton] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/abutton: [1] (QoS 1, retained)",
+		"[rule] cellChange2: somedev/abutton=true (boolean)",
+	)
+	fixture.publish("/devices/somedev/controls/abutton", "1", "somedev/abutton")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/abutton: [1] (QoS 1, retained)",
+		"[rule] cellChange2: somedev/abutton=true (boolean)",
+	)
 }
 
 func TestFuncValueChange(t *testing.T) {
