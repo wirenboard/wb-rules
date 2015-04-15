@@ -426,6 +426,8 @@ publish("/abc/def/ghi", "0", 2, true);
 `runShellCommand(cmd, options)` вызывает `/bin/sh` с указанной
 командой следующим образом: `spawn("/bin/sh", ["-c", cmd], options)`.
 
+### Управление логгированием
+
 Для включения отладочного режима задать порт и опцию `-debug`
 в `/etc/default/wb-rules`:
 ```
