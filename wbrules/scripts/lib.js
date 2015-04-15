@@ -2,6 +2,7 @@
 var _WbRules = {
   requireCompleteCells: 0,
   timers: {},
+  aliases: {},
 
   IncompleteCellCaught: (function () {
     function IncompleteCellCaught(cellName) {
@@ -52,6 +53,7 @@ var _WbRules = {
     var m = fullName.match(/([^\/]+)+\/([^\/]+)+$/);
     if (!m)
       throw new Error("invalid cell full name for alias");
+    _WbRules.aliases[name] = fullName;
     var devName = m[1], cellName = m[2], d = null;
     Object.defineProperty(
       (function () { return this; })(),
@@ -96,8 +98,13 @@ var _WbRules = {
 
     var d = Object.create(def);
     function transformWhenChangedItem (item) {
-      if (typeof item == "string")
-        return item;
+      if (typeof item == "string") {
+        if (item.indexOf("/") >= 0)
+          return item;
+        if (!_WbRules.aliases.hasOwnProperty(item))
+          throw new Error("invalid cell alias in whenChanged: " + item);
+        return _WbRules.aliases[item];
+      }
       if (typeof item != "function")
         throw new Error("invalid whenChanged spec");
       return wrapConditionFunc(item, undefined);

@@ -90,8 +90,10 @@ defineRule("cellChange1", {
   }
 });
 
+defineAlias("tempx", "somedev/tempx");
+
 defineRule("cellChange2", {
-  whenChanged: ["somedev/foobarbaz", "somedev/tempx", "somedev/abutton"],
+  whenChanged: ["somedev/foobarbaz", "tempx" /* an alias */, "somedev/abutton"],
   then: function (newValue, devName, cellName) {
     if (arguments.length != 3)
       throw new Error("invalid arguments for then");
