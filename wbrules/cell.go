@@ -13,7 +13,38 @@ import (
 const (
 	CELL_CHANGE_SLICE_CAPACITY   = 4
 	CELL_CHANGE_CLOSE_TIMEOUT_MS = 200
+	CELL_TYPE_TEXT               = iota
+	CELL_TYPE_BOOLEAN
+	CELL_TYPE_FLOAT
 )
+
+type CellType int
+
+var cellTypeMap map[string]CellType = map[string]CellType{
+	"text":                 CELL_TYPE_TEXT,
+	"switch":               CELL_TYPE_BOOLEAN,
+	"wo-switch":            CELL_TYPE_BOOLEAN,
+	"temperature":          CELL_TYPE_FLOAT,
+	"rel_humidity":         CELL_TYPE_FLOAT,
+	"atmospheric_pressure": CELL_TYPE_FLOAT,
+	"rainfall":             CELL_TYPE_FLOAT,
+	"wind_speed":           CELL_TYPE_FLOAT,
+	"power":                CELL_TYPE_FLOAT,
+	"power_consumption":    CELL_TYPE_FLOAT,
+	"voltage":              CELL_TYPE_FLOAT,
+	"water_flow":           CELL_TYPE_FLOAT,
+	"consumption":          CELL_TYPE_FLOAT,
+	"pressure":             CELL_TYPE_FLOAT,
+	"range":                CELL_TYPE_FLOAT,
+}
+
+func cellType(controlType string) CellType {
+	cellType, found := cellTypeMap[controlType]
+	if found {
+		return cellType
+	}
+	return CELL_TYPE_TEXT
+}
 
 type CellSpec struct {
 	DevName  string
@@ -314,17 +345,19 @@ func (cell *Cell) Max() float64 {
 
 func (cell *Cell) Value() interface{} {
 	wbgo.Debug.Printf("cell %s internal value = %v", cell.name, cell.value)
-	switch cell.controlType {
-	case "text":
+	switch cellType(cell.controlType) {
+	case CELL_TYPE_TEXT:
 		return cell.value
-	case "switch", "wo-switch":
+	case CELL_TYPE_BOOLEAN:
 		return cell.value == "1"
-	default:
+	case CELL_TYPE_FLOAT:
 		if r, err := strconv.ParseFloat(cell.value, 64); err != nil {
 			return float64(0)
 		} else {
 			return r
 		}
+	default:
+		panic("invalid cell type")
 	}
 }
 
