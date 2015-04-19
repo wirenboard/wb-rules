@@ -1,3 +1,19 @@
+wb-rules (1.2) stable; urgency=medium
+
+  * BREAKING CHANGES: add whenChanged directive
+
+ -- Evgeny Boger <boger@contactless.ru>  Mon, 20 Apr 2015 00:43:35 +0300
+
+wb-rules (1.1) wheezy; urgency=medium
+
+  *  setInterval/setTimeout
+  *  support for executing shell commands from rules
+  *  onCellChange
+  *  syslog support
+  *  dependency-based optimization
+
+ -- Evgeny Boger <boger@contactless.ru>  Mon, 30 Mar 2015 18:54:12 +0300
+
 wb-rules (1.0) wheezy; urgency=low
 
   * Initial package version
