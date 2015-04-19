@@ -870,7 +870,6 @@ func (engine *RuleEngine) esWbStartTimer() int {
 	var n = 0;
 
 	for i := 0; i < len(engine.timers); i++ {
-		wbgo.Debug.Printf("i =%d ", i);
 		if engine.timers[i] == nil {
 			engine.timers[i] = entry;
 			n = i + 1;
