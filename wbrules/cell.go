@@ -90,6 +90,7 @@ type Cell struct {
 	value       string
 	gotType     bool
 	gotValue    bool
+	readonly    bool
 }
 
 func NewCellModel() *CellModel {
@@ -250,7 +251,7 @@ func (dev *CellModelDeviceBase) SetTitle(title string) {
 	go dev.model.notify(nil)
 }
 
-func (dev *CellModelDeviceBase) setCell(name, controlType string, value interface{}, complete bool, max float64) (cell *Cell) {
+func (dev *CellModelDeviceBase) setCell(name, controlType string, value interface{}, complete bool, max float64, readonly bool) (cell *Cell) {
 	cell = &Cell{
 		device:      dev.self,
 		name:        name,
@@ -259,25 +260,26 @@ func (dev *CellModelDeviceBase) setCell(name, controlType string, value interfac
 		max:         max,
 		gotType:     complete,
 		gotValue:    complete,
+        readonly:    readonly,
 	}
 	cell.setValueQuiet(value)
 	dev.cells[name] = cell
 	return
 }
 
-func (dev *CellModelDeviceBase) SetCell(name, controlType string, value interface{}) (cell *Cell) {
-	return dev.setCell(name, controlType, value, true, -1)
+func (dev *CellModelDeviceBase) SetCell(name, controlType string, value interface{}, readonly bool) (cell *Cell) {
+	return dev.setCell(name, controlType, value, true, -1, readonly)
 }
 
-func (dev *CellModelDeviceBase) SetRangeCell(name string, value interface{}, max float64) (cell *Cell) {
-	return dev.setCell(name, "range", value, true, max)
+func (dev *CellModelDeviceBase) SetRangeCell(name string, value interface{}, max float64, readonly bool) (cell *Cell) {
+	return dev.setCell(name, "range", value, true, max, readonly)
 }
 
 func (dev *CellModelDeviceBase) EnsureCell(name string) (cell *Cell) {
 	cell, found := dev.cells[name]
 	if !found {
 		wbgo.Debug.Printf("adding cell %s", name)
-		cell = dev.setCell(name, "text", "", false, -1)
+		cell = dev.setCell(name, "text", "", false, -1, false)
 	}
 	return
 }
@@ -315,7 +317,7 @@ func (dev *CellModelLocalDevice) queryParams() {
 	sort.Strings(names)
 	for _, name := range names {
 		cell := dev.cells[name]
-		dev.Observer.OnNewControl(dev, name, cell.controlType, cell.value, false, cell.max)
+		dev.Observer.OnNewControl(dev, name, cell.controlType, cell.value, cell.readonly, cell.max)
 	}
 }
 

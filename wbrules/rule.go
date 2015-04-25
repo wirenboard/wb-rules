@@ -614,6 +614,16 @@ func (engine *RuleEngine) esDefineVirtualDevice() int {
 				if !ok {
 					return duktape.DUK_RET_ERROR
 				}
+
+				cellReadonly := false;
+				cellReadonlyRaw, hasReadonly := cellDef["readonly"]
+				if hasReadonly {
+					cellReadonly, ok = cellReadonlyRaw.(bool)
+					if !ok {
+						return duktape.DUK_RET_ERROR
+					}
+				}
+
 				if cellType == "range" {
 					fmax := DEFAULT_CELL_MAX
 					max, ok := cellDef["max"]
@@ -624,9 +634,9 @@ func (engine *RuleEngine) esDefineVirtualDevice() int {
 						}
 					}
 					// FIXME: can be float
-					dev.SetRangeCell(cellName, cellValue, fmax)
+					dev.SetRangeCell(cellName, cellValue, fmax, cellReadonly)
 				} else {
-					dev.SetCell(cellName, cellType.(string), cellValue)
+					dev.SetCell(cellName, cellType.(string), cellValue, cellReadonly)
 				}
 			}
 		}

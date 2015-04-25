@@ -130,9 +130,9 @@ func TestLocalCells(t *testing.T) {
 	fixture := NewCellFixture(t, false)
 	defer fixture.tearDown()
 	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
-	cell1 := dev.SetCell("sw", "switch", true)
+	cell1 := dev.SetCell("sw", "switch", true, false)
 	assert.True(t, cell1.IsComplete())
-	cell2 := dev.SetCell("temp", "temperature", 20)
+	cell2 := dev.SetCell("temp", "temperature", 20, false)
 	assert.True(t, cell2.IsComplete())
 	fixture.driver.Start()
 	fixture.broker.Verify(
@@ -178,7 +178,7 @@ func TestLocalRangeCells(t *testing.T) {
 	fixture := NewCellFixture(t, false)
 	defer fixture.tearDown()
 	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
-	cell := dev.SetRangeCell("foo", "10", 200)
+	cell := dev.SetRangeCell("foo", "10", 200, false)
 	assert.True(t, cell.IsComplete())
 	fixture.driver.Start()
 	fixture.broker.Verify(
@@ -215,9 +215,9 @@ func TestAcceptRetainedValuesForLocalCells(t *testing.T) {
 	defer fixture.tearDown()
 
 	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
-	cell1 := dev.SetCell("sw1", "switch", true)
+	cell1 := dev.SetCell("sw1", "switch", true, false)
 
-	cell2 := dev.SetCell("sw2", "switch", false)
+	cell2 := dev.SetCell("sw2", "switch", false, false)
 
 	fixture.driver.Start()
 	fixture.broker.Verify(
