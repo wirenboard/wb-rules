@@ -54,7 +54,7 @@ dpkg-buildpackage -b -aarmel -us -uc
 
 ## Правила
 
-Правила пишутся на языке ECMAScript 5 и загружаются из папки `/etc/wb-rules`.
+Правила пишутся на языке ECMAScript 5 (диалектом которого является Javascript) и загружаются из папки `/etc/wb-rules`.
 
 ### Пример правил
 
