@@ -211,24 +211,31 @@ func (fixture *ruleFixture) VerifyTimers(prefix string) {
 		"tst -> /devices/somedev/controls/foo/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/foo: ["+prefix+"t] (QoS 1, retained)",
 		"newFakeTimer(): 1, 500, false",
+		"newFakeTimer(): 2, 500, false",
 	)
 
 	fixture.publish("/devices/somedev/controls/foo", prefix+"s", "somedev/foo")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/foo: ["+prefix+"s] (QoS 1, retained)",
 		"timer.Stop(): 1",
+		"timer.Stop(): 2",
 	)
 
 	fixture.publish("/devices/somedev/controls/foo", prefix+"t", "somedev/foo")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/foo: ["+prefix+"t] (QoS 1, retained)",
 		"newFakeTimer(): 1, 500, false",
+		"newFakeTimer(): 2, 500, false",
 	)
 
-	fixture.timers[1].fire(makeTime(500 * time.Millisecond))
+	ts := makeTime(500 * time.Millisecond)
+	fixture.timers[1].fire(ts)
+	fixture.timers[2].fire(ts)
 	fixture.Verify(
 		"timer.fire(): 1",
+		"timer.fire(): 2",
 		"[rule] timer fired",
+		"[rule] timer1 fired",
 	)
 
 	fixture.publish("/devices/somedev/controls/foo", prefix+"p", "somedev/foo")
@@ -253,12 +260,17 @@ func (fixture *ruleFixture) VerifyTimers(prefix string) {
 	fixture.VerifyUnordered(
 		"timer.Stop(): 1",
 		"newFakeTimer(): 1, 500, false",
+		"newFakeTimer(): 2, 500, false",
 	)
 
-	fixture.timers[1].fire(makeTime(5 * 500 * time.Millisecond))
+	ts = makeTime(5 * 500 * time.Millisecond)
+	fixture.timers[1].fire(ts)
+	fixture.timers[2].fire(ts)
 	fixture.Verify(
 		"timer.fire(): 1",
+		"timer.fire(): 2",
 		"[rule] timer fired",
+		"[rule] timer1 fired",
 	)
 }
 

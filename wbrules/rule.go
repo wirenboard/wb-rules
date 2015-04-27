@@ -877,18 +877,17 @@ func (engine *RuleEngine) esWbStartTimer() int {
 		name:     name,
 	}
 
-	var n = 0;
+	var n = 0
 
 	for i := 0; i < len(engine.timers); i++ {
 		if engine.timers[i] == nil {
-			engine.timers[i] = entry;
-			n = i + 1;
+			engine.timers[i] = entry
+			n = i + 1
 			break
 		}
 	}
-
 	if n == 0 {
-		engine.timers = append(engine.timers, entry);
+		engine.timers = append(engine.timers, entry)
 		n = len(engine.timers)
 	}
 
