@@ -1,7 +1,7 @@
 gom 'code.google.com/p/go.net/websocket'
 gom 'git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git', :commit => '3e58ec10bf2da9ef3fc639d12a0eb2e3596c2df7'
 gom 'github.com/GeertJohan/go.rice', :commit => 'b4a18af231435326dd7995d2dd0f3ee31b81f212'
-gom 'github.com/contactless/wbgo', :commit => 'b46a966cc2a2474f0377ad7a12129bb434b88608'
+gom 'github.com/contactless/wbgo', :commit => '851f6d2c7f1a05c21a8befede69b8666b9012d03'
 gom 'github.com/daaku/go.zipexe', :commit => '4de5c18ca1fc5294fee64721094ca90c46d26405'
 gom 'github.com/ivan4th/go-duktape', :commit => '515abae56abe684c912ab279f93d2c5dc3926795'
 gom 'github.com/kardianos/osext', :commit => 'ccfcd0245381f0c94c68f50626665eed3c6b726a'
