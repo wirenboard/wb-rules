@@ -615,7 +615,7 @@ func (engine *RuleEngine) esDefineVirtualDevice() int {
 					return duktape.DUK_RET_ERROR
 				}
 
-				cellReadonly := false;
+				cellReadonly := false
 				cellReadonlyRaw, hasReadonly := cellDef["readonly"]
 				if hasReadonly {
 					cellReadonly, ok = cellReadonlyRaw.(bool)

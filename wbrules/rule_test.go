@@ -646,6 +646,27 @@ func TestRuleCheckOptimization(t *testing.T) {
 		"[rule] condCountLT: when()")
 }
 
+func TestReadOnlyCells(t *testing.T) {
+	fixture := NewRuleFixture(t, false, "testrules_readonly.js")
+	defer fixture.tearDown()
+	fixture.Verify(
+		"driver -> /devices/roCells/meta/name: [Readonly Cell Test] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/+/meta/name",
+		"Subscribe -- driver: /devices/+/controls/+",
+		"Subscribe -- driver: /devices/+/controls/+/meta/type",
+		"Subscribe -- driver: /devices/+/controls/+/meta/max",
+		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
+		"driver -> /devices/roCells/controls/rocell/meta/type: [switch] (QoS 1, retained)",
+		"driver -> /devices/roCells/controls/rocell/meta/readonly: [1] (QoS 1, retained)",
+		"driver -> /devices/roCells/controls/rocell/meta/order: [1] (QoS 1, retained)",
+		"driver -> /devices/roCells/controls/rocell: [0] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
+		// "tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
+	)
+}
+
 // TBD: idea concerning rule reload:
 //     Two reload kinds (configurable by command line switch):
 //     'soft reload' = reeval the rule file

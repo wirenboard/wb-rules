@@ -113,6 +113,9 @@ var _WbRules = {
     Object.keys(def).forEach(function (k) {
       var orig = d[k];
       switch(k) {
+      case "readonly":
+        d[k] = !!d[k]; // avoid type cast error on the Go side
+        break;
       case "asSoonAs":
       case "when":
         d[k] = wrapConditionFunc(orig, false);
