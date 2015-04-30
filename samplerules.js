@@ -88,3 +88,17 @@ defineRule("pressureChange", {
       });
   }
 });
+
+defineRule("crontest", {
+  when: cron("0,15,30,45 * * * * *"),
+  then: function () {
+    log("crontest: {}", new Date());
+  }
+});
+
+defineRule("crontest1", {
+  when: cron("3 * * * * *"),
+  then: function () {
+    log("crontest1: {}", new Date());
+  }
+});

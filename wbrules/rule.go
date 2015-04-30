@@ -7,6 +7,7 @@ import (
 	"github.com/GeertJohan/go.rice"
 	wbgo "github.com/contactless/wbgo"
 	duktape "github.com/ivan4th/go-duktape"
+	"github.com/robfig/cron"
 	"github.com/stretchr/objx"
 	"log"
 	"strconv"
@@ -31,6 +32,12 @@ type Timer interface {
 	Stop()
 }
 type TimerFunc func(id int, d time.Duration, periodic bool) Timer
+
+type Cron interface {
+	AddFunc(spec string, cmd func()) error
+	Start()
+	Stop()
+}
 
 type RealTicker struct {
 	innerTicker *time.Ticker
@@ -93,15 +100,24 @@ type RuleCondition interface {
 	Check(cell *Cell) (bool, interface{})
 	GetCells() []*Cell
 	Destroy()
+	MaybeAddToCron(cron Cron, thunk func()) error
 }
 
 type RuleConditionBase struct{}
+
+func (ruleCond *RuleConditionBase) Check(Cell *Cell) (bool, interface{}) {
+	return false, nil
+}
 
 func (ruleCond *RuleConditionBase) GetCells() []*Cell {
 	return []*Cell{}
 }
 
 func (ruleCond *RuleConditionBase) Destroy() {}
+
+func (ruleCond *RuleConditionBase) MaybeAddToCron(cron Cron, thunk func()) error {
+	return nil
+}
 
 type SimpleCallbackCondition struct {
 	RuleConditionBase
@@ -242,11 +258,12 @@ func (ruleCond *FuncValueChangedRuleCondition) Check(cell *Cell) (bool, interfac
 }
 
 type OrRuleCondition struct {
+	RuleConditionBase
 	conds []RuleCondition
 }
 
 func newOrRuleCondition(conds []RuleCondition) *OrRuleCondition {
-	return &OrRuleCondition{conds}
+	return &OrRuleCondition{conds: conds}
 }
 
 func (ruleCond *OrRuleCondition) GetCells() []*Cell {
@@ -307,6 +324,21 @@ func newWhenChangedRuleCondition(engine *RuleEngine, defIndex int) (RuleConditio
 	return newOrRuleCondition(conds), nil
 }
 
+type CronRuleCondition struct {
+	RuleConditionBase
+	spec string
+}
+
+func newCronRuleCondition(engine *RuleEngine, defIndex int) *CronRuleCondition {
+	engine.ctx.GetPropString(defIndex, "_cron")
+	defer engine.ctx.Pop()
+	return &CronRuleCondition{spec: engine.ctx.SafeToString(-1)}
+}
+
+func (ruleCond *CronRuleCondition) MaybeAddToCron(cron Cron, thunk func()) error {
+	return cron.AddFunc(ruleCond.spec, thunk)
+}
+
 type Rule struct {
 	engine      *RuleEngine
 	name        string
@@ -332,24 +364,33 @@ func newRule(engine *RuleEngine, name string, defIndex int) (*Rule, error) {
 	hasWhen := ctx.HasPropString(defIndex, "when")
 	hasAsSoonAs := ctx.HasPropString(defIndex, "asSoonAs")
 	hasWhenChanged := ctx.HasPropString(defIndex, "whenChanged")
+	hasCron := ctx.HasPropString(defIndex, "_cron")
 
 	if hasWhen {
-		if hasAsSoonAs || hasWhenChanged {
+		if hasAsSoonAs || hasWhenChanged || hasCron {
+			// _cron is added by lib.js. Under normal circumstances
+			// it may not be combined with 'when' here, so no special message
 			return nil, errors.New(
 				"invalid rule -- cannot combine 'when' with 'asSoonAs' or 'whenChanged'")
 		}
 		rule.cond = newLevelTriggeredRuleCondition(engine, defIndex)
 	} else if hasAsSoonAs {
-		if hasWhenChanged {
+		if hasWhenChanged || hasCron {
 			return nil, errors.New(
 				"invalid rule -- cannot combine 'asSoonAs' with 'whenChanged'")
 		}
 		rule.cond = newEdgeTriggeredRuleCondition(engine, defIndex)
 	} else if hasWhenChanged {
+		if hasCron {
+			return nil, errors.New("invalid cron spec")
+		}
+
 		var err error
 		if rule.cond, err = newWhenChangedRuleCondition(engine, defIndex); err != nil {
 			return nil, err
 		}
+	} else if hasCron {
+		rule.cond = newCronRuleCondition(engine, defIndex)
 	} else {
 		return nil, errors.New(
 			"invalid rule -- must provide one of 'when', 'asSoonAs' or 'whenChanged'")
@@ -397,6 +438,15 @@ func (rule *Rule) Check(cell *Cell) {
 	rule.engine.invokeCallback("ruleFuncs", rule.then, args)
 }
 
+func (rule *Rule) MaybeAddToCron(cron Cron) {
+	err := rule.cond.MaybeAddToCron(cron, func() {
+		rule.engine.invokeCallback("ruleFuncs", rule.then, nil)
+	})
+	if err != nil {
+		wbgo.Error.Printf("rule %s: invalid cron spec: %s", rule.name, err)
+	}
+}
+
 func (rule *Rule) Destroy() {
 	rule.cond.Destroy()
 	if rule.then != 0 {
@@ -425,6 +475,7 @@ type RuleEngine struct {
 	rulesWithoutCells map[*Rule]bool
 	timerRules        map[string][]*Rule
 	currentTimer      string
+	cron              Cron
 }
 
 func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
@@ -447,6 +498,7 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		rulesWithoutCells: make(map[*Rule]bool),
 		timerRules:        make(map[string][]*Rule),
 		currentTimer:      NO_TIMER_NAME,
+		cron:              cron.New(),
 	}
 
 	engine.initCallbackList("ruleEngineTimers")
@@ -562,6 +614,10 @@ func (engine *RuleEngine) removeCallback(propName string, key interface{}) {
 
 func (engine *RuleEngine) SetTimerFunc(timerFunc TimerFunc) {
 	engine.timerFunc = timerFunc
+}
+
+func (engine *RuleEngine) SetCron(cron Cron) {
+	engine.cron = cron
 }
 
 func (engine *RuleEngine) loadLib() error {
@@ -1132,6 +1188,15 @@ func (engine *RuleEngine) LoadScript(path string) error {
 	return nil
 }
 
+func (engine *RuleEngine) startCron() {
+	// note for rule reloading: will need to restart cron
+	// to reload rules properly
+	for _, name := range engine.ruleList {
+		engine.ruleMap[name].MaybeAddToCron(engine.cron)
+	}
+	engine.cron.Start()
+}
+
 func (engine *RuleEngine) Start() {
 	if engine.cellChange != nil {
 		return
@@ -1154,6 +1219,7 @@ func (engine *RuleEngine) Start() {
 			case <-engine.cellChange:
 			}
 		}
+		engine.startCron()
 		for {
 			select {
 			case cellSpec, ok := <-engine.cellChange:

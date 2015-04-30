@@ -4,6 +4,12 @@ var _WbRules = {
   timers: {},
   aliases: {},
 
+  CronEntry: function (spec) {
+    if (typeof spec != "string")
+      throw new Error("invalid cron spec");
+    this.spec = spec;
+  },
+
   IncompleteCellCaught: (function () {
     function IncompleteCellCaught(cellName) {
       this.name = "IncompleteCellCaught";
@@ -108,6 +114,12 @@ var _WbRules = {
       if (typeof item != "function")
         throw new Error("invalid whenChanged spec");
       return wrapConditionFunc(item, undefined);
+    }
+
+    // when: cron("...") is converted to cron: "..."
+    if (def.hasOwnProperty("when") && def.when instanceof _WbRules.CronEntry) {
+      def._cron = def.when.spec;
+      delete def.when;
     }
 
     Object.keys(def).forEach(function (k) {
@@ -234,3 +246,7 @@ String.prototype.format = function () {
     args.push(arguments[i]);
   return format.apply(null, args);
 };
+
+function cron(spec) {
+  return new _WbRules.CronEntry(spec);
+}

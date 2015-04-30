@@ -46,10 +46,52 @@ func (timer *fakeTimer) Stop() {
 	timer.rec.Rec("timer.Stop(): %d", timer.id)
 }
 
+type fakeCron struct {
+	t       *testing.T
+	started bool
+	entries map[string][]func()
+}
+
+func newFakeCron(t *testing.T) *fakeCron {
+	return &fakeCron{t, false, make(map[string][]func())}
+}
+
+func (cron *fakeCron) AddFunc(spec string, cmd func()) error {
+	if entries, found := cron.entries[spec]; found {
+		cron.entries[spec] = append(entries, cmd)
+	} else {
+		cron.entries[spec] = []func(){cmd}
+	}
+	return nil
+}
+
+func (cron *fakeCron) Start() {
+	wbgo.Debug.Printf("fakeCron.Start()")
+	cron.started = true
+}
+
+func (cron *fakeCron) Stop() {
+	wbgo.Debug.Printf("fakeCron.Stop()")
+	cron.started = false
+}
+
+func (cron *fakeCron) invokeEntries(spec string) {
+	if !cron.started {
+		cron.t.Fatalf("trying to invoke cron entry (spec '%s') when cron isn't started yet",
+			spec)
+	}
+	if entries, found := cron.entries[spec]; found {
+		for _, cmd := range entries {
+			cmd()
+		}
+	}
+}
+
 type ruleFixture struct {
 	cellFixture
 	engine *RuleEngine
 	timers map[int]*fakeTimer
+	cron   *fakeCron
 }
 
 func NewRuleFixture(t *testing.T, waitForRetained bool, ruleFile string) *ruleFixture {
@@ -57,9 +99,11 @@ func NewRuleFixture(t *testing.T, waitForRetained bool, ruleFile string) *ruleFi
 		*NewCellFixture(t, waitForRetained),
 		nil,
 		make(map[int]*fakeTimer),
+		newFakeCron(t),
 	}
 	fixture.engine = NewRuleEngine(fixture.model, fixture.driverClient)
 	fixture.engine.SetTimerFunc(fixture.newFakeTimer)
+	fixture.engine.SetCron(fixture.cron)
 	fixture.engine.SetLogFunc(func(message string) {
 		fixture.broker.Rec("[rule] %s", message)
 	})
@@ -664,6 +708,27 @@ func TestReadOnlyCells(t *testing.T) {
 		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
 		// "tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
+	)
+}
+
+func TestCron(t *testing.T) {
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules_cron.js")
+	defer fixture.tearDown()
+
+	wbgo.WaitFor(t, func() bool {
+		return fixture.cron.started
+	})
+
+	fixture.cron.invokeEntries("@hourly")
+	fixture.cron.invokeEntries("@hourly")
+	fixture.cron.invokeEntries("@daily")
+	fixture.cron.invokeEntries("@hourly")
+
+	fixture.Verify(
+		"[rule] @hourly rule fired",
+		"[rule] @hourly rule fired",
+		"[rule] @daily rule fired",
+		"[rule] @hourly rule fired",
 	)
 }
 
