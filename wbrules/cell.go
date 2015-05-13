@@ -16,6 +16,7 @@ const (
 	CELL_TYPE_TEXT               = iota
 	CELL_TYPE_BOOLEAN
 	CELL_TYPE_FLOAT
+	CELL_TYPE_BUTTON
 )
 
 type CellType int
@@ -24,7 +25,7 @@ var cellTypeMap map[string]CellType = map[string]CellType{
 	"text":                 CELL_TYPE_TEXT,
 	"switch":               CELL_TYPE_BOOLEAN,
 	"wo-switch":            CELL_TYPE_BOOLEAN,
-	"pushbutton":           CELL_TYPE_BOOLEAN,
+	"pushbutton":           CELL_TYPE_BUTTON,
 	"temperature":          CELL_TYPE_FLOAT,
 	"rel_humidity":         CELL_TYPE_FLOAT,
 	"atmospheric_pressure": CELL_TYPE_FLOAT,
@@ -260,7 +261,7 @@ func (dev *CellModelDeviceBase) setCell(name, controlType string, value interfac
 		max:         max,
 		gotType:     complete,
 		gotValue:    complete,
-        readonly:    readonly,
+		readonly:    readonly,
 	}
 	cell.setValueQuiet(value)
 	dev.cells[name] = cell
@@ -273,6 +274,10 @@ func (dev *CellModelDeviceBase) SetCell(name, controlType string, value interfac
 
 func (dev *CellModelDeviceBase) SetRangeCell(name string, value interface{}, max float64, readonly bool) (cell *Cell) {
 	return dev.setCell(name, "range", value, true, max, readonly)
+}
+
+func (dev *CellModelDeviceBase) SetButtonCell(name string) (cell *Cell) {
+	return dev.setCell(name, "pushbutton", 0, true, -1, false)
 }
 
 func (dev *CellModelDeviceBase) EnsureCell(name string) (cell *Cell) {
@@ -317,7 +322,9 @@ func (dev *CellModelLocalDevice) queryParams() {
 	sort.Strings(names)
 	for _, name := range names {
 		cell := dev.cells[name]
-		dev.Observer.OnNewControl(dev, name, cell.controlType, cell.value, cell.readonly, cell.max)
+		dev.Observer.OnNewControl(
+			dev, name, cell.controlType, cell.value, cell.readonly,
+			cell.max, !cell.IsButton())
 	}
 }
 
@@ -353,6 +360,8 @@ func (cell *Cell) Value() interface{} {
 		return cell.value
 	case CELL_TYPE_BOOLEAN:
 		return cell.value == "1"
+	case CELL_TYPE_BUTTON:
+		return false
 	case CELL_TYPE_FLOAT:
 		if r, err := strconv.ParseFloat(cell.value, 64); err != nil {
 			return float64(0)
@@ -364,7 +373,12 @@ func (cell *Cell) Value() interface{} {
 	}
 }
 
-func (cell *Cell) setValueQuiet(value interface{}) bool {
+func (cell *Cell) setValueQuiet(value interface{}) (bool, string) {
+	if cell.IsButton() {
+		cell.value = "0"
+		return true, "1"
+	}
+
 	var newValue string
 	switch v := value.(type) {
 	case string:
@@ -381,15 +395,15 @@ func (cell *Cell) setValueQuiet(value interface{}) bool {
 
 	if cell.value != newValue {
 		cell.value = newValue
-		return true
+		return true, newValue
 	}
-	return false
+	return false, ""
 }
 
 func (cell *Cell) SetValue(value interface{}) {
 	cell.gotValue = true
-	if cell.setValueQuiet(value) {
-		cell.device.setValue(cell.name, cell.value)
+	if wasSet, newValue := cell.setValueQuiet(value); wasSet {
+		cell.device.setValue(cell.name, newValue)
 	}
 }
 
@@ -398,7 +412,7 @@ func (cell *Cell) Type() string {
 }
 
 func (cell *Cell) IsComplete() bool {
-	return cell.gotValue && cell.gotType
+	return cell.gotType && (cell.gotValue || cell.IsButton())
 }
 
 func (cell *Cell) DevName() string {
@@ -410,5 +424,11 @@ func (cell *Cell) Name() string {
 }
 
 func (cell *Cell) IsButton() bool {
-	return cell.controlType == "pushbutton"
+	return cellType(cell.controlType) == CELL_TYPE_BUTTON
+}
+
+// IsFreshButton returns true if this cell corresponds
+// to a button that didn't receive value yet.
+func (cell *Cell) IsFreshButton() bool {
+	return cell.IsButton() && !cell.gotValue
 }

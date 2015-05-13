@@ -120,7 +120,7 @@ func NewRuleFixture(t *testing.T, waitForRetained bool, ruleFile string) *ruleFi
 func NewRuleFixtureSkippingDefs(t *testing.T, ruleFile string) (fixture *ruleFixture) {
 	fixture = NewRuleFixture(t, false, ruleFile)
 	fixture.broker.SkipTill("tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)")
-	fixture.engine.Start() // FIXME: should auto-start
+	fixture.engine.Start()
 	return
 }
 
@@ -351,7 +351,7 @@ func TestDirectMQTTMessages(t *testing.T) {
 func TestRetainedState(t *testing.T) {
 	fixture := NewRuleFixture(t, true, "testrules.js")
 	defer fixture.tearDown()
-	fixture.engine.Start() // FIXME: should auto-start
+	fixture.engine.Start()
 
 	fixture.Verify(
 		"driver -> /devices/stabSettings/meta/name: [Stabilization Settings] (QoS 1, retained)",
@@ -424,19 +424,64 @@ func TestCellChange(t *testing.T) {
 		"tst -> /devices/somedev/controls/tempx: [42] (QoS 1, retained)",
 	)
 
-	// Now try the button. The change rule must be fired on each
-	// button press ('1' value message)
+}
+
+func TestLocalButtons(t *testing.T) {
+	fixture := NewRuleFixture(t, false, "testrules_localbutton.js")
+	defer fixture.tearDown()
+	fixture.engine.Start()
+
+	fixture.Verify(
+		"driver -> /devices/buttons/meta/name: [Button Test] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/+/meta/name",
+		"Subscribe -- driver: /devices/+/controls/+",
+		"Subscribe -- driver: /devices/+/controls/+/meta/type",
+		"Subscribe -- driver: /devices/+/controls/+/meta/max",
+		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
+		"driver -> /devices/buttons/controls/somebutton/meta/type: [pushbutton] (QoS 1, retained)",
+		"driver -> /devices/buttons/controls/somebutton/meta/order: [1] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/buttons/controls/somebutton/on",
+		// FIXME: don't need these here
+		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
+	)
+	fixture.broker.VerifyEmpty()
+
+	for i := 0; i < 3; i++ {
+		// The change rule must be fired on each button press ('1' .../on value message)
+		fixture.publish("/devices/buttons/controls/somebutton/on", "1", "buttons/somebutton")
+		fixture.Verify(
+			"tst -> /devices/buttons/controls/somebutton/on: [1] (QoS 1)",
+			"driver -> /devices/buttons/controls/somebutton: [1] (QoS 1)", // note there's no 'retained' flag
+			"[rule] button pressed!",
+		)
+	}
+}
+
+func TestRemoteButtons(t *testing.T) {
+	// FIXME: handling remote buttons, i.e. buttons that
+	// are defined for external devices and not via defineVirtualDevice(),
+	// needs more work. We need to handle /on messages for these
+	// instead of value messages. As of now, the code will work
+	// unless the remote driver retains button value, in which
+	// case extra change events will be received on startup
+	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
+	defer fixture.tearDown()
+
+	// The change rule must be fired on each button press ('1' value message)
 	fixture.publish("/devices/somedev/controls/abutton/meta/type", "pushbutton", "somedev/abutton")
 	fixture.publish("/devices/somedev/controls/abutton", "1", "somedev/abutton")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/abutton/meta/type: [pushbutton] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/abutton: [1] (QoS 1, retained)",
-		"[rule] cellChange2: somedev/abutton=true (boolean)",
+		"[rule] cellChange2: somedev/abutton=false (boolean)",
 	)
 	fixture.publish("/devices/somedev/controls/abutton", "1", "somedev/abutton")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/abutton: [1] (QoS 1, retained)",
-		"[rule] cellChange2: somedev/abutton=true (boolean)",
+		"[rule] cellChange2: somedev/abutton=false (boolean)",
 	)
 }
 

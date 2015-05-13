@@ -268,3 +268,59 @@ func TestAcceptRetainedValuesForLocalCells(t *testing.T) {
 	assert.False(t, cell1.Value().(bool))
 	assert.False(t, cell2.Value().(bool))
 }
+
+func TestLocalButtonCells(t *testing.T) {
+	fixture := NewCellFixture(t, false)
+	defer fixture.tearDown()
+	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
+	cell := dev.SetButtonCell("foo")
+	assert.True(t, cell.IsComplete())
+	fixture.driver.Start()
+	fixture.broker.Verify(
+		"driver -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/+/meta/name",
+		"Subscribe -- driver: /devices/+/controls/+",
+		"Subscribe -- driver: /devices/+/controls/+/meta/type",
+		"Subscribe -- driver: /devices/+/controls/+/meta/max",
+		"driver -> /devices/somedev/controls/foo/meta/type: [pushbutton] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/foo/meta/order: [1] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/somedev/controls/foo/on",
+	)
+	for i := 0; i < 3; i++ {
+		fixture.driver.CallSync(func() {
+			cell.SetValue(i == 0) // true, then false, then false again
+		})
+		fixture.expectCellChange("somedev/foo")
+		fixture.broker.Verify(
+			"driver -> /devices/somedev/controls/foo: [1] (QoS 1)",
+		)
+	}
+	fixture.driver.CallSync(func() {
+		cell.SetValue(1)
+		cell.SetValue(1)
+	})
+	fixture.expectCellChange("somedev/foo", "somedev/foo")
+	fixture.broker.Verify(
+		"driver -> /devices/somedev/controls/foo: [1] (QoS 1)",
+		"driver -> /devices/somedev/controls/foo: [1] (QoS 1)",
+	)
+}
+
+func TestExternalButtonCells(t *testing.T) {
+	fixture := NewCellFixture(t, false)
+	defer fixture.tearDown()
+	fixture.driver.Start()
+	fixture.publish("/devices/somedev/meta/name", "SomeDev", "")
+	fixture.publish("/devices/somedev/controls/foo/meta/type", "pushbutton", "somedev/foo")
+	// note that pushbutton cells don't need any value to be complete
+	dev := fixture.model.EnsureDevice("somedev")
+	cell := dev.EnsureCell("foo")
+	assert.Equal(t, false, cell.Value())
+	assert.Equal(t, "pushbutton", cell.Type())
+	assert.True(t, cell.IsComplete())
+
+	for i := 0; i < 3; i++ {
+		fixture.publish("/devices/somedev/controls/foo", "1", "somedev/foo")
+		assert.Equal(t, false, cell.Value())
+	}
+}

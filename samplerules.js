@@ -16,6 +16,9 @@ defineVirtualDevice("stabSettings", {
       type: "range",
       max: 50,
       value: 22
+    },
+    samplebutton: {
+      type: "pushbutton"
     }
   }
 });
@@ -86,6 +89,13 @@ defineRule("pressureChange", {
           log("cmd error ouput: {}", capturedErrorOutput);
         }
       });
+  }
+});
+
+defineRule("buttontest", {
+  whenChanged: "stabSettings/samplebutton",
+  then: function () {
+    log("samplebutton pressed!");
   }
 });
 

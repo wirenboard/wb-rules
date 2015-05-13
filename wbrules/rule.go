@@ -666,33 +666,38 @@ func (engine *RuleEngine) esDefineVirtualDevice() int {
 				if !ok {
 					return duktape.DUK_RET_ERROR
 				}
-				cellValue, ok := cellDef["value"]
-				if !ok {
-					return duktape.DUK_RET_ERROR
-				}
-
-				cellReadonly := false
-				cellReadonlyRaw, hasReadonly := cellDef["readonly"]
-				if hasReadonly {
-					cellReadonly, ok = cellReadonlyRaw.(bool)
+				// FIXME: too much spaghetti for my taste
+				if cellType == "pushbutton" {
+					dev.SetButtonCell(cellName)
+				} else {
+					cellValue, ok := cellDef["value"]
 					if !ok {
 						return duktape.DUK_RET_ERROR
 					}
-				}
 
-				if cellType == "range" {
-					fmax := DEFAULT_CELL_MAX
-					max, ok := cellDef["max"]
-					if ok {
-						fmax, ok = max.(float64)
+					cellReadonly := false
+					cellReadonlyRaw, hasReadonly := cellDef["readonly"]
+					if hasReadonly {
+						cellReadonly, ok = cellReadonlyRaw.(bool)
 						if !ok {
 							return duktape.DUK_RET_ERROR
 						}
 					}
-					// FIXME: can be float
-					dev.SetRangeCell(cellName, cellValue, fmax, cellReadonly)
-				} else {
-					dev.SetCell(cellName, cellType.(string), cellValue, cellReadonly)
+
+					if cellType == "range" {
+						fmax := DEFAULT_CELL_MAX
+						max, ok := cellDef["max"]
+						if ok {
+							fmax, ok = max.(float64)
+							if !ok {
+								return duktape.DUK_RET_ERROR
+							}
+						}
+						// FIXME: can be float
+						dev.SetRangeCell(cellName, cellValue, fmax, cellReadonly)
+					} else {
+						dev.SetCell(cellName, cellType.(string), cellValue, cellReadonly)
+					}
 				}
 			}
 		}
@@ -1145,6 +1150,10 @@ func (engine *RuleEngine) RunRules(cellSpec *CellSpec, timerName string) {
 	var cell *Cell
 	if cellSpec != nil {
 		cell = engine.getCell(cellSpec.DevName, cellSpec.CellName)
+		if cell.IsFreshButton() {
+			// special case - a button that wasn't pressed yet
+			return
+		}
 		if cell.IsComplete() {
 			// cell-dependent rules aren't run when any of their
 			// condition cells are incomplete
