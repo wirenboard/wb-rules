@@ -3,7 +3,6 @@ package wbrules
 import (
 	wbgo "github.com/contactless/wbgo"
 	"github.com/stretchr/testify/assert"
-	"io/ioutil"
 	"os"
 	"path"
 	"testing"
@@ -574,19 +573,8 @@ func TestRunShellCommand(t *testing.T) {
 	fixture := NewRuleFixtureSkippingDefs(t, "testrules_command.js")
 	defer fixture.tearDown()
 
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("couldn't get the current directory")
-	}
-
-	dir, err := ioutil.TempDir(os.TempDir(), "ruletest")
-	if err != nil {
-		t.Fatalf("couldn't create temporary directory")
-		return
-	}
-	os.Chdir(dir)
-	defer os.RemoveAll(dir)
-	defer os.Chdir(wd)
+	dir, cleanup := wbgo.SetupTempDir(t)
+	defer cleanup()
 
 	fixture.publish("/devices/somedev/controls/cmd/meta/type", "text", "somedev/cmd")
 	fixture.publish("/devices/somedev/controls/cmdNoCallback/meta/type", "text",
