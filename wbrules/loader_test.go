@@ -82,15 +82,12 @@ func (fixture *loaderFixture) tearDown() {
 }
 
 func (fixture *loaderFixture) loadDir1() {
-	wbgo.Debug.Printf("aaa")
 	fixture.loader.Load(fixture.dir1)
-	wbgo.Debug.Printf("rrr")
 	fixture.Verify("L: // f1", "L: // f2", "L: // f4")
 }
 
 func (fixture *loaderFixture) loadAll() {
 	fixture.loadDir1()
-	wbgo.Debug.Printf("qqq")
 
 	fixture.loader.Load(fixture.f5)
 	fixture.Verify("L: // f5")
@@ -99,7 +96,6 @@ func (fixture *loaderFixture) loadAll() {
 	fixture.loader.Load(fixture.f6)
 	fixture.Verify("L: // f6")
 
-	wbgo.Debug.Printf("zzz")
 	fixture.VerifyEmpty()
 }
 
