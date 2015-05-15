@@ -6,32 +6,40 @@ import (
 	"github.com/stretchr/objx"
 )
 
-func getObject(ctx *duktape.Context, objIndex int) map[string]interface{} {
+type ESContext struct {
+	*duktape.Context
+}
+
+func newESContext() *ESContext {
+	return &ESContext{duktape.NewContext()}
+}
+
+func (ctx *ESContext) getObject(objIndex int) map[string]interface{} {
 	m := make(map[string]interface{})
 	ctx.Enum(-1, duktape.DUK_ENUM_OWN_PROPERTIES_ONLY)
 	for ctx.Next(-1, true) {
 		key := ctx.SafeToString(-2)
-		m[key] = getJSObject(ctx, -1, false)
+		m[key] = ctx.getJSObject(-1, false)
 		ctx.Pop2()
 	}
 	ctx.Pop()
 	return m
 }
 
-func getArray(ctx *duktape.Context, objIndex int) []interface{} {
+func (ctx *ESContext) getArray(objIndex int) []interface{} {
 	// FIXME: this will not work for arrays with length >= 2^32
 	r := make([]interface{}, ctx.GetLength(objIndex))
 	ctx.Enum(-1, duktape.DUK_ENUM_ARRAY_INDICES_ONLY)
 	for ctx.Next(-1, true) {
 		n := ctx.ToInt(-2)
-		r[n] = getJSObject(ctx, -1, false)
+		r[n] = ctx.getJSObject(-1, false)
 		ctx.Pop2()
 	}
 	ctx.Pop()
 	return r
 }
 
-func getJSObject(ctx *duktape.Context, objIndex int, top bool) interface{} {
+func (ctx *ESContext) getJSObject(objIndex int, top bool) interface{} {
 	t := duktape.Type(ctx.GetType(-1))
 	switch {
 	case t.IsNone() || t.IsUndefined() || t.IsNull(): // FIXME
@@ -44,9 +52,9 @@ func getJSObject(ctx *duktape.Context, objIndex int, top bool) interface{} {
 		return ctx.GetString(objIndex)
 	case t.IsObject():
 		if ctx.IsArray(objIndex) {
-			return getArray(ctx, objIndex)
+			return ctx.getArray(objIndex)
 		}
-		m := getObject(ctx, objIndex)
+		m := ctx.getObject(objIndex)
 		if top {
 			return objx.New(m)
 		} else {
@@ -63,17 +71,17 @@ func getJSObject(ctx *duktape.Context, objIndex int, top bool) interface{} {
 	}
 }
 
-func GetJSObject(ctx *duktape.Context, objIndex int) interface{} {
-	return getJSObject(ctx, objIndex, true)
+func (ctx *ESContext) GetJSObject(objIndex int) interface{} {
+	return ctx.getJSObject(objIndex, true)
 }
 
-func PushJSObject(ctx *duktape.Context, m objx.Map) {
+func (ctx *ESContext) PushJSObject(m objx.Map) {
 	// FIXME: should do proper conversion, not just rely on JSON
 	ctx.PushString(m.MustJSON())
 	ctx.JsonDecode(-1)
 }
 
-func StringArrayToGo(ctx *duktape.Context, arrIndex int) []string {
+func (ctx *ESContext) StringArrayToGo(arrIndex int) []string {
 	if !ctx.IsArray(arrIndex) {
 		panic("string array expected")
 	}

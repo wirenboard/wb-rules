@@ -1,7 +1,6 @@
 package wbrules
 
 import (
-	duktape "github.com/ivan4th/go-duktape"
 	"github.com/stretchr/objx"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -18,18 +17,18 @@ var objTests = []string{
 }
 
 func TestJSToObjx(t *testing.T) { // TBD: -> TestJSToObjxAndBack
-	ctx := duktape.NewContext()
+	ctx := newESContext()
 	for _, jsonStr := range objTests {
 		if r := ctx.PevalString("(" + jsonStr + ")"); r != 0 {
 			t.Fatal("failed to evaluate the script")
 		}
-		object := GetJSObject(ctx, -1)
+		object := ctx.GetJSObject(-1)
 		ctx.Pop()
 		json := objx.MustFromJSON(jsonStr)
 		assert.Equal(t, json, object)
 
 		ctx.PushGlobalObject()
-		PushJSObject(ctx, object.(objx.Map))
+		ctx.PushJSObject(object.(objx.Map))
 		ctx.PutPropString(-2, "jso")
 		if r := ctx.PevalString("JSON.stringify(jso)"); r != 0 {
 			t.Fatal("failed to evaluate the script")

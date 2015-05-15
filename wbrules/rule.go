@@ -461,7 +461,7 @@ type LogFunc func(string)
 type RuleEngine struct {
 	model             *CellModel
 	mqttClient        wbgo.MQTTClient
-	ctx               *duktape.Context
+	ctx               *ESContext
 	logFunc           LogFunc
 	cellChange        chan *CellSpec
 	scriptBox         *rice.Box
@@ -485,7 +485,7 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 	engine = &RuleEngine{
 		model:      model,
 		mqttClient: mqttClient,
-		ctx:        duktape.NewContext(),
+		ctx:        newESContext(),
 		logFunc: func(message string) {
 			wbgo.Info.Printf("RULE: %s\n", message)
 		},
@@ -557,7 +557,7 @@ func (engine *RuleEngine) invokeCallback(propName string, key interface{}, args 
 	engine.pushCallbackKey(key)
 	argCount := 0
 	if args != nil {
-		PushJSObject(engine.ctx, args)
+		engine.ctx.PushJSObject(args)
 		argCount++
 	}
 	defer engine.ctx.Pop3() // pop: result, callback list object, global stash
@@ -652,7 +652,7 @@ func (engine *RuleEngine) esDefineVirtualDevice() int {
 	}
 	name := engine.ctx.GetString(-2)
 	title := name
-	obj := GetJSObject(engine.ctx, -1).(objx.Map)
+	obj := engine.ctx.GetJSObject(-1).(objx.Map)
 	if obj.Has("title") {
 		title = obj.Get("title").Str(name)
 	}
@@ -871,7 +871,7 @@ func (engine *RuleEngine) esWbCellObject() int {
 			m := objx.New(map[string]interface{}{
 				"v": cell.Value(),
 			})
-			PushJSObject(engine.ctx, m)
+			engine.ctx.PushJSObject(m)
 			return 1
 		},
 		"setValue": func() int {
@@ -879,7 +879,7 @@ func (engine *RuleEngine) esWbCellObject() int {
 			if engine.ctx.GetTop() != 1 || !engine.ctx.IsObject(-1) {
 				return duktape.DUK_RET_ERROR
 			}
-			m, ok := GetJSObject(engine.ctx, -1).(objx.Map)
+			m, ok := engine.ctx.GetJSObject(-1).(objx.Map)
 			if !ok || !m.Has("v") {
 				wbgo.Error.Printf("invalid cell definition")
 				return duktape.DUK_RET_TYPE_ERROR
@@ -1052,7 +1052,7 @@ func (engine *RuleEngine) esWbSpawn() int {
 		return duktape.DUK_RET_ERROR
 	}
 
-	args := StringArrayToGo(engine.ctx, 0)
+	args := engine.ctx.StringArrayToGo(0)
 	if len(args) == 0 {
 		return duktape.DUK_RET_ERROR
 	}
