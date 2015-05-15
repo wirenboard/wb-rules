@@ -23,7 +23,7 @@ type cellFixture struct {
 	cellChange           chan *CellSpec
 }
 
-func NewCellFixture(t *testing.T, waitForRetained bool) *cellFixture {
+func newCellFixture(t *testing.T, waitForRetained bool) *cellFixture {
 	fixture := &cellFixture{
 		t:      t,
 		broker: wbgo.NewFakeMQTTBroker(t),
@@ -75,7 +75,7 @@ func (fixture *cellFixture) tearDown() {
 }
 
 func TestExternalCells(t *testing.T) {
-	fixture := NewCellFixture(t, false)
+	fixture := newCellFixture(t, false)
 	defer fixture.tearDown()
 	fixture.driver.Start()
 	dev := fixture.model.EnsureDevice("somedev")
@@ -127,7 +127,7 @@ func TestExternalCells(t *testing.T) {
 }
 
 func TestLocalCells(t *testing.T) {
-	fixture := NewCellFixture(t, false)
+	fixture := newCellFixture(t, false)
 	defer fixture.tearDown()
 	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
 	cell1 := dev.SetCell("sw", "switch", true, false)
@@ -175,7 +175,7 @@ func TestLocalCells(t *testing.T) {
 }
 
 func TestLocalRangeCells(t *testing.T) {
-	fixture := NewCellFixture(t, false)
+	fixture := newCellFixture(t, false)
 	defer fixture.tearDown()
 	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
 	cell := dev.SetRangeCell("foo", "10", 200, false)
@@ -196,7 +196,7 @@ func TestLocalRangeCells(t *testing.T) {
 }
 
 func TestExternalRangeCells(t *testing.T) {
-	fixture := NewCellFixture(t, false)
+	fixture := newCellFixture(t, false)
 	defer fixture.tearDown()
 	fixture.driver.Start()
 	fixture.publish("/devices/somedev/meta/name", "SomeDev", "")
@@ -211,7 +211,7 @@ func TestExternalRangeCells(t *testing.T) {
 }
 
 func TestAcceptRetainedValuesForLocalCells(t *testing.T) {
-	fixture := NewCellFixture(t, true)
+	fixture := newCellFixture(t, true)
 	defer fixture.tearDown()
 
 	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
@@ -270,7 +270,7 @@ func TestAcceptRetainedValuesForLocalCells(t *testing.T) {
 }
 
 func TestLocalButtonCells(t *testing.T) {
-	fixture := NewCellFixture(t, false)
+	fixture := newCellFixture(t, false)
 	defer fixture.tearDown()
 	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
 	cell := dev.SetButtonCell("foo")
@@ -307,7 +307,7 @@ func TestLocalButtonCells(t *testing.T) {
 }
 
 func TestExternalButtonCells(t *testing.T) {
-	fixture := NewCellFixture(t, false)
+	fixture := newCellFixture(t, false)
 	defer fixture.tearDown()
 	fixture.driver.Start()
 	fixture.publish("/devices/somedev/meta/name", "SomeDev", "")

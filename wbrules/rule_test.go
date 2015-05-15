@@ -93,9 +93,9 @@ type ruleFixture struct {
 	cron   *fakeCron
 }
 
-func NewRuleFixture(t *testing.T, waitForRetained bool, ruleFile string) *ruleFixture {
+func newRuleFixture(t *testing.T, waitForRetained bool, ruleFile string) *ruleFixture {
 	fixture := &ruleFixture{
-		*NewCellFixture(t, waitForRetained),
+		*newCellFixture(t, waitForRetained),
 		nil,
 		make(map[int]*fakeTimer),
 		newFakeCron(t),
@@ -116,8 +116,8 @@ func NewRuleFixture(t *testing.T, waitForRetained bool, ruleFile string) *ruleFi
 	return fixture
 }
 
-func NewRuleFixtureSkippingDefs(t *testing.T, ruleFile string) (fixture *ruleFixture) {
-	fixture = NewRuleFixture(t, false, ruleFile)
+func newRuleFixtureSkippingDefs(t *testing.T, ruleFile string) (fixture *ruleFixture) {
+	fixture = newRuleFixture(t, false, ruleFile)
 	fixture.broker.SkipTill("tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)")
 	fixture.engine.Start()
 	return
@@ -156,7 +156,7 @@ func (fixture *ruleFixture) SetCellValue(device, cellName string, value interfac
 }
 
 func TestDeviceDefinition(t *testing.T) {
-	fixture := NewRuleFixture(t, false, "testrules.js")
+	fixture := newRuleFixture(t, false, "testrules.js")
 	defer fixture.tearDown()
 	fixture.Verify(
 		"driver -> /devices/stabSettings/meta/name: [Stabilization Settings] (QoS 1, retained)",
@@ -187,7 +187,7 @@ func TestDeviceDefinition(t *testing.T) {
 }
 
 func TestRules(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
+	fixture := newRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()
 
 	fixture.SetCellValue("stabSettings", "enabled", true)
@@ -318,21 +318,21 @@ func (fixture *ruleFixture) VerifyTimers(prefix string) {
 }
 
 func TestTimers(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules_timers.js")
+	fixture := newRuleFixtureSkippingDefs(t, "testrules_timers.js")
 	defer fixture.tearDown()
 
 	fixture.VerifyTimers("")
 }
 
 func TestDirectTimers(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules_timers.js")
+	fixture := newRuleFixtureSkippingDefs(t, "testrules_timers.js")
 	defer fixture.tearDown()
 
 	fixture.VerifyTimers("+")
 }
 
 func TestDirectMQTTMessages(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
+	fixture := newRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()
 
 	fixture.publish("/devices/somedev/controls/sendit/meta/type", "switch", "somedev/sendit")
@@ -348,7 +348,7 @@ func TestDirectMQTTMessages(t *testing.T) {
 }
 
 func TestRetainedState(t *testing.T) {
-	fixture := NewRuleFixture(t, true, "testrules.js")
+	fixture := newRuleFixture(t, true, "testrules.js")
 	defer fixture.tearDown()
 	fixture.engine.Start()
 
@@ -396,7 +396,7 @@ func TestRetainedState(t *testing.T) {
 }
 
 func TestCellChange(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
+	fixture := newRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()
 
 	fixture.publish("/devices/somedev/controls/foobarbaz/meta/type", "text", "somedev/foobarbaz")
@@ -426,7 +426,7 @@ func TestCellChange(t *testing.T) {
 }
 
 func TestLocalButtons(t *testing.T) {
-	fixture := NewRuleFixture(t, false, "testrules_localbutton.js")
+	fixture := newRuleFixture(t, false, "testrules_localbutton.js")
 	defer fixture.tearDown()
 	fixture.engine.Start()
 
@@ -466,7 +466,7 @@ func TestRemoteButtons(t *testing.T) {
 	// instead of value messages. As of now, the code will work
 	// unless the remote driver retains button value, in which
 	// case extra change events will be received on startup
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
+	fixture := newRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()
 
 	// The change rule must be fired on each button press ('1' value message)
@@ -485,7 +485,7 @@ func TestRemoteButtons(t *testing.T) {
 }
 
 func TestFuncValueChange(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules.js")
+	fixture := newRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()
 
 	fixture.publish("/devices/somedev/controls/cellforfunc", "2", "somedev/cellforfunc")
@@ -570,7 +570,7 @@ func verifyFileExists(t *testing.T, path string) {
 }
 
 func TestRunShellCommand(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules_command.js")
+	fixture := newRuleFixtureSkippingDefs(t, "testrules_command.js")
 	defer fixture.tearDown()
 
 	dir, cleanup := wbgo.SetupTempDir(t)
@@ -611,7 +611,7 @@ func TestRunShellCommand(t *testing.T) {
 }
 
 func TestRunShellCommandIO(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules_command.js")
+	fixture := newRuleFixtureSkippingDefs(t, "testrules_command.js")
 	defer fixture.tearDown()
 
 	fixture.publish("/devices/somedev/controls/cmdWithOutput/meta/type", "text",
@@ -648,7 +648,7 @@ func TestRunShellCommandIO(t *testing.T) {
 }
 
 func TestRuleCheckOptimization(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules_opt.js")
+	fixture := newRuleFixtureSkippingDefs(t, "testrules_opt.js")
 	defer fixture.tearDown()
 
 	fixture.publish("/devices/somedev/controls/countIt/meta/type", "text", "somedev/countIt")
@@ -724,7 +724,7 @@ func TestRuleCheckOptimization(t *testing.T) {
 }
 
 func TestReadOnlyCells(t *testing.T) {
-	fixture := NewRuleFixture(t, false, "testrules_readonly.js")
+	fixture := newRuleFixture(t, false, "testrules_readonly.js")
 	defer fixture.tearDown()
 	fixture.Verify(
 		"driver -> /devices/roCells/meta/name: [Readonly Cell Test] (QoS 1, retained)",
@@ -745,7 +745,7 @@ func TestReadOnlyCells(t *testing.T) {
 }
 
 func TestCron(t *testing.T) {
-	fixture := NewRuleFixtureSkippingDefs(t, "testrules_cron.js")
+	fixture := newRuleFixtureSkippingDefs(t, "testrules_cron.js")
 	defer fixture.tearDown()
 
 	wbgo.WaitFor(t, func() bool {
