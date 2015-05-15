@@ -224,7 +224,3 @@ func TestStoppingLoader(t *testing.T) {
 	fixture.writeFile(fixture.dir2, "f5.js", "// f5 (changed)")
 	fixture.VerifyEmpty()
 }
-
-// TBD: in the rule engine: keep track of what rules are defined
-//      in each file (with each file containing the rule being traced)
-//      and remove rules when all files containing the rule are removed

@@ -785,18 +785,27 @@ func TestCron(t *testing.T) {
 	)
 }
 
+// TBD: to support 'live' defineVirtualDevice() properly, we must be able
+//      to convert remote devices to local ones. Will need to add tests
+//      that grab the retained values received from previously-thought-to-be-remote
+//      devices. Also, will need to invoke OnNewDevice() and queryParams() stuff
+//      (see CellModel.Start()) [make sure it's ok to call OnNewDevice for an existing device]
+//      and make sure the metadata for the newly defined device gets published
+// TBD: reset [cell/timer/etc -> rule] maps when reloading, also rulesWithoutCells map.
+// TBD: schedule RunRules() after loading a script and mention it in the docs.
+// TBD: keep track of what rules are defined
+//      in each file (with each file containing the rule being traced)
+//      and remove rules when all files containing the rule are removed
 // TBD: idea concerning rule reload:
-//     Two reload kinds (configurable by command line switch):
-//     'soft reload' = reeval the rule file
-//     'hard reload' = restart the rule engine
+//      Two reload kinds (configurable by command line switch):
+//      'soft reload' = reeval the rule file
+//      'hard reload' = restart the rule engine
 //
 //      When cell/timer -> rule maps are nil, don't use the
 //      maps in the engine but populate them instead by running
 //      checks of every rule.
 //      When 'soft reloading' a rule file, reset maps to nil.
 // TBD: metadata (like, meta["devname"]["controlName"])
-// TBD: proper data path:
-// http://stackoverflow.com/questions/18537257/golang-how-to-get-the-directory-of-the-currently-running-file
 // TBD: test bad device/rule defs
 // TBD: traceback
 // TBD: if rule *did* change anything (SetValue had an effect), re-run rules
@@ -804,3 +813,5 @@ func TestCron(t *testing.T) {
 // TBD: don't hang upon bad Verify() list
 //      (deadlock detection fails due to duktape)
 // TBD: should use separate recorder for the fixture, not abuse the fake broker
+// TBD: abstract away duktape stuff from the primary engine. This will be useful for scenes etc.
+//      Also, it will make the code cleaner.
