@@ -72,6 +72,7 @@ func (fixture *cellFixture) tearDown() {
 	if ok {
 		log.Printf("WARNING! unexpected cell change at the end of the test: %v", cellSpec)
 	}
+	wbgo.EnsureNoErrorsOrWarnings(fixture.t)
 }
 
 func TestExternalCells(t *testing.T) {

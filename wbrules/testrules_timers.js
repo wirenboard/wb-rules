@@ -18,7 +18,7 @@ defineRule("startTicker", {
   },
   then: function () {
     startTicker("sometimer", 500);
-    stopTimer("sometimer1");
+    timers.sometimer1.stop();
   }
 });
 
@@ -68,7 +68,7 @@ defineRule("startTimer1", {
       log("timer fired");
     }, 500);
     timer1 = setTimeout(function () {
-      timer = null;
+      timer1 = null;
       log("timer1 fired");
     }, 500);
   }
