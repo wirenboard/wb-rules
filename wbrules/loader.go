@@ -149,6 +149,9 @@ func (loader *Loader) loadDir(filePath string, reloaded bool) error {
 }
 
 func (loader *Loader) loadFile(filePath string, reloaded bool) error {
+	if reloaded {
+		wbgo.Info.Printf("reloading file: %s", filePath)
+	}
 	return loader.loadFunc(filePath, reloaded)
 }
 

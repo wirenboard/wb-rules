@@ -30,8 +30,16 @@ func main() {
 	driver.SetAcceptsExternalDevices(true)
 	engine := wbrules.NewRuleEngine(model, mqttClient)
 	gotSome := false
+	loader := wbrules.NewLoader("\\.js$", func(filePath string, reloaded bool) (err error) {
+		if reloaded {
+			err = engine.LiveLoadScript(filePath)
+		} else {
+			err = engine.LoadScript(filePath)
+		}
+		return
+	})
 	for _, path := range flag.Args() {
-		if err := engine.LoadScript(path); err != nil {
+		if err := loader.Load(path); err != nil {
 			wbgo.Error.Printf("error loading script file %s: %s", path, err)
 		} else {
 			gotSome = true
