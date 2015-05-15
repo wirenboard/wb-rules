@@ -1199,6 +1199,24 @@ func (engine *RuleEngine) LoadScript(path string) error {
 	return nil
 }
 
+// LiveLoadScript loads the specified script in the running engine.
+// If the engine isn't ready yet, the function waits for it to become
+// ready.
+func (engine *RuleEngine) LiveLoadScript(path string) error {
+	r := make(chan error)
+	engine.model.WhenReady(func() {
+		engine.model.CallSync(func() {
+			err := engine.LoadScript(path)
+			// must reload cron rules even in case of LoadScript() error,
+			// because a part of script was still probably loaded
+			engine.setupCron()
+			r <- err
+		})
+	})
+
+	return <-r
+}
+
 func (engine *RuleEngine) setupCron() {
 	if engine.cron != nil {
 		engine.cron.Stop()
@@ -1235,7 +1253,7 @@ func (engine *RuleEngine) Start() {
 			case <-engine.cellChange:
 			}
 		}
-		engine.setupCron()
+		engine.model.CallSync(engine.setupCron)
 		for {
 			select {
 			case cellSpec, ok := <-engine.cellChange:

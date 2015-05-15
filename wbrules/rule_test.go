@@ -766,6 +766,23 @@ func TestCron(t *testing.T) {
 		"[rule] @daily rule fired",
 		"[rule] @hourly rule fired",
 	)
+
+	// the new script contains rules with same names as in
+	// testrules_cron.js that should override the previous
+	// rules
+	fixture.engine.LiveLoadScript("testrules_cron_for_reload.js")
+
+	fixture.cron.invokeEntries("@hourly")
+	fixture.cron.invokeEntries("@hourly")
+	fixture.cron.invokeEntries("@daily")
+	fixture.cron.invokeEntries("@hourly")
+
+	fixture.Verify(
+		"[rule] @hourly rule fired (new)",
+		"[rule] @hourly rule fired (new)",
+		"[rule] @daily rule fired (new)",
+		"[rule] @hourly rule fired (new)",
+	)
 }
 
 // TBD: idea concerning rule reload:
