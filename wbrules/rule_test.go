@@ -158,6 +158,13 @@ func (fixture *ruleFixture) SetCellValue(device, cellName string, value interfac
 		actualCellSpec.DevName+"/"+actualCellSpec.CellName)
 }
 
+func (fixture *ruleFixture) tearDown() {
+	fixture.cellFixture.tearDown()
+	wbgo.WaitFor(fixture.t, func() bool {
+		return !fixture.engine.IsActive()
+	})
+}
+
 func TestDeviceDefinition(t *testing.T) {
 	fixture := newRuleFixture(t, false, "testrules.js")
 	defer fixture.tearDown()
@@ -752,7 +759,11 @@ func TestCron(t *testing.T) {
 	defer fixture.tearDown()
 
 	wbgo.WaitFor(t, func() bool {
-		return fixture.cron != nil && fixture.cron.started
+		c := make(chan bool)
+		fixture.model.CallSync(func() {
+			c <- fixture.cron != nil && fixture.cron.started
+		})
+		return <-c
 	})
 
 	fixture.cron.invokeEntries("@hourly")

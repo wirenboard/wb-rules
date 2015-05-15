@@ -12,6 +12,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -477,6 +478,7 @@ type RuleEngine struct {
 	currentTimer      string
 	cronMaker         func() Cron
 	cron              Cron
+	statusMtx         sync.Mutex
 }
 
 func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
@@ -1235,7 +1237,9 @@ func (engine *RuleEngine) Start() {
 	if engine.cellChange != nil {
 		return
 	}
+	engine.statusMtx.Lock()
 	engine.cellChange = engine.model.AcquireCellChangeChannel()
+	engine.statusMtx.Unlock()
 	ready := make(chan struct{})
 	engine.model.WhenReady(func() {
 		engine.RunRules(nil, NO_TIMER_NAME)
@@ -1278,9 +1282,17 @@ func (engine *RuleEngine) Start() {
 					}
 					engine.timers = engine.timers[:0]
 					engine.model.ReleaseCellChangeChannel(engine.cellChange)
+					engine.statusMtx.Lock()
 					engine.cellChange = nil
+					engine.statusMtx.Unlock()
 				}
 			}
 		}
 	}()
+}
+
+func (engine *RuleEngine) IsActive() bool {
+	engine.statusMtx.Lock()
+	defer engine.statusMtx.Unlock()
+	return engine.cellChange != nil
 }

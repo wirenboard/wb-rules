@@ -24,6 +24,7 @@ type cellFixture struct {
 }
 
 func newCellFixture(t *testing.T, waitForRetained bool) *cellFixture {
+	wbgo.SetupTestLogging(t)
 	fixture := &cellFixture{
 		t:      t,
 		broker: wbgo.NewFakeMQTTBroker(t),
@@ -39,7 +40,6 @@ func newCellFixture(t *testing.T, waitForRetained bool) *cellFixture {
 	fixture.driver.SetAutoPoll(false)
 	fixture.driver.SetAcceptsExternalDevices(true)
 	fixture.cellChange = fixture.model.AcquireCellChangeChannel()
-	wbgo.SetupTestLogging(t)
 	return fixture
 }
 
