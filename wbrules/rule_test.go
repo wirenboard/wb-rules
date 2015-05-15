@@ -98,11 +98,14 @@ func newRuleFixture(t *testing.T, waitForRetained bool, ruleFile string) *ruleFi
 		*newCellFixture(t, waitForRetained),
 		nil,
 		make(map[int]*fakeTimer),
-		newFakeCron(t),
+		nil,
 	}
 	fixture.engine = NewRuleEngine(fixture.model, fixture.driverClient)
 	fixture.engine.SetTimerFunc(fixture.newFakeTimer)
-	fixture.engine.SetCron(fixture.cron)
+	fixture.engine.SetCronMaker(func() Cron {
+		fixture.cron = newFakeCron(t)
+		return fixture.cron
+	})
 	fixture.engine.SetLogFunc(func(message string) {
 		fixture.broker.Rec("[rule] %s", message)
 	})
@@ -749,7 +752,7 @@ func TestCron(t *testing.T) {
 	defer fixture.tearDown()
 
 	wbgo.WaitFor(t, func() bool {
-		return fixture.cron.started
+		return fixture.cron != nil && fixture.cron.started
 	})
 
 	fixture.cron.invokeEntries("@hourly")

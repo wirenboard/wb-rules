@@ -475,6 +475,7 @@ type RuleEngine struct {
 	rulesWithoutCells map[*Rule]bool
 	timerRules        map[string][]*Rule
 	currentTimer      string
+	cronMaker         func() Cron
 	cron              Cron
 }
 
@@ -498,7 +499,8 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		rulesWithoutCells: make(map[*Rule]bool),
 		timerRules:        make(map[string][]*Rule),
 		currentTimer:      NO_TIMER_NAME,
-		cron:              cron.New(),
+		cronMaker:         func() Cron { return cron.New() },
+		cron:              nil,
 	}
 
 	engine.initCallbackList("ruleEngineTimers")
@@ -616,8 +618,8 @@ func (engine *RuleEngine) SetTimerFunc(timerFunc TimerFunc) {
 	engine.timerFunc = timerFunc
 }
 
-func (engine *RuleEngine) SetCron(cron Cron) {
-	engine.cron = cron
+func (engine *RuleEngine) SetCronMaker(cronMaker func() Cron) {
+	engine.cronMaker = cronMaker
 }
 
 func (engine *RuleEngine) loadLib() error {
@@ -1197,7 +1199,12 @@ func (engine *RuleEngine) LoadScript(path string) error {
 	return nil
 }
 
-func (engine *RuleEngine) startCron() {
+func (engine *RuleEngine) setupCron() {
+	if engine.cron != nil {
+		engine.cron.Stop()
+	}
+
+	engine.cron = engine.cronMaker()
 	// note for rule reloading: will need to restart cron
 	// to reload rules properly
 	for _, name := range engine.ruleList {
@@ -1228,7 +1235,7 @@ func (engine *RuleEngine) Start() {
 			case <-engine.cellChange:
 			}
 		}
-		engine.startCron()
+		engine.setupCron()
 		for {
 			select {
 			case cellSpec, ok := <-engine.cellChange:
