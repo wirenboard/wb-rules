@@ -215,9 +215,6 @@ func (engine *RuleEngine) fireTimer(n int) {
 }
 
 func (engine *RuleEngine) removeTimer(n int) {
-	// note that n may not be present in ruleEngineTimers, but
-	// it shouldn't cause any problems as deleting nonexistent
-	// property is not an error
 	engine.timers[n-1] = nil
 }
 
