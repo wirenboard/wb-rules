@@ -342,32 +342,36 @@ func newRule(engine *RuleEngine, name string, defIndex int) (*Rule, error) {
 	hasWhenChanged := ctx.HasPropString(defIndex, "whenChanged")
 	hasCron := ctx.HasPropString(defIndex, "_cron")
 
-	if hasWhen {
-		if hasAsSoonAs || hasWhenChanged || hasCron {
-			// _cron is added by lib.js. Under normal circumstances
-			// it may not be combined with 'when' here, so no special message
-			return nil, errors.New(
-				"invalid rule -- cannot combine 'when' with 'asSoonAs' or 'whenChanged'")
-		}
-		rule.cond = newLevelTriggeredRuleCondition(engine, defIndex)
-	} else if hasAsSoonAs {
-		if hasWhenChanged || hasCron {
-			return nil, errors.New(
-				"invalid rule -- cannot combine 'asSoonAs' with 'whenChanged'")
-		}
-		rule.cond = newEdgeTriggeredRuleCondition(engine, defIndex)
-	} else if hasWhenChanged {
-		if hasCron {
-			return nil, errors.New("invalid cron spec")
-		}
+	switch {
+	case hasWhen && (hasAsSoonAs || hasWhenChanged || hasCron):
+		// _cron is added by lib.js. Under normal circumstances
+		// it may not be combined with 'when' here, so no special message
+		return nil, errors.New(
+			"invalid rule -- cannot combine 'when' with 'asSoonAs' or 'whenChanged'")
 
+	case hasWhen:
+		rule.cond = newLevelTriggeredRuleCondition(engine, defIndex)
+
+	case hasAsSoonAs && (hasWhenChanged || hasCron):
+		return nil, errors.New(
+			"invalid rule -- cannot combine 'asSoonAs' with 'whenChanged'")
+
+	case hasAsSoonAs:
+		rule.cond = newEdgeTriggeredRuleCondition(engine, defIndex)
+
+	case hasWhenChanged && hasCron:
+		return nil, errors.New("invalid rule -- cannot combine 'whenChanged' with cron spec")
+
+	case hasWhenChanged:
 		var err error
 		if rule.cond, err = newWhenChangedRuleCondition(engine, defIndex); err != nil {
 			return nil, err
 		}
-	} else if hasCron {
+
+	case hasCron:
 		rule.cond = newCronRuleCondition(engine, defIndex)
-	} else {
+
+	default:
 		return nil, errors.New(
 			"invalid rule -- must provide one of 'when', 'asSoonAs' or 'whenChanged'")
 	}
@@ -549,55 +553,61 @@ func (engine *RuleEngine) esDefineVirtualDevice() int {
 		title = obj.Get("title").Str(name)
 	}
 	dev := engine.model.EnsureLocalDevice(name, title)
-	if obj.Has("cells") {
-		if v := obj.Get("cells"); !v.IsMSI() {
+
+	if !obj.Has("cells") {
+		return 0
+	}
+
+	v := obj.Get("cells")
+	if !v.IsMSI() {
+		return duktape.DUK_RET_ERROR
+	}
+
+	for cellName, maybeCellDef := range v.MSI() {
+		cellDef, ok := maybeCellDef.(map[string]interface{})
+		if !ok {
 			return duktape.DUK_RET_ERROR
-		} else {
-			for cellName, maybeCellDef := range v.MSI() {
-				cellDef, ok := maybeCellDef.(map[string]interface{})
-				if !ok {
-					return duktape.DUK_RET_ERROR
-				}
-				cellType, ok := cellDef["type"]
-				if !ok {
-					return duktape.DUK_RET_ERROR
-				}
-				// FIXME: too much spaghetti for my taste
-				if cellType == "pushbutton" {
-					dev.SetButtonCell(cellName)
-				} else {
-					cellValue, ok := cellDef["value"]
-					if !ok {
-						return duktape.DUK_RET_ERROR
-					}
+		}
+		cellType, ok := cellDef["type"]
+		if !ok {
+			return duktape.DUK_RET_ERROR
+		}
+		// FIXME: too much spaghetti for my taste
+		if cellType == "pushbutton" {
+			dev.SetButtonCell(cellName)
+			continue
+		}
 
-					cellReadonly := false
-					cellReadonlyRaw, hasReadonly := cellDef["readonly"]
-					if hasReadonly {
-						cellReadonly, ok = cellReadonlyRaw.(bool)
-						if !ok {
-							return duktape.DUK_RET_ERROR
-						}
-					}
+		cellValue, ok := cellDef["value"]
+		if !ok {
+			return duktape.DUK_RET_ERROR
+		}
 
-					if cellType == "range" {
-						fmax := DEFAULT_CELL_MAX
-						max, ok := cellDef["max"]
-						if ok {
-							fmax, ok = max.(float64)
-							if !ok {
-								return duktape.DUK_RET_ERROR
-							}
-						}
-						// FIXME: can be float
-						dev.SetRangeCell(cellName, cellValue, fmax, cellReadonly)
-					} else {
-						dev.SetCell(cellName, cellType.(string), cellValue, cellReadonly)
-					}
-				}
+		cellReadonly := false
+		cellReadonlyRaw, hasReadonly := cellDef["readonly"]
+		if hasReadonly {
+			cellReadonly, ok = cellReadonlyRaw.(bool)
+			if !ok {
+				return duktape.DUK_RET_ERROR
 			}
 		}
+
+		if cellType == "range" {
+			fmax := DEFAULT_CELL_MAX
+			max, ok := cellDef["max"]
+			if ok {
+				fmax, ok = max.(float64)
+				if !ok {
+					return duktape.DUK_RET_ERROR
+				}
+			}
+			// FIXME: can be float
+			dev.SetRangeCell(cellName, cellValue, fmax, cellReadonly)
+		} else {
+			dev.SetCell(cellName, cellType.(string), cellValue, cellReadonly)
+		}
 	}
+
 	return 0
 }
 
