@@ -111,11 +111,9 @@ func newRuleFixture(t *testing.T, waitForRetained bool, ruleFile string) *ruleFi
 	})
 	assert.Equal(t, nil, fixture.engine.LoadScript(ruleFile))
 	fixture.driver.Start()
-	fixture.publish("/devices/somedev/meta/name", "SomeDev", "")
-	fixture.publish("/devices/somedev/controls/sw/meta/type", "switch", "somedev/sw")
-	fixture.publish("/devices/somedev/controls/sw", "0", "somedev/sw")
-	fixture.publish("/devices/somedev/controls/temp/meta/type", "temperature", "somedev/temp")
-	fixture.publish("/devices/somedev/controls/temp", "19", "somedev/temp")
+	if !waitForRetained {
+		fixture.publishSomedev()
+	}
 	return fixture
 }
 
@@ -124,6 +122,15 @@ func newRuleFixtureSkippingDefs(t *testing.T, ruleFile string) (fixture *ruleFix
 	fixture.broker.SkipTill("tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)")
 	fixture.engine.Start()
 	return
+}
+
+func (fixture *ruleFixture) publishSomedev() {
+	<-fixture.model.publishDoneCh
+	fixture.publish("/devices/somedev/meta/name", "SomeDev", "")
+	fixture.publish("/devices/somedev/controls/sw/meta/type", "switch", "somedev/sw")
+	fixture.publish("/devices/somedev/controls/sw", "0", "somedev/sw")
+	fixture.publish("/devices/somedev/controls/temp/meta/type", "temperature", "somedev/temp")
+	fixture.publish("/devices/somedev/controls/temp", "19", "somedev/temp")
 }
 
 func (fixture *ruleFixture) newFakeTimer(id int, d time.Duration, periodic bool) Timer {
@@ -174,7 +181,6 @@ func TestDeviceDefinition(t *testing.T) {
 		"Subscribe -- driver: /devices/+/controls/+",
 		"Subscribe -- driver: /devices/+/controls/+/meta/type",
 		"Subscribe -- driver: /devices/+/controls/+/meta/max",
-		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/enabled/meta/type: [switch] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/enabled/meta/order: [1] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/enabled: [0] (QoS 1, retained)",
@@ -189,6 +195,7 @@ func TestDeviceDefinition(t *testing.T) {
 		"driver -> /devices/stabSettings/controls/lowThreshold/meta/max: [40] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/lowThreshold: [20] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/stabSettings/controls/lowThreshold/on",
+		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
@@ -368,17 +375,16 @@ func TestRetainedState(t *testing.T) {
 		"Subscribe -- driver: /devices/+/controls/+",
 		"Subscribe -- driver: /devices/+/controls/+/meta/type",
 		"Subscribe -- driver: /devices/+/controls/+/meta/max",
-		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
-		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
-		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
-		"tst -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
-		"tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
 	)
 	fixture.broker.VerifyEmpty()
 
 	fixture.publish("/devices/stabSettings/controls/enabled", "1", "stabSettings/enabled")
+	// lower the threshold so that the rule doesn't fire immediately
+	// (which mixes up cell change events during fixture.publishSomedev())
+	fixture.publish("/devices/stabSettings/controls/lowThreshold", "18", "stabSettings/lowThreshold")
 	fixture.broker.Verify(
 		"tst -> /devices/stabSettings/controls/enabled: [1] (QoS 1, retained)",
+		"tst -> /devices/stabSettings/controls/lowThreshold: [18] (QoS 1, retained)",
 	)
 	fixture.broker.VerifyEmpty()
 
@@ -396,13 +402,24 @@ func TestRetainedState(t *testing.T) {
 		"driver -> /devices/stabSettings/controls/lowThreshold/meta/type: [range] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/lowThreshold/meta/order: [3] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/lowThreshold/meta/max: [40] (QoS 1, retained)",
-		"driver -> /devices/stabSettings/controls/lowThreshold: [20] (QoS 1, retained)",
+		"driver -> /devices/stabSettings/controls/lowThreshold: [18] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/stabSettings/controls/lowThreshold/on",
-		"[rule] heaterOn fired, changed: (no cell) -> (none)",
+	)
+	fixture.publishSomedev()
+	fixture.broker.Verify(
+		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
+	)
+	fixture.publish("/devices/somedev/controls/temp", "16", "somedev/temp", "somedev/sw")
+	fixture.broker.Verify(
+		"tst -> /devices/somedev/controls/temp: [16] (QoS 1, retained)",
+		"[rule] heaterOn fired, changed: somedev/temp -> 16",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	fixture.broker.VerifyEmpty()
-	fixture.expectCellChange("somedev/sw")
 }
 
 func TestCellChange(t *testing.T) {
@@ -446,11 +463,11 @@ func TestLocalButtons(t *testing.T) {
 		"Subscribe -- driver: /devices/+/controls/+",
 		"Subscribe -- driver: /devices/+/controls/+/meta/type",
 		"Subscribe -- driver: /devices/+/controls/+/meta/max",
-		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		"driver -> /devices/buttons/controls/somebutton/meta/type: [pushbutton] (QoS 1, retained)",
 		"driver -> /devices/buttons/controls/somebutton/meta/order: [1] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/buttons/controls/somebutton/on",
 		// FIXME: don't need these here
+		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
@@ -742,15 +759,15 @@ func TestReadOnlyCells(t *testing.T) {
 		"Subscribe -- driver: /devices/+/controls/+",
 		"Subscribe -- driver: /devices/+/controls/+/meta/type",
 		"Subscribe -- driver: /devices/+/controls/+/meta/max",
-		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		"driver -> /devices/roCells/controls/rocell/meta/type: [switch] (QoS 1, retained)",
 		"driver -> /devices/roCells/controls/rocell/meta/readonly: [1] (QoS 1, retained)",
 		"driver -> /devices/roCells/controls/rocell/meta/order: [1] (QoS 1, retained)",
 		"driver -> /devices/roCells/controls/rocell: [0] (QoS 1, retained)",
+		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
-		// "tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
 	)
 }
 

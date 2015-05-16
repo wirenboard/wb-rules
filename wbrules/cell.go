@@ -58,6 +58,7 @@ type CellModel struct {
 	devices            map[string]CellModelDevice
 	cellChangeChannels []chan *CellSpec
 	started            bool
+	publishDoneCh      chan struct{}
 }
 
 type CellModelDevice interface {
@@ -98,6 +99,7 @@ func NewCellModel() *CellModel {
 	return &CellModel{
 		devices:            make(map[string]CellModelDevice),
 		cellChangeChannels: make([]chan *CellSpec, 0, CELL_CHANGE_SLICE_CAPACITY),
+		publishDoneCh:      make(chan struct{}, 10),
 	}
 }
 
@@ -119,6 +121,9 @@ func (model *CellModel) Start() error {
 		for _, name := range names {
 			model.devices[name].queryParams()
 		}
+		// this is needed for tests to be able to publish
+		// stuff after all of the local cells are published
+		model.publishDoneCh <- struct{}{}
 	})
 	return nil
 }
