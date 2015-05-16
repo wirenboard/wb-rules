@@ -3,6 +3,7 @@ package wbrules
 import (
 	"errors"
 	"fmt"
+	"github.com/GeertJohan/go.rice"
 	wbgo "github.com/contactless/wbgo"
 	duktape "github.com/ivan4th/go-duktape"
 	"github.com/stretchr/objx"
@@ -10,15 +11,21 @@ import (
 	"time"
 )
 
+const (
+	LIB_FILE = "lib.js"
+)
+
 type ESEngine struct {
 	*RuleEngine
-	ctx *ESContext
+	ctx       *ESContext
+	scriptBox *rice.Box
 }
 
 func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine) {
 	engine = &ESEngine{
 		NewRuleEngine(model, mqttClient),
 		newESContext(),
+		rice.MustFindBox("scripts"),
 	}
 
 	engine.ctx.PushGlobalObject()
