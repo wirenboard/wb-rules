@@ -121,11 +121,9 @@ type LevelTriggeredRuleCondition struct {
 	SimpleCallbackCondition
 }
 
-func newLevelTriggeredRuleCondition(engine *RuleEngine, defIndex int) *LevelTriggeredRuleCondition {
+func newLevelTriggeredRuleCondition(cond func() bool) *LevelTriggeredRuleCondition {
 	return &LevelTriggeredRuleCondition{
-		SimpleCallbackCondition: SimpleCallbackCondition{
-			cond: engine.wrapRuleCondFunc(defIndex, "when"),
-		},
+		SimpleCallbackCondition: SimpleCallbackCondition{cond: cond},
 	}
 }
 
@@ -151,13 +149,11 @@ type EdgeTriggeredRuleCondition struct {
 	firstRun      bool
 }
 
-func newEdgeTriggeredRuleCondition(engine *RuleEngine, defIndex int) *EdgeTriggeredRuleCondition {
+func newEdgeTriggeredRuleCondition(cond func() bool) *EdgeTriggeredRuleCondition {
 	return &EdgeTriggeredRuleCondition{
-		SimpleCallbackCondition: SimpleCallbackCondition{
-			cond: engine.wrapRuleCondFunc(defIndex, "asSoonAs"),
-		},
-		prevCondValue: false,
-		firstRun:      false,
+		SimpleCallbackCondition: SimpleCallbackCondition{cond: cond},
+		prevCondValue:           false,
+		firstRun:                false,
 	}
 }
 
@@ -171,22 +167,13 @@ func (ruleCond *EdgeTriggeredRuleCondition) Check(cell *Cell) (bool, interface{}
 
 type CellChangedRuleCondition struct {
 	RuleConditionBase
-	engine   *RuleEngine
 	cell     *Cell
 	oldValue interface{}
 }
 
-func newCellChangedRuleCondition(engine *RuleEngine, cellNameIndex int) (*CellChangedRuleCondition, error) {
-	cellFullName := engine.ctx.SafeToString(cellNameIndex)
-
-	parts := strings.SplitN(cellFullName, "/", 2)
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid whenChanged spec: '%s'", cellFullName)
-	}
-
+func newCellChangedRuleCondition(cell *Cell) (*CellChangedRuleCondition, error) {
 	return &CellChangedRuleCondition{
-		engine:   engine,
-		cell:     engine.getCell(parts[0], parts[1]),
+		cell:     cell,
 		oldValue: nil,
 	}, nil
 }
@@ -216,16 +203,13 @@ func (ruleCond *CellChangedRuleCondition) Check(cell *Cell) (bool, interface{}) 
 
 type FuncValueChangedRuleCondition struct {
 	RuleConditionBase
-	engine   *RuleEngine
 	thunk    func() interface{}
 	oldValue interface{}
 }
 
-func newFuncValueChangedRuleCondition(engine *RuleEngine, funcIndex int) *FuncValueChangedRuleCondition {
-	f := engine.ctx.WrapCallback("ruleFuncs", funcIndex)
+func newFuncValueChangedRuleCondition(f func() interface{}) *FuncValueChangedRuleCondition {
 	return &FuncValueChangedRuleCondition{
-		engine:   engine,
-		thunk:    func() interface{} { return f(nil) },
+		thunk:    f,
 		oldValue: nil,
 	}
 }
@@ -265,50 +249,13 @@ func (ruleCond *OrRuleCondition) Check(cell *Cell) (bool, interface{}) {
 	return false, nil
 }
 
-func newSingleWhenChangedRuleCondition(engine *RuleEngine, defIndex int) (RuleCondition, error) {
-	if engine.ctx.IsString(defIndex) {
-		return newCellChangedRuleCondition(engine, defIndex)
-	}
-	if engine.ctx.IsFunction(-1) {
-		return newFuncValueChangedRuleCondition(engine, -1), nil
-	}
-	return nil, errors.New("whenChanged: array expected")
-}
-
-func newWhenChangedRuleCondition(engine *RuleEngine, defIndex int) (RuleCondition, error) {
-	ctx := engine.ctx
-	ctx.GetPropString(defIndex, "whenChanged")
-	defer ctx.Pop()
-
-	if !ctx.IsArray(-1) {
-		return newSingleWhenChangedRuleCondition(engine, -1)
-	}
-
-	conds := make([]RuleCondition, ctx.GetLength(-1))
-
-	for i := range conds {
-		ctx.GetPropIndex(-1, uint(i))
-		cond, err := newSingleWhenChangedRuleCondition(engine, -1)
-		ctx.Pop()
-		if err != nil {
-			return nil, err
-		} else {
-			conds[i] = cond
-		}
-	}
-
-	return newOrRuleCondition(conds), nil
-}
-
 type CronRuleCondition struct {
 	RuleConditionBase
 	spec string
 }
 
-func newCronRuleCondition(engine *RuleEngine, defIndex int) *CronRuleCondition {
-	engine.ctx.GetPropString(defIndex, "_cron")
-	defer engine.ctx.Pop()
-	return &CronRuleCondition{spec: engine.ctx.SafeToString(-1)}
+func newCronRuleCondition(spec string) *CronRuleCondition {
+	return &CronRuleCondition{spec: spec}
 }
 
 func (ruleCond *CronRuleCondition) MaybeAddToCron(cron Cron, thunk func()) error {
@@ -323,64 +270,18 @@ type Rule struct {
 	shouldCheck bool
 }
 
-func newRule(engine *RuleEngine, name string, defIndex int) (*Rule, error) {
+func NewRule(engine *RuleEngine, name string, cond RuleCondition, then ESCallbackFunc) *Rule {
 	rule := &Rule{
 		engine:      engine,
 		name:        name,
-		then:        nil,
+		cond:        cond,
+		then:        then,
 		shouldCheck: false,
 	}
-	ctx := engine.ctx
-
-	if !ctx.HasPropString(defIndex, "then") {
-		// this should be handled by lib.js
-		return nil, errors.New("invalid rule -- no then")
-	}
-	rule.then = rule.engine.wrapRuleCallback(defIndex, "then")
-	hasWhen := ctx.HasPropString(defIndex, "when")
-	hasAsSoonAs := ctx.HasPropString(defIndex, "asSoonAs")
-	hasWhenChanged := ctx.HasPropString(defIndex, "whenChanged")
-	hasCron := ctx.HasPropString(defIndex, "_cron")
-
-	switch {
-	case hasWhen && (hasAsSoonAs || hasWhenChanged || hasCron):
-		// _cron is added by lib.js. Under normal circumstances
-		// it may not be combined with 'when' here, so no special message
-		return nil, errors.New(
-			"invalid rule -- cannot combine 'when' with 'asSoonAs' or 'whenChanged'")
-
-	case hasWhen:
-		rule.cond = newLevelTriggeredRuleCondition(engine, defIndex)
-
-	case hasAsSoonAs && (hasWhenChanged || hasCron):
-		return nil, errors.New(
-			"invalid rule -- cannot combine 'asSoonAs' with 'whenChanged'")
-
-	case hasAsSoonAs:
-		rule.cond = newEdgeTriggeredRuleCondition(engine, defIndex)
-
-	case hasWhenChanged && hasCron:
-		return nil, errors.New("invalid rule -- cannot combine 'whenChanged' with cron spec")
-
-	case hasWhenChanged:
-		var err error
-		if rule.cond, err = newWhenChangedRuleCondition(engine, defIndex); err != nil {
-			return nil, err
-		}
-
-	case hasCron:
-		rule.cond = newCronRuleCondition(engine, defIndex)
-
-	default:
-		return nil, errors.New(
-			"invalid rule -- must provide one of 'when', 'asSoonAs' or 'whenChanged'")
-	}
-
 	for _, cell := range rule.cond.GetCells() {
 		engine.storeRuleCell(rule, cell)
 	}
-
-	return rule, nil
+	return rule
 }
 
 func (rule *Rule) ShouldCheck() {
@@ -430,6 +331,102 @@ func (rule *Rule) MaybeAddToCron(cron Cron) {
 func (rule *Rule) Destroy() {
 	rule.then = nil
 	rule.cond = newDestroyedRuleCondition()
+}
+
+func buildSingleWhenChangedRuleCondition(engine *RuleEngine, defIndex int) (RuleCondition, error) {
+	if engine.ctx.IsString(defIndex) {
+		cellFullName := engine.ctx.SafeToString(defIndex)
+		parts := strings.SplitN(cellFullName, "/", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("invalid whenChanged spec: '%s'", cellFullName)
+		}
+		return newCellChangedRuleCondition(engine.getCell(parts[0], parts[1]))
+	}
+	if engine.ctx.IsFunction(defIndex) {
+		f := engine.ctx.WrapCallback("ruleFuncs", defIndex)
+		return newFuncValueChangedRuleCondition(func() interface{} { return f(nil) }), nil
+	}
+	return nil, errors.New("whenChanged: array expected")
+}
+
+func buildWhenChangedRuleCondition(engine *RuleEngine, defIndex int) (RuleCondition, error) {
+	ctx := engine.ctx
+	ctx.GetPropString(defIndex, "whenChanged")
+	defer ctx.Pop()
+
+	if !ctx.IsArray(-1) {
+		return buildSingleWhenChangedRuleCondition(engine, -1)
+	}
+
+	conds := make([]RuleCondition, ctx.GetLength(-1))
+
+	for i := range conds {
+		ctx.GetPropIndex(-1, uint(i))
+		cond, err := buildSingleWhenChangedRuleCondition(engine, -1)
+		ctx.Pop()
+		if err != nil {
+			return nil, err
+		} else {
+			conds[i] = cond
+		}
+	}
+
+	return newOrRuleCondition(conds), nil
+}
+
+func buildRuleCond(engine *RuleEngine, defIndex int) (RuleCondition, error) {
+	ctx := engine.ctx
+	hasWhen := ctx.HasPropString(defIndex, "when")
+	hasAsSoonAs := ctx.HasPropString(defIndex, "asSoonAs")
+	hasWhenChanged := ctx.HasPropString(defIndex, "whenChanged")
+	hasCron := ctx.HasPropString(defIndex, "_cron")
+
+	switch {
+	case hasWhen && (hasAsSoonAs || hasWhenChanged || hasCron):
+		// _cron is added by lib.js. Under normal circumstances
+		// it may not be combined with 'when' here, so no special message
+		return nil, errors.New(
+			"invalid rule -- cannot combine 'when' with 'asSoonAs' or 'whenChanged'")
+
+	case hasWhen:
+		return newLevelTriggeredRuleCondition(engine.wrapRuleCondFunc(defIndex, "when")), nil
+
+	case hasAsSoonAs && (hasWhenChanged || hasCron):
+		return nil, errors.New(
+			"invalid rule -- cannot combine 'asSoonAs' with 'whenChanged'")
+
+	case hasAsSoonAs:
+		return newEdgeTriggeredRuleCondition(
+			engine.wrapRuleCondFunc(defIndex, "asSoonAs")), nil
+
+	case hasWhenChanged && hasCron:
+		return nil, errors.New("invalid rule -- cannot combine 'whenChanged' with cron spec")
+
+	case hasWhenChanged:
+		return buildWhenChangedRuleCondition(engine, defIndex)
+
+	case hasCron:
+		engine.ctx.GetPropString(defIndex, "_cron")
+		defer engine.ctx.Pop()
+		return newCronRuleCondition(engine.ctx.SafeToString(-1)), nil
+
+	default:
+		return nil, errors.New(
+			"invalid rule -- must provide one of 'when', 'asSoonAs' or 'whenChanged'")
+	}
+}
+
+func buildRule(engine *RuleEngine, name string, defIndex int) (*Rule, error) {
+	if !engine.ctx.HasPropString(defIndex, "then") {
+		// this should be handled by lib.js
+		return nil, errors.New("invalid rule -- no then")
+	}
+	then := engine.wrapRuleCallback(defIndex, "then")
+	if cond, err := buildRuleCond(engine, defIndex); err != nil {
+		return nil, err
+	} else {
+		return NewRule(engine, name, cond, then), nil
+	}
 }
 
 type LogFunc func(string)
@@ -980,7 +977,7 @@ func (engine *RuleEngine) esWbDefineRule() int {
 		return duktape.DUK_RET_ERROR
 	}
 	name := engine.ctx.GetString(0)
-	newRule, err := newRule(engine, name, 1)
+	newRule, err := buildRule(engine, name, 1)
 	if err != nil {
 		// FIXME: proper error handling
 		engine.logFunc(fmt.Sprintf("bad definition of rule '%s': %s", name, err))
