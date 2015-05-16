@@ -103,7 +103,7 @@ func (loader *Loader) startWatching() {
 					wbgo.Debug.Printf("(re)load: %s", p)
 					// need to check whether the file that possibly doesn't
 					// satisfy the loader pattern was explicitly loaded
-					_, explicit := loader.explicitlyLoaded[p]
+					explicit := loader.explicitlyLoaded[p]
 					if err := loader.doLoad(p, explicit, true); err != nil {
 						wbgo.Warn.Printf(
 							"warning: failed to load %s: %s", p, err)
