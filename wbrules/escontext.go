@@ -6,7 +6,6 @@ import (
 	wbgo "github.com/contactless/wbgo"
 	duktape "github.com/ivan4th/go-duktape"
 	"github.com/stretchr/objx"
-	"log"
 	"runtime"
 	"strconv"
 	"strings"
@@ -17,14 +16,16 @@ type ESCallbackFunc func(args objx.Map) interface{}
 
 type ESContext struct {
 	*duktape.Context
-	callbackIndices map[string]ESCallback
+	callbackIndex ESCallback
 }
 
 func newESContext() *ESContext {
-	return &ESContext{
+	ctx := &ESContext{
 		duktape.NewContext(),
-		make(map[string]ESCallback),
+		1,
 	}
+	ctx.initGlobalObject("_esCallbacks")
+	return ctx
 }
 
 func (ctx *ESContext) getObject(objIndex int) map[string]interface{} {
@@ -109,7 +110,7 @@ func (ctx *ESContext) StringArrayToGo(arrIndex int) []string {
 	return r
 }
 
-func (ctx *ESContext) InitCallbackList(propName string) {
+func (ctx *ESContext) initGlobalObject(propName string) {
 	// callback list stash property holds callback functions referenced by ids
 	ctx.PushGlobalStash()
 	ctx.PushObject()
@@ -117,21 +118,14 @@ func (ctx *ESContext) InitCallbackList(propName string) {
 	ctx.Pop()
 }
 
-func (ctx *ESContext) pushCallbackKey(key interface{}) {
-	switch key.(type) {
-	case int:
-		ctx.PushNumber(float64(key.(int)))
-	case ESCallback:
-		ctx.PushString(strconv.FormatUint(uint64(key.(ESCallback)), 16))
-	default:
-		log.Panicf("bad callback key: %v", key)
-	}
+func (ctx *ESContext) callbackKey(key ESCallback) string {
+	return strconv.FormatUint(uint64(key), 16)
 }
 
-func (ctx *ESContext) InvokeCallback(propName string, key interface{}, args objx.Map) interface{} {
+func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} {
 	ctx.PushGlobalStash()
-	ctx.GetPropString(-1, propName)
-	ctx.pushCallbackKey(key)
+	ctx.GetPropString(-1, "_esCallbacks")
+	ctx.PushString(ctx.callbackKey(key))
 	argCount := 0
 	if args != nil {
 		ctx.PushJSObject(args)
@@ -139,8 +133,7 @@ func (ctx *ESContext) InvokeCallback(propName string, key interface{}, args objx
 	}
 	defer ctx.Pop3() // pop: result, callback list object, global stash
 	if s := ctx.PcallProp(-2-argCount, argCount); s != 0 {
-		wbgo.Error.Printf("failed to invoke callback %s[%v]: %s",
-			propName, key, ctx.SafeToString(-1))
+		wbgo.Error.Printf("failed to invoke callback %v: %s", key, ctx.SafeToString(-1))
 		return nil
 	} else if ctx.IsBoolean(-1) {
 		return ctx.ToBoolean(-1)
@@ -158,58 +151,46 @@ func (ctx *ESContext) InvokeCallback(propName string, key interface{}, args objx
 // If key is specified as nil, a new callback key is generated and returned
 // as uint64. In this case the returned value is guaranteed to be
 // greater than zero.
-func (ctx *ESContext) StoreCallback(propName string, callbackStackIndex int, key interface{}) ESCallback {
-	var r ESCallback = 0
-	if key == nil {
-		var found bool
-		r, found = ctx.callbackIndices[propName]
-		if !found {
-			r = 1
-		}
-		key = r
-		ctx.callbackIndices[propName] = r + 1
-	}
+func (ctx *ESContext) storeCallback(callbackStackIndex int) ESCallback {
+	key := ctx.callbackIndex
+	ctx.callbackIndex++
 
 	ctx.PushGlobalStash()
-	ctx.GetPropString(-1, propName)
-	ctx.pushCallbackKey(key)
+	ctx.GetPropString(-1, "_esCallbacks")
 	if callbackStackIndex < 0 {
-		ctx.Dup(callbackStackIndex - 3)
+		ctx.Dup(callbackStackIndex - 2)
 	} else {
 		ctx.Dup(callbackStackIndex)
 	}
-	ctx.PutProp(-3) // callbackList[key] = callback
+	ctx.PutPropString(-2, ctx.callbackKey(key))
 	ctx.Pop2()
-	return r
+	return key
 }
 
 type callbackHolder struct {
 	ctx      *ESContext
-	propName string
 	callback ESCallback
 }
 
 func callbackFinalizer(holder *callbackHolder) {
-	holder.ctx.RemoveCallback(holder.propName, holder.callback)
+	holder.ctx.RemoveCallback(holder.callback)
 }
 
-func (ctx *ESContext) WrapCallback(propName string, callbackStackIndex int) ESCallbackFunc {
+func (ctx *ESContext) WrapCallback(callbackStackIndex int) ESCallbackFunc {
 	holder := &callbackHolder{
 		ctx,
-		propName,
-		ctx.StoreCallback(propName, callbackStackIndex, nil),
+		ctx.storeCallback(callbackStackIndex),
 	}
 	runtime.SetFinalizer(holder, callbackFinalizer)
 	return func(args objx.Map) interface{} {
-		return ctx.InvokeCallback(holder.propName, holder.callback, args)
+		return ctx.invokeCallback(holder.callback, args)
 	}
 }
 
-func (ctx *ESContext) RemoveCallback(propName string, key interface{}) {
+func (ctx *ESContext) RemoveCallback(key ESCallback) {
 	ctx.PushGlobalStash()
-	ctx.GetPropString(-1, propName)
-	ctx.pushCallbackKey(key)
-	ctx.DelProp(-2)
+	ctx.GetPropString(-1, "_esCallbacks")
+	ctx.DelPropString(-1, ctx.callbackKey(key))
 	ctx.Pop()
 }
 

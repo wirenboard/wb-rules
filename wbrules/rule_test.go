@@ -87,7 +87,7 @@ func (cron *fakeCron) invokeEntries(spec string) {
 }
 
 type ruleFixture struct {
-	cellFixture
+	*cellFixture
 	engine *RuleEngine
 	timers map[int]*fakeTimer
 	cron   *fakeCron
@@ -95,7 +95,7 @@ type ruleFixture struct {
 
 func newRuleFixture(t *testing.T, waitForRetained bool, ruleFile string) *ruleFixture {
 	fixture := &ruleFixture{
-		*newCellFixture(t, waitForRetained),
+		newCellFixture(t, waitForRetained),
 		nil,
 		make(map[int]*fakeTimer),
 		nil,

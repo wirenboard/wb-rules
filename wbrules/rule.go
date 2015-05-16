@@ -84,6 +84,7 @@ type TimerEntry struct {
 	periodic bool
 	quit     chan struct{}
 	name     string
+	thunk    func()
 }
 
 type RuleCondition interface {
@@ -343,7 +344,7 @@ func buildSingleWhenChangedRuleCondition(engine *RuleEngine, defIndex int) (Rule
 		return newCellChangedRuleCondition(engine.getCell(parts[0], parts[1]))
 	}
 	if engine.ctx.IsFunction(defIndex) {
-		f := engine.ctx.WrapCallback("ruleFuncs", defIndex)
+		f := engine.ctx.WrapCallback(defIndex)
 		return newFuncValueChangedRuleCondition(func() interface{} { return f(nil) }), nil
 	}
 	return nil, errors.New("whenChanged: array expected")
@@ -478,10 +479,6 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		cron:              nil,
 	}
 
-	engine.ctx.InitCallbackList("ruleEngineTimers")
-	engine.ctx.InitCallbackList("processes")
-	engine.ctx.InitCallbackList("ruleFuncs")
-
 	engine.ctx.PushGlobalObject()
 	engine.ctx.DefineFunctions(map[string]func() int{
 		"defineVirtualDevice":  engine.esDefineVirtualDevice,
@@ -508,7 +505,7 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 func (engine *RuleEngine) wrapRuleCallback(defIndex int, propName string) ESCallbackFunc {
 	engine.ctx.GetPropString(defIndex, propName)
 	defer engine.ctx.Pop()
-	return engine.ctx.WrapCallback("ruleFuncs", -1)
+	return engine.ctx.WrapCallback(-1)
 }
 
 func (engine *RuleEngine) wrapRuleCondFunc(defIndex int, defProp string) func() bool {
@@ -773,7 +770,7 @@ func (engine *RuleEngine) fireTimer(n int) {
 		return
 	}
 	if entry.name == NO_TIMER_NAME {
-		engine.ctx.InvokeCallback("ruleEngineTimers", n, nil)
+		entry.thunk()
 	} else {
 		engine.RunRules(nil, entry.name)
 	}
@@ -827,7 +824,8 @@ func (engine *RuleEngine) esWbStartTimer() int {
 	}
 
 	if name == NO_TIMER_NAME {
-		engine.ctx.StoreCallback("ruleEngineTimers", 0, n)
+		f := engine.ctx.WrapCallback(0)
+		entry.thunk = func() { f(nil) }
 	}
 
 	entry.timer = engine.timerFunc(n, time.Duration(ms*float64(time.Millisecond)), periodic)
@@ -857,7 +855,6 @@ func (engine *RuleEngine) removeTimer(n int) {
 	// note that n may not be present in ruleEngineTimers, but
 	// it shouldn't cause any problems as deleting nonexistent
 	// property is not an error
-	engine.ctx.RemoveCallback("ruleEngineTimers", n)
 	engine.timers[n-1] = nil
 }
 
@@ -927,10 +924,10 @@ func (engine *RuleEngine) esWbSpawn() int {
 		return duktape.DUK_RET_ERROR
 	}
 
-	callbackIndex := NO_CALLBACK
+	callbackFn := ESCallbackFunc(nil)
 
 	if engine.ctx.IsFunction(1) {
-		callbackIndex = engine.ctx.StoreCallback("processes", 1, nil)
+		callbackFn = engine.ctx.WrapCallback(1)
 	} else if !engine.ctx.IsNullOrUndefined(1) {
 		return duktape.DUK_RET_ERROR
 	}
@@ -952,7 +949,7 @@ func (engine *RuleEngine) esWbSpawn() int {
 			wbgo.Error.Printf("external command failed: %s", err)
 			return
 		}
-		if callbackIndex > 0 {
+		if callbackFn != nil {
 			engine.model.CallSync(func() {
 				args := objx.New(map[string]interface{}{
 					"exitStatus": r.ExitStatus,
@@ -961,8 +958,7 @@ func (engine *RuleEngine) esWbSpawn() int {
 					args["capturedOutput"] = r.CapturedOutput
 				}
 				args["capturedErrorOutput"] = r.CapturedErrorOutput
-				engine.ctx.InvokeCallback("processes", callbackIndex, args)
-				engine.ctx.RemoveCallback("processes", callbackIndex)
+				callbackFn(args)
 			})
 		} else if r.ExitStatus != 0 {
 			wbgo.Error.Printf("command '%s' failed: %s", command, err)
