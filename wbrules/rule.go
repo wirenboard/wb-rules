@@ -1,14 +1,11 @@
 package wbrules
 
 import (
-	"errors"
 	"fmt"
 	"github.com/GeertJohan/go.rice"
 	wbgo "github.com/contactless/wbgo"
-	duktape "github.com/ivan4th/go-duktape"
 	"github.com/robfig/cron"
 	"github.com/stretchr/objx"
-	"strings"
 	"sync"
 	"time"
 )
@@ -22,6 +19,12 @@ const (
 	CELL_RULES_CAPACITY = 8
 	NO_CALLBACK         = ESCallback(0)
 )
+
+type depTracker interface {
+	storeRuleCell(rule *Rule, cell *Cell)
+	startTrackingDeps()
+	storeRuleDeps(rule *Rule)
+}
 
 type Timer interface {
 	GetChannel() <-chan time.Time
@@ -264,23 +267,23 @@ func (ruleCond *CronRuleCondition) MaybeAddToCron(cron Cron, thunk func()) error
 }
 
 type Rule struct {
-	engine      *RuleEngine
+	tracker     depTracker
 	name        string
 	cond        RuleCondition
 	then        ESCallbackFunc
 	shouldCheck bool
 }
 
-func NewRule(engine *RuleEngine, name string, cond RuleCondition, then ESCallbackFunc) *Rule {
+func NewRule(tracker depTracker, name string, cond RuleCondition, then ESCallbackFunc) *Rule {
 	rule := &Rule{
-		engine:      engine,
+		tracker:     tracker,
 		name:        name,
 		cond:        cond,
 		then:        then,
 		shouldCheck: false,
 	}
 	for _, cell := range rule.cond.GetCells() {
-		engine.storeRuleCell(rule, cell)
+		tracker.storeRuleCell(rule, cell)
 	}
 	return rule
 }
@@ -297,10 +300,10 @@ func (rule *Rule) Check(cell *Cell) {
 		// to call JS though.
 		return
 	}
-	rule.engine.startTrackingDeps()
+	rule.tracker.startTrackingDeps()
 	shouldFire, newValue := rule.cond.Check(cell)
 	var args objx.Map
-	rule.engine.storeRuleDeps(rule)
+	rule.tracker.storeRuleDeps(rule)
 	rule.shouldCheck = false
 
 	switch {
@@ -334,108 +337,11 @@ func (rule *Rule) Destroy() {
 	rule.cond = newDestroyedRuleCondition()
 }
 
-func buildSingleWhenChangedRuleCondition(engine *RuleEngine, defIndex int) (RuleCondition, error) {
-	if engine.ctx.IsString(defIndex) {
-		cellFullName := engine.ctx.SafeToString(defIndex)
-		parts := strings.SplitN(cellFullName, "/", 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid whenChanged spec: '%s'", cellFullName)
-		}
-		return newCellChangedRuleCondition(engine.getCell(parts[0], parts[1]))
-	}
-	if engine.ctx.IsFunction(defIndex) {
-		f := engine.ctx.WrapCallback(defIndex)
-		return newFuncValueChangedRuleCondition(func() interface{} { return f(nil) }), nil
-	}
-	return nil, errors.New("whenChanged: array expected")
-}
-
-func buildWhenChangedRuleCondition(engine *RuleEngine, defIndex int) (RuleCondition, error) {
-	ctx := engine.ctx
-	ctx.GetPropString(defIndex, "whenChanged")
-	defer ctx.Pop()
-
-	if !ctx.IsArray(-1) {
-		return buildSingleWhenChangedRuleCondition(engine, -1)
-	}
-
-	conds := make([]RuleCondition, ctx.GetLength(-1))
-
-	for i := range conds {
-		ctx.GetPropIndex(-1, uint(i))
-		cond, err := buildSingleWhenChangedRuleCondition(engine, -1)
-		ctx.Pop()
-		if err != nil {
-			return nil, err
-		} else {
-			conds[i] = cond
-		}
-	}
-
-	return newOrRuleCondition(conds), nil
-}
-
-func buildRuleCond(engine *RuleEngine, defIndex int) (RuleCondition, error) {
-	ctx := engine.ctx
-	hasWhen := ctx.HasPropString(defIndex, "when")
-	hasAsSoonAs := ctx.HasPropString(defIndex, "asSoonAs")
-	hasWhenChanged := ctx.HasPropString(defIndex, "whenChanged")
-	hasCron := ctx.HasPropString(defIndex, "_cron")
-
-	switch {
-	case hasWhen && (hasAsSoonAs || hasWhenChanged || hasCron):
-		// _cron is added by lib.js. Under normal circumstances
-		// it may not be combined with 'when' here, so no special message
-		return nil, errors.New(
-			"invalid rule -- cannot combine 'when' with 'asSoonAs' or 'whenChanged'")
-
-	case hasWhen:
-		return newLevelTriggeredRuleCondition(engine.wrapRuleCondFunc(defIndex, "when")), nil
-
-	case hasAsSoonAs && (hasWhenChanged || hasCron):
-		return nil, errors.New(
-			"invalid rule -- cannot combine 'asSoonAs' with 'whenChanged'")
-
-	case hasAsSoonAs:
-		return newEdgeTriggeredRuleCondition(
-			engine.wrapRuleCondFunc(defIndex, "asSoonAs")), nil
-
-	case hasWhenChanged && hasCron:
-		return nil, errors.New("invalid rule -- cannot combine 'whenChanged' with cron spec")
-
-	case hasWhenChanged:
-		return buildWhenChangedRuleCondition(engine, defIndex)
-
-	case hasCron:
-		engine.ctx.GetPropString(defIndex, "_cron")
-		defer engine.ctx.Pop()
-		return newCronRuleCondition(engine.ctx.SafeToString(-1)), nil
-
-	default:
-		return nil, errors.New(
-			"invalid rule -- must provide one of 'when', 'asSoonAs' or 'whenChanged'")
-	}
-}
-
-func buildRule(engine *RuleEngine, name string, defIndex int) (*Rule, error) {
-	if !engine.ctx.HasPropString(defIndex, "then") {
-		// this should be handled by lib.js
-		return nil, errors.New("invalid rule -- no then")
-	}
-	then := engine.wrapRuleCallback(defIndex, "then")
-	if cond, err := buildRuleCond(engine, defIndex); err != nil {
-		return nil, err
-	} else {
-		return NewRule(engine, name, cond, then), nil
-	}
-}
-
 type LogFunc func(string)
 
 type RuleEngine struct {
 	model             *CellModel
 	mqttClient        wbgo.MQTTClient
-	ctx               *ESContext
 	logFunc           LogFunc
 	cellChange        chan *CellSpec
 	scriptBox         *rice.Box
@@ -455,11 +361,10 @@ type RuleEngine struct {
 	statusMtx         sync.Mutex
 }
 
-func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
-	engine = &RuleEngine{
+func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) *RuleEngine {
+	return &RuleEngine{
 		model:      model,
 		mqttClient: mqttClient,
-		ctx:        newESContext(),
 		logFunc: func(message string) {
 			wbgo.Info.Printf("RULE: %s\n", message)
 		},
@@ -478,42 +383,6 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		cronMaker:         func() Cron { return cron.New() },
 		cron:              nil,
 	}
-
-	engine.ctx.PushGlobalObject()
-	engine.ctx.DefineFunctions(map[string]func() int{
-		"defineVirtualDevice":  engine.esDefineVirtualDevice,
-		"format":               engine.esFormat,
-		"log":                  engine.esLog,
-		"debug":                engine.esDebug,
-		"publish":              engine.esPublish,
-		"_wbDevObject":         engine.esWbDevObject,
-		"_wbCellObject":        engine.esWbCellObject,
-		"_wbStartTimer":        engine.esWbStartTimer,
-		"_wbStopTimer":         engine.esWbStopTimer,
-		"_wbCheckCurrentTimer": engine.esWbCheckCurrentTimer,
-		"_wbSpawn":             engine.esWbSpawn,
-		"_wbDefineRule":        engine.esWbDefineRule,
-		"runRules":             engine.esWbRunRules,
-	})
-	engine.ctx.Pop()
-	if err := engine.loadLib(); err != nil {
-		wbgo.Error.Panicf("failed to load runtime library: %s", err)
-	}
-	return
-}
-
-func (engine *RuleEngine) wrapRuleCallback(defIndex int, propName string) ESCallbackFunc {
-	engine.ctx.GetPropString(defIndex, propName)
-	defer engine.ctx.Pop()
-	return engine.ctx.WrapCallback(-1)
-}
-
-func (engine *RuleEngine) wrapRuleCondFunc(defIndex int, defProp string) func() bool {
-	f := engine.wrapRuleCallback(defIndex, defProp)
-	return func() bool {
-		r, ok := f(nil).(bool)
-		return ok && r
-	}
 }
 
 func (engine *RuleEngine) SetTimerFunc(timerFunc TimerFunc) {
@@ -524,139 +393,8 @@ func (engine *RuleEngine) SetCronMaker(cronMaker func() Cron) {
 	engine.cronMaker = cronMaker
 }
 
-func (engine *RuleEngine) loadLib() error {
-	libStr, err := engine.scriptBox.String(LIB_FILE)
-	if err != nil {
-		return err
-	}
-	return engine.ctx.LoadEmbeddedScript(LIB_FILE, libStr)
-}
-
 func (engine *RuleEngine) SetLogFunc(logFunc LogFunc) {
 	engine.logFunc = logFunc
-}
-
-func (engine *RuleEngine) esDefineVirtualDevice() int {
-	if engine.ctx.GetTop() != 2 || !engine.ctx.IsString(-2) || !engine.ctx.IsObject(-1) {
-		return duktape.DUK_RET_ERROR
-	}
-	name := engine.ctx.GetString(-2)
-	title := name
-	obj := engine.ctx.GetJSObject(-1).(objx.Map)
-	if obj.Has("title") {
-		title = obj.Get("title").Str(name)
-	}
-	dev := engine.model.EnsureLocalDevice(name, title)
-
-	if !obj.Has("cells") {
-		return 0
-	}
-
-	v := obj.Get("cells")
-	if !v.IsMSI() {
-		return duktape.DUK_RET_ERROR
-	}
-
-	for cellName, maybeCellDef := range v.MSI() {
-		cellDef, ok := maybeCellDef.(map[string]interface{})
-		if !ok {
-			return duktape.DUK_RET_ERROR
-		}
-		cellType, ok := cellDef["type"]
-		if !ok {
-			return duktape.DUK_RET_ERROR
-		}
-		// FIXME: too much spaghetti for my taste
-		if cellType == "pushbutton" {
-			dev.SetButtonCell(cellName)
-			continue
-		}
-
-		cellValue, ok := cellDef["value"]
-		if !ok {
-			return duktape.DUK_RET_ERROR
-		}
-
-		cellReadonly := false
-		cellReadonlyRaw, hasReadonly := cellDef["readonly"]
-		if hasReadonly {
-			cellReadonly, ok = cellReadonlyRaw.(bool)
-			if !ok {
-				return duktape.DUK_RET_ERROR
-			}
-		}
-
-		if cellType == "range" {
-			fmax := DEFAULT_CELL_MAX
-			max, ok := cellDef["max"]
-			if ok {
-				fmax, ok = max.(float64)
-				if !ok {
-					return duktape.DUK_RET_ERROR
-				}
-			}
-			// FIXME: can be float
-			dev.SetRangeCell(cellName, cellValue, fmax, cellReadonly)
-		} else {
-			dev.SetCell(cellName, cellType.(string), cellValue, cellReadonly)
-		}
-	}
-
-	return 0
-}
-
-func (engine *RuleEngine) esFormat() int {
-	engine.ctx.PushString(engine.ctx.Format())
-	return 1
-}
-
-func (engine *RuleEngine) esLog() int {
-	engine.logFunc(engine.ctx.Format())
-	return 0
-}
-
-func (engine *RuleEngine) esDebug() int {
-	wbgo.Debug.Printf("[rule debug] %s", engine.ctx.Format())
-	return 0
-}
-
-func (engine *RuleEngine) esPublish() int {
-	retain := false
-	qos := 0
-	if engine.ctx.GetTop() == 4 {
-		retain = engine.ctx.ToBoolean(-1)
-		engine.ctx.Pop()
-	}
-	if engine.ctx.GetTop() == 3 {
-		qos = int(engine.ctx.ToNumber(-1))
-		engine.ctx.Pop()
-		if qos < 0 || qos > 2 {
-			return duktape.DUK_RET_ERROR
-		}
-	}
-	if engine.ctx.GetTop() != 2 {
-		return duktape.DUK_RET_ERROR
-	}
-	if !engine.ctx.IsString(-2) {
-		return duktape.DUK_RET_TYPE_ERROR
-	}
-	engine.mqttClient.Publish(wbgo.MQTTMessage{
-		Topic:    engine.ctx.GetString(-2),
-		Payload:  engine.ctx.SafeToString(-1),
-		QoS:      byte(qos),
-		Retained: retain,
-	})
-	return 0
-}
-
-func (engine *RuleEngine) esWbDevObject() int {
-	wbgo.Debug.Printf("esWbDevObject(): top=%d isString=%v", engine.ctx.GetTop(), engine.ctx.IsString(-1))
-	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(-1) {
-		return duktape.DUK_RET_ERROR
-	}
-	dev := engine.model.EnsureDevice(engine.ctx.GetString(-1))
-	engine.ctx.PushGoObject(dev)
-	return 1
 }
 
 func (engine *RuleEngine) startTrackingDeps() {
@@ -716,51 +454,9 @@ func (engine *RuleEngine) trackTimer(timerName string) {
 	}
 }
 
-func (engine *RuleEngine) esWbCellObject() int {
-	if engine.ctx.GetTop() != 2 || !engine.ctx.IsString(-1) || !engine.ctx.IsObject(-2) {
-		return duktape.DUK_RET_ERROR
-	}
-	dev, ok := engine.ctx.GetGoObject(-2).(CellModelDevice)
-	if !ok {
-		wbgo.Error.Printf("invalid _wbCellObject call")
-		return duktape.DUK_RET_TYPE_ERROR
-	}
-	cell := dev.EnsureCell(engine.ctx.GetString(-1))
-	engine.ctx.PushGoObject(cell)
-	engine.ctx.DefineFunctions(map[string]func() int{
-		"rawValue": func() int {
-			engine.trackCell(cell)
-			engine.ctx.PushString(cell.RawValue())
-			return 1
-		},
-		"value": func() int {
-			engine.trackCell(cell)
-			m := objx.New(map[string]interface{}{
-				"v": cell.Value(),
-			})
-			engine.ctx.PushJSObject(m)
-			return 1
-		},
-		"setValue": func() int {
-			engine.trackCell(cell)
-			if engine.ctx.GetTop() != 1 || !engine.ctx.IsObject(-1) {
-				return duktape.DUK_RET_ERROR
-			}
-			m, ok := engine.ctx.GetJSObject(-1).(objx.Map)
-			if !ok || !m.Has("v") {
-				wbgo.Error.Printf("invalid cell definition")
-				return duktape.DUK_RET_TYPE_ERROR
-			}
-			cell.SetValue(m["v"])
-			return 1
-		},
-		"isComplete": func() int {
-			engine.trackCell(cell)
-			engine.ctx.PushBoolean(cell.IsComplete())
-			return 1
-		},
-	})
-	return 1
+func (engine *RuleEngine) checkTimer(timerName string) bool {
+	engine.trackTimer(timerName)
+	return engine.currentTimer != NO_TIMER_NAME && engine.currentTimer == timerName
 }
 
 func (engine *RuleEngine) fireTimer(n int) {
@@ -778,77 +474,6 @@ func (engine *RuleEngine) fireTimer(n int) {
 	if !entry.periodic {
 		engine.removeTimer(n)
 	}
-}
-
-func (engine *RuleEngine) esWbStartTimer() int {
-	if engine.ctx.GetTop() != 3 || !engine.ctx.IsNumber(1) {
-		// FIXME: need to throw proper exception here
-		wbgo.Error.Println("bad _wbStartTimer call")
-		return duktape.DUK_RET_ERROR
-	}
-
-	name := NO_TIMER_NAME
-	if engine.ctx.IsString(0) {
-		name = engine.ctx.ToString(0)
-		if name == "" {
-			wbgo.Error.Println("empty timer name")
-			return duktape.DUK_RET_ERROR
-		}
-		engine.stopTimerByName(name)
-	} else if !engine.ctx.IsFunction(0) {
-		wbgo.Error.Println("invalid timer spec")
-		return duktape.DUK_RET_ERROR
-	}
-
-	ms := engine.ctx.GetNumber(1)
-	periodic := engine.ctx.ToBoolean(2)
-
-	entry := &TimerEntry{
-		periodic: periodic,
-		quit:     make(chan struct{}, 2),
-		name:     name,
-	}
-
-	var n = 0
-
-	for i := 0; i < len(engine.timers); i++ {
-		if engine.timers[i] == nil {
-			engine.timers[i] = entry
-			n = i + 1
-			break
-		}
-	}
-	if n == 0 {
-		engine.timers = append(engine.timers, entry)
-		n = len(engine.timers)
-	}
-
-	if name == NO_TIMER_NAME {
-		f := engine.ctx.WrapCallback(0)
-		entry.thunk = func() { f(nil) }
-	}
-
-	entry.timer = engine.timerFunc(n, time.Duration(ms*float64(time.Millisecond)), periodic)
-	tickCh := entry.timer.GetChannel()
-	go func() {
-		for {
-			select {
-			case <-tickCh:
-				engine.model.CallSync(func() {
-					engine.fireTimer(n)
-				})
-				if !periodic {
-					return
-				}
-			case <-entry.quit:
-				entry.timer.Stop()
-				return
-			}
-		}
-	}()
-
-	engine.ctx.PushNumber(float64(n))
-	return 1
 }
 
 func (engine *RuleEngine) removeTimer(n int) {
@@ -878,128 +503,6 @@ func (engine *RuleEngine) stopTimerByIndex(n int) {
 	} else {
 		wbgo.Error.Printf("trying to stop unknown timer: %d", n)
 	}
-}
-
-func (engine *RuleEngine) esWbStopTimer() int {
-	if engine.ctx.GetTop() != 1 {
-		return duktape.DUK_RET_ERROR
-	}
-	if engine.ctx.IsNumber(0) {
-		n := engine.ctx.GetInt(-1)
-		if n == 0 {
-			wbgo.Error.Printf("timer id cannot be zero")
-			return 0
-		}
-		engine.stopTimerByIndex(n)
-	} else if engine.ctx.IsString(0) {
-		engine.stopTimerByName(engine.ctx.ToString(0))
-	} else {
-		return duktape.DUK_RET_ERROR
-	}
-	return 0
-}
-
-func (engine *RuleEngine) esWbCheckCurrentTimer() int {
-	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(0) {
-		return duktape.DUK_RET_ERROR
-	}
-	timerName := engine.ctx.ToString(0)
-	engine.trackTimer(timerName)
-	if engine.currentTimer == NO_TIMER_NAME || engine.currentTimer != timerName {
-		engine.ctx.PushFalse()
-	} else {
-		engine.ctx.PushTrue()
-	}
-	return 1
-}
-
-func (engine *RuleEngine) esWbSpawn() int {
-	if engine.ctx.GetTop() != 5 || !engine.ctx.IsArray(0) || !engine.ctx.IsBoolean(2) ||
-		!engine.ctx.IsBoolean(3) {
-		return duktape.DUK_RET_ERROR
-	}
-
-	args := engine.ctx.StringArrayToGo(0)
-	if len(args) == 0 {
-		return duktape.DUK_RET_ERROR
-	}
-
-	callbackFn := ESCallbackFunc(nil)
-
-	if engine.ctx.IsFunction(1) {
-		callbackFn = engine.ctx.WrapCallback(1)
-	} else if !engine.ctx.IsNullOrUndefined(1) {
-		return duktape.DUK_RET_ERROR
-	}
-
-	var input *string
-	if engine.ctx.IsString(4) {
-		instr := engine.ctx.GetString(4)
-		input = &instr
-	} else if !engine.ctx.IsNullOrUndefined(4) {
-		return duktape.DUK_RET_ERROR
-	}
-
-	captureOutput := engine.ctx.GetBoolean(2)
-	captureErrorOutput := engine.ctx.GetBoolean(3)
-	command := engine.ctx.GetString(0)
-	go func() {
-		r, err := Spawn(args[0], args[1:], captureOutput, captureErrorOutput, input)
-		if err != nil {
-			wbgo.Error.Printf("external command failed: %s", err)
-			return
-		}
-		if callbackFn != nil {
-			engine.model.CallSync(func() {
-				args := objx.New(map[string]interface{}{
-					"exitStatus": r.ExitStatus,
-				})
-				if captureOutput {
-					args["capturedOutput"] = r.CapturedOutput
-				}
-				args["capturedErrorOutput"] = r.CapturedErrorOutput
-				callbackFn(args)
-			})
-		} else if r.ExitStatus != 0 {
-			wbgo.Error.Printf("command '%s' failed: %s", command, err)
-		}
-	}()
-	return 0
-}
-
-func (engine *RuleEngine) esWbDefineRule() int {
-	if engine.ctx.GetTop() != 2 || !engine.ctx.IsString(0) || !engine.ctx.IsObject(1) {
-		engine.logFunc(fmt.Sprintf("bad rule definition"))
-		return duktape.DUK_RET_ERROR
-	}
-	name := engine.ctx.GetString(0)
-	newRule, err := buildRule(engine, name, 1)
-	if err != nil {
-		// FIXME: proper error handling
-		engine.logFunc(fmt.Sprintf("bad definition of rule '%s': %s", name, err))
-		return duktape.DUK_RET_ERROR
-	}
-	if oldRule, found := engine.ruleMap[name]; found {
-		oldRule.Destroy()
-	} else {
-		engine.ruleList = append(engine.ruleList, name)
-	}
-	engine.ruleMap[name] = newRule
-	return 0
-}
-
-func (engine *RuleEngine) esWbRunRules() int {
-	switch engine.ctx.GetTop() {
-	case 0:
-		engine.RunRules(nil, NO_TIMER_NAME)
-	case 2:
-		devName := engine.ctx.SafeToString(0)
-		cellName := engine.ctx.SafeToString(1)
-		engine.RunRules(&CellSpec{devName, cellName}, NO_TIMER_NAME)
-	default:
-		return duktape.DUK_RET_ERROR
-	}
-	return 0
 }
 
 func (engine *RuleEngine) getCell(devName, cellName string) *Cell {
@@ -1041,28 +544,6 @@ func (engine *RuleEngine) RunRules(cellSpec *CellSpec, timerName string) {
 		engine.ruleMap[name].Check(cell)
 	}
 	engine.currentTimer = NO_TIMER_NAME
-}
-
-func (engine *RuleEngine) LoadScript(path string) error {
-	return engine.ctx.LoadScript(path)
-}
-
-// LiveLoadScript loads the specified script in the running engine.
-// If the engine isn't ready yet, the function waits for it to become
-// ready.
-func (engine *RuleEngine) LiveLoadScript(path string) error {
-	r := make(chan error)
-	engine.model.WhenReady(func() {
-		engine.model.CallSync(func() {
-			err := engine.LoadScript(path)
-			// must reload cron rules even in case of LoadScript() error,
-			// because a part of script was still probably loaded
-			engine.setupCron()
-			r <- err
-		})
-	})
-
-	return <-r
 }
 
 func (engine *RuleEngine) setupCron() {
@@ -1141,4 +622,138 @@ func (engine *RuleEngine) IsActive() bool {
 	engine.statusMtx.Lock()
 	defer engine.statusMtx.Unlock()
 	return engine.cellChange != nil
+}
+
+func (engine *RuleEngine) startTimer(name string, callback func(), interval time.Duration, periodic bool) int {
+	entry := &TimerEntry{
+		periodic: periodic,
+		quit:     make(chan struct{}, 2),
+		name:     name,
+	}
+
+	var n = 0
+
+	for i := 0; i < len(engine.timers); i++ {
+		if engine.timers[i] == nil {
+			engine.timers[i] = entry
+			n = i + 1
+			break
+		}
+	}
+	if n == 0 {
+		engine.timers = append(engine.timers, entry)
+		n = len(engine.timers)
+	}
+
+	if name == NO_TIMER_NAME {
+		entry.thunk = callback
+	} else if callback != nil {
+		wbgo.Warn.Printf("warning: ignoring callback func for a named timer")
+	}
+
+	entry.timer = engine.timerFunc(n, interval, periodic)
+	tickCh := entry.timer.GetChannel()
+	go func() {
+		for {
+			select {
+			case <-tickCh:
+				engine.model.CallSync(func() {
+					engine.fireTimer(n)
+				})
+				if !periodic {
+					return
+				}
+			case <-entry.quit:
+				entry.timer.Stop()
+				return
+			}
+		}
+	}()
+	return n
+}
+
+func (engine *RuleEngine) publish(topic, payload string, qos byte, retain bool) {
+	engine.mqttClient.Publish(wbgo.MQTTMessage{
+		Topic:    topic,
+		Payload:  payload,
+		QoS:      byte(qos),
+		Retained: retain,
+	})
+}
+
+func (engine *RuleEngine) defineVirtualDevice(name string, obj objx.Map) error {
+	title := name
+	if obj.Has("title") {
+		title = obj.Get("title").Str(name)
+	}
+	dev := engine.model.EnsureLocalDevice(name, title)
+
+	if !obj.Has("cells") {
+		return nil
+	}
+
+	v := obj.Get("cells")
+	if !v.IsMSI() {
+		return fmt.Errorf("device %s doesn't have 'cells' property", name)
+	}
+
+	for cellName, maybeCellDef := range v.MSI() {
+		cellDef, ok := maybeCellDef.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("%s/%s: cell definition is not an object", name, cellName)
+		}
+		cellType, ok := cellDef["type"]
+		if !ok {
+			return fmt.Errorf("%s/%s: no cell type", name, cellName)
+		}
+		// FIXME: too much spaghetti for my taste
+		if cellType == "pushbutton" {
+			dev.SetButtonCell(cellName)
+			continue
+		}
+
+		cellValue, ok := cellDef["value"]
+		if !ok {
+			return fmt.Errorf("%s/%s: cell value required for cell type %s",
+				name, cellName, cellType)
+		}
+
+		cellReadonly := false
+		cellReadonlyRaw, hasReadonly := cellDef["readonly"]
+
+		if hasReadonly {
+			cellReadonly, ok = cellReadonlyRaw.(bool)
+			if !ok {
+				return fmt.Errorf("%s/%s: non-boolean value of readonly property",
+					name, cellName)
+			}
+		}
+
+		if cellType == "range" {
+			fmax := DEFAULT_CELL_MAX
+			max, ok := cellDef["max"]
+			if ok {
+				fmax, ok = max.(float64)
+				if !ok {
+					return fmt.Errorf("%s/%s: non-numeric value of max property",
+						name, cellName)
+				}
+			}
+			// FIXME: can be float
+			dev.SetRangeCell(cellName, cellValue, fmax, cellReadonly)
+		} else {
+			dev.SetCell(cellName, cellType.(string), cellValue, cellReadonly)
+		}
+	}
+
+	return nil
+}
+
+func (engine *RuleEngine) defineRule(rule *Rule) {
+	if oldRule, found := engine.ruleMap[rule.name]; found {
+		oldRule.Destroy()
+	} else {
+		engine.ruleList = append(engine.ruleList, rule.name)
+	}
+	engine.ruleMap[rule.name] = rule
 }
