@@ -6,20 +6,22 @@ import (
 	duktape "github.com/ivan4th/go-duktape"
 	"github.com/stretchr/objx"
 	"log"
+	"runtime"
 	"strconv"
 )
 
-type esCallback uint64
+type ESCallback uint64
+type ESCallbackFunc func(args objx.Map) interface{}
 
 type ESContext struct {
 	*duktape.Context
-	callbackIndices map[string]esCallback
+	callbackIndices map[string]ESCallback
 }
 
 func newESContext() *ESContext {
 	return &ESContext{
 		duktape.NewContext(),
-		make(map[string]esCallback),
+		make(map[string]ESCallback),
 	}
 }
 
@@ -117,8 +119,8 @@ func (ctx *ESContext) pushCallbackKey(key interface{}) {
 	switch key.(type) {
 	case int:
 		ctx.PushNumber(float64(key.(int)))
-	case esCallback:
-		ctx.PushString(strconv.FormatUint(uint64(key.(esCallback)), 16))
+	case ESCallback:
+		ctx.PushString(strconv.FormatUint(uint64(key.(ESCallback)), 16))
 	default:
 		log.Panicf("bad callback key: %v", key)
 	}
@@ -154,8 +156,8 @@ func (ctx *ESContext) InvokeCallback(propName string, key interface{}, args objx
 // If key is specified as nil, a new callback key is generated and returned
 // as uint64. In this case the returned value is guaranteed to be
 // greater than zero.
-func (ctx *ESContext) StoreCallback(propName string, callbackStackIndex int, key interface{}) esCallback {
-	var r esCallback = 0
+func (ctx *ESContext) StoreCallback(propName string, callbackStackIndex int, key interface{}) ESCallback {
+	var r ESCallback = 0
 	if key == nil {
 		var found bool
 		r, found = ctx.callbackIndices[propName]
@@ -177,6 +179,28 @@ func (ctx *ESContext) StoreCallback(propName string, callbackStackIndex int, key
 	ctx.PutProp(-3) // callbackList[key] = callback
 	ctx.Pop2()
 	return r
+}
+
+type callbackHolder struct {
+	ctx      *ESContext
+	propName string
+	callback ESCallback
+}
+
+func callbackFinalizer(holder *callbackHolder) {
+	holder.ctx.RemoveCallback(holder.propName, holder.callback)
+}
+
+func (ctx *ESContext) WrapCallback(propName string, callbackStackIndex int) ESCallbackFunc {
+	holder := &callbackHolder{
+		ctx,
+		propName,
+		ctx.StoreCallback(propName, callbackStackIndex, nil),
+	}
+	runtime.SetFinalizer(holder, callbackFinalizer)
+	return func(args objx.Map) interface{} {
+		return ctx.InvokeCallback(holder.propName, holder.callback, args)
+	}
 }
 
 func (ctx *ESContext) RemoveCallback(propName string, key interface{}) {

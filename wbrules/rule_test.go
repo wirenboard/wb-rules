@@ -843,3 +843,4 @@ func TestCron(t *testing.T) {
 // TBD: should use separate recorder for the fixture, not abuse the fake broker
 // TBD: abstract away duktape stuff from the primary engine. This will be useful for scenes etc.
 //      Also, it will make the code cleaner.
+// TBD: destroy ES context when stopping the engine
