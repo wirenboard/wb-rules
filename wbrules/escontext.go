@@ -1,17 +1,26 @@
 package wbrules
 
 import (
+	"fmt"
 	wbgo "github.com/contactless/wbgo"
 	duktape "github.com/ivan4th/go-duktape"
 	"github.com/stretchr/objx"
+	"log"
+	"strconv"
 )
+
+type esCallback uint64
 
 type ESContext struct {
 	*duktape.Context
+	callbackIndices map[string]esCallback
 }
 
 func newESContext() *ESContext {
-	return &ESContext{duktape.NewContext()}
+	return &ESContext{
+		duktape.NewContext(),
+		make(map[string]esCallback),
+	}
 }
 
 func (ctx *ESContext) getObject(objIndex int) map[string]interface{} {
@@ -94,6 +103,126 @@ func (ctx *ESContext) StringArrayToGo(arrIndex int) []string {
 		ctx.Pop()
 	}
 	return r
+}
+
+func (ctx *ESContext) InitCallbackList(propName string) {
+	// callback list stash property holds callback functions referenced by ids
+	ctx.PushGlobalStash()
+	ctx.PushObject()
+	ctx.PutPropString(-2, propName)
+	ctx.Pop()
+}
+
+func (ctx *ESContext) pushCallbackKey(key interface{}) {
+	switch key.(type) {
+	case int:
+		ctx.PushNumber(float64(key.(int)))
+	case esCallback:
+		ctx.PushString(strconv.FormatUint(uint64(key.(esCallback)), 16))
+	default:
+		log.Panicf("bad callback key: %v", key)
+	}
+}
+
+func (ctx *ESContext) InvokeCallback(propName string, key interface{}, args objx.Map) interface{} {
+	ctx.PushGlobalStash()
+	ctx.GetPropString(-1, propName)
+	ctx.pushCallbackKey(key)
+	argCount := 0
+	if args != nil {
+		ctx.PushJSObject(args)
+		argCount++
+	}
+	defer ctx.Pop3() // pop: result, callback list object, global stash
+	if s := ctx.PcallProp(-2-argCount, argCount); s != 0 {
+		wbgo.Error.Printf("failed to invoke callback %s[%v]: %s",
+			propName, key, ctx.SafeToString(-1))
+		return nil
+	} else if ctx.IsBoolean(-1) {
+		return ctx.ToBoolean(-1)
+	} else if ctx.IsString(-1) {
+		return ctx.ToString(-1)
+	} else if ctx.IsNumber(-1) {
+		return ctx.ToNumber(-1)
+	} else {
+		return nil
+	}
+}
+
+// storeCallback stores the callback from the specified stack index
+// (which should be >= 0) at 'key' in the callback list specified as propName.
+// If key is specified as nil, a new callback key is generated and returned
+// as uint64. In this case the returned value is guaranteed to be
+// greater than zero.
+func (ctx *ESContext) StoreCallback(propName string, callbackStackIndex int, key interface{}) esCallback {
+	var r esCallback = 0
+	if key == nil {
+		var found bool
+		r, found = ctx.callbackIndices[propName]
+		if !found {
+			r = 1
+		}
+		key = r
+		ctx.callbackIndices[propName] = r + 1
+	}
+
+	ctx.PushGlobalStash()
+	ctx.GetPropString(-1, propName)
+	ctx.pushCallbackKey(key)
+	if callbackStackIndex < 0 {
+		ctx.Dup(callbackStackIndex - 3)
+	} else {
+		ctx.Dup(callbackStackIndex)
+	}
+	ctx.PutProp(-3) // callbackList[key] = callback
+	ctx.Pop2()
+	return r
+}
+
+func (ctx *ESContext) RemoveCallback(propName string, key interface{}) {
+	ctx.PushGlobalStash()
+	ctx.GetPropString(-1, propName)
+	ctx.pushCallbackKey(key)
+	ctx.DelProp(-2)
+	ctx.Pop()
+}
+
+func (ctx *ESContext) LoadScript(path string) error {
+	defer ctx.Pop()
+	if r := ctx.PevalFile(path); r != 0 {
+		ctx.GetPropString(-1, "stack")
+		message := ctx.SafeToString(-1)
+		ctx.Pop()
+		if message == "" {
+			message = ctx.SafeToString(-1)
+		}
+		return fmt.Errorf("failed to load %s: %s", path, message)
+	}
+	return nil
+}
+
+func (ctx *ESContext) LoadEmbeddedScript(filename, content string) error {
+	ctx.PushString(filename)
+	// we use PcompileStringFilename here to get readable stacktraces
+	if r := ctx.PcompileStringFilename(0, content); r != 0 {
+		defer ctx.Pop()
+		return fmt.Errorf("failed to compile lib.js: %s", ctx.SafeToString(-1))
+	}
+	defer ctx.Pop()
+	if r := ctx.Pcall(0); r != 0 {
+		return fmt.Errorf("failed to run lib.js: %s", ctx.SafeToString(-1))
+	}
+	return nil
+}
+
+func (ctx *ESContext) DefineFunctions(fns map[string]func() int) {
+	for name, fn := range fns {
+		f := fn
+		ctx.PushGoFunc(func(*duktape.Context) int {
+			return f()
+		})
+		ctx.PutPropString(-2, name)
+	}
 }
 
 // TBD: proper PushJSObject
