@@ -1,6 +1,7 @@
 package wbrules
 
 import (
+	"bytes"
 	"fmt"
 	wbgo "github.com/contactless/wbgo"
 	duktape "github.com/ivan4th/go-duktape"
@@ -8,6 +9,7 @@ import (
 	"log"
 	"runtime"
 	"strconv"
+	"strings"
 )
 
 type ESCallback uint64
@@ -247,6 +249,35 @@ func (ctx *ESContext) DefineFunctions(fns map[string]func() int) {
 		})
 		ctx.PutPropString(-2, name)
 	}
+}
+
+func (ctx *ESContext) Format() string {
+	top := ctx.GetTop()
+	if top < 1 {
+		return ""
+	}
+	s := ctx.SafeToString(0)
+	p := 1
+	parts := strings.Split(s, "{{")
+	buf := new(bytes.Buffer)
+	for i, part := range parts {
+		if i > 0 {
+			buf.WriteString("{")
+		}
+		for j, subpart := range strings.Split(part, "{}") {
+			if j > 0 && p < top {
+				buf.WriteString(ctx.SafeToString(p))
+				p++
+			}
+			buf.WriteString(subpart)
+		}
+	}
+	// write remaining parts
+	for ; p < top; p++ {
+		buf.WriteString(" ")
+		buf.WriteString(ctx.SafeToString(p))
+	}
+	return buf.String()
 }
 
 // TBD: proper PushJSObject

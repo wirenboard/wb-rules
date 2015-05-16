@@ -1,7 +1,6 @@
 package wbrules
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"github.com/GeertJohan/go.rice"
@@ -602,47 +601,18 @@ func (engine *RuleEngine) esDefineVirtualDevice() int {
 	return 0
 }
 
-func (engine *RuleEngine) format() string {
-	top := engine.ctx.GetTop()
-	if top < 1 {
-		return ""
-	}
-	s := engine.ctx.SafeToString(0)
-	p := 1
-	parts := strings.Split(s, "{{")
-	buf := new(bytes.Buffer)
-	for i, part := range parts {
-		if i > 0 {
-			buf.WriteString("{")
-		}
-		for j, subpart := range strings.Split(part, "{}") {
-			if j > 0 && p < top {
-				buf.WriteString(engine.ctx.SafeToString(p))
-				p++
-			}
-			buf.WriteString(subpart)
-		}
-	}
-	// write remaining parts
-	for ; p < top; p++ {
-		buf.WriteString(" ")
-		buf.WriteString(engine.ctx.SafeToString(p))
-	}
-	return buf.String()
-}
-
 func (engine *RuleEngine) esFormat() int {
-	engine.ctx.PushString(engine.format())
+	engine.ctx.PushString(engine.ctx.Format())
 	return 1
 }
 
 func (engine *RuleEngine) esLog() int {
-	engine.logFunc(engine.format())
+	engine.logFunc(engine.ctx.Format())
 	return 0
 }
 
 func (engine *RuleEngine) esDebug() int {
-	wbgo.Debug.Printf("[rule debug] %s", engine.format())
+	wbgo.Debug.Printf("[rule debug] %s", engine.ctx.Format())
 	return 0
 }
 

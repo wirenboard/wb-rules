@@ -819,6 +819,7 @@ func TestCron(t *testing.T) {
 //      devices. Also, will need to invoke OnNewDevice() and queryParams() stuff
 //      (see CellModel.Start()) [make sure it's ok to call OnNewDevice for an existing device]
 //      and make sure the metadata for the newly defined device gets published
+// TBD: support device removal in the cell model
 // TBD: reset [cell/timer/etc -> rule] maps when reloading, also rulesWithoutCells map.
 // TBD: schedule RunRules() after loading a script and mention it in the docs.
 // TBD: keep track of what rules are defined
@@ -843,4 +844,6 @@ func TestCron(t *testing.T) {
 // TBD: should use separate recorder for the fixture, not abuse the fake broker
 // TBD: abstract away duktape stuff from the primary engine. This will be useful for scenes etc.
 //      Also, it will make the code cleaner.
+//      IMPORTANT HINT: get rid of explicit callback key spec altogether!
+//      And get rid of separate callback storages, too.
 // TBD: destroy ES context when stopping the engine
