@@ -325,3 +325,96 @@ func TestExternalButtonCells(t *testing.T) {
 		assert.Equal(t, false, cell.Value())
 	}
 }
+
+func TestConvertRemoteToLocal(t *testing.T) {
+	// 'remote to local' transition happens when a new device is defined
+	// that matches some previously retained metadata
+	fixture := newCellFixture(t, false)
+	defer fixture.tearDown()
+	fixture.driver.Start()
+	fixture.broker.Verify(
+		"Subscribe -- driver: /devices/+/meta/name",
+		"Subscribe -- driver: /devices/+/controls/+",
+		"Subscribe -- driver: /devices/+/controls/+/meta/type",
+		"Subscribe -- driver: /devices/+/controls/+/meta/max",
+	)
+	fixture.publish("/devices/somedev/meta/name", "SomeDev", "")
+	fixture.publish("/devices/somedev/controls/sw/meta/type", "switch", "somedev/sw")
+	fixture.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
+	fixture.broker.Verify(
+		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
+	)
+
+	var dev *CellModelLocalDevice
+	var cell *Cell
+	fixture.driver.CallSync(func() {
+		dev = fixture.model.EnsureLocalDevice("somedev", "SomeDev1")
+		// note that we use 'false' as the default value of the switch,
+		// but it picks up the retained value
+		cell = dev.SetCell("sw", "switch", false, false)
+	})
+	fixture.broker.Verify(
+		"driver -> /devices/somedev/meta/name: [SomeDev1] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/meta/order: [1] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/somedev/controls/sw/on",
+	)
+	fixture.driver.CallSync(func() {
+		assert.True(t, cell.IsComplete())
+		assert.True(t, cell.Value().(bool))
+	})
+}
+
+func TestDeviceRedefinition(t *testing.T) {
+	fixture := newCellFixture(t, false)
+	defer fixture.tearDown()
+
+	dev := fixture.model.EnsureLocalDevice("somedev", "SomeDev")
+	swCell := dev.SetCell("sw", "switch", false, false)
+	dev.SetCell("temp", "temperature", 20, false)
+
+	fixture.driver.Start()
+	fixture.broker.SkipTill("Subscribe -- driver: /devices/somedev/controls/temp/on")
+
+	fixture.publish("/devices/somedev/controls/sw/on", "1", "somedev/sw")
+	fixture.broker.Verify(
+		"tst -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
+		"driver -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
+	)
+
+	fixture.driver.CallSync(func() {
+		assert.True(t, swCell.Value().(bool))
+		fixture.model.RemoveLocalDevice("somedev")
+		dev = fixture.model.EnsureLocalDevice("somedev", "SomeDev1")
+		swCell = dev.SetCell("sw", "switch", false, false)
+		dev.SetCell("temp", "temperature", 18, false)
+	})
+
+	// retained values are preserved
+	fixture.broker.Verify(
+		"Unsubscribe -- driver: /devices/somedev/controls/sw/on",
+		"Unsubscribe -- driver: /devices/somedev/controls/temp/on",
+		"driver -> /devices/somedev/meta/name: [SomeDev1] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/meta/order: [1] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/somedev/controls/sw/on",
+		"driver -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/temp/meta/order: [2] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/temp: [20] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/somedev/controls/temp/on",
+	)
+
+	fixture.publish("/devices/somedev/controls/sw/on", "0", "somedev/sw")
+	fixture.broker.Verify(
+		"tst -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
+		"driver -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
+	)
+	fixture.driver.CallSync(func() {
+		assert.True(t, swCell.IsComplete())
+		assert.False(t, swCell.Value().(bool))
+	})
+}

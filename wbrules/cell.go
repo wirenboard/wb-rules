@@ -70,9 +70,10 @@ type CellModelDevice interface {
 
 type CellModelDeviceBase struct {
 	wbgo.DeviceBase
-	model *CellModel
-	cells map[string]*Cell
-	self  CellModelDevice
+	model     *CellModel
+	cells     map[string]*Cell
+	self      CellModelDevice
+	onSetCell func(*Cell)
 }
 
 type CellModelLocalDevice struct {
@@ -115,7 +116,10 @@ func (model *CellModel) Start() error {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		model.Observer.OnNewDevice(model.devices[name])
+		dev, ok := model.devices[name].(*CellModelLocalDevice)
+		if ok {
+			model.Observer.OnNewDevice(dev)
+		}
 	}
 	model.Observer.WhenReady(func() {
 		for _, name := range names {
@@ -150,8 +154,9 @@ func (model *CellModel) Stop() {
 
 func (model *CellModel) newCellModelDevice(name string, title string) (dev *CellModelDeviceBase) {
 	dev = &CellModelDeviceBase{
-		model: model,
-		cells: make(map[string]*Cell),
+		model:     model,
+		cells:     make(map[string]*Cell),
+		onSetCell: nil,
 	}
 	dev.DevName = name
 	dev.DevTitle = title
@@ -168,6 +173,11 @@ func (model *CellModel) makeExternalDevice(name string, title string) (dev *Cell
 func (model *CellModel) makeLocalDevice(name string, title string) (dev *CellModelLocalDevice) {
 	dev = &CellModelLocalDevice{*model.newCellModelDevice(name, title)}
 	dev.self = dev
+	dev.onSetCell = func(cell *Cell) {
+		if model.started {
+			dev.publishCell(cell)
+		}
+	}
 	model.devices[name] = dev
 	return
 }
@@ -181,21 +191,33 @@ func (model *CellModel) EnsureDevice(name string) (dev CellModelDevice) {
 	return
 }
 
-func (model *CellModel) EnsureLocalDevice(name, title string) *CellModelLocalDevice {
-	if model.started {
-		panic("Cannot register local devices after the model is started")
-	}
-
+func (model *CellModel) RemoveLocalDevice(name string) {
 	dev, found := model.devices[name]
 	if !found {
-		return model.makeLocalDevice(name, title)
+		return
+	}
+	if _, ok := dev.(*CellModelLocalDevice); !ok {
+		wbgo.Warn.Printf("trying to remove non-local device %s", name)
+	}
+	delete(model.devices, name)
+	model.Observer.RemoveDevice(dev)
+}
+
+func (model *CellModel) EnsureLocalDevice(name, title string) *CellModelLocalDevice {
+	dev, found := model.devices[name]
+	if found {
+		if d, ok := dev.(*CellModelLocalDevice); ok {
+			return d
+		}
+		wbgo.Debug.Printf("converting remote device %s to local", name)
 	}
 
-	if d, ok := dev.(*CellModelLocalDevice); ok {
-		return d
-	} else {
-		panic("External/local device name conflict")
+	newDevice := model.makeLocalDevice(name, title)
+	if model.started {
+		wbgo.Debug.Printf("publishing new device %s created while the model is active", name)
+		model.Observer.OnNewDevice(newDevice)
 	}
+	return newDevice
 }
 
 func (model *CellModel) AddExternalDevice(name string) (wbgo.ExternalDeviceModel, error) {
@@ -270,6 +292,9 @@ func (dev *CellModelDeviceBase) setCell(name, controlType string, value interfac
 	}
 	cell.setValueQuiet(value)
 	dev.cells[name] = cell
+	if dev.onSetCell != nil {
+		dev.onSetCell(cell)
+	}
 	return
 }
 
@@ -327,10 +352,21 @@ func (dev *CellModelLocalDevice) queryParams() {
 	sort.Strings(names)
 	for _, name := range names {
 		cell := dev.cells[name]
-		dev.Observer.OnNewControl(
-			dev, name, cell.controlType, cell.value, cell.readonly,
-			cell.max, !cell.IsButton())
+		dev.publishCell(cell)
 	}
+}
+
+func (dev *CellModelLocalDevice) publishCell(cell *Cell) {
+	dev.Observer.OnNewControl(
+		dev, cell.name, cell.controlType, cell.value, cell.readonly,
+		cell.max, !cell.IsButton())
+}
+
+func (dev *CellModelLocalDevice) IsVirtual() bool {
+	// local cell model devices are virtual, i.e. they're not directly
+	// to any hardware and they must pick up their previously defined
+	// values when activated
+	return true
 }
 
 func (dev *CellModelExternalDevice) AcceptControlType(name, controlType string) {
