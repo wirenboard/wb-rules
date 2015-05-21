@@ -365,6 +365,9 @@ cron-выражению.
 
 ### Другие предопределённые функции и переменные
 
+`global` - глобальный объект ECMAScript (в браузерном JavaScript
+глобальный объект доступен, как window)
+
 `defineAlias(name, "device/param")` задаёт альтернативное имя для параметра.
 Например, после выполнения `defineAlias("heaterRelayOn", "Relays/Relay 1");` выражение
 `heaterRelayOn = true` означает то же самое, что `dev["Relays"]["Relay 1"] = true`.

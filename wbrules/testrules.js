@@ -1,5 +1,8 @@
 // -*- mode: js2-mode -*-
 
+if ((function () { return this; })() !== global)
+  throw new Error("global object not defined!");
+
 // extra test for format()
 (function () {
   var formatted = "{{}abc {{} {} {{}".format(1);

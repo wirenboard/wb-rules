@@ -24,7 +24,8 @@ func newESContext() *ESContext {
 		duktape.NewContext(),
 		1,
 	}
-	ctx.initGlobalObject("_esCallbacks")
+	ctx.initGlobalObject()
+	ctx.initGlobalProperty("_esCallbacks")
 	return ctx
 }
 
@@ -110,7 +111,14 @@ func (ctx *ESContext) StringArrayToGo(arrIndex int) []string {
 	return r
 }
 
-func (ctx *ESContext) initGlobalObject(propName string) {
+func (ctx *ESContext) initGlobalObject() {
+	ctx.PushGlobalObject()
+	ctx.PushGlobalObject()
+	ctx.PutPropString(-2, "global")
+	ctx.Pop()
+}
+
+func (ctx *ESContext) initGlobalProperty(propName string) {
 	// callback list stash property holds callback functions referenced by ids
 	ctx.PushGlobalStash()
 	ctx.PushObject()
