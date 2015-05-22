@@ -28,7 +28,7 @@ func main() {
 	driver := wbgo.NewDriver(model, mqttClient)
 	driver.SetAutoPoll(false)
 	driver.SetAcceptsExternalDevices(true)
-	engine := wbrules.NewRuleEngine(model, mqttClient)
+	engine := wbrules.NewESEngine(model, mqttClient)
 	gotSome := false
 	loader := wbrules.NewLoader("\\.js$", func(filePath string, reloaded bool) (err error) {
 		if reloaded {

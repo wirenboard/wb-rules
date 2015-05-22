@@ -175,7 +175,7 @@ func (model *CellModel) makeLocalDevice(name string, title string) (dev *CellMod
 	dev.self = dev
 	dev.onSetCell = func(cell *Cell) {
 		if model.started {
-			dev.publishCell(cell)
+			cell.value = dev.publishCell(cell)
 		}
 	}
 	model.devices[name] = dev
@@ -195,9 +195,6 @@ func (model *CellModel) RemoveLocalDevice(name string) {
 	dev, found := model.devices[name]
 	if !found {
 		return
-	}
-	if _, ok := dev.(*CellModelLocalDevice); !ok {
-		wbgo.Warn.Printf("trying to remove non-local device %s", name)
 	}
 	delete(model.devices, name)
 	model.Observer.RemoveDevice(dev)
@@ -356,8 +353,8 @@ func (dev *CellModelLocalDevice) queryParams() {
 	}
 }
 
-func (dev *CellModelLocalDevice) publishCell(cell *Cell) {
-	dev.Observer.OnNewControl(
+func (dev *CellModelLocalDevice) publishCell(cell *Cell) string {
+	return dev.Observer.OnNewControl(
 		dev, cell.name, cell.controlType, cell.value, cell.readonly,
 		cell.max, !cell.IsButton())
 }

@@ -413,8 +413,12 @@ func TestDeviceRedefinition(t *testing.T) {
 		"tst -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 		"driver -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
 	)
+
+	done := make(chan struct{})
 	fixture.driver.CallSync(func() {
 		assert.True(t, swCell.IsComplete())
 		assert.False(t, swCell.Value().(bool))
+		done <- struct{}{}
 	})
+	<-done
 }

@@ -5,6 +5,7 @@ import (
 	wbgo "github.com/contactless/wbgo"
 	"github.com/robfig/cron"
 	"github.com/stretchr/objx"
+	"sort"
 	"sync"
 	"time"
 )
@@ -79,7 +80,73 @@ type TimerEntry struct {
 
 type LogFunc func(string)
 
+type proxyOwner interface {
+	getRev() uint64
+	cellModel() *CellModel
+	trackCell(*Cell)
+}
+
+type DeviceProxy struct {
+	owner proxyOwner
+	name  string
+	dev   CellModelDevice
+	rev   uint64
+}
+
+// CellProxy tracks cell access with the engine
+// and makes sure that always the actual current device
+// cell object is accessed while avoiding excess
+// name lookups.
+type CellProxy struct {
+	devProxy *DeviceProxy
+	name     string
+	cell     *Cell
+}
+
+func makeDeviceProxy(owner proxyOwner, name string) *DeviceProxy {
+	return &DeviceProxy{owner, name, owner.cellModel().EnsureDevice(name), owner.getRev()}
+}
+
+func (devProxy *DeviceProxy) getDev() (CellModelDevice, bool) {
+	if devProxy.rev != devProxy.owner.getRev() {
+		devProxy.dev = devProxy.owner.cellModel().EnsureDevice(devProxy.name)
+		return devProxy.dev, true
+	}
+	return devProxy.dev, false
+}
+
+func (devProxy *DeviceProxy) EnsureCell(name string) *CellProxy {
+	dev, _ := devProxy.getDev()
+	return &CellProxy{devProxy, name, dev.EnsureCell(name)}
+}
+
+func (cellProxy *CellProxy) getCell() *Cell {
+	if dev, updated := cellProxy.devProxy.getDev(); updated {
+		cellProxy.cell = dev.EnsureCell(cellProxy.name)
+	}
+	cellProxy.devProxy.owner.trackCell(cellProxy.cell)
+	return cellProxy.cell
+}
+
+func (cellProxy *CellProxy) RawValue() string {
+	return cellProxy.getCell().RawValue()
+}
+
+func (cellProxy *CellProxy) Value() interface{} {
+	return cellProxy.getCell().Value()
+}
+
+func (cellProxy *CellProxy) SetValue(value interface{}) {
+	cellProxy.getCell().SetValue(value)
+}
+
+func (cellProxy *CellProxy) IsComplete() bool {
+	return cellProxy.getCell().IsComplete()
+}
+
 type RuleEngine struct {
+	*ScopedCleanup
+	rev               uint64
 	model             *CellModel
 	mqttClient        wbgo.MQTTClient
 	logFunc           LogFunc
@@ -102,8 +169,10 @@ type RuleEngine struct {
 
 func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) *RuleEngine {
 	return &RuleEngine{
-		model:      model,
-		mqttClient: mqttClient,
+		ScopedCleanup: MakeScopedCleanup(),
+		rev:           0,
+		model:         model,
+		mqttClient:    mqttClient,
 		logFunc: func(message string) {
 			wbgo.Info.Printf("RULE: %s\n", message)
 		},
@@ -138,6 +207,11 @@ func (engine *RuleEngine) SetLogFunc(logFunc LogFunc) {
 func (engine *RuleEngine) startTrackingDeps() {
 	engine.notedCells = make(map[*Cell]bool)
 	engine.notedTimers = make(map[string]bool)
+}
+
+func (engine *RuleEngine) storeRuleCellSpec(rule *Rule, cellSpec CellSpec) {
+	dev := engine.model.EnsureDevice(cellSpec.DevName)
+	engine.storeRuleCell(rule, dev.EnsureCell(cellSpec.CellName))
 }
 
 func (engine *RuleEngine) storeRuleCell(rule *Rule, cell *Cell) {
@@ -421,7 +495,16 @@ func (engine *RuleEngine) defineVirtualDevice(name string, obj objx.Map) error {
 	if obj.Has("title") {
 		title = obj.Get("title").Str(name)
 	}
+
+	// if the device was for some reason defined in another script,
+	// we must remove it
+	engine.model.RemoveLocalDevice(name)
+
 	dev := engine.model.EnsureLocalDevice(name, title)
+	engine.AddCleanup(func() {
+		// runs when the rule file is reloaded
+		engine.model.RemoveLocalDevice(name)
+	})
 
 	if !obj.Has("cells") {
 		return nil
@@ -432,7 +515,21 @@ func (engine *RuleEngine) defineVirtualDevice(name string, obj objx.Map) error {
 		return fmt.Errorf("device %s doesn't have 'cells' property", name)
 	}
 
-	for cellName, maybeCellDef := range v.MSI() {
+	// Sorting cells by their names is not important when defining device
+	// while the engine is not active because all the cells will be published
+	// all at once when the engine starts.
+	// On the other hand, when defining the device for the active engine
+	// the newly added cells are published immediately and if their order
+	// changes (map key order is random) the tests may break.
+	m := v.MSI()
+	cellNames := make([]string, 0, len(m))
+	for cellName, _ := range m {
+		cellNames = append(cellNames, cellName)
+	}
+	sort.Strings(cellNames)
+
+	for _, cellName := range cellNames {
+		maybeCellDef := m[cellName]
 		cellDef, ok := maybeCellDef.(map[string]interface{})
 		if !ok {
 			return fmt.Errorf("%s/%s: cell definition is not an object", name, cellName)
@@ -491,4 +588,43 @@ func (engine *RuleEngine) defineRule(rule *Rule) {
 		engine.ruleList = append(engine.ruleList, rule.name)
 	}
 	engine.ruleMap[rule.name] = rule
+	engine.AddCleanup(func() {
+		delete(engine.ruleMap, rule.name)
+		for i, name := range engine.ruleList {
+			if name == rule.name {
+				engine.ruleList = append(
+					engine.ruleList[0:i],
+					engine.ruleList[i+1:]...)
+				break
+			}
+		}
+	})
+}
+
+// refresh() should be called after engine rules are altered
+// while the engine is running.
+func (engine *RuleEngine) refresh() {
+	engine.rev++ // invalidate cell proxies
+	engine.setupCron()
+
+	// Some cell pointers are now probably invalid
+	engine.cellToRuleMap = make(map[*Cell][]*Rule)
+	for _, rule := range engine.ruleMap {
+		rule.StoreInitiallyKnownDeps()
+	}
+	engine.rulesWithoutCells = make(map[*Rule]bool)
+	engine.timerRules = make(map[string][]*Rule)
+	engine.RunRules(nil, NO_TIMER_NAME)
+}
+
+func (engine *ESEngine) cellModel() *CellModel {
+	return engine.model
+}
+
+func (engine *ESEngine) getRev() uint64 {
+	return engine.rev
+}
+
+func (engine *ESEngine) getDeviceProxy(name string) *DeviceProxy {
+	return makeDeviceProxy(engine, name)
 }

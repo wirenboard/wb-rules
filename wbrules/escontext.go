@@ -202,6 +202,20 @@ func (ctx *ESContext) RemoveCallback(key ESCallback) {
 	ctx.Pop()
 }
 
+func (ctx *ESContext) EvalScript(code string) error {
+	defer ctx.Pop()
+	if r := ctx.PevalString(code); r != 0 {
+		ctx.GetPropString(-1, "stack")
+		message := ctx.SafeToString(-1)
+		ctx.Pop()
+		if message == "" {
+			message = ctx.SafeToString(-1)
+		}
+		return fmt.Errorf("failed to eval %s: %s", code, message)
+	}
+	return nil
+}
+
 func (ctx *ESContext) LoadScript(path string) error {
 	defer ctx.Pop()
 	if r := ctx.PevalFile(path); r != 0 {

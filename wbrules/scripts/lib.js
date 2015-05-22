@@ -65,6 +65,7 @@ var _WbRules = {
       (function () { return this; })(),
       name,
       {
+        configurable: true,
         get: function () {
           if (!d)
             d = dev[devName];

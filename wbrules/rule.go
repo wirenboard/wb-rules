@@ -6,7 +6,7 @@ import (
 )
 
 type depTracker interface {
-	storeRuleCell(rule *Rule, cell *Cell)
+	storeRuleCellSpec(rule *Rule, cellSpec CellSpec)
 	startTrackingDeps()
 	storeRuleDeps(rule *Rule)
 }
@@ -25,7 +25,7 @@ type RuleCondition interface {
 	// case nil is returned as the optional value,
 	// the value of cell must be used.
 	Check(cell *Cell) (bool, interface{})
-	GetCells() []*Cell
+	GetCells() []CellSpec
 	MaybeAddToCron(cron Cron, thunk func()) error
 }
 
@@ -35,8 +35,8 @@ func (ruleCond *RuleConditionBase) Check(Cell *Cell) (bool, interface{}) {
 	return false, nil
 }
 
-func (ruleCond *RuleConditionBase) GetCells() []*Cell {
-	return []*Cell{}
+func (ruleCond *RuleConditionBase) GetCells() []CellSpec {
+	return []CellSpec{}
 }
 
 func (ruleCond *RuleConditionBase) MaybeAddToCron(cron Cron, thunk func()) error {
@@ -98,23 +98,24 @@ func (ruleCond *EdgeTriggeredRuleCondition) Check(cell *Cell) (bool, interface{}
 
 type CellChangedRuleCondition struct {
 	RuleConditionBase
-	cell     *Cell
+	cellSpec CellSpec
 	oldValue interface{}
 }
 
-func newCellChangedRuleCondition(cell *Cell) (*CellChangedRuleCondition, error) {
+func newCellChangedRuleCondition(cellSpec CellSpec) (*CellChangedRuleCondition, error) {
 	return &CellChangedRuleCondition{
-		cell:     cell,
+		cellSpec: cellSpec,
 		oldValue: nil,
 	}, nil
 }
 
-func (ruleCond *CellChangedRuleCondition) GetCells() []*Cell {
-	return []*Cell{ruleCond.cell}
+func (ruleCond *CellChangedRuleCondition) GetCells() []CellSpec {
+	return []CellSpec{ruleCond.cellSpec}
 }
 
 func (ruleCond *CellChangedRuleCondition) Check(cell *Cell) (bool, interface{}) {
-	if cell == nil || cell != ruleCond.cell {
+	if cell == nil || cell.DevName() != ruleCond.cellSpec.DevName ||
+		cell.Name() != ruleCond.cellSpec.CellName {
 		return false, nil
 	}
 
@@ -163,8 +164,8 @@ func newOrRuleCondition(conds []RuleCondition) *OrRuleCondition {
 	return &OrRuleCondition{conds: conds}
 }
 
-func (ruleCond *OrRuleCondition) GetCells() []*Cell {
-	r := make([]*Cell, 0, 10)
+func (ruleCond *OrRuleCondition) GetCells() []CellSpec {
+	r := make([]CellSpec, 0, 10)
 	for _, cond := range ruleCond.conds {
 		r = append(r, cond.GetCells()...)
 	}
@@ -209,10 +210,14 @@ func NewRule(tracker depTracker, name string, cond RuleCondition, then ESCallbac
 		then:        then,
 		shouldCheck: false,
 	}
-	for _, cell := range rule.cond.GetCells() {
-		tracker.storeRuleCell(rule, cell)
-	}
+	rule.StoreInitiallyKnownDeps()
 	return rule
+}
+
+func (rule *Rule) StoreInitiallyKnownDeps() {
+	for _, cellSpec := range rule.cond.GetCells() {
+		rule.tracker.storeRuleCellSpec(rule, cellSpec)
+	}
 }
 
 func (rule *Rule) ShouldCheck() {

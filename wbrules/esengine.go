@@ -58,7 +58,7 @@ func (engine *ESEngine) buildSingleWhenChangedRuleCondition(defIndex int) (RuleC
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid whenChanged spec: '%s'", cellFullName)
 		}
-		return newCellChangedRuleCondition(engine.getCell(parts[0], parts[1]))
+		return newCellChangedRuleCondition(CellSpec{parts[0], parts[1]})
 	}
 	if engine.ctx.IsFunction(defIndex) {
 		f := engine.ctx.WrapCallback(defIndex)
@@ -156,6 +156,14 @@ func (engine *ESEngine) loadLib() error {
 }
 
 func (engine *ESEngine) LoadScript(path string) error {
+	path, err := wbgo.Truename(path)
+	if err != nil {
+		return err
+	}
+	// remove rules and devices defined in the previous
+	// version of this script
+	engine.RunCleanups(path)
+	defer engine.PopCleanupScope(engine.PushCleanupScope(path))
 	return engine.ctx.LoadScript(path)
 }
 
@@ -167,9 +175,9 @@ func (engine *ESEngine) LiveLoadScript(path string) error {
 	engine.model.WhenReady(func() {
 		engine.model.CallSync(func() {
 			err := engine.LoadScript(path)
-			// must reload cron rules even in case of LoadScript() error,
+			// must call refresh() even in case of LoadScript() error,
 			// because a part of script was still probably loaded
-			engine.setupCron()
+			engine.refresh()
 			r <- err
 		})
 	})
@@ -250,8 +258,8 @@ func (engine *ESEngine) esWbDevObject() int {
 	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(-1) {
 		return duktape.DUK_RET_ERROR
 	}
-	dev := engine.model.EnsureDevice(engine.ctx.GetString(-1))
-	engine.ctx.PushGoObject(dev)
+	devProxy := engine.getDeviceProxy(engine.ctx.GetString(-1))
+	engine.ctx.PushGoObject(devProxy)
 	return 1
 }
 
@@ -259,29 +267,26 @@ func (engine *ESEngine) esWbCellObject() int {
 	if engine.ctx.GetTop() != 2 || !engine.ctx.IsString(-1) || !engine.ctx.IsObject(-2) {
 		return duktape.DUK_RET_ERROR
 	}
-	dev, ok := engine.ctx.GetGoObject(-2).(CellModelDevice)
+	devProxy, ok := engine.ctx.GetGoObject(-2).(*DeviceProxy)
 	if !ok {
 		wbgo.Error.Printf("invalid _wbCellObject call")
 		return duktape.DUK_RET_TYPE_ERROR
 	}
-	cell := dev.EnsureCell(engine.ctx.GetString(-1))
-	engine.ctx.PushGoObject(cell)
+	cellProxy := devProxy.EnsureCell(engine.ctx.GetString(-1))
+	engine.ctx.PushGoObject(cellProxy)
 	engine.ctx.DefineFunctions(map[string]func() int{
 		"rawValue": func() int {
-			engine.trackCell(cell)
-			engine.ctx.PushString(cell.RawValue())
+			engine.ctx.PushString(cellProxy.RawValue())
 			return 1
 		},
 		"value": func() int {
-			engine.trackCell(cell)
 			m := objx.New(map[string]interface{}{
-				"v": cell.Value(),
+				"v": cellProxy.Value(),
 			})
 			engine.ctx.PushJSObject(m)
 			return 1
 		},
 		"setValue": func() int {
-			engine.trackCell(cell)
 			if engine.ctx.GetTop() != 1 || !engine.ctx.IsObject(-1) {
 				return duktape.DUK_RET_ERROR
 			}
@@ -290,12 +295,11 @@ func (engine *ESEngine) esWbCellObject() int {
 				wbgo.Error.Printf("invalid cell definition")
 				return duktape.DUK_RET_TYPE_ERROR
 			}
-			cell.SetValue(m["v"])
+			cellProxy.SetValue(m["v"])
 			return 1
 		},
 		"isComplete": func() int {
-			engine.trackCell(cell)
-			engine.ctx.PushBoolean(cell.IsComplete())
+			engine.ctx.PushBoolean(cellProxy.IsComplete())
 			return 1
 		},
 	})
@@ -447,4 +451,12 @@ func (engine *ESEngine) esWbRunRules() int {
 		return duktape.DUK_RET_ERROR
 	}
 	return 0
+}
+
+func (engine *ESEngine) EvalScript(code string) error {
+	ch := make(chan error)
+	engine.model.CallSync(func() {
+		ch <- engine.ctx.EvalScript(code)
+	})
+	return <-ch
 }

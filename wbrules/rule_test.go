@@ -813,27 +813,86 @@ func TestCron(t *testing.T) {
 	)
 }
 
-// TBD: to support 'live' defineVirtualDevice() properly, we must be able
-//      to convert remote devices to local ones. Will need to add tests
-//      that grab the retained values received from previously-thought-to-be-remote
-//      devices. Also, will need to invoke OnNewDevice() and queryParams() stuff
-//      (see CellModel.Start()) [make sure it's ok to call OnNewDevice for an existing device]
-//      and make sure the metadata for the newly defined device gets published
-// TBD: support device removal in the cell model
-// TBD: reset [cell/timer/etc -> rule] maps when reloading, also rulesWithoutCells map.
-// TBD: schedule RunRules() after loading a script and mention it in the docs.
-// TBD: keep track of what rules are defined
-//      in each file (with each file containing the rule being traced)
-//      and remove rules when all files containing the rule are removed
-// TBD: idea concerning rule reload:
-//      Two reload kinds (configurable by command line switch):
-//      'soft reload' = reeval the rule file
-//      'hard reload' = restart the rule engine
-//
-//      When cell/timer -> rule maps are nil, don't use the
-//      maps in the engine but populate them instead by running
-//      checks of every rule.
-//      When 'soft reloading' a rule file, reset maps to nil.
+func TestReload(t *testing.T) {
+	fixture := newRuleFixtureSkippingDefs(t, "testrules_reload.js")
+	defer fixture.tearDown()
+
+	fixture.broker.Verify(
+		"[rule] detectRun: (no cell) (s=false, a=10)",
+		"[rule] detectRun1: (no cell) (s=false, a=10)",
+	)
+
+	fixture.publish("/devices/vdev/controls/someCell/on", "1", "vdev/someCell")
+	fixture.broker.Verify(
+		"tst -> /devices/vdev/controls/someCell/on: [1] (QoS 1)",
+		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
+		"[rule] detectRun: vdev/someCell (s=true, a=10)",
+		"[rule] detectRun1: vdev/someCell (s=true, a=10)",
+		"[rule] rule1: vdev/someCell=true",
+		"[rule] rule2: vdev/someCell=true",
+	)
+
+	fixture.publish("/devices/vdev/controls/anotherCell/on", "17", "vdev/anotherCell")
+	fixture.Verify(
+		"tst -> /devices/vdev/controls/anotherCell/on: [17] (QoS 1)",
+		"driver -> /devices/vdev/controls/anotherCell: [17] (QoS 1, retained)",
+		"[rule] detectRun: vdev/anotherCell (s=true, a=17)",
+		"[rule] detectRun1: vdev/anotherCell (s=true, a=17)",
+		"[rule] rule3: vdev/anotherCell=17",
+	)
+
+	// Let's pretend we edited the script. Actually we're
+	// reloading it while making it use a bit different device and
+	// rule definitions.
+	fixture.engine.EvalScript("alteredMode = true;")
+	fixture.engine.LiveLoadScript("testrules_reload.js")
+
+	fixture.Verify(
+		// devices are removed when the older version if the
+		// script is unloaded
+		"Unsubscribe -- driver: /devices/vdev/controls/anotherCell/on",
+		"Unsubscribe -- driver: /devices/vdev/controls/someCell/on",
+		// vdev1 is not redefined after reload, but must be still
+		// removed
+		"Unsubscribe -- driver: /devices/vdev1/controls/qqq/on",
+		// device redefinition begins
+		"driver -> /devices/vdev/meta/name: [VDev] (QoS 1, retained)",
+		"driver -> /devices/vdev/controls/someCell/meta/type: [switch] (QoS 1, retained)",
+		"driver -> /devices/vdev/controls/someCell/meta/order: [1] (QoS 1, retained)",
+		// value '1' of the switch from the retained message
+		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/vdev/controls/someCell/on",
+		// rules are run after reload
+		"[rule] detectRun: (no cell) (s=true)",
+	)
+
+	// this one must be ignored because anotherCell is no longer there
+	// after the device is redefined
+	fixture.publish("/devices/vdev/controls/anotherCell/on", "11")
+	fixture.publish("/devices/vdev/controls/someCell/on", "0", "vdev/someCell")
+
+	fixture.broker.Verify(
+		"tst -> /devices/vdev/controls/anotherCell/on: [11] (QoS 1)",
+		"tst -> /devices/vdev/controls/someCell/on: [0] (QoS 1)",
+		"driver -> /devices/vdev/controls/someCell: [0] (QoS 1, retained)",
+		"[rule] detectRun: vdev/someCell (s=false)",
+		"[rule] rule1: vdev/someCell=false",
+		// rule2 is gone, rule3 is gone together with its anotherCell
+	)
+
+	fixture.publish("/devices/vdev/controls/someCell/on", "1", "vdev/someCell")
+	fixture.broker.Verify(
+		"tst -> /devices/vdev/controls/someCell/on: [1] (QoS 1)",
+		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
+		"[rule] detectRun: vdev/someCell (s=true)",
+		"[rule] rule1: vdev/someCell=true",
+	)
+
+	// TBD: stop any timers started while evaluating the script.
+	// This will require extra care because cleanup procedure
+	// for the timer must be revoked once the timer is stopped.
+}
+
 // TBD: metadata (like, meta["devname"]["controlName"])
 // TBD: test bad device/rule defs
 // TBD: traceback
@@ -847,3 +906,4 @@ func TestCron(t *testing.T) {
 //      IMPORTANT HINT: get rid of explicit callback key spec altogether!
 //      And get rid of separate callback storages, too.
 // TBD: destroy ES context when stopping the engine
+// TBD: indicate an error upon access to undefined cells of local devices
