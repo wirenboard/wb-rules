@@ -891,6 +891,8 @@ func TestReload(t *testing.T) {
 	// TBD: stop any timers started while evaluating the script.
 	// This will require extra care because cleanup procedure
 	// for the timer must be revoked once the timer is stopped.
+	// To fix this, a support for toplevel timers must be fixed
+	// first (as of now, starting timers there causes race conditions)
 }
 
 // TBD: metadata (like, meta["devname"]["controlName"])

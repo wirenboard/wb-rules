@@ -15,7 +15,7 @@ func main() {
 	useSyslog := flag.Bool("syslog", false, "Use syslog for logging")
 	flag.Parse()
 	if flag.NArg() < 1 {
-		wbgo.Error.Fatal("must specify rule file name(s)")
+		wbgo.Error.Fatal("must specify rule file/directory name(s)")
 	}
 	if *useSyslog {
 		wbgo.UseSyslog()
@@ -40,7 +40,7 @@ func main() {
 	})
 	for _, path := range flag.Args() {
 		if err := loader.Load(path); err != nil {
-			wbgo.Error.Printf("error loading script file %s: %s", path, err)
+			wbgo.Error.Printf("error loading script file/dir %s: %s", path, err)
 		} else {
 			gotSome = true
 		}

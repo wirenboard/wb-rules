@@ -42,7 +42,7 @@ RULE_DIR=/etc/wb-rules
 # and status_of_proc is working.
 . /lib/lsb/init-functions
 
-DAEMON_ARGS="$WB_RULES_OPTIONS -syslog $(echo "$RULE_DIR"/*.js)"
+DAEMON_ARGS="$WB_RULES_OPTIONS -syslog '$RULE_DIR'"
 
 #
 # Function that starts the daemon/service
