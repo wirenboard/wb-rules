@@ -24,7 +24,7 @@ type ESEngine struct {
 func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine) {
 	engine = &ESEngine{
 		NewRuleEngine(model, mqttClient),
-		newESContext(),
+		newESContext(model.CallSync),
 		rice.MustFindBox("scripts"),
 	}
 
@@ -398,7 +398,6 @@ func (engine *ESEngine) esWbSpawn() int {
 
 	captureOutput := engine.ctx.GetBoolean(2)
 	captureErrorOutput := engine.ctx.GetBoolean(3)
-	command := engine.ctx.GetString(0)
 	go func() {
 		r, err := Spawn(args[0], args[1:], captureOutput, captureErrorOutput, input)
 		if err != nil {
@@ -417,7 +416,8 @@ func (engine *ESEngine) esWbSpawn() int {
 				callbackFn(args)
 			})
 		} else if r.ExitStatus != 0 {
-			wbgo.Error.Printf("command '%s' failed: %s", command, err)
+			wbgo.Error.Printf("command '%s' failed with exit status %d",
+				strings.Join(args, " "), r.ExitStatus)
 		}
 	}()
 	return 0
