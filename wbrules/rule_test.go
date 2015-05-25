@@ -348,6 +348,28 @@ func TestDirectTimers(t *testing.T) {
 	fixture.VerifyTimers("+")
 }
 
+func TestShortTimers(t *testing.T) {
+	fixture := newRuleFixtureSkippingDefs(t, "testrules_timers.js")
+	defer fixture.tearDown()
+
+	fixture.publish("/devices/somedev/controls/foo/meta/type", "text", "somedev/foo")
+	fixture.publish("/devices/somedev/controls/foo", "short", "somedev/foo")
+
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/foo/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/foo: [short] (QoS 1, retained)",
+		"newFakeTimer(): 1, 1, false",
+		"newFakeTimer(): 2, 1, false",
+		"newFakeTimer(): 3, 1, true",
+		"newFakeTimer(): 4, 1, true",
+		"newFakeTimer(): 5, 1, false",
+		"newFakeTimer(): 6, 1, false",
+		"newFakeTimer(): 7, 1, true",
+		"newFakeTimer(): 8, 1, true",
+	)
+	fixture.broker.VerifyEmpty()
+}
+
 func TestDirectMQTTMessages(t *testing.T) {
 	fixture := newRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()

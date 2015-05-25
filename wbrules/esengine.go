@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	LIB_FILE = "lib.js"
+	LIB_FILE        = "lib.js"
+	MIN_INTERVAL_MS = 1
 )
 
 type ESEngine struct {
@@ -327,6 +328,9 @@ func (engine *ESEngine) esWbStartTimer() int {
 	}
 
 	ms := engine.ctx.GetNumber(1)
+	if ms < MIN_INTERVAL_MS {
+		ms = MIN_INTERVAL_MS
+	}
 	periodic := engine.ctx.ToBoolean(2)
 
 	var callback func()

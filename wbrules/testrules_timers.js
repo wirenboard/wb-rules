@@ -106,3 +106,27 @@ defineRule("stopTimer1", {
     }
   }
 });
+
+defineRule("shortTimers", {
+  asSoonAs: function () {
+    return dev.somedev.foo == "short";
+  },
+  then: function () {
+    setTimeout(function () {
+      log("timer fired(0)");
+    }, 0);
+    setTimeout(function () {
+      log("timer fired(-1)");
+    }, -1);
+    setInterval(function () {
+      log("interval fired(0)");
+    }, 0);
+    setInterval(function () {
+      log("interval fired(-1)");
+    }, -1);
+    startTimer("sometimer", 0);
+    startTimer("sometimer1", -1);
+    startTicker("someticker", 0);
+    startTicker("someticker1", -1);
+  }
+});
