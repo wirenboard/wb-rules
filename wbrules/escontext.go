@@ -14,15 +14,21 @@ import (
 type ESCallback uint64
 type ESCallbackFunc func(args objx.Map) interface{}
 
+// ESSyncFunc denotes a function that executes the specified
+// thunk in the context of the goroutine which utilizes the context
+type ESSyncFunc func(thunk func())
+
 type ESContext struct {
 	*duktape.Context
 	callbackIndex ESCallback
+	syncFunc      ESSyncFunc
 }
 
-func newESContext() *ESContext {
+func newESContext(syncFunc ESSyncFunc) *ESContext {
 	ctx := &ESContext{
 		duktape.NewContext(),
 		1,
+		syncFunc,
 	}
 	ctx.initGlobalObject()
 	ctx.initGlobalProperty("_esCallbacks")
@@ -181,7 +187,7 @@ type callbackHolder struct {
 }
 
 func callbackFinalizer(holder *callbackHolder) {
-	holder.ctx.RemoveCallback(holder.callback)
+	go holder.ctx.removeCallbackSync(holder.callback)
 }
 
 func (ctx *ESContext) WrapCallback(callbackStackIndex int) ESCallbackFunc {
@@ -192,6 +198,16 @@ func (ctx *ESContext) WrapCallback(callbackStackIndex int) ESCallbackFunc {
 	runtime.SetFinalizer(holder, callbackFinalizer)
 	return func(args objx.Map) interface{} {
 		return ctx.invokeCallback(holder.callback, args)
+	}
+}
+
+func (ctx *ESContext) removeCallbackSync(key ESCallback) {
+	if ctx.syncFunc == nil {
+		ctx.RemoveCallback(key)
+	} else {
+		go ctx.syncFunc(func() {
+			ctx.RemoveCallback(key)
+		})
 	}
 }
 

@@ -17,7 +17,7 @@ var objTests = []string{
 }
 
 func TestJSToObjx(t *testing.T) { // TBD: -> TestJSToObjxAndBack
-	ctx := newESContext()
+	ctx := newESContext(nil)
 	for _, jsonStr := range objTests {
 		if r := ctx.PevalString("(" + jsonStr + ")"); r != 0 {
 			t.Fatal("failed to evaluate the script")
