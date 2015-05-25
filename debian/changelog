@@ -1,3 +1,9 @@
+wb-rules (1.3) stable; urgency=medium
+
+  * Automatic rule reloading
+
+ -- Ivan Shvedunov <ivan4th@gmail.com>  Mon, 25 May 2015 05:51:20 +0300
+
 wb-rules (1.2) stable; urgency=medium
 
   * BREAKING CHANGES: add whenChanged directive
