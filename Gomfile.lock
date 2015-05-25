@@ -8,3 +8,4 @@ gom 'github.com/kardianos/osext', :commit => 'ccfcd0245381f0c94c68f50626665eed3c
 gom 'github.com/stretchr/objx', :commit => 'cbeaeb16a013161a98496fad62933b1d21786672'
 gom 'github.com/stretchr/testify', :commit => 'e4ec8152c15fc46bd5056ce65997a07c7d415325'
 gom 'github.com/robfig/cron', :commit => '67823cd24dece1b04cced3a0a0b3ca2bc84d875e'
+gom 'gopkg.in/fsnotify.v1', :commit => '96c060f6a6b7e0d6f75fddd10efeaca3e5d1bcb0'
