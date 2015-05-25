@@ -76,6 +76,12 @@ type TimerEntry struct {
 	quit     chan struct{}
 	name     string
 	thunk    func()
+	active   bool
+}
+
+func (entry *TimerEntry) stop() {
+	close(entry.quit)
+	entry.active = false
 }
 
 type LogFunc func(string)
@@ -296,7 +302,7 @@ func (engine *RuleEngine) stopTimerByName(name string) {
 	for i, entry := range engine.timers {
 		if entry != nil && name == entry.name {
 			engine.removeTimer(i + 1)
-			close(entry.quit)
+			entry.stop()
 			break
 		}
 	}
@@ -308,7 +314,7 @@ func (engine *RuleEngine) stopTimerByIndex(n int) {
 	}
 	if entry := engine.timers[n-1]; entry != nil {
 		engine.removeTimer(n)
-		close(entry.quit)
+		entry.stop()
 	} else {
 		wbgo.Error.Printf("trying to stop unknown timer: %d", n)
 	}
@@ -413,7 +419,7 @@ func (engine *RuleEngine) Start() {
 					wbgo.Debug.Printf("engine stopped")
 					for _, entry := range engine.timers {
 						if entry != nil {
-							close(entry.quit)
+							entry.stop()
 						}
 					}
 					engine.timers = engine.timers[:0]
@@ -438,6 +444,7 @@ func (engine *RuleEngine) startTimer(name string, callback func(), interval time
 		periodic: periodic,
 		quit:     make(chan struct{}, 2),
 		name:     name,
+		active:   true,
 	}
 
 	var n = 0
@@ -467,7 +474,9 @@ func (engine *RuleEngine) startTimer(name string, callback func(), interval time
 			select {
 			case <-tickCh:
 				engine.model.CallSync(func() {
-					engine.fireTimer(n)
+					if entry.active {
+						engine.fireTimer(n)
+					}
 				})
 				if !periodic {
 					return
