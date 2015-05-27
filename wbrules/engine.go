@@ -19,59 +19,18 @@ const (
 	NO_CALLBACK         = ESCallback(0)
 )
 
-type Timer interface {
-	GetChannel() <-chan time.Time
-	Stop()
-}
+type TimerFunc func(id int, d time.Duration, periodic bool) wbgo.Timer
 
-type TimerFunc func(id int, d time.Duration, periodic bool) Timer
-
-type RealTicker struct {
-	innerTicker *time.Ticker
-}
-
-func (ticker *RealTicker) GetChannel() <-chan time.Time {
-	if ticker.innerTicker == nil {
-		panic("trying to get channel from a stopped ticker")
-	}
-	return ticker.innerTicker.C
-}
-
-func (ticker *RealTicker) Stop() {
-	if ticker.innerTicker != nil {
-		ticker.innerTicker.Stop()
-		ticker.innerTicker = nil
-	}
-}
-
-type RealTimer struct {
-	innerTimer *time.Timer
-}
-
-func (timer *RealTimer) GetChannel() <-chan time.Time {
-	if timer.innerTimer == nil {
-		panic("trying to get channel from a stopped timer")
-	}
-	return timer.innerTimer.C
-}
-
-func (timer *RealTimer) Stop() {
-	if timer.innerTimer != nil {
-		timer.innerTimer.Stop()
-		timer.innerTimer = nil
-	}
-}
-
-func newTimer(id int, d time.Duration, periodic bool) Timer {
+func newTimer(id int, d time.Duration, periodic bool) wbgo.Timer {
 	if periodic {
-		return &RealTicker{time.NewTicker(d)}
+		return wbgo.NewRealTicker(d)
 	} else {
-		return &RealTimer{time.NewTimer(d)}
+		return wbgo.NewRealTimer(d)
 	}
 }
 
 type TimerEntry struct {
-	timer    Timer
+	timer    wbgo.Timer
 	periodic bool
 	quit     chan struct{}
 	name     string
