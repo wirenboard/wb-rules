@@ -9,12 +9,6 @@ import (
 	"time"
 )
 
-var baseRuleTestTime = time.Date(2015, 2, 27, 19, 33, 17, 0, time.UTC)
-
-func makeTime(d time.Duration) time.Time {
-	return baseRuleTestTime.Add(d)
-}
-
 type fakeCron struct {
 	t       *testing.T
 	started bool
@@ -248,7 +242,7 @@ func (fixture *ruleFixture) VerifyTimers(prefix string) {
 		"new fake timer: 2, 500",
 	)
 
-	ts := makeTime(500 * time.Millisecond)
+	ts := fixture.AdvanceTime(500 * time.Millisecond)
 	fixture.FireTimer(1, ts)
 	fixture.FireTimer(2, ts)
 	fixture.Verify(
@@ -265,7 +259,7 @@ func (fixture *ruleFixture) VerifyTimers(prefix string) {
 	)
 
 	for i := 1; i < 4; i++ {
-		targetTime := makeTime(time.Duration(500*i) * time.Millisecond)
+		targetTime := fixture.AdvanceTime(time.Duration(500*i) * time.Millisecond)
 		fixture.FireTimer(1, targetTime)
 		fixture.Verify(
 			"timer.fire(): 1",
@@ -283,7 +277,7 @@ func (fixture *ruleFixture) VerifyTimers(prefix string) {
 		"new fake timer: 2, 500",
 	)
 
-	ts = makeTime(5 * 500 * time.Millisecond)
+	ts = fixture.AdvanceTime(5 * 500 * time.Millisecond)
 	fixture.FireTimer(1, ts)
 	fixture.FireTimer(2, ts)
 	fixture.Verify(
