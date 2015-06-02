@@ -79,6 +79,8 @@ func TestExternalCells(t *testing.T) {
 	fixture := newCellFixture(t, false)
 	defer fixture.tearDown()
 	fixture.driver.Start()
+	fixture.broker.SkipTill("Subscribe -- driver: /devices/+/controls/+/meta/max")
+
 	dev := fixture.model.EnsureDevice("somedev")
 	cell := dev.EnsureCell("paramOne")
 	assert.Equal(t, "", cell.Value())
@@ -200,6 +202,8 @@ func TestExternalRangeCells(t *testing.T) {
 	fixture := newCellFixture(t, false)
 	defer fixture.tearDown()
 	fixture.driver.Start()
+	fixture.broker.SkipTill("Subscribe -- driver: /devices/+/controls/+/meta/max")
+
 	fixture.publish("/devices/somedev/meta/name", "SomeDev", "")
 	fixture.publish("/devices/somedev/controls/foo/meta/type", "range", "somedev/foo")
 	fixture.publish("/devices/somedev/controls/foo/meta/max", "200", "somedev/foo")
@@ -311,6 +315,8 @@ func TestExternalButtonCells(t *testing.T) {
 	fixture := newCellFixture(t, false)
 	defer fixture.tearDown()
 	fixture.driver.Start()
+	fixture.broker.SkipTill("Subscribe -- driver: /devices/+/controls/+/meta/max")
+
 	fixture.publish("/devices/somedev/meta/name", "SomeDev", "")
 	fixture.publish("/devices/somedev/controls/foo/meta/type", "pushbutton", "somedev/foo")
 	// note that pushbutton cells don't need any value to be complete
