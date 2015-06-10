@@ -123,11 +123,18 @@ func TestExternalCells(t *testing.T) {
 		fixture.driver.CallSync(func() {
 			cell3.SetValue(43)
 		})
-		fixture.expectCellChange("somedev/paramThree")
-		assert.Equal(t, "43", cell3.Value())
 		fixture.broker.Verify(
 			"driver -> /devices/somedev/controls/paramThree/on: [43] (QoS 1)",
 		)
+		fixture.expectCellChange() // no cell change till external 'somedev' driver answers
+		if i == 0 {
+			assert.Equal(t, "", cell3.Value()) // not changed yet
+		}
+		fixture.publish("/devices/somedev/controls/paramThree", "43", "somedev/paramThree")
+		fixture.broker.Verify(
+			"tst -> /devices/somedev/controls/paramThree: [43] (QoS 1, retained)",
+		)
+		assert.Equal(t, "43", cell3.Value())
 	}
 }
 

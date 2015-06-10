@@ -167,25 +167,36 @@ func TestRules(t *testing.T) {
 		"[rule] heaterOn fired, changed: stabSettings/enabled -> true",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
-	fixture.expectCellChange("somedev/sw")
+	fixture.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
+	)
 
 	fixture.publish("/devices/somedev/controls/temp", "21", "somedev/temp")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/temp: [21] (QoS 1, retained)",
 	)
 
-	fixture.publish("/devices/somedev/controls/temp", "22", "somedev/temp", "somedev/sw")
+	fixture.publish("/devices/somedev/controls/temp", "22", "somedev/temp")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/temp: [22] (QoS 1, retained)",
 		"[rule] heaterOff fired, changed: somedev/temp -> 22",
 		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 	)
+	fixture.publish("/devices/somedev/controls/sw", "0", "somedev/sw")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
+	)
 
-	fixture.publish("/devices/somedev/controls/temp", "18", "somedev/temp", "somedev/sw")
+	fixture.publish("/devices/somedev/controls/temp", "18", "somedev/temp")
 	fixture.Verify(
 		"tst -> /devices/somedev/controls/temp: [18] (QoS 1, retained)",
 		"[rule] heaterOn fired, changed: somedev/temp -> 18",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
+	)
+	fixture.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
 	)
 
 	// edge-triggered rule doesn't fire
@@ -200,7 +211,10 @@ func TestRules(t *testing.T) {
 		"[rule] heaterOff fired, changed: stabSettings/enabled -> false",
 		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 	)
-	fixture.expectCellChange("somedev/sw")
+	fixture.publish("/devices/somedev/controls/sw", "0", "somedev/sw")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
+	)
 
 	fixture.publish("/devices/somedev/controls/foobar", "1", "somedev/foobar")
 	fixture.publish("/devices/somedev/controls/foobar/meta/type", "text", "somedev/foobar")
@@ -389,11 +403,15 @@ func TestRetainedState(t *testing.T) {
 		"tst -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
 	)
-	fixture.publish("/devices/somedev/controls/temp", "16", "somedev/temp", "somedev/sw")
+	fixture.publish("/devices/somedev/controls/temp", "16", "somedev/temp")
 	fixture.broker.Verify(
 		"tst -> /devices/somedev/controls/temp: [16] (QoS 1, retained)",
 		"[rule] heaterOn fired, changed: somedev/temp -> 16",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
+	)
+	fixture.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
 	)
 	fixture.broker.VerifyEmpty()
 }
@@ -876,7 +894,7 @@ func TestAssigningSameValueToACellSeveralTimes(t *testing.T) {
 	defer fixture.tearDown()
 
 	fixture.publish("/devices/cellch/controls/button/on", "1",
-		"cellch/button", "cellch/sw", "cellch/misc", "somedev/sw")
+		"cellch/button", "cellch/sw", "cellch/misc")
 	fixture.Verify(
 		"tst -> /devices/cellch/controls/button/on: [1] (QoS 1)",
 		"driver -> /devices/cellch/controls/button: [1] (QoS 1)", // no 'retained' flag for button
@@ -886,9 +904,13 @@ func TestAssigningSameValueToACellSeveralTimes(t *testing.T) {
 		"[rule] switchChanged: sw=true",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
+	fixture.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
+	)
 
 	fixture.publish("/devices/cellch/controls/button/on", "1",
-		"cellch/button", "cellch/sw", "cellch/misc", "somedev/sw")
+		"cellch/button", "cellch/sw", "cellch/misc")
 	fixture.Verify(
 		"tst -> /devices/cellch/controls/button/on: [1] (QoS 1)",
 		"driver -> /devices/cellch/controls/button: [1] (QoS 1)", // no 'retained' flag for button
@@ -897,6 +919,10 @@ func TestAssigningSameValueToACellSeveralTimes(t *testing.T) {
 		"[rule] startCellChange: sw <- false",
 		"[rule] switchChanged: sw=false",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
+	)
+	fixture.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
+	fixture.Verify(
+		"tst -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
 	)
 }
 

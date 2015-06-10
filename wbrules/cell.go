@@ -64,7 +64,7 @@ type CellModel struct {
 type CellModelDevice interface {
 	wbgo.DeviceModel
 	EnsureCell(name string) (cell *Cell)
-	setValue(name, value string)
+	setValue(name, value string, notify bool)
 	queryParams()
 	shouldSetValueImmediately() bool
 }
@@ -325,12 +325,14 @@ func (dev *CellModelDeviceBase) AcceptValue(name, value string) {
 	go dev.model.notify(&CellSpec{dev.DevName, name})
 }
 
-func (dev *CellModelDeviceBase) setValue(name, value string) {
+func (dev *CellModelDeviceBase) setValue(name, value string, notify bool) {
 	if !dev.model.started {
 		panic("setValue -- but model not active!!!")
 	}
 	dev.Observer.OnValue(dev.self, name, value)
-	go dev.model.notify(&CellSpec{dev.DevName, name})
+	if notify {
+		go dev.model.notify(&CellSpec{dev.DevName, name})
+	}
 }
 
 func (dev *CellModelLocalDevice) AcceptOnValue(name, value string) bool {
@@ -394,7 +396,7 @@ func (dev *CellModelExternalDevice) shouldSetValueImmediately() bool {
 	// For external devices, setting cell value must not change
 	// it's value immediately. Cell value will change when device
 	// response to the '.../on' message is received.
-	return true
+	return false
 }
 
 func (cell *Cell) RawValue() string {
@@ -458,8 +460,9 @@ func (cell *Cell) maybeSetValueQuiet(value interface{}, actuallySet bool) (bool,
 
 func (cell *Cell) SetValue(value interface{}) {
 	cell.gotValue = true
-	_, newValue := cell.maybeSetValueQuiet(value, cell.device.shouldSetValueImmediately())
-	cell.device.setValue(cell.name, newValue)
+	setImmediately := cell.device.shouldSetValueImmediately()
+	_, newValue := cell.maybeSetValueQuiet(value, setImmediately)
+	cell.device.setValue(cell.name, newValue, setImmediately)
 }
 
 func (cell *Cell) Type() string {
