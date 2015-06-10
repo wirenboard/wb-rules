@@ -8,4 +8,4 @@ Build-Depends: debhelper (>= 9), pkg-config
 Package: wb-rules
 Architecture: armel
 Depends: libc6 (>= 2.13), ${misc:Depends}
-Description: Smart-Bus suppoirt
+Description: Wiren Board Rule Engine
