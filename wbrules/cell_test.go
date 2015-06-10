@@ -118,15 +118,17 @@ func TestExternalCells(t *testing.T) {
 	fixture.broker.SkipTill("tst -> /devices/somedev/controls/paramTwo: [755] (QoS 1, retained)")
 	cell3 := dev.EnsureCell("paramThree")
 	assert.False(t, cell3.IsComplete())
-	fixture.driver.CallSync(func() {
-		cell3.SetValue(43)
-	})
-	fixture.expectCellChange("somedev/paramThree")
 
-	assert.Equal(t, "43", cell3.Value())
-	fixture.broker.Verify(
-		"driver -> /devices/somedev/controls/paramThree/on: [43] (QoS 1)",
-	)
+	for i := 0; i < 3; i++ {
+		fixture.driver.CallSync(func() {
+			cell3.SetValue(43)
+		})
+		fixture.expectCellChange("somedev/paramThree")
+		assert.Equal(t, "43", cell3.Value())
+		fixture.broker.Verify(
+			"driver -> /devices/somedev/controls/paramThree/on: [43] (QoS 1)",
+		)
+	}
 }
 
 func TestLocalCells(t *testing.T) {
@@ -168,11 +170,12 @@ func TestLocalCells(t *testing.T) {
 	)
 
 	fixture.driver.CallSync(func() {
-		cell2.SetValue(20) // this setting has no effect
+		cell2.SetValue(20) // setting the same value again, still generates a message
 		cell2.SetValue(22)
 	})
-	fixture.expectCellChange("somedev/temp")
+	fixture.expectCellChange("somedev/temp", "somedev/temp")
 	fixture.broker.Verify(
+		"driver -> /devices/somedev/controls/temp: [20] (QoS 1, retained)",
 		"driver -> /devices/somedev/controls/temp: [22] (QoS 1, retained)",
 	)
 }

@@ -871,6 +871,35 @@ func TestReload(t *testing.T) {
 	// first (as of now, starting timers there causes race conditions)
 }
 
+func TestAssigningSameValueToACellSeveralTimes(t *testing.T) {
+	fixture := newRuleFixtureSkippingDefs(t, "testrules_cellchanges.js")
+	defer fixture.tearDown()
+
+	fixture.publish("/devices/cellch/controls/button/on", "1",
+		"cellch/button", "cellch/sw", "cellch/misc", "somedev/sw")
+	fixture.Verify(
+		"tst -> /devices/cellch/controls/button/on: [1] (QoS 1)",
+		"driver -> /devices/cellch/controls/button: [1] (QoS 1)", // no 'retained' flag for button
+		"driver -> /devices/cellch/controls/sw: [1] (QoS 1, retained)",
+		"driver -> /devices/cellch/controls/misc: [1] (QoS 1, retained)",
+		"[rule] startCellChange: sw <- true",
+		"[rule] switchChanged: sw=true",
+		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
+	)
+
+	fixture.publish("/devices/cellch/controls/button/on", "1",
+		"cellch/button", "cellch/sw", "cellch/misc", "somedev/sw")
+	fixture.Verify(
+		"tst -> /devices/cellch/controls/button/on: [1] (QoS 1)",
+		"driver -> /devices/cellch/controls/button: [1] (QoS 1)", // no 'retained' flag for button
+		"driver -> /devices/cellch/controls/sw: [0] (QoS 1, retained)",
+		"driver -> /devices/cellch/controls/misc: [1] (QoS 1, retained)",
+		"[rule] startCellChange: sw <- false",
+		"[rule] switchChanged: sw=false",
+		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
+	)
+}
+
 // TBD: metadata (like, meta["devname"]["controlName"])
 // TBD: test bad device/rule defs
 // TBD: traceback

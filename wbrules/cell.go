@@ -66,6 +66,7 @@ type CellModelDevice interface {
 	EnsureCell(name string) (cell *Cell)
 	setValue(name, value string)
 	queryParams()
+	shouldSetValueImmediately() bool
 }
 
 type CellModelDeviceBase struct {
@@ -287,7 +288,7 @@ func (dev *CellModelDeviceBase) setCell(name, controlType string, value interfac
 		gotValue:    complete,
 		readonly:    readonly,
 	}
-	cell.setValueQuiet(value)
+	cell.maybeSetValueQuiet(value, true)
 	dev.cells[name] = cell
 	if dev.onSetCell != nil {
 		dev.onSetCell(cell)
@@ -366,6 +367,12 @@ func (dev *CellModelLocalDevice) IsVirtual() bool {
 	return true
 }
 
+func (dev *CellModelLocalDevice) shouldSetValueImmediately() bool {
+	// for local devices, setting cell value must
+	// change it's value immediately
+	return true
+}
+
 func (dev *CellModelExternalDevice) AcceptControlType(name, controlType string) {
 	cell := dev.EnsureCell(name)
 	cell.gotType = true
@@ -381,6 +388,13 @@ func (dev *CellModelExternalDevice) AcceptControlRange(name string, max float64)
 
 func (dev *CellModelExternalDevice) queryParams() {
 	// NOOP
+}
+
+func (dev *CellModelExternalDevice) shouldSetValueImmediately() bool {
+	// For external devices, setting cell value must not change
+	// it's value immediately. Cell value will change when device
+	// response to the '.../on' message is received.
+	return true
 }
 
 func (cell *Cell) RawValue() string {
@@ -411,9 +425,11 @@ func (cell *Cell) Value() interface{} {
 	}
 }
 
-func (cell *Cell) setValueQuiet(value interface{}) (bool, string) {
+func (cell *Cell) maybeSetValueQuiet(value interface{}, actuallySet bool) (bool, string) {
 	if cell.IsButton() {
-		cell.value = "0"
+		if actuallySet {
+			cell.value = "0"
+		}
 		return true, "1"
 	}
 
@@ -432,17 +448,18 @@ func (cell *Cell) setValueQuiet(value interface{}) (bool, string) {
 	}
 
 	if cell.value != newValue {
-		cell.value = newValue
+		if actuallySet {
+			cell.value = newValue
+		}
 		return true, newValue
 	}
-	return false, ""
+	return false, cell.value
 }
 
 func (cell *Cell) SetValue(value interface{}) {
 	cell.gotValue = true
-	if wasSet, newValue := cell.setValueQuiet(value); wasSet {
-		cell.device.setValue(cell.name, newValue)
-	}
+	_, newValue := cell.maybeSetValueQuiet(value, cell.device.shouldSetValueImmediately())
+	cell.device.setValue(cell.name, newValue)
 }
 
 func (cell *Cell) Type() string {
