@@ -338,6 +338,32 @@ func TestShortTimers(t *testing.T) {
 	fixture.broker.VerifyEmpty()
 }
 
+func TestToplevelTimers(t *testing.T) {
+	// make sure timers aren't started until the rule engine is ready
+	fixture := newRuleFixture(t, true, "testrules_topleveltimers.js")
+	defer fixture.tearDown()
+	fixture.engine.Start()
+
+	fixture.Verify(
+		"Subscribe -- driver: /devices/+/meta/name",
+		"Subscribe -- driver: /devices/+/controls/+",
+		"Subscribe -- driver: /devices/+/controls/+/meta/type",
+		"Subscribe -- driver: /devices/+/controls/+/meta/max",
+	)
+	fixture.broker.VerifyEmpty()
+	fixture.broker.SetReady()
+	fixture.broker.Verify(
+		"new fake timer: 1, 1000",
+	)
+	ts := fixture.AdvanceTime(1000 * time.Millisecond)
+	fixture.FireTimer(1, ts)
+	fixture.Verify(
+		"timer.fire(): 1",
+		"[rule] timer fired",
+	)
+	fixture.broker.VerifyEmpty()
+}
+
 func TestDirectMQTTMessages(t *testing.T) {
 	fixture := newRuleFixtureSkippingDefs(t, "testrules.js")
 	defer fixture.tearDown()

@@ -30,6 +30,7 @@ func newTimer(id int, d time.Duration, periodic bool) wbgo.Timer {
 }
 
 type TimerEntry struct {
+	sync.Mutex
 	timer    wbgo.Timer
 	periodic bool
 	quit     chan struct{}
@@ -39,7 +40,11 @@ type TimerEntry struct {
 }
 
 func (entry *TimerEntry) stop() {
-	close(entry.quit)
+	entry.Lock()
+	defer entry.Unlock()
+	if entry.quit != nil {
+		close(entry.quit)
+	}
 	entry.active = false
 }
 
@@ -401,7 +406,7 @@ func (engine *RuleEngine) IsActive() bool {
 func (engine *RuleEngine) startTimer(name string, callback func(), interval time.Duration, periodic bool) int {
 	entry := &TimerEntry{
 		periodic: periodic,
-		quit:     make(chan struct{}, 2),
+		quit:     nil,
 		name:     name,
 		active:   true,
 	}
@@ -426,26 +431,38 @@ func (engine *RuleEngine) startTimer(name string, callback func(), interval time
 		wbgo.Warn.Printf("warning: ignoring callback func for a named timer")
 	}
 
-	entry.timer = engine.timerFunc(n, interval, periodic)
-	tickCh := entry.timer.GetChannel()
-	go func() {
-		for {
-			select {
-			case <-tickCh:
-				engine.model.CallSync(func() {
-					if entry.active {
-						engine.fireTimer(n)
+	engine.model.WhenReady(func() {
+		entry.Lock()
+		defer entry.Unlock()
+		if !entry.active {
+			// stopped before the engine is ready
+			return
+		}
+		entry.quit = make(chan struct{}, 2)
+		entry.timer = engine.timerFunc(n, interval, periodic)
+		tickCh := entry.timer.GetChannel()
+		go func() {
+			for {
+				select {
+				case <-tickCh:
+					engine.model.CallSync(func() {
+						entry.Lock()
+						wasActive := entry.active
+						entry.Unlock()
+						if wasActive {
+							engine.fireTimer(n)
+						}
+					})
+					if !periodic {
+						return
 					}
-				})
-				if !periodic {
+				case <-entry.quit:
+					entry.timer.Stop()
 					return
 				}
-			case <-entry.quit:
-				entry.timer.Stop()
-				return
 			}
-		}
-	}()
+		}()
+	})
 	return n
 }
 
