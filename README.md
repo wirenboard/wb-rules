@@ -219,6 +219,8 @@ defineRule("crontest_hourly", {
 см. [описание](http://godoc.org/github.com/robfig/cron#hdr-CRON_Expression_Format)
 формата выражений используемой cron-библиотеки.
 
+### Объект `dev`
+
 `dev` задаёт доступные параметры и устройства. `dev["abc"]["def"]` (или, что то же самое,
 `dev.abc.def`) задаёт параметр `def` устройства `abc`, доступный по MQTT-топику
 `/devices/.../controls/...`. 
@@ -228,6 +230,44 @@ defineRule("crontest_hourly", {
 и неизвестные типы параметров - строковыми. Список допустимых типов
 параметров см.
 [по ссылке](https://github.com/contactless/homeui/blob/contactless/conventions.md).
+
+Не следует использовать объект `dev` вне кода правил. Не следует
+присваивать значения параметрам через `dev` вне `then`-функций правил
+и функций обработки таймеров (коллбэки `setInterval` /
+`setTimeout`). В обоих случаях последствия не определены.
+
+Операция присваивания `dev[...][...] = ...` в `then`-всегда приводит к
+публикации MQTT-сообщения, даже если значение параметра не изменилось.
+В случае виртуальных устройств новое значение публикуется в топике
+`/devices/.../controls/...`, и соответствующее значение
+`dev[...][...]` изменяется сразу:
+```js
+defineVirtualDevice("virtdev", {
+  // ...
+});
+
+defineRule("someRule", {
+  when: ...,
+  then: function () {
+    dev["virtdev"]["someparam"] = 42; // публикация 42 -> /devices/virtdev/controls/someparam
+    log("v={}", dev["virtdev"]["someparam"]); // всегда выдаёт v=42
+  }
+});
+```
+
+В случае внешних устройств новое значение публикуется в топике
+`/devices/.../controls/.../on`, а соответствующее значение
+`dev[...][...]` изменится только после получения ответного значения в
+топике `/devices/.../controls/...` от драйвера устройства:
+```js
+defineRule("anotherRule", {
+  when: ...,
+  then: function () {
+    dev["extdev"]["someparam"] = 42; // публикация 42 -> /devices/extdev/controls/someparam
+    log("v={}", dev["extdev"]["someparam"]); // выдаёт старое значение
+  }
+});
+```
 
 ### Определение виртуальных устройств
 
