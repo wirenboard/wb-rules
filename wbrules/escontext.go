@@ -6,6 +6,8 @@ import (
 	wbgo "github.com/contactless/wbgo"
 	duktape "github.com/ivan4th/go-duktape"
 	"github.com/stretchr/objx"
+	"log"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -96,10 +98,66 @@ func (ctx *ESContext) GetJSObject(objIndex int) interface{} {
 	return ctx.getJSObject(objIndex, true)
 }
 
-func (ctx *ESContext) PushJSObject(m objx.Map) {
-	// FIXME: should do proper conversion, not just rely on JSON
-	ctx.PushString(m.MustJSON())
-	ctx.JsonDecode(-1)
+func (ctx *ESContext) PushJSObject(obj interface{}) {
+	if obj == nil {
+		ctx.PushNull()
+		return
+	}
+	switch obj.(type) {
+	case string:
+		ctx.PushString(obj.(string))
+	case objx.Map:
+		ctx.PushJSObject(map[string]interface{}(obj.(objx.Map)))
+	case map[string]interface{}:
+		ctx.PushObject()
+		for k, v := range obj.(map[string]interface{}) {
+			ctx.PushJSObject(v)
+			ctx.PutPropString(-2, k)
+		}
+	case bool:
+		ctx.PushBoolean(obj.(bool))
+	case float32:
+		ctx.PushNumber(float64(obj.(float32)))
+	case float64:
+		ctx.PushNumber(obj.(float64))
+	case int:
+		ctx.PushNumber(float64(obj.(int)))
+	case uint8:
+		ctx.PushNumber(float64(obj.(uint8)))
+	case uint16:
+		ctx.PushNumber(float64(obj.(uint16)))
+	case uint32:
+		ctx.PushNumber(float64(obj.(uint32)))
+	case uint64:
+		ctx.PushNumber(float64(obj.(uint64)))
+	case int8:
+		ctx.PushNumber(float64(obj.(int8)))
+	case int16:
+		ctx.PushNumber(float64(obj.(int16)))
+	case int32:
+		ctx.PushNumber(float64(obj.(int32)))
+	case int64:
+		ctx.PushNumber(float64(obj.(int64)))
+	default:
+		ctx.pushJSObjectUsingReflection(obj)
+	}
+}
+
+func (ctx *ESContext) pushJSObjectUsingReflection(obj interface{}) {
+	v := reflect.ValueOf(obj)
+	if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
+		log.Panicf("ESContext: unsupported object value: %v", obj)
+	}
+	if v.IsNil() {
+		ctx.PushNull()
+		return
+	}
+	vIndex := ctx.PushArray()
+	n := v.Len()
+	for i := 0; i < n; i++ {
+		ctx.PushJSObject(v.Index(i).Interface())
+		ctx.PutPropIndex(vIndex, uint(i))
+	}
 }
 
 func (ctx *ESContext) StringArrayToGo(arrIndex int) []string {
@@ -299,7 +357,6 @@ func (ctx *ESContext) Format() string {
 	return buf.String()
 }
 
-// TBD: proper PushJSObject
-// TBD: handle loops
+// TBD: handle loops in object graphs in PushJSObject
 // TBD: handle Go objects
 // TBD: handle buffers
