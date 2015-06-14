@@ -75,7 +75,13 @@ func TestNumConversions(t *testing.T) {
 	}
 	actual := ctx.GetJSObject(-1).(objx.Map)
 	for k, v := range expected {
-		assert.Equal(t, v, actual[k])
+		f, ok := v.(float64)
+		switch {
+		case !ok || !math.IsNaN(f):
+			assert.Equal(t, v, actual[k], "key: %s", k)
+		case !math.IsNaN(v.(float64)):
+			t.Fatalf("%s expected to be NaN but is %v instead", k, v)
+		}
 	}
 	assert.Equal(t, len(expected), len(actual))
 }
