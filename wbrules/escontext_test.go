@@ -85,3 +85,51 @@ func TestNumConversions(t *testing.T) {
 	}
 	assert.Equal(t, len(expected), len(actual))
 }
+
+var locTests = []struct {
+	filename, content string
+	tracebacks        []ESTraceback
+}{
+	{
+		"test1.js",
+		`function aaa () {
+                   storeLoc();
+                 }
+
+                 aaa();`,
+		[]ESTraceback{
+			{
+				{"test1.js", 2},
+				{"test1.js", 5},
+			},
+		},
+	},
+	{
+		"test2.js",
+		`// whatever
+                 storeLoc();`,
+		[]ESTraceback{
+			{
+				{"test2.js", 2},
+			},
+		},
+	},
+}
+
+func TestCallLocation(t *testing.T) {
+	ctx := newESContext(nil)
+	var storedTracebacks []ESTraceback
+	ctx.PushGlobalObject()
+	ctx.DefineFunctions(map[string]func() int{
+		"storeLoc": func() int {
+			storedTracebacks = append(storedTracebacks, ctx.GetTraceback())
+			return 0
+		},
+	})
+	ctx.Pop()
+	for _, loc := range locTests {
+		storedTracebacks = make([]ESTraceback, 0, 10)
+		ctx.LoadEmbeddedScript(loc.filename, loc.content)
+		assert.Equal(t, loc.tracebacks, storedTracebacks)
+	}
+}

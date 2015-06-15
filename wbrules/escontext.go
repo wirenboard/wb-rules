@@ -8,11 +8,18 @@ import (
 	"github.com/stretchr/objx"
 	"log"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 )
 
+type ESLocation struct {
+	filename string
+	line     int
+}
+
+type ESTraceback []ESLocation
 type ESCallback uint64
 type ESCallbackFunc func(args objx.Map) interface{}
 
@@ -355,6 +362,31 @@ func (ctx *ESContext) Format() string {
 		buf.WriteString(ctx.SafeToString(p))
 	}
 	return buf.String()
+}
+
+var fileRx = regexp.MustCompile(`^\s*\S+\s+(.*):(\d+)(?:\s+[^:]*)?$`)
+
+func (ctx *ESContext) GetTraceback() (r ESTraceback) {
+	ctx.PushErrorObject(duktape.DUK_ERR_ERROR, "fake")
+	if !ctx.GetPropString(-1, "stack") {
+		ctx.Pop2()
+		return ESTraceback{}
+	}
+	stackLines := strings.Split(ctx.SafeToString(-1), "\n")
+	r = make(ESTraceback, 0, len(stackLines))
+	for _, line := range stackLines {
+		groups := fileRx.FindStringSubmatch(line)
+		if groups != nil {
+			lineNumber, err := strconv.Atoi(groups[2])
+			if err != nil {
+				wbgo.Warn.Printf("bad js line number: %s", lineNumber)
+				continue
+			}
+			r = append(r, ESLocation{groups[1], lineNumber})
+		}
+	}
+	ctx.Pop2()
+	return
 }
 
 // TBD: handle loops in object graphs in PushJSObject
