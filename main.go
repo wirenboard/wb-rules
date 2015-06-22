@@ -11,6 +11,7 @@ const DRIVER_CLIENT_ID = "rules"
 
 func main() {
 	brokerAddress := flag.String("broker", "tcp://localhost:1883", "MQTT broker url")
+	editDir := flag.String("editdir", "", "Editable script directory")
 	debug := flag.Bool("debug", false, "Enable debugging")
 	useSyslog := flag.Bool("syslog", false, "Use syslog for logging")
 	flag.Parse()
@@ -52,6 +53,13 @@ func main() {
 		wbgo.Error.Fatalf("error starting the driver: %s", err)
 	}
 	engine.Start()
+
+	if *editDir != "" {
+		rpc := wbgo.NewMQTTRPCServer("wbrules", mqttClient)
+		rpc.Register(wbrules.NewEditor(*editDir))
+		driver.WhenReady(rpc.Start)
+	}
+
 	for {
 		time.Sleep(1 * time.Second)
 	}
