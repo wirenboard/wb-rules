@@ -60,11 +60,11 @@ func (s *EditorSuite) addSampleFiles() {
 	s.writeScript("sample2.js", "// sample2")
 }
 
-func (s *EditorSuite) verifyRpcRaw(subtopic string, param objx.Map, expectedResponse objx.Map) {
+func (s *EditorSuite) verifyRpcRaw(subtopic string, params objx.Map, expectedResponse objx.Map) {
 	replyId := strconv.FormatUint(s.id, 10)
 	request := objx.Map{
 		"id":     replyId,
-		"params": []objx.Map{param},
+		"params": params,
 	}
 	s.id++
 	topic := fmt.Sprintf("/rpc/v1/wbrules/Editor/%s/%s", subtopic, SAMPLE_CLIENT_ID)
