@@ -765,14 +765,16 @@ func (s *RuleOptimizationSuite) SetupTest() {
 }
 
 func (s *RuleOptimizationSuite) TestRuleCheckOptimization() {
-	s.publish("/devices/somedev/controls/countIt/meta/type", "text", "somedev/countIt")
-	s.publish("/devices/somedev/controls/countIt", "0", "somedev/countIt")
 	s.Verify(
 		// That's the first time when all rules are run.
 		// somedev/countIt and somedev/countItLT are incomplete here, but
 		// the engine notes that rules' conditions depend on the cells
 		"[rule] condCount: asSoonAs()",
 		"[rule] condCountLT: when()",
+	)
+	s.publish("/devices/somedev/controls/countIt/meta/type", "text", "somedev/countIt")
+	s.publish("/devices/somedev/controls/countIt", "0", "somedev/countIt")
+	s.Verify(
 		"tst -> /devices/somedev/controls/countIt/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/countIt: [0] (QoS 1, retained)",
 		// here the value of the cell changes, so the rule is invoked
