@@ -55,9 +55,7 @@ func (s *LoaderSuite) SetupTest() {
 	s.dir2, s.cleanup[1] = wbgo.SetupTempDir(s.T())
 
 	s.subdir = filepath.Join(s.dir1, "subdir")
-	if err := os.Mkdir(s.subdir, 0777); err != nil {
-		s.Require().Fail("error creating subdir", "%s", err)
-	}
+	s.Ck("Mkdir()", os.Mkdir(s.subdir, 0777))
 
 	s.Recorder = wbgo.NewRecorder(s.T())
 	s.loader = NewLoader("\\.js$", s)
@@ -77,9 +75,7 @@ func (s *LoaderSuite) SetupTest() {
 
 func (s *LoaderSuite) writeFile(dir, filename, content string) string {
 	fullPath := filepath.Join(dir, filename)
-	if err := ioutil.WriteFile(fullPath, []byte(content), 0777); err != nil {
-		s.Require().Fail("failed to write file", "%s: %s", fullPath, err)
-	}
+	s.Ck("WriteFile()", ioutil.WriteFile(fullPath, []byte(content), 0777))
 	return fullPath
 }
 
@@ -192,17 +188,11 @@ func (s *LoaderSuite) TestFileRemoval() {
 }
 
 func (s *LoaderSuite) TestUnreadableFiles() {
-	err := os.Symlink(filepath.Join(s.dir1, "blabla.js"), filepath.Join(s.dir1, "test.js"))
-	if err != nil {
-		s.Require().Fail("failed to create symlink", "%s", err)
-	}
+	s.Ck("Symlink()", os.Symlink(filepath.Join(s.dir1, "blabla.js"), filepath.Join(s.dir1, "test.js")))
 	s.loadAll()
 	s.EnsureGotWarnings()
 
-	err = os.Symlink(filepath.Join(s.dir1, "blabla1.js"), filepath.Join(s.dir1, "test1.js"))
-	if err != nil {
-		s.Require().Fail("failed to create symlink", "%s", err)
-	}
+	s.Ck("Symlink()", os.Symlink(filepath.Join(s.dir1, "blabla1.js"), filepath.Join(s.dir1, "test1.js")))
 
 	// must have s.VerifyEmpty() here so the warnings have time to appear
 	s.VerifyEmpty()

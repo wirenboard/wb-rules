@@ -88,53 +88,36 @@ func (s *RuleSuiteBase) ScriptPath(script string) string {
 
 func (s *RuleSuiteBase) copyScriptToTempDir(sourceName, targetName string) (targetPath string) {
 	data, err := ioutil.ReadFile(sourceName)
-	if err != nil {
-		s.Require().Fail("failed to read script file", "%s: %s", sourceName, err)
-	}
+	s.Ck("ReadFile()", err)
 	targetPath = s.ScriptPath(targetName)
 	if strings.Contains(targetName, "/") {
 		// the target file is under a subdir
-		if err = os.MkdirAll(filepath.Dir(targetPath), 0777); err != nil {
-			s.Require().Fail("failed to make directory for a script",
-				"%s: %s", targetName, err)
-		}
+		s.Ck("MkdirAll", os.MkdirAll(filepath.Dir(targetPath), 0777))
 	}
-	if err = ioutil.WriteFile(targetPath, data, 0777); err != nil {
-		s.Require().Fail("failed to read script file", "%s: %s", targetName, err)
-	}
+	s.Ck("WriteFile", ioutil.WriteFile(targetPath, data, 0777))
 	return
 }
 
 func (s *RuleSuiteBase) loadScripts(scripts []string) {
 	wd, err := os.Getwd()
-	if err != nil {
-		s.Require().Fail("failed to get working directory", "%s", err)
-	}
+	s.Ck("Getwd()", err)
 	s.scriptDir, s.rmScriptDir = wbgo.SetupTempDir(s.T()) // this does chdir
-	if err = s.engine.SetSourceRoot(s.scriptDir); err != nil {
-		s.Require().Fail("failed to set source root", "%s", err)
-	}
+	s.Ck("SetSourceRoot()", s.engine.SetSourceRoot(s.scriptDir))
 	// change back to the original working directory
-	if err = os.Chdir(wd); err != nil {
-		s.Require().Fail("chdir failed", "%s", err)
-	}
+	s.Ck("Chdir()", os.Chdir(wd))
 	// Copy scripts to the temporary directory recreating a part
 	// of original directory structure that contains these
 	// scripts.
 	for _, script := range scripts {
 		copiedScriptPath := s.copyScriptToTempDir(script, script)
-		if err = s.engine.LoadScript(copiedScriptPath); err != nil {
-			s.Require().Fail("LoadScript() failed", "%s", err)
-		}
+		s.Ck("LoadScript()", s.engine.LoadScript(copiedScriptPath))
 	}
 
 }
 
 func (s *RuleSuiteBase) ReplaceScript(oldName, newName string) {
 	copiedScriptPath := s.copyScriptToTempDir(newName, oldName)
-	if err := s.engine.LiveLoadScript(copiedScriptPath); err != nil {
-		s.Require().Fail("LiveLoadScript() failed", "%s", err)
-	}
+	s.Ck("LiveLoadScript()", s.engine.LiveLoadScript(copiedScriptPath))
 }
 
 func (s *RuleSuiteBase) RemoveScript(oldName string) {
@@ -1083,13 +1066,20 @@ func (s *LocationSuite) SetupTest() {
 		"loc1/testrules_more.js")
 }
 
+func (s *LocationSuite) listSourceFiles() (entries []LocFileEntry) {
+	var err error
+	entries, err = s.engine.ListSourceFiles()
+	s.Ck("ListSourceFiles", err)
+	return
+}
+
 func (s *LocationSuite) TestLocations() {
 	s.Equal([]LocFileEntry{
 		{
 			VirtualPath:  "loc1/testrules_more.js",
 			PhysicalPath: s.ScriptPath("loc1/testrules_more.js"),
 			Devices: []LocItem{
-				{"qqq", 4},
+				{4, "qqq"},
 			},
 			Rules: []LocItem{},
 		},
@@ -1103,17 +1093,17 @@ func (s *LocationSuite) TestLocations() {
 			VirtualPath:  "testrules_locations.js",
 			PhysicalPath: s.ScriptPath("testrules_locations.js"),
 			Devices: []LocItem{
-				{"misc", 4},
-				{"foo", 14},
+				{4, "misc"},
+				{14, "foo"},
 			},
 			Rules: []LocItem{
-				{"whateverRule", 7},
+				{7, "whateverRule"},
 				// the problem with duktape: the last line of the
 				// defineRule() call is recorded
-				{"another", 24},
+				{24, "another"},
 			},
 		},
-	}, s.engine.ListSourceFiles())
+	}, s.listSourceFiles())
 }
 
 func (s *LocationSuite) TestUpdatingLocations() {
@@ -1124,7 +1114,7 @@ func (s *LocationSuite) TestUpdatingLocations() {
 			VirtualPath:  "loc1/testrules_more.js",
 			PhysicalPath: s.ScriptPath("loc1/testrules_more.js"),
 			Devices: []LocItem{
-				{"qqqNew", 4},
+				{4, "qqqNew"},
 			},
 			Rules: []LocItem{},
 		},
@@ -1138,30 +1128,30 @@ func (s *LocationSuite) TestUpdatingLocations() {
 			VirtualPath:  "testrules_locations.js",
 			PhysicalPath: s.ScriptPath("testrules_locations.js"),
 			Devices: []LocItem{
-				{"miscNew", 4},
-				{"foo", 14},
+				{4, "miscNew"},
+				{14, "foo"},
 			},
 			Rules: []LocItem{
-				{"whateverNewRule", 7},
-				// the problem with duktape: the last line of the
+				{7, "whateverNewRule"},
+				// a problem with duktape: the last line of the
 				// defineRule() call is recorded
-				{"another", 24},
+				{24, "another"},
 			},
 		},
-	}, s.engine.ListSourceFiles())
+	}, s.listSourceFiles())
 }
 
 func (s *LocationSuite) TestRemoval() {
 	s.RemoveScript("testrules_locations.js")
 	s.WaitFor(func() bool {
-		return len(s.engine.ListSourceFiles()) == 2
+		return len(s.listSourceFiles()) == 2
 	})
 	s.Equal([]LocFileEntry{
 		{
 			VirtualPath:  "loc1/testrules_more.js",
 			PhysicalPath: s.ScriptPath("loc1/testrules_more.js"),
 			Devices: []LocItem{
-				{"qqq", 4},
+				{4, "qqq"},
 			},
 			Rules: []LocItem{},
 		},
@@ -1171,11 +1161,11 @@ func (s *LocationSuite) TestRemoval() {
 			Devices:      []LocItem{},
 			Rules:        []LocItem{},
 		},
-	}, s.engine.ListSourceFiles())
+	}, s.listSourceFiles())
 
 	s.RemoveScript("loc1/testrules_more.js")
 	s.WaitFor(func() bool {
-		return len(s.engine.ListSourceFiles()) == 1
+		return len(s.listSourceFiles()) == 1
 	})
 	s.Equal([]LocFileEntry{
 		{
@@ -1184,7 +1174,7 @@ func (s *LocationSuite) TestRemoval() {
 			Devices:      []LocItem{},
 			Rules:        []LocItem{},
 		},
-	}, s.engine.ListSourceFiles())
+	}, s.listSourceFiles())
 }
 
 func TestRuleSuite(t *testing.T) {

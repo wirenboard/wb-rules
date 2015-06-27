@@ -1,14 +1,18 @@
 package wbrules
 
 import (
+	"github.com/contactless/wbgo"
 	"io/ioutil"
 	"os"
-	"path"
+	"path/filepath"
+	"regexp"
 	"strings"
 )
 
+var editorPathRx = regexp.MustCompile(`^[\w/-]{0,256}\w{1,253}\.js$`)
+
 type Editor struct {
-	rootDir string
+	locFileManager LocFileManager
 }
 
 type EditorError struct {
@@ -25,58 +29,51 @@ func (err *EditorError) ErrorCode() int32 {
 }
 
 const (
-	// TBD: rm iota here
-	EDITOR_ERROR_INVALID_PATH = 1000 - iota
-	EDITOR_ERROR_NODIR
-	EDITOR_ERROR_LISTDIR
+	// no iota here because these values may be used
+	// by external software
+	EDITOR_ERROR_INVALID_PATH = 1000
+	EDITOR_ERROR_NODIR        = 1001
+	EDITOR_ERROR_LISTDIR      = 1002
+	EDITOR_ERROR_WRITE        = 1003
 )
 
 var invalidPathError = &EditorError{EDITOR_ERROR_INVALID_PATH, "Invalid path"}
-var directoryNotFoundError = &EditorError{EDITOR_ERROR_NODIR, "Directory not found"}
-var readDirError = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
+var listDirError = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
+var writeError = &EditorError{EDITOR_ERROR_WRITE, "Error writing the file"}
 
-func NewEditor(rootDir string) *Editor {
-	return &Editor{rootDir}
+func NewEditor(locFileManager LocFileManager) *Editor {
+	return &Editor{locFileManager}
 }
 
-type PathArgs struct {
-	Path string `json:"path"`
+func (editor *Editor) List(args *struct{}, reply *[]LocFileEntry) (err error) {
+	*reply, err = editor.locFileManager.ListSourceFiles()
+	return
 }
 
-func (editor *Editor) List(args *PathArgs, reply *[]string) error {
-	dirPath := path.Clean(args.Path)
-	// exclude .. and hidden dirs in toplevel directory
-	// (fixme: include hidden dirs in subdirs, too)
-	if strings.HasPrefix(dirPath, ".") {
+type EditorSaveArgs struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+func (editor *Editor) Save(args *EditorSaveArgs, reply *bool) error {
+	if !editorPathRx.MatchString(args.Path) {
 		return invalidPathError
 	}
-	var fullPath string
-	if strings.HasPrefix(dirPath, "/") {
-		dirPath = dirPath[1:]
-	}
-	if dirPath == "" {
-		fullPath = editor.rootDir
-	} else {
-		fullPath = path.Join(editor.rootDir, dirPath)
+
+	targetPath := filepath.Join(editor.locFileManager.ScriptDir(), args.Path)
+
+	if strings.Contains(args.Path, "/") {
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0777); err != nil {
+			wbgo.Error.Printf("error making dirs for %s: %s", targetPath, err)
+			return writeError
+		}
 	}
 
-	fi, err := os.Stat(fullPath)
-	switch {
-	case err != nil:
-		fallthrough
-	case !fi.IsDir():
-		return directoryNotFoundError
+	if err := ioutil.WriteFile(targetPath, []byte(args.Content), 0777); err != nil {
+		wbgo.Error.Printf("error writing %s: %s", targetPath, err)
+		return writeError
 	}
 
-	entries, err := ioutil.ReadDir(fullPath)
-	if err != nil {
-		return readDirError
-	}
-
-	*reply = make([]string, len(entries))
-	for n, entry := range entries {
-		(*reply)[n] = entry.Name()
-	}
-
+	*reply = true
 	return nil
 }

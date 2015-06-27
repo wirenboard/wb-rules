@@ -15,27 +15,14 @@ import (
 	"time"
 )
 
-const (
-	LIB_FILE        = "lib.js"
-	MIN_INTERVAL_MS = 1
-
-	SOURCE_ITEM_DEVICE = iota
-	SOURCE_ITEM_RULE
-)
-
 type itemType int
 
-type LocItem struct {
-	name string
-	line int
-}
-
-type LocFileEntry struct {
-	VirtualPath  string
-	PhysicalPath string
-	Devices      []LocItem
-	Rules        []LocItem
-}
+const (
+	LIB_FILE           = "lib.js"
+	MIN_INTERVAL_MS    = 1
+	SOURCE_ITEM_DEVICE = itemType(iota)
+	SOURCE_ITEM_RULE
+)
 
 type sourceMap map[string]*LocFileEntry
 
@@ -193,19 +180,19 @@ func (engine *ESEngine) loadLib() error {
 	return engine.ctx.LoadEmbeddedScript(LIB_FILE, libStr)
 }
 
-func (engine *ESEngine) maybeRegisterSourceItem(itemType int, name string) {
+func (engine *ESEngine) maybeRegisterSourceItem(typ itemType, name string) {
 	if engine.currentSource == nil {
 		return
 	}
 
 	var items *[]LocItem
-	switch itemType {
+	switch typ {
 	case SOURCE_ITEM_DEVICE:
 		items = &engine.currentSource.Devices
 	case SOURCE_ITEM_RULE:
 		items = &engine.currentSource.Rules
 	default:
-		log.Panicf("bad source item type %d", itemType)
+		log.Panicf("bad source item type %d", typ)
 	}
 
 	line := -1
@@ -219,10 +206,10 @@ func (engine *ESEngine) maybeRegisterSourceItem(itemType int, name string) {
 	if line == -1 {
 		return
 	}
-	*items = append(*items, LocItem{name, line})
+	*items = append(*items, LocItem{line, name})
 }
 
-func (engine *ESEngine) ListSourceFiles() (entries []LocFileEntry) {
+func (engine *ESEngine) ListSourceFiles() (entries []LocFileEntry, err error) {
 	engine.sourcesMtx.Lock()
 	defer engine.sourcesMtx.Unlock()
 	pathList := make([]string, 0, len(engine.sources))
@@ -234,7 +221,7 @@ func (engine *ESEngine) ListSourceFiles() (entries []LocFileEntry) {
 	for n, virtualPath := range pathList {
 		entries[n] = *engine.sources[virtualPath]
 	}
-	return entries
+	return
 }
 
 func (engine *ESEngine) checkSourcePath(path string) (cleanPath string, virtualPath string, underSourceRoot bool, err error) {

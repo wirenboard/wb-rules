@@ -2,10 +2,11 @@ package wbrules
 
 import (
 	"fmt"
-	wbgo "github.com/contactless/wbgo"
+	"github.com/contactless/wbgo"
 	"github.com/stretchr/objx"
 	"io/ioutil"
-	"path"
+	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 )
@@ -31,13 +32,14 @@ func (s *EditorSuite) SetupTest() {
 	s.addSampleFiles()
 	s.FakeMQTTFixture = wbgo.NewFakeMQTTFixture(s.T())
 	s.rpc = wbgo.NewMQTTRPCServer("wbrules", s.Broker.MakeClient("wbrules"))
-	s.rpc.Register(NewEditor(s.scriptDir))
+	s.rpc.Register(NewEditor(s))
 	s.client = s.Broker.MakeClient("tst")
 	s.client.Start()
 	s.rpc.Start()
 	s.Verify(
 		"Subscribe -- wbrules: /rpc/v1/wbrules/+/+/+",
 		"wbrules -> /rpc/v1/wbrules/Editor/List: [1] (QoS 1, retained)",
+		"wbrules -> /rpc/v1/wbrules/Editor/Save: [1] (QoS 1, retained)",
 	)
 }
 
@@ -47,17 +49,64 @@ func (s *EditorSuite) TearDownTest() {
 	s.Suite.TearDownTest()
 }
 
+func (s *EditorSuite) ScriptDir() string {
+	return s.scriptDir
+}
+
+func (s *EditorSuite) walkSources(walkFn func(virtualPath, physicalPath string)) {
+	s.Ck("Walk()", filepath.Walk(s.scriptDir, func(path string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if fi.IsDir() {
+			return nil
+		}
+		relPath, err := filepath.Rel(s.scriptDir, path)
+		if err != nil {
+			return err
+		}
+		walkFn(relPath, path)
+		return nil
+	}))
+}
+
+func (s *EditorSuite) ListSourceFiles() (entries []LocFileEntry, err error) {
+	entries = make([]LocFileEntry, 0)
+	s.walkSources(func(virtualPath, physicalPath string) {
+		entry := LocFileEntry{
+			VirtualPath:  virtualPath,
+			PhysicalPath: physicalPath,
+			Devices:      []LocItem{},
+			Rules:        []LocItem{},
+		}
+		if virtualPath == "sample1.js" {
+			entry.Devices = []LocItem{{1, "abc"}, {2, "def"}}
+			entry.Rules = []LocItem{{10, "foobar"}}
+		}
+		entries = append(entries, entry)
+	})
+	return
+}
+
 func (s *EditorSuite) writeScript(filename, content string) string {
-	fullPath := path.Join(s.scriptDir, filename)
-	if err := ioutil.WriteFile(fullPath, []byte(content), 0777); err != nil {
-		s.Require().Fail("failed to write file", "%s: %s", fullPath, err)
-	}
+	fullPath := filepath.Join(s.scriptDir, filename)
+	s.Ck("WriteFile()", ioutil.WriteFile(fullPath, []byte(content), 0777))
 	return fullPath
 }
 
 func (s *EditorSuite) addSampleFiles() {
 	s.writeScript("sample1.js", "// sample1")
 	s.writeScript("sample2.js", "// sample2")
+}
+
+func (s *EditorSuite) verifySources(expected map[string]string) {
+	actual := make(map[string]string)
+	s.walkSources(func(virtualPath, physicalPath string) {
+		bs, err := ioutil.ReadFile(physicalPath)
+		s.Ck("ReadFile()", err)
+		actual[virtualPath] = string(bs)
+	})
+	s.Equal(expected, actual, "sources")
 }
 
 func (s *EditorSuite) verifyRpcRaw(subtopic string, params objx.Map, expectedResponse objx.Map) {
@@ -83,33 +132,68 @@ func (s *EditorSuite) verifyRpc(subtopic string, param objx.Map, expectedResult 
 }
 
 func (s *EditorSuite) verifyRpcError(subtopic string, param objx.Map, code int, typ string, msg string) {
-	s.verifyRpc(
+	s.verifyRpcRaw(
 		subtopic,
 		param,
 		objx.Map{
 			"error": objx.Map{
-				"errorMessage": msg,
-				"code":         code,
-				"data":         typ,
+				"message": msg,
+				"code":    code,
+				"data":    typ,
 			},
 		},
 	)
 }
 
 func (s *EditorSuite) TestListFiles() {
-	s.verifyRpc("List", objx.Map{"path": "/"}, []string{
-		"sample1.js",
-		"sample2.js",
+	s.verifyRpc("List", objx.Map{}, []objx.Map{
+		{
+			"virtualPath": "sample1.js",
+			"devices": []objx.Map{
+				{"line": 1, "name": "abc"},
+				{"line": 2, "name": "def"},
+			},
+			"rules": []objx.Map{
+				{"line": 10, "name": "foobar"},
+			},
+		},
+		{
+			"virtualPath": "sample2.js",
+			"devices":     []objx.Map{},
+			"rules":       []objx.Map{},
+		},
 	})
+}
+
+func (s *EditorSuite) TestSaveFile() {
+	s.verifyRpc("Save", objx.Map{"path": "sample1.js", "content": "// sample1 (changed)"}, true)
+	s.verifySources(map[string]string{
+		"sample1.js": "// sample1 (changed)",
+		"sample2.js": "// sample2",
+	})
+	s.verifyRpc("Save", objx.Map{"path": "sample3.js", "content": "// sample3"}, true)
+	s.verifySources(map[string]string{
+		"sample1.js": "// sample1 (changed)",
+		"sample2.js": "// sample2",
+		"sample3.js": "// sample3",
+	})
+	s.verifyRpc("Save", objx.Map{"path": "sub/sample4.js", "content": "// sample4"}, true)
+	s.verifySources(map[string]string{
+		"sample1.js":     "// sample1 (changed)",
+		"sample2.js":     "// sample2",
+		"sample3.js":     "// sample3",
+		"sub/sample4.js": "// sample4",
+	})
+	s.verifyRpcError("Save", objx.Map{"path": "../foo/bar.js", "content": "evilfile"},
+		EDITOR_ERROR_INVALID_PATH, "EditorError", "Invalid path")
+	s.verifyRpcError("Save", objx.Map{"path": "qqq / rrr.js", "content": "lamefile"},
+		EDITOR_ERROR_INVALID_PATH, "EditorError", "Invalid path")
 }
 
 func TestEditorSuite(t *testing.T) {
 	wbgo.RunSuites(t, new(EditorSuite))
 }
 
-// TBD: make sure "../.." paths don't work
-// TBD: list dirs
-// TBD: only show .js files and dirs
 // TBD: use verifyMessages()-style formatting for Recorder.Verify() / Recorder.VerifyUnordered()
 //      and update tests that use them
 // TBD: look for safe path handling for Go
