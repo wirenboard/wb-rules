@@ -2,8 +2,11 @@ package wbrules
 
 import (
 	wbgo "github.com/contactless/wbgo"
+	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -53,11 +56,13 @@ type RuleSuiteBase struct {
 	CellSuiteBase
 	ruleFile string
 	*wbgo.FakeTimerFixture
-	engine *ESEngine
-	cron   *fakeCron
+	engine      *ESEngine
+	cron        *fakeCron
+	scriptDir   string
+	rmScriptDir func()
 }
 
-func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFile string) {
+func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	s.CellSuiteBase.SetupTest(waitForRetained)
 	s.FakeTimerFixture = wbgo.NewFakeTimerFixture(s.T(), s.Recorder)
 	s.cron = nil
@@ -70,15 +75,70 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFile string) {
 	s.engine.SetLogFunc(func(message string) {
 		s.Rec("[rule] %s", message)
 	})
-	s.Equal(nil, s.engine.LoadScript(ruleFile))
+	s.loadScripts(ruleFiles)
 	s.driver.Start()
 	if !waitForRetained {
 		s.publishSomedev()
 	}
 }
 
-func (s *RuleSuiteBase) SetupSkippingDefs(ruleFile string) {
-	s.SetupTest(false, ruleFile)
+func (s *RuleSuiteBase) ScriptPath(script string) string {
+	return filepath.Join(s.scriptDir, script)
+}
+
+func (s *RuleSuiteBase) copyScriptToTempDir(sourceName, targetName string) (targetPath string) {
+	data, err := ioutil.ReadFile(sourceName)
+	if err != nil {
+		s.Require().Fail("failed to read script file", "%s: %s", sourceName, err)
+	}
+	targetPath = s.ScriptPath(targetName)
+	if strings.Contains(targetName, "/") {
+		// the target file is under a subdir
+		if err = os.MkdirAll(filepath.Dir(targetPath), 0777); err != nil {
+			s.Require().Fail("failed to make directory for a script",
+				"%s: %s", targetName, err)
+		}
+	}
+	if err = ioutil.WriteFile(targetPath, data, 0777); err != nil {
+		s.Require().Fail("failed to read script file", "%s: %s", targetName, err)
+	}
+	return
+}
+
+func (s *RuleSuiteBase) loadScripts(scripts []string) {
+	wd, err := os.Getwd()
+	if err != nil {
+		s.Require().Fail("failed to get working directory", "%s", err)
+	}
+	s.scriptDir, s.rmScriptDir = wbgo.SetupTempDir(s.T()) // this does chdir
+	if err = s.engine.SetSourceRoot(s.scriptDir); err != nil {
+		s.Require().Fail("failed to set source root", "%s", err)
+	}
+	// change back to the original working directory
+	if err = os.Chdir(wd); err != nil {
+		s.Require().Fail("chdir failed", "%s", err)
+	}
+	// Copy scripts to the temporary directory recreating a part
+	// of original directory structure that contains these
+	// scripts.
+	for _, script := range scripts {
+		copiedScriptPath := s.copyScriptToTempDir(script, script)
+		if err = s.engine.LoadScript(copiedScriptPath); err != nil {
+			s.Require().Fail("LoadScript() failed", "%s", err)
+		}
+	}
+
+}
+
+func (s *RuleSuiteBase) ReplaceScript(oldName, newName string) {
+	copiedScriptPath := s.copyScriptToTempDir(newName, oldName)
+	if err := s.engine.LiveLoadScript(copiedScriptPath); err != nil {
+		s.Require().Fail("LiveLoadScript() failed", "%s", err)
+	}
+}
+
+func (s *RuleSuiteBase) SetupSkippingDefs(ruleFiles ...string) {
+	s.SetupTest(false, ruleFiles...)
 	s.SkipTill("tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)")
 	s.engine.Start()
 	return
@@ -107,6 +167,7 @@ func (s *RuleSuiteBase) SetCellValue(device, cellName string, value interface{})
 }
 
 func (s *RuleSuiteBase) TearDownTest() {
+	s.rmScriptDir()
 	s.CellSuiteBase.TearDownTest()
 	s.WaitFor(func() bool {
 		return !s.engine.IsActive()
@@ -833,9 +894,8 @@ func (s *RuleCronSuite) TestCron() {
 	)
 
 	// the new script contains rules with same names as in
-	// testrules_cron.js that should override the previous
-	// rules
-	s.engine.LiveLoadScript("testrules_cron_for_reload.js")
+	// testrules_cron.js that should override the previous rules
+	s.ReplaceScript("testrules_cron.js", "testrules_cron_changed.js")
 
 	s.cron.invokeEntries("@hourly")
 	s.cron.invokeEntries("@hourly")
@@ -883,12 +943,7 @@ func (s *RuleReloadSuite) TestReload() {
 		"[rule] rule3: vdev/anotherCell=17",
 	)
 
-	// Let's pretend we edited the script. Actually we're
-	// reloading it while making it use a bit different device and
-	// rule definitions.
-	s.engine.EvalScript("alteredMode = true;")
-	s.engine.LiveLoadScript("testrules_reload.js")
-
+	s.ReplaceScript("testrules_reload.js", "testrules_reload_changed.js")
 	s.Verify(
 		// devices are removed when the older version if the
 		// script is unloaded
@@ -979,6 +1034,85 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 	)
 }
 
+type LocationSuite struct {
+	RuleSuiteBase
+}
+
+func (s *LocationSuite) SetupTest() {
+	s.SetupSkippingDefs(
+		"testrules_defhelper.js",
+		"testrules_locations.js",
+		"loc1/testrules_more.js")
+}
+
+func (s *LocationSuite) TestLocations() {
+	s.Equal([]LocFileEntry{
+		{
+			VirtualPath:  "loc1/testrules_more.js",
+			PhysicalPath: s.ScriptPath("loc1/testrules_more.js"),
+			Devices: []LocItem{
+				{"qqq", 4},
+			},
+			Rules: []LocItem{},
+		},
+		{
+			VirtualPath:  "testrules_defhelper.js",
+			PhysicalPath: s.ScriptPath("testrules_defhelper.js"),
+			Devices:      []LocItem{},
+			Rules:        []LocItem{},
+		},
+		{
+			VirtualPath:  "testrules_locations.js",
+			PhysicalPath: s.ScriptPath("testrules_locations.js"),
+			Devices: []LocItem{
+				{"misc", 4},
+				{"foo", 14},
+			},
+			Rules: []LocItem{
+				{"whateverRule", 7},
+				// the problem with duktape: the last line of the
+				// defineRule() call is recorded
+				{"another", 24},
+			},
+		},
+	}, s.engine.ListSourceFiles())
+}
+
+func (s *LocationSuite) TestUpdatingLocations() {
+	s.ReplaceScript("testrules_locations.js", "testrules_locations_changed.js")
+	s.ReplaceScript("loc1/testrules_more.js", "loc1/testrules_more_changed.js")
+	s.Equal([]LocFileEntry{
+		{
+			VirtualPath:  "loc1/testrules_more.js",
+			PhysicalPath: s.ScriptPath("loc1/testrules_more.js"),
+			Devices: []LocItem{
+				{"qqqNew", 4},
+			},
+			Rules: []LocItem{},
+		},
+		{
+			VirtualPath:  "testrules_defhelper.js",
+			PhysicalPath: s.ScriptPath("testrules_defhelper.js"),
+			Devices:      []LocItem{},
+			Rules:        []LocItem{},
+		},
+		{
+			VirtualPath:  "testrules_locations.js",
+			PhysicalPath: s.ScriptPath("testrules_locations.js"),
+			Devices: []LocItem{
+				{"miscNew", 4},
+				{"foo", 14},
+			},
+			Rules: []LocItem{
+				{"whateverNewRule", 7},
+				// the problem with duktape: the last line of the
+				// defineRule() call is recorded
+				{"another", 24},
+			},
+		},
+	}, s.engine.ListSourceFiles())
+}
+
 func TestRuleSuite(t *testing.T) {
 	wbgo.RunSuites(t,
 		new(RuleDefSuite),
@@ -993,6 +1127,7 @@ func TestRuleSuite(t *testing.T) {
 		new(RuleCronSuite),
 		new(RuleReloadSuite),
 		new(RuleCellChangesSuite),
+		new(LocationSuite),
 	)
 }
 

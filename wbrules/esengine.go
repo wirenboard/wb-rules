@@ -7,26 +7,54 @@ import (
 	wbgo "github.com/contactless/wbgo"
 	duktape "github.com/ivan4th/go-duktape"
 	"github.com/stretchr/objx"
+	"log"
+	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
 const (
 	LIB_FILE        = "lib.js"
 	MIN_INTERVAL_MS = 1
+
+	SOURCE_ITEM_DEVICE = iota
+	SOURCE_ITEM_RULE
 )
+
+type itemType int
+
+type LocItem struct {
+	name string
+	line int
+}
+
+type LocFileEntry struct {
+	VirtualPath  string
+	PhysicalPath string
+	Devices      []LocItem
+	Rules        []LocItem
+}
+
+type sourceMap map[string]*LocFileEntry
 
 type ESEngine struct {
 	*RuleEngine
-	ctx       *ESContext
-	scriptBox *rice.Box
+	ctx           *ESContext
+	scriptBox     *rice.Box
+	sourceRoot    string
+	sources       sourceMap
+	currentSource *LocFileEntry
+	sourcesMtx    sync.Mutex
 }
 
 func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine) {
 	engine = &ESEngine{
-		NewRuleEngine(model, mqttClient),
-		newESContext(model.CallSync),
-		rice.MustFindBox("scripts"),
+		RuleEngine: NewRuleEngine(model, mqttClient),
+		ctx:        newESContext(model.CallSync),
+		scriptBox:  rice.MustFindBox("scripts"),
+		sources:    make(sourceMap),
 	}
 
 	engine.ctx.PushGlobalObject()
@@ -49,6 +77,15 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine
 	if err := engine.loadLib(); err != nil {
 		wbgo.Error.Panicf("failed to load runtime library: %s", err)
 	}
+	return
+}
+
+func (engine *ESEngine) SetSourceRoot(sourceRoot string) (err error) {
+	sourceRoot, err = filepath.Abs(sourceRoot)
+	if err != nil {
+		return
+	}
+	engine.sourceRoot = filepath.Clean(sourceRoot)
 	return
 }
 
@@ -156,15 +193,96 @@ func (engine *ESEngine) loadLib() error {
 	return engine.ctx.LoadEmbeddedScript(LIB_FILE, libStr)
 }
 
+func (engine *ESEngine) maybeRegisterSourceItem(itemType int, name string) {
+	if engine.currentSource == nil {
+		return
+	}
+
+	var items *[]LocItem
+	switch itemType {
+	case SOURCE_ITEM_DEVICE:
+		items = &engine.currentSource.Devices
+	case SOURCE_ITEM_RULE:
+		items = &engine.currentSource.Rules
+	default:
+		log.Panicf("bad source item type %d", itemType)
+	}
+
+	line := -1
+	for _, loc := range engine.ctx.GetTraceback() {
+		// Here we depend upon the fact that duktape displays
+		// unmodified source paths in the backtrace
+		if loc.filename == engine.currentSource.PhysicalPath {
+			line = loc.line
+		}
+	}
+	if line == -1 {
+		return
+	}
+	*items = append(*items, LocItem{name, line})
+}
+
+func (engine *ESEngine) ListSourceFiles() (entries []LocFileEntry) {
+	engine.sourcesMtx.Lock()
+	defer engine.sourcesMtx.Unlock()
+	pathList := make([]string, 0, len(engine.sources))
+	for virtualPath, _ := range engine.sources {
+		pathList = append(pathList, virtualPath)
+	}
+	sort.Strings(pathList)
+	entries = make([]LocFileEntry, len(pathList))
+	for n, virtualPath := range pathList {
+		entries[n] = *engine.sources[virtualPath]
+	}
+	return entries
+}
+
+func (engine *ESEngine) checkSourcePath(path string) (cleanPath string, virtualPath string, underSourceRoot bool, err error) {
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return
+	}
+	cleanPath = filepath.Clean(path)
+	virtualPath, relErr := filepath.Rel(engine.sourceRoot, cleanPath)
+	if relErr != nil {
+		virtualPath = ""
+	} else {
+		underSourceRoot = true
+	}
+	return
+}
+
 func (engine *ESEngine) LoadScript(path string) error {
-	path, err := wbgo.Truename(path)
+	path, virtualPath, underSourceRoot, err := engine.checkSourcePath(path)
 	if err != nil {
 		return err
 	}
+
+	if engine.currentSource != nil {
+		// must use a stack of sources to support recursive LoadScript()
+		panic("recursive LoadScript() calls not supported")
+	}
+
+	if underSourceRoot {
+		engine.currentSource = &LocFileEntry{
+			VirtualPath:  virtualPath,
+			PhysicalPath: path,
+			Devices:      make([]LocItem, 0),
+			Rules:        make([]LocItem, 0),
+		}
+		defer func() {
+			engine.sourcesMtx.Lock()
+			engine.sources[path] = engine.currentSource
+			engine.sourcesMtx.Unlock()
+			engine.currentSource = nil
+		}()
+	}
+
 	// remove rules and devices defined in the previous
-	// version of this script
+	// version of this script (TBD: also remove location information)
 	engine.RunCleanups(path)
 	defer engine.PopCleanupScope(engine.PushCleanupScope(path))
+
 	return engine.ctx.LoadScript(path)
 }
 
@@ -210,6 +328,7 @@ func (engine *ESEngine) esDefineVirtualDevice() int {
 		wbgo.Error.Printf("device definition error: %s", err)
 		return duktape.DUK_RET_ERROR
 	}
+	engine.maybeRegisterSourceItem(SOURCE_ITEM_DEVICE, name)
 	return 0
 }
 
@@ -439,6 +558,7 @@ func (engine *ESEngine) esWbDefineRule() int {
 		return duktape.DUK_RET_ERROR
 	} else {
 		engine.defineRule(rule)
+		engine.maybeRegisterSourceItem(SOURCE_ITEM_RULE, name)
 	}
 	return 0
 }
