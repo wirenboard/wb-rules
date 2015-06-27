@@ -22,6 +22,23 @@ func (s *LoaderSuite) T() *testing.T {
 	return s.Suite.T()
 }
 
+func (s *LoaderSuite) loadScript(filePath, typ string) error {
+	if bs, err := ioutil.ReadFile(filePath); err != nil {
+		return err
+	} else {
+		s.Rec("%s: %s", typ, string(bs))
+	}
+	return nil
+}
+
+func (s *LoaderSuite) LoadScript(filePath string) error {
+	return s.loadScript(filePath, "L")
+}
+
+func (s *LoaderSuite) LiveLoadScript(filePath string) error {
+	return s.loadScript(filePath, "R")
+}
+
 func (s *LoaderSuite) SetupTest() {
 	s.Suite.SetupTest()
 	s.cleanup = make([]func(), 2)
@@ -34,18 +51,7 @@ func (s *LoaderSuite) SetupTest() {
 	}
 
 	s.Recorder = wbgo.NewRecorder(s.T())
-	s.loader = NewLoader("\\.js$", func(filePath string, reloaded bool) error {
-		bs, err := ioutil.ReadFile(filePath)
-		switch {
-		case err != nil:
-			return err
-		case reloaded:
-			s.Rec("R: %s", string(bs))
-		default:
-			s.Rec("L: %s", string(bs))
-		}
-		return nil
-	})
+	s.loader = NewLoader("\\.js$", s)
 
 	// make tests a bit quicker
 	s.loader.SetDelay(100 * time.Millisecond)

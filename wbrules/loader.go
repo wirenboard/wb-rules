@@ -17,12 +17,17 @@ const (
 	PATH_LIST_CAPACITY = 128
 )
 
+type LoaderClient interface {
+	LoadScript(path string) error
+	LiveLoadScript(path string) error
+}
+
 type LoadFunc func(string, bool) error
 
 type Loader struct {
 	initMtx          sync.Mutex
 	rx               *regexp.Regexp
-	loadFunc         LoadFunc
+	client           LoaderClient
 	watcher          *fsnotify.Watcher
 	started          bool
 	quit             chan struct{}
@@ -30,14 +35,14 @@ type Loader struct {
 	explicitlyLoaded map[string]bool
 }
 
-func NewLoader(pattern string, loadFunc LoadFunc) *Loader {
+func NewLoader(pattern string, client LoaderClient) *Loader {
 	if rx, err := regexp.Compile(pattern); err != nil {
 		log.Panicf("invalid loader regexp: %s", pattern)
 		return nil
 	} else {
 		return &Loader{
 			rx:               rx,
-			loadFunc:         loadFunc,
+			client:           client,
 			watcher:          nil,
 			started:          false,
 			quit:             make(chan struct{}),
@@ -151,8 +156,10 @@ func (loader *Loader) loadDir(filePath string, reloaded bool) error {
 func (loader *Loader) loadFile(filePath string, reloaded bool) error {
 	if reloaded {
 		wbgo.Info.Printf("reloading file: %s", filePath)
+		return loader.client.LiveLoadScript(filePath)
+	} else {
+		return loader.client.LoadScript(filePath)
 	}
-	return loader.loadFunc(filePath, reloaded)
 }
 
 func (loader *Loader) doLoad(filePath string, explicit bool, reloaded bool) error {
