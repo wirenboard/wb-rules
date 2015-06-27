@@ -6,33 +6,50 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"sync"
 	"time"
 )
 
+type loaderOpType int
+
 const (
-	RELOAD_DELAY       = 1000 * time.Millisecond
-	PATH_LIST_CAPACITY = 128
+	RELOAD_DELAY            = 1000 * time.Millisecond
+	LOADER_OP_LIST_CAPACITY = 128
+	LOADER_OP_CHANGE        = loaderOpType(iota)
+	LOADER_OP_REMOVE
 )
 
 type LoaderClient interface {
 	LoadScript(path string) error
 	LiveLoadScript(path string) error
+	LiveRemoveScript(path string) error
 }
 
-type LoadFunc func(string, bool) error
+type loaderScript struct {
+	explicit bool
+}
+
+type loaderOp struct {
+	typ  loaderOpType
+	path string
+}
 
 type Loader struct {
-	initMtx          sync.Mutex
-	rx               *regexp.Regexp
-	client           LoaderClient
-	watcher          *fsnotify.Watcher
-	started          bool
-	quit             chan struct{}
-	delay            time.Duration
-	explicitlyLoaded map[string]bool
+	initMtx   sync.Mutex
+	rx        *regexp.Regexp
+	client    LoaderClient
+	watcher   *fsnotify.Watcher
+	started   bool
+	quit      chan struct{}
+	delay     time.Duration
+	loaded    map[string]*loaderScript
+	opsByPath map[string]*loaderOp
+	opList    []*loaderOp
+	timer     *time.Timer
+	c         <-chan time.Time
 }
 
 func NewLoader(pattern string, client LoaderClient) *Loader {
@@ -41,19 +58,71 @@ func NewLoader(pattern string, client LoaderClient) *Loader {
 		return nil
 	} else {
 		return &Loader{
-			rx:               rx,
-			client:           client,
-			watcher:          nil,
-			started:          false,
-			quit:             make(chan struct{}),
-			delay:            RELOAD_DELAY,
-			explicitlyLoaded: make(map[string]bool),
+			rx:      rx,
+			client:  client,
+			watcher: nil,
+			started: false,
+			quit:    make(chan struct{}),
+			delay:   RELOAD_DELAY,
+			loaded:  make(map[string]*loaderScript),
 		}
 	}
 }
 
 func (loader *Loader) SetDelay(delay time.Duration) {
 	loader.delay = delay
+}
+
+func (loader *Loader) resetOps() {
+	loader.opsByPath = make(map[string]*loaderOp)
+	loader.opList = make([]*loaderOp, 0, LOADER_OP_LIST_CAPACITY)
+}
+
+func (loader *Loader) registerFSEvent(ev fsnotify.Event) {
+	opType := LOADER_OP_CHANGE
+	if ev.Op == fsnotify.Remove || ev.Op == fsnotify.Rename {
+		opType = LOADER_OP_REMOVE
+	}
+	op, found := loader.opsByPath[ev.Name]
+	if found {
+		op.typ = opType
+	} else {
+		op = &loaderOp{opType, ev.Name}
+		loader.opsByPath[ev.Name] = op
+		loader.opList = append(loader.opList, op)
+	}
+
+	if loader.timer != nil {
+		loader.timer.Reset(loader.delay)
+	} else {
+		loader.timer = time.NewTimer(loader.delay)
+		loader.c = loader.timer.C
+	}
+}
+
+func (loader *Loader) processEvents() {
+	for _, op := range loader.opList {
+		switch op.typ {
+		case LOADER_OP_CHANGE:
+			wbgo.Debug.Printf("(re)load: %s", op.path)
+			// need to check whether the file that possibly doesn't
+			// satisfy the loader pattern was explicitly loaded
+			explicit := false
+			if entry, found := loader.loaded[op.path]; found {
+				explicit = entry.explicit
+			}
+			if err := loader.doLoad(op.path, explicit, true); err != nil {
+				wbgo.Warn.Printf(
+					"warning: failed to load %s: %s", op.path, err)
+			}
+		case LOADER_OP_REMOVE:
+			wbgo.Debug.Printf("file removed: %s", op.path)
+			loader.removePath(op.path)
+		default:
+			log.Panicf("invalid loader op %d", op.typ)
+		}
+	}
+	loader.resetOps()
 }
 
 func (loader *Loader) startWatching() {
@@ -70,52 +139,18 @@ func (loader *Loader) startWatching() {
 	}
 
 	loader.started = true
-	reloadPaths := make(map[string]int)
-	pathList := make([]string, 0, PATH_LIST_CAPACITY)
-	var timer *time.Timer
-	var c <-chan time.Time
+	loader.resetOps()
 	go func() {
 		for {
 			select {
 			case ev := <-loader.watcher.Events:
 				wbgo.Debug.Printf("fs change event: %s", ev)
-				if ev.Op == fsnotify.Remove || ev.Op == fsnotify.Rename {
-					// should not try to load files that no longer exist
-					if pos, found := reloadPaths[ev.Name]; found {
-						pathList = append(pathList[:pos], pathList[pos+1:]...)
-						delete(reloadPaths, ev.Name)
-					}
-					break
-				}
-				// preserve chronological order of the
-				// filesystem change events
-				if _, found := reloadPaths[ev.Name]; !found {
-					reloadPaths[ev.Name] = len(pathList)
-					pathList = append(pathList, ev.Name)
-				}
-
-				if timer != nil {
-					timer.Reset(loader.delay)
-				} else {
-					timer = time.NewTimer(loader.delay)
-					c = timer.C
-				}
+				loader.registerFSEvent(ev)
 			case err := <-loader.watcher.Errors:
 				wbgo.Error.Printf("watcher error: %s", err)
-			case <-c:
+			case <-loader.c:
 				wbgo.Debug.Printf("reload timer fired")
-				for _, p := range pathList {
-					wbgo.Debug.Printf("(re)load: %s", p)
-					// need to check whether the file that possibly doesn't
-					// satisfy the loader pattern was explicitly loaded
-					explicit := loader.explicitlyLoaded[p]
-					if err := loader.doLoad(p, explicit, true); err != nil {
-						wbgo.Warn.Printf(
-							"warning: failed to load %s: %s", p, err)
-					}
-				}
-				reloadPaths = make(map[string]int)
-				pathList = pathList[:0]
+				loader.processEvents()
 			case <-loader.quit:
 				return
 			}
@@ -137,14 +172,14 @@ func (loader *Loader) loadDir(filePath string, reloaded bool) error {
 		wbgo.Debug.Printf("loadDir: failed to watch %s: %s", filePath, err)
 	}
 	for _, fi := range entries {
-		fullPath := path.Join(filePath, fi.Name())
+		fullPath := filepath.Join(filePath, fi.Name())
 		wbgo.Debug.Printf("loadDir: entry: %s", fullPath)
 		var err error
 		switch {
 		case fi.IsDir():
 			err = loader.loadDir(fullPath, reloaded)
 		case loader.shouldLoadFile(fi.Name()):
-			err = loader.loadFile(fullPath, reloaded)
+			err = loader.loadFile(fullPath, reloaded, false)
 		}
 		if err != nil {
 			wbgo.Warn.Printf("couldn't load %s: %s", fullPath, err)
@@ -153,7 +188,8 @@ func (loader *Loader) loadDir(filePath string, reloaded bool) error {
 	return nil
 }
 
-func (loader *Loader) loadFile(filePath string, reloaded bool) error {
+func (loader *Loader) loadFile(filePath string, reloaded, explicit bool) error {
+	loader.loaded[filePath] = &loaderScript{explicit}
 	if reloaded {
 		wbgo.Info.Printf("reloading file: %s", filePath)
 		return loader.client.LiveLoadScript(filePath)
@@ -171,14 +207,32 @@ func (loader *Loader) doLoad(filePath string, explicit bool, reloaded bool) erro
 	case fi.IsDir():
 		return loader.loadDir(filePath, reloaded)
 	case explicit:
-		loader.explicitlyLoaded[filePath] = true
 		loader.watcher.Add(filePath)
-		return loader.loadFile(filePath, reloaded)
+		fallthrough
 	case loader.shouldLoadFile(fi.Name()):
-		return loader.loadFile(filePath, reloaded)
+		return loader.loadFile(filePath, reloaded, explicit)
 	default:
 		wbgo.Debug.Printf("skipping loading of non-matching file %s", filePath)
 		return nil
+	}
+}
+
+func (loader *Loader) removePath(filePath string) {
+	if loader.loaded[filePath] != nil {
+		loader.client.LiveRemoveScript(filePath)
+		delete(loader.loaded, filePath)
+		return
+	}
+	// assume it's directory removal and try to find subpaths
+	pathList := make([]string, 0)
+	for p, _ := range loader.loaded {
+		if wbgo.IsSubpath(filePath, p) {
+			pathList = append(pathList, p)
+		}
+	}
+	sort.Strings(pathList)
+	for _, p := range pathList {
+		loader.removePath(p)
 	}
 }
 

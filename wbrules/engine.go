@@ -115,7 +115,7 @@ func (cellProxy *CellProxy) IsComplete() bool {
 }
 
 type RuleEngine struct {
-	*ScopedCleanup
+	cleanup           *ScopedCleanup
 	rev               uint64
 	model             *CellModel
 	mqttClient        wbgo.MQTTClient
@@ -139,10 +139,10 @@ type RuleEngine struct {
 
 func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) *RuleEngine {
 	return &RuleEngine{
-		ScopedCleanup: MakeScopedCleanup(),
-		rev:           0,
-		model:         model,
-		mqttClient:    mqttClient,
+		cleanup:    MakeScopedCleanup(),
+		rev:        0,
+		model:      model,
+		mqttClient: mqttClient,
 		logFunc: func(message string) {
 			wbgo.Info.Printf("RULE: %s\n", message)
 		},
@@ -486,7 +486,7 @@ func (engine *RuleEngine) defineVirtualDevice(name string, obj objx.Map) error {
 	engine.model.RemoveLocalDevice(name)
 
 	dev := engine.model.EnsureLocalDevice(name, title)
-	engine.AddCleanup(func() {
+	engine.cleanup.AddCleanup(func() {
 		// runs when the rule file is reloaded
 		engine.model.RemoveLocalDevice(name)
 	})
@@ -573,7 +573,7 @@ func (engine *RuleEngine) defineRule(rule *Rule) {
 		engine.ruleList = append(engine.ruleList, rule.name)
 	}
 	engine.ruleMap[rule.name] = rule
-	engine.AddCleanup(func() {
+	engine.cleanup.AddCleanup(func() {
 		delete(engine.ruleMap, rule.name)
 		for i, name := range engine.ruleList {
 			if name == rule.name {

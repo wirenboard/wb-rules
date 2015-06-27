@@ -242,13 +242,12 @@ func (engine *ESEngine) checkSourcePath(path string) (cleanPath string, virtualP
 	if err != nil {
 		return
 	}
+
 	cleanPath = filepath.Clean(path)
-	virtualPath, relErr := filepath.Rel(engine.sourceRoot, cleanPath)
-	if relErr != nil {
-		virtualPath = ""
-	} else {
-		underSourceRoot = true
+	if underSourceRoot = wbgo.IsSubpath(engine.sourceRoot, cleanPath); underSourceRoot {
+		virtualPath, err = filepath.Rel(engine.sourceRoot, path)
 	}
+
 	return
 }
 
@@ -263,6 +262,12 @@ func (engine *ESEngine) LoadScript(path string) error {
 		panic("recursive LoadScript() calls not supported")
 	}
 
+	// remove rules and devices defined in the previous
+	// version of this script
+	engine.cleanup.RunCleanups(path)
+
+	engine.cleanup.PushCleanupScope(path)
+	defer engine.cleanup.PopCleanupScope(path)
 	if underSourceRoot {
 		engine.currentSource = &LocFileEntry{
 			VirtualPath:  virtualPath,
@@ -270,18 +275,18 @@ func (engine *ESEngine) LoadScript(path string) error {
 			Devices:      make([]LocItem, 0),
 			Rules:        make([]LocItem, 0),
 		}
+		engine.cleanup.AddCleanup(func() {
+			engine.sourcesMtx.Lock()
+			delete(engine.sources, virtualPath)
+			engine.sourcesMtx.Unlock()
+		})
 		defer func() {
 			engine.sourcesMtx.Lock()
-			engine.sources[path] = engine.currentSource
+			engine.sources[virtualPath] = engine.currentSource
 			engine.sourcesMtx.Unlock()
 			engine.currentSource = nil
 		}()
 	}
-
-	// remove rules and devices defined in the previous
-	// version of this script (TBD: also remove location information)
-	engine.RunCleanups(path)
-	defer engine.PopCleanupScope(engine.PushCleanupScope(path))
 
 	return engine.ctx.LoadScript(path)
 }
@@ -292,16 +297,22 @@ func (engine *ESEngine) LoadScript(path string) error {
 func (engine *ESEngine) LiveLoadScript(path string) error {
 	r := make(chan error)
 	engine.model.WhenReady(func() {
-		engine.model.CallSync(func() {
-			err := engine.LoadScript(path)
-			// must call refresh() even in case of LoadScript() error,
-			// because a part of script was still probably loaded
-			engine.refresh()
-			r <- err
-		})
+		err := engine.LoadScript(path)
+		// must call refresh() even in case of LoadScript() error,
+		// because a part of script was still probably loaded
+		engine.refresh()
+		r <- err
 	})
 
 	return <-r
+}
+
+func (engine *ESEngine) LiveRemoveScript(path string) error {
+	engine.model.WhenReady(func() {
+		engine.cleanup.RunCleanups(path)
+		engine.refresh()
+	})
+	return nil
 }
 
 func (engine *ESEngine) wrapRuleCallback(defIndex int, propName string) ESCallbackFunc {

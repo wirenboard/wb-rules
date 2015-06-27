@@ -137,6 +137,10 @@ func (s *RuleSuiteBase) ReplaceScript(oldName, newName string) {
 	}
 }
 
+func (s *RuleSuiteBase) RemoveScript(oldName string) {
+	s.engine.LiveRemoveScript(s.ScriptPath(oldName))
+}
+
 func (s *RuleSuiteBase) SetupSkippingDefs(ruleFiles ...string) {
 	s.SetupTest(false, ruleFiles...)
 	s.SkipTill("tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)")
@@ -917,19 +921,20 @@ type RuleReloadSuite struct {
 }
 
 func (s *RuleReloadSuite) SetupTest() {
-	s.SetupSkippingDefs("testrules_reload.js")
-}
-
-func (s *RuleReloadSuite) TestReload() {
+	s.SetupSkippingDefs("testrules_reload_1.js", "testrules_reload_2.js")
 	s.Verify(
+		"[rule] detRun",
 		"[rule] detectRun: (no cell) (s=false, a=10)",
 		"[rule] detectRun1: (no cell) (s=false, a=10)",
 	)
+}
 
+func (s *RuleReloadSuite) TestReload() {
 	s.publish("/devices/vdev/controls/someCell/on", "1", "vdev/someCell")
 	s.Verify(
 		"tst -> /devices/vdev/controls/someCell/on: [1] (QoS 1)",
 		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
+		"[rule] detRun",
 		"[rule] detectRun: vdev/someCell (s=true, a=10)",
 		"[rule] detectRun1: vdev/someCell (s=true, a=10)",
 		"[rule] rule1: vdev/someCell=true",
@@ -940,12 +945,13 @@ func (s *RuleReloadSuite) TestReload() {
 	s.Verify(
 		"tst -> /devices/vdev/controls/anotherCell/on: [17] (QoS 1)",
 		"driver -> /devices/vdev/controls/anotherCell: [17] (QoS 1, retained)",
+		"[rule] detRun",
 		"[rule] detectRun: vdev/anotherCell (s=true, a=17)",
 		"[rule] detectRun1: vdev/anotherCell (s=true, a=17)",
 		"[rule] rule3: vdev/anotherCell=17",
 	)
 
-	s.ReplaceScript("testrules_reload.js", "testrules_reload_changed.js")
+	s.ReplaceScript("testrules_reload_2.js", "testrules_reload_2_changed.js")
 	s.Verify(
 		// devices are removed when the older version if the
 		// script is unloaded
@@ -962,6 +968,7 @@ func (s *RuleReloadSuite) TestReload() {
 		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/vdev/controls/someCell/on",
 		// rules are run after reload
+		"[rule] detRun",
 		"[rule] detectRun: (no cell) (s=true)",
 	)
 
@@ -974,6 +981,7 @@ func (s *RuleReloadSuite) TestReload() {
 		"tst -> /devices/vdev/controls/anotherCell/on: [11] (QoS 1)",
 		"tst -> /devices/vdev/controls/someCell/on: [0] (QoS 1)",
 		"driver -> /devices/vdev/controls/someCell: [0] (QoS 1, retained)",
+		"[rule] detRun",
 		"[rule] detectRun: vdev/someCell (s=false)",
 		"[rule] rule1: vdev/someCell=false",
 		// rule2 is gone, rule3 is gone together with its anotherCell
@@ -983,6 +991,7 @@ func (s *RuleReloadSuite) TestReload() {
 	s.Verify(
 		"tst -> /devices/vdev/controls/someCell/on: [1] (QoS 1)",
 		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
+		"[rule] detRun",
 		"[rule] detectRun: vdev/someCell (s=true)",
 		"[rule] rule1: vdev/someCell=true",
 	)
@@ -990,8 +999,35 @@ func (s *RuleReloadSuite) TestReload() {
 	// TBD: stop any timers started while evaluating the script.
 	// This will require extra care because cleanup procedure
 	// for the timer must be revoked once the timer is stopped.
-	// To fix this, a support for toplevel timers must be fixed
-	// first (as of now, starting timers there causes race conditions)
+}
+
+func (s *RuleReloadSuite) TestRemoveScript() {
+	s.RemoveScript("testrules_reload_2.js")
+	s.Verify(
+		// devices are removed
+		"Unsubscribe -- driver: /devices/vdev/controls/anotherCell/on",
+		"Unsubscribe -- driver: /devices/vdev/controls/someCell/on",
+		"Unsubscribe -- driver: /devices/vdev1/controls/qqq/on",
+		// rules are run after removal
+		"[rule] detRun",
+	)
+
+	// both ignored (cells are no longer there)
+	s.publish("/devices/vdev/controls/anotherCell/on", "11")
+	s.publish("/devices/vdev/controls/someCell/on", "0")
+
+	s.Verify(
+		"tst -> /devices/vdev/controls/anotherCell/on: [11] (QoS 1)",
+		"tst -> /devices/vdev/controls/someCell/on: [0] (QoS 1)",
+	)
+
+	// vdev0 is intact because it's from testrules_reload_1.js
+	s.publish("/devices/vdev0/controls/someCell/on", "1", "vdev0/someCell")
+	s.Verify(
+		"tst -> /devices/vdev0/controls/someCell/on: [1] (QoS 1)",
+		"driver -> /devices/vdev0/controls/someCell: [1] (QoS 1, retained)",
+		"[rule] detRun",
+	)
 }
 
 type RuleCellChangesSuite struct {
@@ -1111,6 +1147,42 @@ func (s *LocationSuite) TestUpdatingLocations() {
 				// defineRule() call is recorded
 				{"another", 24},
 			},
+		},
+	}, s.engine.ListSourceFiles())
+}
+
+func (s *LocationSuite) TestRemoval() {
+	s.RemoveScript("testrules_locations.js")
+	s.WaitFor(func() bool {
+		return len(s.engine.ListSourceFiles()) == 2
+	})
+	s.Equal([]LocFileEntry{
+		{
+			VirtualPath:  "loc1/testrules_more.js",
+			PhysicalPath: s.ScriptPath("loc1/testrules_more.js"),
+			Devices: []LocItem{
+				{"qqq", 4},
+			},
+			Rules: []LocItem{},
+		},
+		{
+			VirtualPath:  "testrules_defhelper.js",
+			PhysicalPath: s.ScriptPath("testrules_defhelper.js"),
+			Devices:      []LocItem{},
+			Rules:        []LocItem{},
+		},
+	}, s.engine.ListSourceFiles())
+
+	s.RemoveScript("loc1/testrules_more.js")
+	s.WaitFor(func() bool {
+		return len(s.engine.ListSourceFiles()) == 1
+	})
+	s.Equal([]LocFileEntry{
+		{
+			VirtualPath:  "testrules_defhelper.js",
+			PhysicalPath: s.ScriptPath("testrules_defhelper.js"),
+			Devices:      []LocItem{},
+			Rules:        []LocItem{},
 		},
 	}, s.engine.ListSourceFiles())
 }

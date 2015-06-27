@@ -4,7 +4,7 @@ import (
 	wbgo "github.com/contactless/wbgo"
 	"io/ioutil"
 	"os"
-	"path"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -39,13 +39,22 @@ func (s *LoaderSuite) LiveLoadScript(filePath string) error {
 	return s.loadScript(filePath, "R")
 }
 
+func (s *LoaderSuite) LiveRemoveScript(filePath string) error {
+	recPath := filepath.Base(filePath)
+	if wbgo.IsSubpath(s.subdir, filePath) {
+		recPath = "subdir/" + recPath
+	}
+	s.Rec("D: %s", recPath)
+	return nil
+}
+
 func (s *LoaderSuite) SetupTest() {
 	s.Suite.SetupTest()
 	s.cleanup = make([]func(), 2)
 	s.dir1, s.cleanup[0] = wbgo.SetupTempDir(s.T())
 	s.dir2, s.cleanup[1] = wbgo.SetupTempDir(s.T())
 
-	s.subdir = path.Join(s.dir1, "subdir")
+	s.subdir = filepath.Join(s.dir1, "subdir")
 	if err := os.Mkdir(s.subdir, 0777); err != nil {
 		s.Require().Fail("error creating subdir", "%s", err)
 	}
@@ -67,7 +76,7 @@ func (s *LoaderSuite) SetupTest() {
 }
 
 func (s *LoaderSuite) writeFile(dir, filename, content string) string {
-	fullPath := path.Join(dir, filename)
+	fullPath := filepath.Join(dir, filename)
 	if err := ioutil.WriteFile(fullPath, []byte(content), 0777); err != nil {
 		s.Require().Fail("failed to write file", "%s: %s", fullPath, err)
 	}
@@ -137,24 +146,29 @@ func (s *LoaderSuite) TestModification() {
 func (s *LoaderSuite) TestRenaming() {
 	s.loadAll()
 
-	os.Rename(s.f1, path.Join(s.dir1, "f1_renamed.js"))
-	s.Verify("R: // f1")
+	os.Rename(s.f1, filepath.Join(s.dir1, "f1_renamed.js"))
+	s.Verify(
+		"D: f1.js",
+		"R: // f1")
 
 	// make sure the file is still watched after rename
 	s.writeFile(s.dir1, "f1_renamed.js", "// f1_renamed (changed)")
-	s.Verify("R: // f1_renamed (changed)")
+	s.Verify(
+		"R: // f1_renamed (changed)")
 
 	// when an explicitly specified file is renamed, it's no longer watched
-	os.Rename(s.f5, path.Join(s.dir2, "f5_renamed.js"))
+	os.Rename(s.f5, filepath.Join(s.dir2, "f5_renamed.js"))
 	s.writeFile(s.dir2, "f5_renamed.js", "// f5_renamed (changed)")
-	s.VerifyEmpty()
+	s.Verify("D: f5.js")
 
 	// FIXME: should track directories of explicitly specified files
 	// to see when they reappear
 
-	newSubdir := path.Join(s.dir1, "subdir_renamed")
+	newSubdir := filepath.Join(s.dir1, "subdir_renamed")
 	os.Rename(s.subdir, newSubdir)
-	s.Verify("R: // f4")
+	s.Verify(
+		"D: subdir/f4.js",
+		"R: // f4")
 
 	// make sure the directory is still watched after rename
 	s.writeFile(newSubdir, "f4.js", "// f4 (changed)")
@@ -171,19 +185,21 @@ func (s *LoaderSuite) TestFileRemoval() {
 	os.RemoveAll(s.subdir)
 	os.Remove(s.f1)
 	os.Remove(s.f5)
-
-	// VerifyEmpty() is invoked during teardown
+	s.VerifyUnordered(
+		"D: subdir/f4.js",
+		"D: f1.js",
+		"D: f5.js")
 }
 
 func (s *LoaderSuite) TestUnreadableFiles() {
-	err := os.Symlink(path.Join(s.dir1, "blabla.js"), path.Join(s.dir1, "test.js"))
+	err := os.Symlink(filepath.Join(s.dir1, "blabla.js"), filepath.Join(s.dir1, "test.js"))
 	if err != nil {
 		s.Require().Fail("failed to create symlink", "%s", err)
 	}
 	s.loadAll()
 	s.EnsureGotWarnings()
 
-	err = os.Symlink(path.Join(s.dir1, "blabla1.js"), path.Join(s.dir1, "test1.js"))
+	err = os.Symlink(filepath.Join(s.dir1, "blabla1.js"), filepath.Join(s.dir1, "test1.js"))
 	if err != nil {
 		s.Require().Fail("failed to create symlink", "%s", err)
 	}
