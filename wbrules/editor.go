@@ -31,15 +31,18 @@ func (err *EditorError) ErrorCode() int32 {
 const (
 	// no iota here because these values may be used
 	// by external software
-	EDITOR_ERROR_INVALID_PATH = 1000
-	EDITOR_ERROR_NODIR        = 1001
-	EDITOR_ERROR_LISTDIR      = 1002
-	EDITOR_ERROR_WRITE        = 1003
+	EDITOR_ERROR_INVALID_PATH   = 1000
+	EDITOR_ERROR_LISTDIR        = 1001
+	EDITOR_ERROR_WRITE          = 1002
+	EDITOR_ERROR_FILE_NOT_FOUND = 1003
+	EDITOR_ERROR_REMOVE         = 1004
 )
 
 var invalidPathError = &EditorError{EDITOR_ERROR_INVALID_PATH, "Invalid path"}
 var listDirError = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
 var writeError = &EditorError{EDITOR_ERROR_WRITE, "Error writing the file"}
+var fileNotFoundError = &EditorError{EDITOR_ERROR_FILE_NOT_FOUND, "File not found"}
+var rmError = &EditorError{EDITOR_ERROR_REMOVE, "Error removing the file"}
 
 func NewEditor(locFileManager LocFileManager) *Editor {
 	return &Editor{locFileManager}
@@ -76,4 +79,31 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *bool) error {
 
 	*reply = true
 	return nil
+}
+
+type EditorRemoveArgs struct {
+	Path string `json:"path"`
+}
+
+func (editor *Editor) Remove(args *EditorRemoveArgs, reply *bool) error {
+	entries, err := editor.locFileManager.ListSourceFiles()
+	if err != nil {
+		// yes, listing the directory is necessary to check whether
+		// the file can be removed
+		return listDirError
+	}
+
+	for _, entry := range entries {
+		if entry.VirtualPath != args.Path {
+			continue
+		}
+		if err := os.Remove(entry.PhysicalPath); err != nil {
+			wbgo.Error.Printf("error removing %s: %s", entry.PhysicalPath, err)
+			return rmError
+		}
+		*reply = true
+		return nil
+	}
+
+	return fileNotFoundError
 }

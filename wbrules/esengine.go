@@ -67,6 +67,11 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine
 	return
 }
 
+func (engine *ESEngine) ScriptDir() string {
+	// for Editor
+	return engine.sourceRoot
+}
+
 func (engine *ESEngine) SetSourceRoot(sourceRoot string) (err error) {
 	sourceRoot, err = filepath.Abs(sourceRoot)
 	if err != nil {

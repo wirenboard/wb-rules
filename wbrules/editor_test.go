@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -39,6 +40,7 @@ func (s *EditorSuite) SetupTest() {
 	s.Verify(
 		"Subscribe -- wbrules: /rpc/v1/wbrules/+/+/+",
 		"wbrules -> /rpc/v1/wbrules/Editor/List: [1] (QoS 1, retained)",
+		"wbrules -> /rpc/v1/wbrules/Editor/Remove: [1] (QoS 1, retained)",
 		"wbrules -> /rpc/v1/wbrules/Editor/Save: [1] (QoS 1, retained)",
 	)
 }
@@ -73,6 +75,10 @@ func (s *EditorSuite) walkSources(walkFn func(virtualPath, physicalPath string))
 func (s *EditorSuite) ListSourceFiles() (entries []LocFileEntry, err error) {
 	entries = make([]LocFileEntry, 0)
 	s.walkSources(func(virtualPath, physicalPath string) {
+		if !strings.HasSuffix(virtualPath, ".js") {
+			return
+		}
+
 		entry := LocFileEntry{
 			VirtualPath:  virtualPath,
 			PhysicalPath: physicalPath,
@@ -184,16 +190,39 @@ func (s *EditorSuite) TestSaveFile() {
 		"sample3.js":     "// sample3",
 		"sub/sample4.js": "// sample4",
 	})
+
 	s.verifyRpcError("Save", objx.Map{"path": "../foo/bar.js", "content": "evilfile"},
 		EDITOR_ERROR_INVALID_PATH, "EditorError", "Invalid path")
 	s.verifyRpcError("Save", objx.Map{"path": "qqq / rrr.js", "content": "lamefile"},
 		EDITOR_ERROR_INVALID_PATH, "EditorError", "Invalid path")
+	s.verifySources(map[string]string{
+		"sample1.js":     "// sample1 (changed)",
+		"sample2.js":     "// sample2",
+		"sample3.js":     "// sample3",
+		"sub/sample4.js": "// sample4",
+	})
+}
+
+func (s *EditorSuite) TestRemoveFile() {
+	s.verifyRpc("Remove", objx.Map{"path": "sample1.js"}, true)
+	s.verifySources(map[string]string{
+		"sample2.js": "// sample2",
+	})
+	s.verifyRpcError("Remove", objx.Map{"path": "nosuchfile.js"},
+		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
+	s.writeScript("unlisted.js.ok", "// unlisted")
+	s.verifyRpcError("Remove", objx.Map{"path": "unlisted.js.ok"},
+		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
+	s.verifySources(map[string]string{
+		"sample2.js":     "// sample2",
+		"unlisted.js.ok": "// unlisted",
+	})
 }
 
 func TestEditorSuite(t *testing.T) {
 	wbgo.RunSuites(t, new(EditorSuite))
 }
 
+// TBD: test trying to overwrite or remove readonly files
 // TBD: use verifyMessages()-style formatting for Recorder.Verify() / Recorder.VerifyUnordered()
 //      and update tests that use them
-// TBD: look for safe path handling for Go
