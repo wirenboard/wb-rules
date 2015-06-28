@@ -283,6 +283,16 @@ func (engine *ESEngine) LoadScript(path string) error {
 	return engine.ctx.LoadScript(path)
 }
 
+func (engine *ESEngine) maybePublishUpdate(subtopic, physicalPath string) {
+	_, virtualPath, underSourceRoot, err := engine.checkSourcePath(physicalPath)
+	if err != nil {
+		wbgo.Error.Printf("checkSourcePath() failed for %s: %s", physicalPath, err)
+	}
+	if underSourceRoot {
+		engine.publish("/wbrules/updates/"+subtopic, virtualPath, 1, false)
+	}
+}
+
 // LiveLoadScript loads the specified script in the running engine.
 // If the engine isn't ready yet, the function waits for it to become
 // ready.
@@ -293,6 +303,7 @@ func (engine *ESEngine) LiveLoadScript(path string) error {
 		// must call refresh() even in case of LoadScript() error,
 		// because a part of script was still probably loaded
 		engine.refresh()
+		engine.maybePublishUpdate("changed", path)
 		r <- err
 	})
 
@@ -303,6 +314,7 @@ func (engine *ESEngine) LiveRemoveScript(path string) error {
 	engine.model.WhenReady(func() {
 		engine.cleanup.RunCleanups(path)
 		engine.refresh()
+		engine.maybePublishUpdate("removed", path)
 	})
 	return nil
 }

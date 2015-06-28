@@ -886,6 +886,9 @@ func (s *RuleCronSuite) TestCron() {
 	// the new script contains rules with same names as in
 	// testrules_cron.js that should override the previous rules
 	s.ReplaceScript("testrules_cron.js", "testrules_cron_changed.js")
+	s.Verify(
+		"driver -> /wbrules/updates/changed: [testrules_cron.js] (QoS 1)",
+	)
 
 	s.cron.invokeEntries("@hourly")
 	s.cron.invokeEntries("@hourly")
@@ -954,6 +957,8 @@ func (s *RuleReloadSuite) TestReload() {
 		// rules are run after reload
 		"[rule] detRun",
 		"[rule] detectRun: (no cell) (s=true)",
+		// change notification for the client-side script editor
+		"driver -> /wbrules/updates/changed: [testrules_reload_2.js] (QoS 1)",
 	)
 
 	// this one must be ignored because anotherCell is no longer there
@@ -994,6 +999,8 @@ func (s *RuleReloadSuite) TestRemoveScript() {
 		"Unsubscribe -- driver: /devices/vdev1/controls/qqq/on",
 		// rules are run after removal
 		"[rule] detRun",
+		// removal notification for the client-side script editor
+		"driver -> /wbrules/updates/removed: [testrules_reload_2.js] (QoS 1)",
 	)
 
 	// both ignored (cells are no longer there)
