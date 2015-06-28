@@ -32,6 +32,9 @@ func main() {
 	engine := wbrules.NewESEngine(model, mqttClient)
 	gotSome := false
 	loader := wbrules.NewLoader("\\.js$", engine)
+	if *editDir != "" {
+		engine.SetSourceRoot(*editDir)
+	}
 	for _, path := range flag.Args() {
 		if err := loader.Load(path); err != nil {
 			wbgo.Error.Printf("error loading script file/dir %s: %s", path, err)
@@ -45,14 +48,14 @@ func main() {
 	if err := driver.Start(); err != nil {
 		wbgo.Error.Fatalf("error starting the driver: %s", err)
 	}
-	engine.Start()
 
 	if *editDir != "" {
 		rpc := wbgo.NewMQTTRPCServer("wbrules", mqttClient)
-		rpc.Register(wbrules.NewEditor(*editDir))
-		driver.WhenReady(rpc.Start)
+		rpc.Register(wbrules.NewEditor(engine))
+		rpc.Start()
 	}
 
+	engine.Start()
 	for {
 		time.Sleep(1 * time.Second)
 	}
