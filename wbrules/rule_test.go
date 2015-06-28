@@ -1064,6 +1064,10 @@ func (s *LocationSuite) SetupTest() {
 		"testrules_defhelper.js",
 		"testrules_locations.js",
 		"loc1/testrules_more.js")
+	// FIXME: need to wait for the engine to become active because
+	// the engine cannot be stopped before it's ready in the
+	// context of the tests.
+	s.WaitFor(s.engine.IsActive)
 }
 
 func (s *LocationSuite) listSourceFiles() (entries []LocFileEntry) {
