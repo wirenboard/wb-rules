@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -1064,10 +1065,21 @@ func (s *LocationSuite) SetupTest() {
 		"testrules_defhelper.js",
 		"testrules_locations.js",
 		"loc1/testrules_more.js")
-	// FIXME: need to wait for the engine to become active because
+	// FIXME: need to wait for the engine to become ready because
 	// the engine cannot be stopped before it's ready in the
 	// context of the tests.
-	s.WaitFor(s.engine.IsActive)
+	ready := false
+	var mtx sync.Mutex
+	s.model.WhenReady(func() {
+		mtx.Lock()
+		ready = true
+		mtx.Unlock()
+	})
+	s.WaitFor(func() bool {
+		mtx.Lock()
+		defer mtx.Unlock()
+		return ready
+	})
 }
 
 func (s *LocationSuite) listSourceFiles() (entries []LocFileEntry) {
