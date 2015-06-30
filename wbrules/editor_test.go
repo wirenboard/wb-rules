@@ -40,6 +40,7 @@ func (s *EditorSuite) SetupTest() {
 	s.Verify(
 		"Subscribe -- wbrules: /rpc/v1/wbrules/+/+/+",
 		"wbrules -> /rpc/v1/wbrules/Editor/List: [1] (QoS 1, retained)",
+		"wbrules -> /rpc/v1/wbrules/Editor/Load: [1] (QoS 1, retained)",
 		"wbrules -> /rpc/v1/wbrules/Editor/Remove: [1] (QoS 1, retained)",
 		"wbrules -> /rpc/v1/wbrules/Editor/Save: [1] (QoS 1, retained)",
 	)
@@ -217,6 +218,17 @@ func (s *EditorSuite) TestRemoveFile() {
 		"sample2.js":     "// sample2",
 		"unlisted.js.ok": "// unlisted",
 	})
+}
+
+func (s *EditorSuite) TestLoadFile() {
+	s.verifyRpc("Load", objx.Map{"path": "sample1.js"}, objx.Map{
+		"content": "// sample1",
+	})
+	s.verifyRpcError("Load", objx.Map{"path": "nosuchfile.js"},
+		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
+	s.writeScript("unlisted.js.ok", "// unlisted")
+	s.verifyRpcError("Load", objx.Map{"path": "unlisted.js.ok"},
+		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
 }
 
 func TestEditorSuite(t *testing.T) {
