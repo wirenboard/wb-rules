@@ -54,6 +54,10 @@ dpkg-buildpackage -b -aarmel -us -uc
 
 Сборка тестовой версии под архитектуру текущей системы (например, x86_64):
 ```
+sudo apt-get install golang-go
+cd
+git clone https://github.com/contactless/wb-rules.git
+cd wb-rules/
 export GOPATH=$HOME/go
 export PATH=$GOPATH/bin:$PATH
 mkdir -p ~/go
