@@ -2,7 +2,6 @@ GOM=gom
 .PHONY: all clean
 
 all: clean wb-rules
-clean:
 
 prepare:
 	go get -u github.com/mattn/gom
@@ -12,7 +11,7 @@ prepare:
 	  CC_FOR_TARGET=arm-linux-gnueabi-gcc CGO_ENABLED=1 $(GOM) install
 
 clean:
-	rm -rf wb-rules wbrules/*.rice-box.go _vendor/
+	rm -rf wb-rules wbrules/*.rice-box.go
 
 # We remove the box file after build because
 # it may cause problems during development
