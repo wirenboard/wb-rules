@@ -5,10 +5,10 @@ import (
 	"github.com/stretchr/objx"
 )
 
-type depTracker interface {
-	storeRuleCellSpec(rule *Rule, cellSpec CellSpec)
-	startTrackingDeps()
-	storeRuleDeps(rule *Rule)
+type DepTracker interface {
+	StartTrackingDeps()
+	StoreRuleCellSpec(rule *Rule, cellSpec CellSpec)
+	StoreRuleDeps(rule *Rule)
 }
 
 type Cron interface {
@@ -52,7 +52,7 @@ type LevelTriggeredRuleCondition struct {
 	SimpleCallbackCondition
 }
 
-func newLevelTriggeredRuleCondition(cond func() bool) *LevelTriggeredRuleCondition {
+func NewLevelTriggeredRuleCondition(cond func() bool) *LevelTriggeredRuleCondition {
 	return &LevelTriggeredRuleCondition{
 		SimpleCallbackCondition: SimpleCallbackCondition{cond: cond},
 	}
@@ -66,7 +66,7 @@ type DestroyedRuleCondition struct {
 	RuleConditionBase
 }
 
-func newDestroyedRuleCondition() *DestroyedRuleCondition {
+func NewDestroyedRuleCondition() *DestroyedRuleCondition {
 	return &DestroyedRuleCondition{}
 }
 
@@ -80,7 +80,7 @@ type EdgeTriggeredRuleCondition struct {
 	firstRun      bool
 }
 
-func newEdgeTriggeredRuleCondition(cond func() bool) *EdgeTriggeredRuleCondition {
+func NewEdgeTriggeredRuleCondition(cond func() bool) *EdgeTriggeredRuleCondition {
 	return &EdgeTriggeredRuleCondition{
 		SimpleCallbackCondition: SimpleCallbackCondition{cond: cond},
 		prevCondValue:           false,
@@ -102,7 +102,7 @@ type CellChangedRuleCondition struct {
 	oldValue interface{}
 }
 
-func newCellChangedRuleCondition(cellSpec CellSpec) (*CellChangedRuleCondition, error) {
+func NewCellChangedRuleCondition(cellSpec CellSpec) (*CellChangedRuleCondition, error) {
 	return &CellChangedRuleCondition{
 		cellSpec: cellSpec,
 		oldValue: nil,
@@ -139,7 +139,7 @@ type FuncValueChangedRuleCondition struct {
 	oldValue interface{}
 }
 
-func newFuncValueChangedRuleCondition(f func() interface{}) *FuncValueChangedRuleCondition {
+func NewFuncValueChangedRuleCondition(f func() interface{}) *FuncValueChangedRuleCondition {
 	return &FuncValueChangedRuleCondition{
 		thunk:    f,
 		oldValue: nil,
@@ -160,7 +160,7 @@ type OrRuleCondition struct {
 	conds []RuleCondition
 }
 
-func newOrRuleCondition(conds []RuleCondition) *OrRuleCondition {
+func NewOrRuleCondition(conds []RuleCondition) *OrRuleCondition {
 	return &OrRuleCondition{conds: conds}
 }
 
@@ -186,7 +186,7 @@ type CronRuleCondition struct {
 	spec string
 }
 
-func newCronRuleCondition(spec string) *CronRuleCondition {
+func NewCronRuleCondition(spec string) *CronRuleCondition {
 	return &CronRuleCondition{spec: spec}
 }
 
@@ -195,14 +195,14 @@ func (ruleCond *CronRuleCondition) MaybeAddToCron(cron Cron, thunk func()) error
 }
 
 type Rule struct {
-	tracker     depTracker
+	tracker     DepTracker
 	name        string
 	cond        RuleCondition
 	then        ESCallbackFunc
 	shouldCheck bool
 }
 
-func NewRule(tracker depTracker, name string, cond RuleCondition, then ESCallbackFunc) *Rule {
+func NewRule(tracker DepTracker, name string, cond RuleCondition, then ESCallbackFunc) *Rule {
 	rule := &Rule{
 		tracker:     tracker,
 		name:        name,
@@ -216,7 +216,7 @@ func NewRule(tracker depTracker, name string, cond RuleCondition, then ESCallbac
 
 func (rule *Rule) StoreInitiallyKnownDeps() {
 	for _, cellSpec := range rule.cond.GetCells() {
-		rule.tracker.storeRuleCellSpec(rule, cellSpec)
+		rule.tracker.StoreRuleCellSpec(rule, cellSpec)
 	}
 }
 
@@ -232,10 +232,10 @@ func (rule *Rule) Check(cell *Cell) {
 		// to call JS though.
 		return
 	}
-	rule.tracker.startTrackingDeps()
+	rule.tracker.StartTrackingDeps()
 	shouldFire, newValue := rule.cond.Check(cell)
 	var args objx.Map
-	rule.tracker.storeRuleDeps(rule)
+	rule.tracker.StoreRuleDeps(rule)
 	rule.shouldCheck = false
 
 	switch {
@@ -266,5 +266,5 @@ func (rule *Rule) MaybeAddToCron(cron Cron) {
 
 func (rule *Rule) Destroy() {
 	rule.then = nil
-	rule.cond = newDestroyedRuleCondition()
+	rule.cond = NewDestroyedRuleCondition()
 }

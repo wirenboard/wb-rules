@@ -88,11 +88,11 @@ func (engine *ESEngine) buildSingleWhenChangedRuleCondition(defIndex int) (RuleC
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid whenChanged spec: '%s'", cellFullName)
 		}
-		return newCellChangedRuleCondition(CellSpec{parts[0], parts[1]})
+		return NewCellChangedRuleCondition(CellSpec{parts[0], parts[1]})
 	}
 	if engine.ctx.IsFunction(defIndex) {
 		f := engine.ctx.WrapCallback(defIndex)
-		return newFuncValueChangedRuleCondition(func() interface{} { return f(nil) }), nil
+		return NewFuncValueChangedRuleCondition(func() interface{} { return f(nil) }), nil
 	}
 	return nil, errors.New("whenChanged: array expected")
 }
@@ -119,7 +119,7 @@ func (engine *ESEngine) buildWhenChangedRuleCondition(defIndex int) (RuleConditi
 		}
 	}
 
-	return newOrRuleCondition(conds), nil
+	return NewOrRuleCondition(conds), nil
 }
 
 func (engine *ESEngine) buildRuleCond(defIndex int) (RuleCondition, error) {
@@ -137,14 +137,14 @@ func (engine *ESEngine) buildRuleCond(defIndex int) (RuleCondition, error) {
 			"invalid rule -- cannot combine 'when' with 'asSoonAs' or 'whenChanged'")
 
 	case hasWhen:
-		return newLevelTriggeredRuleCondition(engine.wrapRuleCondFunc(defIndex, "when")), nil
+		return NewLevelTriggeredRuleCondition(engine.wrapRuleCondFunc(defIndex, "when")), nil
 
 	case hasAsSoonAs && (hasWhenChanged || hasCron):
 		return nil, errors.New(
 			"invalid rule -- cannot combine 'asSoonAs' with 'whenChanged'")
 
 	case hasAsSoonAs:
-		return newEdgeTriggeredRuleCondition(
+		return NewEdgeTriggeredRuleCondition(
 			engine.wrapRuleCondFunc(defIndex, "asSoonAs")), nil
 
 	case hasWhenChanged && hasCron:
@@ -156,7 +156,7 @@ func (engine *ESEngine) buildRuleCond(defIndex int) (RuleCondition, error) {
 	case hasCron:
 		engine.ctx.GetPropString(defIndex, "_cron")
 		defer engine.ctx.Pop()
-		return newCronRuleCondition(engine.ctx.SafeToString(-1)), nil
+		return NewCronRuleCondition(engine.ctx.SafeToString(-1)), nil
 
 	default:
 		return nil, errors.New(
@@ -289,7 +289,7 @@ func (engine *ESEngine) maybePublishUpdate(subtopic, physicalPath string) {
 		wbgo.Error.Printf("checkSourcePath() failed for %s: %s", physicalPath, err)
 	}
 	if underSourceRoot {
-		engine.publish("/wbrules/updates/"+subtopic, virtualPath, 1, false)
+		engine.Publish("/wbrules/updates/"+subtopic, virtualPath, 1, false)
 	}
 }
 
@@ -302,7 +302,7 @@ func (engine *ESEngine) LiveLoadScript(path string) error {
 		err := engine.LoadScript(path)
 		// must call refresh() even in case of LoadScript() error,
 		// because a part of script was still probably loaded
-		engine.refresh()
+		engine.Refresh()
 		engine.maybePublishUpdate("changed", path)
 		r <- err
 	})
@@ -313,7 +313,7 @@ func (engine *ESEngine) LiveLoadScript(path string) error {
 func (engine *ESEngine) LiveRemoveScript(path string) error {
 	engine.model.WhenReady(func() {
 		engine.cleanup.RunCleanups(path)
-		engine.refresh()
+		engine.Refresh()
 		engine.maybePublishUpdate("removed", path)
 	})
 	return nil
@@ -339,7 +339,7 @@ func (engine *ESEngine) esDefineVirtualDevice() int {
 	}
 	name := engine.ctx.GetString(-2)
 	obj := engine.ctx.GetJSObject(-1).(objx.Map)
-	if err := engine.defineVirtualDevice(name, obj); err != nil {
+	if err := engine.DefineVirtualDevice(name, obj); err != nil {
 		wbgo.Error.Printf("device definition error: %s", err)
 		return duktape.DUK_RET_ERROR
 	}
@@ -384,7 +384,7 @@ func (engine *ESEngine) esPublish() int {
 	}
 	topic := engine.ctx.GetString(-2)
 	payload := engine.ctx.SafeToString(-1)
-	engine.publish(topic, payload, byte(qos), retain)
+	engine.Publish(topic, payload, byte(qos), retain)
 	return 0
 }
 
@@ -393,7 +393,7 @@ func (engine *ESEngine) esWbDevObject() int {
 	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(-1) {
 		return duktape.DUK_RET_ERROR
 	}
-	devProxy := engine.getDeviceProxy(engine.ctx.GetString(-1))
+	devProxy := engine.GetDeviceProxy(engine.ctx.GetString(-1))
 	engine.ctx.PushGoObject(devProxy)
 	return 1
 }
@@ -455,7 +455,7 @@ func (engine *ESEngine) esWbStartTimer() int {
 			wbgo.Error.Println("empty timer name")
 			return duktape.DUK_RET_ERROR
 		}
-		engine.stopTimerByName(name)
+		engine.StopTimerByName(name)
 	} else if !engine.ctx.IsFunction(0) {
 		wbgo.Error.Println("invalid timer spec")
 		return duktape.DUK_RET_ERROR
@@ -475,7 +475,7 @@ func (engine *ESEngine) esWbStartTimer() int {
 
 	interval := time.Duration(ms * float64(time.Millisecond))
 	engine.ctx.PushNumber(
-		float64(engine.startTimer(name, callback, interval, periodic)))
+		float64(engine.StartTimer(name, callback, interval, periodic)))
 	return 1
 }
 
@@ -489,9 +489,9 @@ func (engine *ESEngine) esWbStopTimer() int {
 			wbgo.Error.Printf("timer id cannot be zero")
 			return 0
 		}
-		engine.stopTimerByIndex(n)
+		engine.StopTimerByIndex(n)
 	} else if engine.ctx.IsString(0) {
-		engine.stopTimerByName(engine.ctx.ToString(0))
+		engine.StopTimerByName(engine.ctx.ToString(0))
 	} else {
 		return duktape.DUK_RET_ERROR
 	}
@@ -503,7 +503,7 @@ func (engine *ESEngine) esWbCheckCurrentTimer() int {
 		return duktape.DUK_RET_ERROR
 	}
 	timerName := engine.ctx.ToString(0)
-	engine.ctx.PushBoolean(engine.checkTimer(timerName))
+	engine.ctx.PushBoolean(engine.CheckTimer(timerName))
 	return 1
 }
 
@@ -572,7 +572,7 @@ func (engine *ESEngine) esWbDefineRule() int {
 		engine.logFunc(fmt.Sprintf("bad definition of rule '%s': %s", name, err))
 		return duktape.DUK_RET_ERROR
 	} else {
-		engine.defineRule(rule)
+		engine.DefineRule(rule)
 		engine.maybeRegisterSourceItem(SOURCE_ITEM_RULE, name)
 	}
 	return 0

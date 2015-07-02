@@ -51,8 +51,8 @@ func (entry *TimerEntry) stop() {
 type LogFunc func(string)
 
 type proxyOwner interface {
+	CellModel() *CellModel
 	getRev() uint64
-	cellModel() *CellModel
 	trackCell(*Cell)
 }
 
@@ -74,12 +74,12 @@ type CellProxy struct {
 }
 
 func makeDeviceProxy(owner proxyOwner, name string) *DeviceProxy {
-	return &DeviceProxy{owner, name, owner.cellModel().EnsureDevice(name), owner.getRev()}
+	return &DeviceProxy{owner, name, owner.CellModel().EnsureDevice(name), owner.getRev()}
 }
 
 func (devProxy *DeviceProxy) getDev() (CellModelDevice, bool) {
 	if devProxy.rev != devProxy.owner.getRev() {
-		devProxy.dev = devProxy.owner.cellModel().EnsureDevice(devProxy.name)
+		devProxy.dev = devProxy.owner.CellModel().EnsureDevice(devProxy.name)
 		return devProxy.dev, true
 	}
 	return devProxy.dev, false
@@ -112,6 +112,23 @@ func (cellProxy *CellProxy) SetValue(value interface{}) {
 
 func (cellProxy *CellProxy) IsComplete() bool {
 	return cellProxy.getCell().IsComplete()
+}
+
+// cronProxy helps to avoid race conditions when
+// invoking cron funcs
+type cronProxy struct {
+	Cron
+	exec func(func())
+}
+
+func newCronProxy(cron Cron, exec func(func())) *cronProxy {
+	return &cronProxy{cron, exec}
+}
+
+func (cp cronProxy) AddFunc(spec string, cmd func()) error {
+	return cp.Cron.AddFunc(spec, func() {
+		cp.exec(cmd)
+	})
 }
 
 type RuleEngine struct {
@@ -174,12 +191,12 @@ func (engine *RuleEngine) SetLogFunc(logFunc LogFunc) {
 	engine.logFunc = logFunc
 }
 
-func (engine *RuleEngine) startTrackingDeps() {
+func (engine *RuleEngine) StartTrackingDeps() {
 	engine.notedCells = make(map[*Cell]bool)
 	engine.notedTimers = make(map[string]bool)
 }
 
-func (engine *RuleEngine) storeRuleCellSpec(rule *Rule, cellSpec CellSpec) {
+func (engine *RuleEngine) StoreRuleCellSpec(rule *Rule, cellSpec CellSpec) {
 	dev := engine.model.EnsureDevice(cellSpec.DevName)
 	engine.storeRuleCell(rule, dev.EnsureCell(cellSpec.CellName))
 }
@@ -207,7 +224,7 @@ func (engine *RuleEngine) storeRuleTimer(rule *Rule, timerName string) {
 	engine.timerRules[timerName] = append(list, rule)
 }
 
-func (engine *RuleEngine) storeRuleDeps(rule *Rule) {
+func (engine *RuleEngine) StoreRuleDeps(rule *Rule) {
 	if len(engine.notedCells) > 0 {
 		for cell, _ := range engine.notedCells {
 			engine.storeRuleCell(rule, cell)
@@ -236,7 +253,7 @@ func (engine *RuleEngine) trackTimer(timerName string) {
 	}
 }
 
-func (engine *RuleEngine) checkTimer(timerName string) bool {
+func (engine *RuleEngine) CheckTimer(timerName string) bool {
 	engine.trackTimer(timerName)
 	return engine.currentTimer != NO_TIMER_NAME && engine.currentTimer == timerName
 }
@@ -262,7 +279,7 @@ func (engine *RuleEngine) removeTimer(n int) {
 	engine.timers[n-1] = nil
 }
 
-func (engine *RuleEngine) stopTimerByName(name string) {
+func (engine *RuleEngine) StopTimerByName(name string) {
 	for i, entry := range engine.timers {
 		if entry != nil && name == entry.name {
 			engine.removeTimer(i + 1)
@@ -272,7 +289,7 @@ func (engine *RuleEngine) stopTimerByName(name string) {
 	}
 }
 
-func (engine *RuleEngine) stopTimerByIndex(n int) {
+func (engine *RuleEngine) StopTimerByIndex(n int) {
 	if n == 0 || n > len(engine.timers) {
 		return
 	}
@@ -330,7 +347,7 @@ func (engine *RuleEngine) setupCron() {
 		engine.cron.Stop()
 	}
 
-	engine.cron = engine.cronMaker()
+	engine.cron = newCronProxy(engine.cronMaker(), engine.model.CallSync)
 	// note for rule reloading: will need to restart cron
 	// to reload rules properly
 	for _, name := range engine.ruleList {
@@ -403,7 +420,7 @@ func (engine *RuleEngine) IsActive() bool {
 	return engine.cellChange != nil
 }
 
-func (engine *RuleEngine) startTimer(name string, callback func(), interval time.Duration, periodic bool) int {
+func (engine *RuleEngine) StartTimer(name string, callback func(), interval time.Duration, periodic bool) int {
 	entry := &TimerEntry{
 		periodic: periodic,
 		quit:     nil,
@@ -466,7 +483,7 @@ func (engine *RuleEngine) startTimer(name string, callback func(), interval time
 	return n
 }
 
-func (engine *RuleEngine) publish(topic, payload string, qos byte, retain bool) {
+func (engine *RuleEngine) Publish(topic, payload string, qos byte, retain bool) {
 	engine.mqttClient.Publish(wbgo.MQTTMessage{
 		Topic:    topic,
 		Payload:  payload,
@@ -475,7 +492,7 @@ func (engine *RuleEngine) publish(topic, payload string, qos byte, retain bool) 
 	})
 }
 
-func (engine *RuleEngine) defineVirtualDevice(name string, obj objx.Map) error {
+func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
 	title := name
 	if obj.Has("title") {
 		title = obj.Get("title").Str(name)
@@ -566,7 +583,7 @@ func (engine *RuleEngine) defineVirtualDevice(name string, obj objx.Map) error {
 	return nil
 }
 
-func (engine *RuleEngine) defineRule(rule *Rule) {
+func (engine *RuleEngine) DefineRule(rule *Rule) {
 	if oldRule, found := engine.ruleMap[rule.name]; found {
 		oldRule.Destroy()
 	} else {
@@ -588,7 +605,7 @@ func (engine *RuleEngine) defineRule(rule *Rule) {
 
 // refresh() should be called after engine rules are altered
 // while the engine is running.
-func (engine *RuleEngine) refresh() {
+func (engine *RuleEngine) Refresh() {
 	engine.rev++ // invalidate cell proxies
 	engine.setupCron()
 
@@ -602,7 +619,7 @@ func (engine *RuleEngine) refresh() {
 	engine.RunRules(nil, NO_TIMER_NAME)
 }
 
-func (engine *ESEngine) cellModel() *CellModel {
+func (engine *ESEngine) CellModel() *CellModel {
 	return engine.model
 }
 
@@ -610,6 +627,6 @@ func (engine *ESEngine) getRev() uint64 {
 	return engine.rev
 }
 
-func (engine *ESEngine) getDeviceProxy(name string) *DeviceProxy {
+func (engine *ESEngine) GetDeviceProxy(name string) *DeviceProxy {
 	return makeDeviceProxy(engine, name)
 }
