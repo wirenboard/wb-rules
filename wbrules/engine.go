@@ -5,6 +5,7 @@ import (
 	wbgo "github.com/contactless/wbgo"
 	"github.com/robfig/cron"
 	"github.com/stretchr/objx"
+	"log"
 	"sort"
 	"sync"
 	"time"
@@ -154,8 +155,8 @@ type RuleEngine struct {
 	statusMtx         sync.Mutex
 }
 
-func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) *RuleEngine {
-	return &RuleEngine{
+func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
+	engine = &RuleEngine{
 		cleanup:    MakeScopedCleanup(),
 		rev:        0,
 		model:      model,
@@ -176,6 +177,23 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) *RuleEngine {
 		currentTimer:      NO_TIMER_NAME,
 		cronMaker:         func() Cron { return cron.New() },
 		cron:              nil,
+	}
+	engine.setupRuleEngineSettingsDevice()
+	return
+}
+
+func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
+	err := engine.DefineVirtualDevice("wbrules", objx.Map{
+		"title": "Rule Engine Settings",
+		"cells": objx.Map{
+			"Rule debugging": objx.Map{
+				"type":  "switch",
+				"value": false,
+			},
+		},
+	})
+	if err != nil {
+		log.Panicf("cannot define wbrules device: %s", err)
 	}
 }
 
@@ -513,8 +531,14 @@ func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
 	}
 
 	v := obj.Get("cells")
-	if !v.IsMSI() {
-		return fmt.Errorf("device %s doesn't have 'cells' property", name)
+	var m objx.Map
+	switch {
+	case v.IsObjxMap():
+		m = v.ObjxMap()
+	case v.IsMSI():
+		m = objx.Map(v.MSI())
+	default:
+		return fmt.Errorf("device %s doesn't have proper 'cells' property", name)
 	}
 
 	// Sorting cells by their names is not important when defining device
@@ -523,7 +547,6 @@ func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
 	// On the other hand, when defining the device for the active engine
 	// the newly added cells are published immediately and if their order
 	// changes (map key order is random) the tests may break.
-	m := v.MSI()
 	cellNames := make([]string, 0, len(m))
 	for cellName, _ := range m {
 		cellNames = append(cellNames, cellName)
@@ -532,9 +555,13 @@ func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
 
 	for _, cellName := range cellNames {
 		maybeCellDef := m[cellName]
-		cellDef, ok := maybeCellDef.(map[string]interface{})
+		cellDef, ok := maybeCellDef.(objx.Map)
 		if !ok {
-			return fmt.Errorf("%s/%s: cell definition is not an object", name, cellName)
+			cd, ok := maybeCellDef.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("%s/%s: bad cell definition", name, cellName)
+			}
+			cellDef = objx.Map(cd)
 		}
 		cellType, ok := cellDef["type"]
 		if !ok {

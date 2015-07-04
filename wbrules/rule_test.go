@@ -173,10 +173,13 @@ func (s *RuleDefSuite) SetupTest() {
 func (s *RuleDefSuite) TestDeviceDefinition() {
 	s.Verify(
 		"driver -> /devices/stabSettings/meta/name: [Stabilization Settings] (QoS 1, retained)",
+		"driver -> /devices/wbrules/meta/name: [Rule Engine Settings] (QoS 1, retained)",
+
 		"Subscribe -- driver: /devices/+/meta/name",
 		"Subscribe -- driver: /devices/+/controls/+",
 		"Subscribe -- driver: /devices/+/controls/+/meta/type",
 		"Subscribe -- driver: /devices/+/controls/+/meta/max",
+
 		"driver -> /devices/stabSettings/controls/enabled/meta/type: [switch] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/enabled/meta/order: [1] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/enabled: [0] (QoS 1, retained)",
@@ -191,6 +194,12 @@ func (s *RuleDefSuite) TestDeviceDefinition() {
 		"driver -> /devices/stabSettings/controls/lowThreshold/meta/max: [40] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/lowThreshold: [20] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/stabSettings/controls/lowThreshold/on",
+
+		"driver -> /devices/wbrules/controls/Rule debugging/meta/type: [switch] (QoS 1, retained)",
+		"driver -> /devices/wbrules/controls/Rule debugging/meta/order: [1] (QoS 1, retained)",
+		"driver -> /devices/wbrules/controls/Rule debugging: [0] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/wbrules/controls/Rule debugging/on",
+
 		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
@@ -522,6 +531,7 @@ func (s *RuleToplevelTimersSuite) SetupTest() {
 func (s *RuleToplevelTimersSuite) TestToplevelTimers() {
 	// make sure timers aren't started until the rule engine is ready
 	s.Verify(
+		"driver -> /devices/wbrules/meta/name: [Rule Engine Settings] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/+/meta/name",
 		"Subscribe -- driver: /devices/+/controls/+",
 		"Subscribe -- driver: /devices/+/controls/+/meta/type",
@@ -529,8 +539,12 @@ func (s *RuleToplevelTimersSuite) TestToplevelTimers() {
 	)
 	s.VerifyEmpty()
 	s.Broker.SetReady()
-	s.Verify(
+	s.VerifyUnordered(
 		"new fake timer: 1, 1000",
+		"driver -> /devices/wbrules/controls/Rule debugging/meta/type: [switch] (QoS 1, retained)",
+		"driver -> /devices/wbrules/controls/Rule debugging/meta/order: [1] (QoS 1, retained)",
+		"driver -> /devices/wbrules/controls/Rule debugging: [0] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/wbrules/controls/Rule debugging/on",
 	)
 	ts := s.AdvanceTime(1000 * time.Millisecond)
 	s.FireTimer(1, ts)
@@ -553,6 +567,7 @@ func (s *RuleRetainedStateSuite) SetupTest() {
 func (s *RuleRetainedStateSuite) TestRetainedState() {
 	s.Verify(
 		"driver -> /devices/stabSettings/meta/name: [Stabilization Settings] (QoS 1, retained)",
+		"driver -> /devices/wbrules/meta/name: [Rule Engine Settings] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/+/meta/name",
 		"Subscribe -- driver: /devices/+/controls/+",
 		"Subscribe -- driver: /devices/+/controls/+/meta/type",
@@ -586,6 +601,11 @@ func (s *RuleRetainedStateSuite) TestRetainedState() {
 		"driver -> /devices/stabSettings/controls/lowThreshold/meta/max: [40] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/lowThreshold: [18] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/stabSettings/controls/lowThreshold/on",
+
+		"driver -> /devices/wbrules/controls/Rule debugging/meta/type: [switch] (QoS 1, retained)",
+		"driver -> /devices/wbrules/controls/Rule debugging/meta/order: [1] (QoS 1, retained)",
+		"driver -> /devices/wbrules/controls/Rule debugging: [0] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/wbrules/controls/Rule debugging/on",
 	)
 	s.publishSomedev()
 	s.Verify(
@@ -620,6 +640,7 @@ func (s *RuleLocalButtonSuite) SetupTest() {
 func (s *RuleLocalButtonSuite) TestLocalButtons() {
 	s.Verify(
 		"driver -> /devices/buttons/meta/name: [Button Test] (QoS 1, retained)",
+		"driver -> /devices/wbrules/meta/name: [Rule Engine Settings] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/+/meta/name",
 		"Subscribe -- driver: /devices/+/controls/+",
 		"Subscribe -- driver: /devices/+/controls/+/meta/type",
@@ -627,6 +648,11 @@ func (s *RuleLocalButtonSuite) TestLocalButtons() {
 		"driver -> /devices/buttons/controls/somebutton/meta/type: [pushbutton] (QoS 1, retained)",
 		"driver -> /devices/buttons/controls/somebutton/meta/order: [1] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/buttons/controls/somebutton/on",
+
+		"driver -> /devices/wbrules/controls/Rule debugging/meta/type: [switch] (QoS 1, retained)",
+		"driver -> /devices/wbrules/controls/Rule debugging/meta/order: [1] (QoS 1, retained)",
+		"driver -> /devices/wbrules/controls/Rule debugging: [0] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/wbrules/controls/Rule debugging/on",
 		// FIXME: don't need these here
 		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
@@ -838,6 +864,7 @@ func (s *RuleReadOnlyCellSuite) SetupTest() {
 func (s *RuleReadOnlyCellSuite) TestReadOnlyCells() {
 	s.Verify(
 		"driver -> /devices/roCells/meta/name: [Readonly Cell Test] (QoS 1, retained)",
+		"driver -> /devices/wbrules/meta/name: [Rule Engine Settings] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/+/meta/name",
 		"Subscribe -- driver: /devices/+/controls/+",
 		"Subscribe -- driver: /devices/+/controls/+/meta/type",
@@ -846,6 +873,10 @@ func (s *RuleReadOnlyCellSuite) TestReadOnlyCells() {
 		"driver -> /devices/roCells/controls/rocell/meta/readonly: [1] (QoS 1, retained)",
 		"driver -> /devices/roCells/controls/rocell/meta/order: [1] (QoS 1, retained)",
 		"driver -> /devices/roCells/controls/rocell: [0] (QoS 1, retained)",
+		"driver -> /devices/wbrules/controls/Rule debugging/meta/type: [switch] (QoS 1, retained)",
+		"driver -> /devices/wbrules/controls/Rule debugging/meta/order: [1] (QoS 1, retained)",
+		"driver -> /devices/wbrules/controls/Rule debugging: [0] (QoS 1, retained)",
+		"Subscribe -- driver: /devices/wbrules/controls/Rule debugging/on",
 		"tst -> /devices/somedev/meta/name: [SomeDev] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
