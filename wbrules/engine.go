@@ -11,13 +11,22 @@ import (
 	"time"
 )
 
+type EngineLogLevel int
+
 const (
-	NO_TIMER_NAME       = ""
-	DEFAULT_CELL_MAX    = 255.0
-	TIMERS_CAPACITY     = 128
-	RULES_CAPACITY      = 256
-	CELL_RULES_CAPACITY = 8
-	NO_CALLBACK         = ESCallback(0)
+	NO_TIMER_NAME                 = ""
+	DEFAULT_CELL_MAX              = 255.0
+	TIMERS_CAPACITY               = 128
+	RULES_CAPACITY                = 256
+	CELL_RULES_CAPACITY           = 8
+	NO_CALLBACK                   = ESCallback(0)
+	RULE_ENGINE_SETTINGS_DEV_NAME = "wbrules"
+	RULE_DEBUG_CELL_NAME          = "Rule debugging"
+
+	ENGINE_LOG_DEBUG = EngineLogLevel(iota)
+	ENGINE_LOG_INFO
+	ENGINE_LOG_WARNING
+	ENGINE_LOG_ERROR
 )
 
 type TimerFunc func(id int, d time.Duration, periodic bool) wbgo.Timer
@@ -48,8 +57,6 @@ func (entry *TimerEntry) stop() {
 	}
 	entry.active = false
 }
-
-type LogFunc func(string)
 
 type proxyOwner interface {
 	CellModel() *CellModel
@@ -137,7 +144,6 @@ type RuleEngine struct {
 	rev               uint64
 	model             *CellModel
 	mqttClient        wbgo.MQTTClient
-	logFunc           LogFunc
 	cellChange        chan *CellSpec
 	timerFunc         TimerFunc
 	timers            []*TimerEntry
@@ -153,17 +159,16 @@ type RuleEngine struct {
 	cronMaker         func() Cron
 	cron              Cron
 	statusMtx         sync.Mutex
+	debugMtx          sync.Mutex
+	debugEnabled      bool
 }
 
 func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
 	engine = &RuleEngine{
-		cleanup:    MakeScopedCleanup(),
-		rev:        0,
-		model:      model,
-		mqttClient: mqttClient,
-		logFunc: func(message string) {
-			wbgo.Info.Printf("RULE: %s\n", message)
-		},
+		cleanup:           MakeScopedCleanup(),
+		rev:               0,
+		model:             model,
+		mqttClient:        mqttClient,
 		timerFunc:         newTimer,
 		timers:            make([]*TimerEntry, 0, TIMERS_CAPACITY),
 		callbackIndex:     1,
@@ -177,16 +182,17 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		currentTimer:      NO_TIMER_NAME,
 		cronMaker:         func() Cron { return cron.New() },
 		cron:              nil,
+		debugEnabled:      wbgo.DebuggingEnabled(),
 	}
 	engine.setupRuleEngineSettingsDevice()
 	return
 }
 
 func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
-	err := engine.DefineVirtualDevice("wbrules", objx.Map{
+	err := engine.DefineVirtualDevice(RULE_ENGINE_SETTINGS_DEV_NAME, objx.Map{
 		"title": "Rule Engine Settings",
 		"cells": objx.Map{
-			"Rule debugging": objx.Map{
+			RULE_DEBUG_CELL_NAME: objx.Map{
 				"type":  "switch",
 				"value": false,
 			},
@@ -205,18 +211,13 @@ func (engine *RuleEngine) SetCronMaker(cronMaker func() Cron) {
 	engine.cronMaker = cronMaker
 }
 
-func (engine *RuleEngine) SetLogFunc(logFunc LogFunc) {
-	engine.logFunc = logFunc
-}
-
 func (engine *RuleEngine) StartTrackingDeps() {
 	engine.notedCells = make(map[*Cell]bool)
 	engine.notedTimers = make(map[string]bool)
 }
 
-func (engine *RuleEngine) StoreRuleCellSpec(rule *Rule, cellSpec CellSpec) {
-	dev := engine.model.EnsureDevice(cellSpec.DevName)
-	engine.storeRuleCell(rule, dev.EnsureCell(cellSpec.CellName))
+func (engine *RuleEngine) StoreRuleCellSpec(rule *Rule, cellSpec *CellSpec) {
+	engine.storeRuleCell(rule, engine.model.EnsureCell(cellSpec))
 }
 
 func (engine *RuleEngine) storeRuleCell(rule *Rule, cell *Cell) {
@@ -319,14 +320,10 @@ func (engine *RuleEngine) StopTimerByIndex(n int) {
 	}
 }
 
-func (engine *RuleEngine) getCell(devName, cellName string) *Cell {
-	return engine.model.EnsureDevice(devName).EnsureCell(cellName)
-}
-
 func (engine *RuleEngine) RunRules(cellSpec *CellSpec, timerName string) {
 	var cell *Cell
 	if cellSpec != nil {
-		cell = engine.getCell(cellSpec.DevName, cellSpec.CellName)
+		cell = engine.model.EnsureCell(cellSpec)
 		if cell.IsFreshButton() {
 			// special case - a button that wasn't pressed yet
 			return
@@ -374,6 +371,38 @@ func (engine *RuleEngine) setupCron() {
 	engine.cron.Start()
 }
 
+func (engine *RuleEngine) handleStop() {
+	wbgo.Debug.Printf("engine stopped")
+	for _, entry := range engine.timers {
+		if entry != nil {
+			entry.stop()
+		}
+	}
+	engine.timers = engine.timers[:0]
+	engine.model.ReleaseCellChangeChannel(engine.cellChange)
+	engine.statusMtx.Lock()
+	engine.cellChange = nil
+	engine.statusMtx.Unlock()
+}
+
+func (engine *RuleEngine) isDebugCell(cellSpec *CellSpec) bool {
+	return cellSpec.DevName == RULE_ENGINE_SETTINGS_DEV_NAME &&
+		cellSpec.CellName == RULE_DEBUG_CELL_NAME
+}
+
+func (engine *RuleEngine) updateDebugEnabled() {
+	engine.model.CallSync(func() {
+		debugCell := engine.model.MustGetCell(
+			&CellSpec{
+				RULE_ENGINE_SETTINGS_DEV_NAME,
+				RULE_DEBUG_CELL_NAME,
+			})
+		engine.debugMtx.Lock()
+		engine.debugEnabled = debugCell.Value().(bool)
+		engine.debugMtx.Unlock()
+	})
+}
+
 func (engine *RuleEngine) Start() {
 	if engine.cellChange != nil {
 		return
@@ -395,14 +424,27 @@ func (engine *RuleEngine) Start() {
 			select {
 			case <-ready:
 				break ReadyWaitLoop
-			case <-engine.cellChange:
+			case cellSpec, ok := <-engine.cellChange:
+				if ok {
+					wbgo.Debug.Printf("cell change (not ready yet): %s", cellSpec)
+					if cellSpec == nil || engine.isDebugCell(cellSpec) {
+						engine.updateDebugEnabled()
+					}
+				} else {
+					wbgo.Debug.Printf("stoping the engine (not ready yet)")
+					engine.handleStop()
+					return
+				}
 			}
 		}
+		wbgo.Debug.Printf("setting up cron")
 		engine.model.CallSync(engine.setupCron)
+		wbgo.Debug.Printf("the engine is ready")
 		for {
 			select {
 			case cellSpec, ok := <-engine.cellChange:
 				if ok {
+					wbgo.Debug.Printf("cell change: %v", cellSpec)
 					if cellSpec != nil {
 						wbgo.Debug.Printf(
 							"rule engine: running rules after cell change: %s/%s",
@@ -411,21 +453,15 @@ func (engine *RuleEngine) Start() {
 						wbgo.Debug.Printf(
 							"rule engine: running rules")
 					}
+					if cellSpec == nil || engine.isDebugCell(cellSpec) {
+						engine.updateDebugEnabled()
+					}
 					engine.model.CallSync(func() {
 						engine.RunRules(cellSpec, NO_TIMER_NAME)
 					})
 				} else {
-					wbgo.Debug.Printf("engine stopped")
-					for _, entry := range engine.timers {
-						if entry != nil {
-							entry.stop()
-						}
-					}
-					engine.timers = engine.timers[:0]
-					engine.model.ReleaseCellChangeChannel(engine.cellChange)
-					engine.statusMtx.Lock()
-					engine.cellChange = nil
-					engine.statusMtx.Unlock()
+					engine.handleStop()
+					return
 				}
 			}
 		}
@@ -646,14 +682,42 @@ func (engine *RuleEngine) Refresh() {
 	engine.RunRules(nil, NO_TIMER_NAME)
 }
 
-func (engine *ESEngine) CellModel() *CellModel {
+func (engine *RuleEngine) CellModel() *CellModel {
 	return engine.model
 }
 
-func (engine *ESEngine) getRev() uint64 {
+func (engine *RuleEngine) getRev() uint64 {
 	return engine.rev
 }
 
-func (engine *ESEngine) GetDeviceProxy(name string) *DeviceProxy {
+func (engine *RuleEngine) GetDeviceProxy(name string) *DeviceProxy {
 	return makeDeviceProxy(engine, name)
+}
+
+func (engine *RuleEngine) Log(level EngineLogLevel, message string) {
+	var topicItem string
+	switch level {
+	case ENGINE_LOG_DEBUG:
+		wbgo.Debug.Printf("[rule debug] %s", message)
+		engine.debugMtx.Lock()
+		defer engine.debugMtx.Unlock()
+		if !engine.debugEnabled {
+			return
+		}
+		topicItem = "debug"
+	case ENGINE_LOG_INFO:
+		wbgo.Info.Printf("[rule info] %s", message)
+		topicItem = "info"
+	case ENGINE_LOG_WARNING:
+		wbgo.Info.Printf("[rule warning] %s", message)
+		topicItem = "warning"
+	case ENGINE_LOG_ERROR:
+		wbgo.Info.Printf("[rule error] %s", message)
+		topicItem = "error"
+	}
+	engine.Publish("/wbrules/log/"+topicItem, message, 1, false)
+}
+
+func (engine *RuleEngine) Logf(level EngineLogLevel, format string, v ...interface{}) {
+	engine.Log(level, fmt.Sprintf(format, v...))
 }

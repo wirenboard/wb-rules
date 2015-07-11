@@ -48,8 +48,8 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine
 	engine.ctx.DefineFunctions(map[string]func() int{
 		"defineVirtualDevice":  engine.esDefineVirtualDevice,
 		"format":               engine.esFormat,
-		"log":                  engine.esLog,
-		"debug":                engine.esDebug,
+		"log":                  engine.makeLogFunc(ENGINE_LOG_INFO),
+		"debug":                engine.makeLogFunc(ENGINE_LOG_DEBUG),
 		"publish":              engine.esPublish,
 		"_wbDevObject":         engine.esWbDevObject,
 		"_wbCellObject":        engine.esWbCellObject,
@@ -60,7 +60,14 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine
 		"_wbDefineRule":        engine.esWbDefineRule,
 		"runRules":             engine.esWbRunRules,
 	})
-	engine.ctx.Pop()
+	engine.ctx.GetPropString(-1, "log")
+	engine.ctx.DefineFunctions(map[string]func() int{
+		"debug":   engine.makeLogFunc(ENGINE_LOG_DEBUG),
+		"info":    engine.makeLogFunc(ENGINE_LOG_INFO),
+		"warning": engine.makeLogFunc(ENGINE_LOG_WARNING),
+		"error":   engine.makeLogFunc(ENGINE_LOG_ERROR),
+	})
+	engine.ctx.Pop2()
 	if err := engine.loadLib(); err != nil {
 		wbgo.Error.Panicf("failed to load runtime library: %s", err)
 	}
@@ -352,14 +359,11 @@ func (engine *ESEngine) esFormat() int {
 	return 1
 }
 
-func (engine *ESEngine) esLog() int {
-	engine.logFunc(engine.ctx.Format())
-	return 0
-}
-
-func (engine *ESEngine) esDebug() int {
-	wbgo.Debug.Printf("[rule debug] %s", engine.ctx.Format())
-	return 0
+func (engine *ESEngine) makeLogFunc(level EngineLogLevel) func() int {
+	return func() int {
+		engine.Log(level, engine.ctx.Format())
+		return 0
+	}
 }
 
 func (engine *ESEngine) esPublish() int {
@@ -563,13 +567,14 @@ func (engine *ESEngine) esWbSpawn() int {
 
 func (engine *ESEngine) esWbDefineRule() int {
 	if engine.ctx.GetTop() != 2 || !engine.ctx.IsString(0) || !engine.ctx.IsObject(1) {
-		engine.logFunc(fmt.Sprintf("bad rule definition"))
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad rule definition"))
 		return duktape.DUK_RET_ERROR
 	}
 	name := engine.ctx.GetString(0)
 	if rule, err := engine.buildRule(name, 1); err != nil {
 		// FIXME: proper error handling
-		engine.logFunc(fmt.Sprintf("bad definition of rule '%s': %s", name, err))
+		engine.Log(ENGINE_LOG_ERROR,
+			fmt.Sprintf("bad definition of rule '%s': %s", name, err))
 		return duktape.DUK_RET_ERROR
 	} else {
 		engine.DefineRule(rule)
@@ -595,7 +600,11 @@ func (engine *ESEngine) esWbRunRules() int {
 func (engine *ESEngine) EvalScript(code string) error {
 	ch := make(chan error)
 	engine.model.CallSync(func() {
-		ch <- engine.ctx.EvalScript(code)
+		err := engine.ctx.EvalScript(code)
+		if err != nil {
+			engine.Logf(ENGINE_LOG_ERROR, "eval error: %s", err)
+		}
+		ch <- err
 	})
 	return <-ch
 }

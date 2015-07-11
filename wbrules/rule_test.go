@@ -1,11 +1,13 @@
 package wbrules
 
 import (
+	"fmt"
 	wbgo "github.com/contactless/wbgo"
 	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -63,6 +65,21 @@ type RuleSuiteBase struct {
 	rmScriptDir func()
 }
 
+var logVerifyRx = regexp.MustCompile(`^\[(info|debug|warning|error)\] (.*)`)
+
+func (s *RuleSuiteBase) Verify(items ...string) {
+	for n, item := range items {
+		// TBD: [info] [debug] [warn] [error]
+		groups := logVerifyRx.FindStringSubmatch(item)
+		if groups == nil {
+			continue
+		}
+		logLevelStr, message := groups[1], groups[2]
+		items[n] = fmt.Sprintf("driver -> /wbrules/log/%s: [%s] (QoS 1)", logLevelStr, message)
+	}
+	s.CellSuiteBase.Verify(items...)
+}
+
 func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	s.CellSuiteBase.SetupTest(waitForRetained)
 	s.FakeTimerFixture = wbgo.NewFakeTimerFixture(s.T(), s.Recorder)
@@ -72,9 +89,6 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	s.engine.SetCronMaker(func() Cron {
 		s.cron = newFakeCron(s.T())
 		return s.cron
-	})
-	s.engine.SetLogFunc(func(message string) {
-		s.Rec("[rule] %s", message)
 	})
 	s.loadScripts(ruleFiles)
 	s.driver.Start()
@@ -113,7 +127,6 @@ func (s *RuleSuiteBase) loadScripts(scripts []string) {
 		copiedScriptPath := s.copyScriptToTempDir(script, script)
 		s.Ck("LoadScript()", s.engine.LoadScript(copiedScriptPath))
 	}
-
 }
 
 func (s *RuleSuiteBase) ReplaceScript(oldName, newName string) {
@@ -220,7 +233,7 @@ func (s *RuleBasicsSuite) TestRules() {
 	s.SetCellValue("stabSettings", "enabled", true)
 	s.Verify(
 		"driver -> /devices/stabSettings/controls/enabled: [1] (QoS 1, retained)",
-		"[rule] heaterOn fired, changed: stabSettings/enabled -> true",
+		"[info] heaterOn fired, changed: stabSettings/enabled -> true",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
@@ -236,7 +249,7 @@ func (s *RuleBasicsSuite) TestRules() {
 	s.publish("/devices/somedev/controls/temp", "22", "somedev/temp")
 	s.Verify(
 		"tst -> /devices/somedev/controls/temp: [22] (QoS 1, retained)",
-		"[rule] heaterOff fired, changed: somedev/temp -> 22",
+		"[info] heaterOff fired, changed: somedev/temp -> 22",
 		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 	)
 	s.publish("/devices/somedev/controls/sw", "0", "somedev/sw")
@@ -247,7 +260,7 @@ func (s *RuleBasicsSuite) TestRules() {
 	s.publish("/devices/somedev/controls/temp", "18", "somedev/temp")
 	s.Verify(
 		"tst -> /devices/somedev/controls/temp: [18] (QoS 1, retained)",
-		"[rule] heaterOn fired, changed: somedev/temp -> 18",
+		"[info] heaterOn fired, changed: somedev/temp -> 18",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
@@ -264,7 +277,7 @@ func (s *RuleBasicsSuite) TestRules() {
 	s.SetCellValue("stabSettings", "enabled", false)
 	s.Verify(
 		"driver -> /devices/stabSettings/controls/enabled: [0] (QoS 1, retained)",
-		"[rule] heaterOff fired, changed: stabSettings/enabled -> false",
+		"[info] heaterOff fired, changed: stabSettings/enabled -> false",
 		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 	)
 	s.publish("/devices/somedev/controls/sw", "0", "somedev/sw")
@@ -277,14 +290,14 @@ func (s *RuleBasicsSuite) TestRules() {
 	s.Verify(
 		"tst -> /devices/somedev/controls/foobar: [1] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/foobar/meta/type: [text] (QoS 1, retained)",
-		"[rule] initiallyIncompleteLevelTriggered fired",
+		"[info] initiallyIncompleteLevelTriggered fired",
 	)
 
 	// level-triggered rule fires again here
 	s.publish("/devices/somedev/controls/foobar", "2", "somedev/foobar")
 	s.Verify(
 		"tst -> /devices/somedev/controls/foobar: [2] (QoS 1, retained)",
-		"[rule] initiallyIncompleteLevelTriggered fired",
+		"[info] initiallyIncompleteLevelTriggered fired",
 	)
 }
 
@@ -307,8 +320,8 @@ func (s *RuleBasicsSuite) TestCellChange() {
 	s.Verify(
 		"tst -> /devices/somedev/controls/foobarbaz/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/foobarbaz: [abc] (QoS 1, retained)",
-		"[rule] cellChange1: somedev/foobarbaz=abc (string)",
-		"[rule] cellChange2: somedev/foobarbaz=abc (string)",
+		"[info] cellChange1: somedev/foobarbaz=abc (string)",
+		"[info] cellChange2: somedev/foobarbaz=abc (string)",
 	)
 
 	s.publish("/devices/somedev/controls/tempx/meta/type", "temperature", "somedev/tempx")
@@ -316,7 +329,7 @@ func (s *RuleBasicsSuite) TestCellChange() {
 	s.Verify(
 		"tst -> /devices/somedev/controls/tempx/meta/type: [temperature] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/tempx: [42] (QoS 1, retained)",
-		"[rule] cellChange2: somedev/tempx=42 (number)",
+		"[info] cellChange2: somedev/tempx=42 (number)",
 	)
 	// no change
 	s.publish("/devices/somedev/controls/tempx", "42", "somedev/tempx")
@@ -340,12 +353,12 @@ func (s *RuleBasicsSuite) TestRemoteButtons() {
 	s.Verify(
 		"tst -> /devices/somedev/controls/abutton/meta/type: [pushbutton] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/abutton: [1] (QoS 1, retained)",
-		"[rule] cellChange2: somedev/abutton=false (boolean)",
+		"[info] cellChange2: somedev/abutton=false (boolean)",
 	)
 	s.publish("/devices/somedev/controls/abutton", "1", "somedev/abutton")
 	s.Verify(
 		"tst -> /devices/somedev/controls/abutton: [1] (QoS 1, retained)",
-		"[rule] cellChange2: somedev/abutton=false (boolean)",
+		"[info] cellChange2: somedev/abutton=false (boolean)",
 	)
 }
 
@@ -359,13 +372,13 @@ func (s *RuleBasicsSuite) TestFuncValueChange() {
 	s.publish("/devices/somedev/controls/cellforfunc/meta/type", "temperature", "somedev/cellforfunc")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cellforfunc/meta/type: [temperature] (QoS 1, retained)",
-		"[rule] funcValueChange: false (boolean)",
+		"[info] funcValueChange: false (boolean)",
 	)
 
 	s.publish("/devices/somedev/controls/cellforfunc", "5", "somedev/cellforfunc")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cellforfunc: [5] (QoS 1, retained)",
-		"[rule] funcValueChange: true (boolean)",
+		"[info] funcValueChange: true (boolean)",
 	)
 
 	s.publish("/devices/somedev/controls/cellforfunc", "7", "somedev/cellforfunc")
@@ -377,7 +390,7 @@ func (s *RuleBasicsSuite) TestFuncValueChange() {
 	s.publish("/devices/somedev/controls/cellforfunc", "1", "somedev/cellforfunc")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cellforfunc: [1] (QoS 1, retained)",
-		"[rule] funcValueChange: false (boolean)",
+		"[info] funcValueChange: false (boolean)",
 	)
 
 	s.publish("/devices/somedev/controls/cellforfunc", "0", "somedev/cellforfunc")
@@ -398,19 +411,19 @@ func (s *RuleBasicsSuite) TestFuncValueChange() {
 	s.publish("/devices/somedev/controls/cellforfunc1/meta/type", "temperature", "somedev/cellforfunc1")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cellforfunc1/meta/type: [temperature] (QoS 1, retained)",
-		"[rule] funcValueChange2: somedev/cellforfunc1: 2 (number)",
+		"[info] funcValueChange2: somedev/cellforfunc1: 2 (number)",
 	)
 
 	s.publish("/devices/somedev/controls/cellforfunc2/meta/type", "temperature", "somedev/cellforfunc2")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cellforfunc2/meta/type: [temperature] (QoS 1, retained)",
-		"[rule] funcValueChange2: (no cell): false (boolean)",
+		"[info] funcValueChange2: (no cell): false (boolean)",
 	)
 
 	s.publish("/devices/somedev/controls/cellforfunc2", "5", "somedev/cellforfunc2")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cellforfunc2: [5] (QoS 1, retained)",
-		"[rule] funcValueChange2: (no cell): true (boolean)",
+		"[info] funcValueChange2: (no cell): true (boolean)",
 	)
 }
 
@@ -452,8 +465,8 @@ func (s *RuleTimersSuite) VerifyTimers(prefix string) {
 	s.Verify(
 		"timer.fire(): 1",
 		"timer.fire(): 2",
-		"[rule] timer fired",
-		"[rule] timer1 fired",
+		"[info] timer fired",
+		"[info] timer1 fired",
 	)
 
 	s.publish("/devices/somedev/controls/foo", prefix+"p", "somedev/foo")
@@ -467,7 +480,7 @@ func (s *RuleTimersSuite) VerifyTimers(prefix string) {
 		s.FireTimer(1, targetTime)
 		s.Verify(
 			"timer.fire(): 1",
-			"[rule] timer fired",
+			"[info] timer fired",
 		)
 	}
 
@@ -487,8 +500,8 @@ func (s *RuleTimersSuite) VerifyTimers(prefix string) {
 	s.Verify(
 		"timer.fire(): 1",
 		"timer.fire(): 2",
-		"[rule] timer fired",
-		"[rule] timer1 fired",
+		"[info] timer fired",
+		"[info] timer1 fired",
 	)
 }
 
@@ -550,7 +563,7 @@ func (s *RuleToplevelTimersSuite) TestToplevelTimers() {
 	s.FireTimer(1, ts)
 	s.Verify(
 		"timer.fire(): 1",
-		"[rule] timer fired",
+		"[info] timer fired",
 	)
 	s.VerifyEmpty()
 }
@@ -615,10 +628,11 @@ func (s *RuleRetainedStateSuite) TestRetainedState() {
 		"tst -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
 	)
+	wbgo.Debug.Printf("-------------------------------")
 	s.publish("/devices/somedev/controls/temp", "16", "somedev/temp")
 	s.Verify(
 		"tst -> /devices/somedev/controls/temp: [16] (QoS 1, retained)",
-		"[rule] heaterOn fired, changed: somedev/temp -> 16",
+		"[info] heaterOn fired, changed: somedev/temp -> 16",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
@@ -668,7 +682,7 @@ func (s *RuleLocalButtonSuite) TestLocalButtons() {
 		s.Verify(
 			"tst -> /devices/buttons/controls/somebutton/on: [1] (QoS 1)",
 			"driver -> /devices/buttons/controls/somebutton: [1] (QoS 1)", // note there's no 'retained' flag
-			"[rule] button pressed!",
+			"[info] button pressed!",
 		)
 	}
 }
@@ -710,8 +724,8 @@ func (s *RuleShellCommandSuite) TestRunShellCommand() {
 		"tst -> /devices/somedev/controls/cmd/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmdNoCallback/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmd: [touch samplefile.txt] (QoS 1, retained)",
-		"[rule] cmd: touch samplefile.txt",
-		"[rule] exit(0): touch samplefile.txt",
+		"[info] cmd: touch samplefile.txt",
+		"[info] exit(0): touch samplefile.txt",
 	)
 
 	s.verifyFileExists(path.Join(dir, "samplefile.txt"))
@@ -719,8 +733,8 @@ func (s *RuleShellCommandSuite) TestRunShellCommand() {
 	s.publish("/devices/somedev/controls/cmd", "touch nosuchdir/samplefile.txt 2>/dev/null", "somedev/cmd")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cmd: [touch nosuchdir/samplefile.txt 2>/dev/null] (QoS 1, retained)",
-		"[rule] cmd: touch nosuchdir/samplefile.txt 2>/dev/null",
-		"[rule] exit(1): touch nosuchdir/samplefile.txt 2>/dev/null", // no such file or directory
+		"[info] cmd: touch nosuchdir/samplefile.txt 2>/dev/null",
+		"[info] exit(1): touch nosuchdir/samplefile.txt 2>/dev/null", // no such file or directory
 	)
 
 	s.publish("/devices/somedev/controls/cmdNoCallback", "1", "somedev/cmdNoCallback")
@@ -728,8 +742,8 @@ func (s *RuleShellCommandSuite) TestRunShellCommand() {
 	s.Verify(
 		"tst -> /devices/somedev/controls/cmdNoCallback: [1] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmd: [touch samplefile1.txt] (QoS 1, retained)",
-		"[rule] cmd: touch samplefile1.txt",
-		"[rule] (no callback)",
+		"[info] cmd: touch samplefile1.txt",
+		"[info] (no callback)",
 	)
 	s.WaitFor(func() bool {
 		return s.fileExists(path.Join(dir, "samplefile1.txt"))
@@ -744,29 +758,29 @@ func (s *RuleShellCommandSuite) TestRunShellCommandIO() {
 	s.Verify(
 		"tst -> /devices/somedev/controls/cmdWithOutput/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmdWithOutput: [echo abc; echo qqq] (QoS 1, retained)",
-		"[rule] cmdWithOutput: echo abc; echo qqq",
-		"[rule] exit(0): echo abc; echo qqq",
-		"[rule] output: abc",
-		"[rule] output: qqq",
+		"[info] cmdWithOutput: echo abc; echo qqq",
+		"[info] exit(0): echo abc; echo qqq",
+		"[info] output: abc",
+		"[info] output: qqq",
 	)
 
 	s.publish("/devices/somedev/controls/cmdWithOutput", "echo abc; echo qqq 1>&2; exit 1",
 		"somedev/cmdWithOutput")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cmdWithOutput: [echo abc; echo qqq 1>&2; exit 1] (QoS 1, retained)",
-		"[rule] cmdWithOutput: echo abc; echo qqq 1>&2; exit 1",
-		"[rule] exit(1): echo abc; echo qqq 1>&2; exit 1",
-		"[rule] output: abc",
-		"[rule] error: qqq",
+		"[info] cmdWithOutput: echo abc; echo qqq 1>&2; exit 1",
+		"[info] exit(1): echo abc; echo qqq 1>&2; exit 1",
+		"[info] output: abc",
+		"[info] error: qqq",
 	)
 
 	s.publish("/devices/somedev/controls/cmdWithOutput", "xxyz!sed s/x/y/g",
 		"somedev/cmdWithOutput")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cmdWithOutput: [xxyz!sed s/x/y/g] (QoS 1, retained)",
-		"[rule] cmdWithOutput: sed s/x/y/g",
-		"[rule] exit(0): sed s/x/y/g",
-		"[rule] output: yyyz",
+		"[info] cmdWithOutput: sed s/x/y/g",
+		"[info] exit(0): sed s/x/y/g",
+		"[info] output: yyyz",
 	)
 }
 
@@ -783,8 +797,8 @@ func (s *RuleOptimizationSuite) TestRuleCheckOptimization() {
 		// That's the first time when all rules are run.
 		// somedev/countIt and somedev/countItLT are incomplete here, but
 		// the engine notes that rules' conditions depend on the cells
-		"[rule] condCount: asSoonAs()",
-		"[rule] condCountLT: when()",
+		"[info] condCount: asSoonAs()",
+		"[info] condCountLT: when()",
 	)
 	s.publish("/devices/somedev/controls/countIt/meta/type", "text", "somedev/countIt")
 	s.publish("/devices/somedev/controls/countIt", "0", "somedev/countIt")
@@ -792,7 +806,7 @@ func (s *RuleOptimizationSuite) TestRuleCheckOptimization() {
 		"tst -> /devices/somedev/controls/countIt/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/countIt: [0] (QoS 1, retained)",
 		// here the value of the cell changes, so the rule is invoked
-		"[rule] condCount: asSoonAs()")
+		"[info] condCount: asSoonAs()")
 
 	s.publish("/devices/somedev/controls/temp", "25", "somedev/temp")
 	s.publish("/devices/somedev/controls/countIt", "42", "somedev/countIt")
@@ -800,24 +814,24 @@ func (s *RuleOptimizationSuite) TestRuleCheckOptimization() {
 		"tst -> /devices/somedev/controls/temp: [25] (QoS 1, retained)",
 		// changing unrelated cell doesn't cause the rule to be invoked
 		"tst -> /devices/somedev/controls/countIt: [42] (QoS 1, retained)",
-		"[rule] condCount: asSoonAs()",
+		"[info] condCount: asSoonAs()",
 		// asSoonAs function called during the first run + when countIt
 		// value changed to 42
-		"[rule] condCount fired, count=3",
+		"[info] condCount fired, count=3",
 		// ruleWithoutCells follows condCount rule in testrules.js
 		// and doesn't utilize any cells. It's run just once when condCount
 		// rule sets a global variable to true.
-		"[rule] ruleWithoutCells fired")
+		"[info] ruleWithoutCells fired")
 
 	s.publish("/devices/somedev/controls/countIt", "0", "somedev/countIt")
 	s.Verify(
 		"tst -> /devices/somedev/controls/countIt: [0] (QoS 1, retained)",
-		"[rule] condCount: asSoonAs()")
+		"[info] condCount: asSoonAs()")
 	s.publish("/devices/somedev/controls/countIt", "42", "somedev/countIt")
 	s.Verify(
 		"tst -> /devices/somedev/controls/countIt: [42] (QoS 1, retained)",
-		"[rule] condCount: asSoonAs()",
-		"[rule] condCount fired, count=5")
+		"[info] condCount: asSoonAs()",
+		"[info] condCount fired, count=5")
 
 	// now check optimization of level-triggered rules
 	s.publish("/devices/somedev/controls/countItLT/meta/type", "text", "somedev/countItLT")
@@ -826,31 +840,31 @@ func (s *RuleOptimizationSuite) TestRuleCheckOptimization() {
 		"tst -> /devices/somedev/controls/countItLT/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/countItLT: [0] (QoS 1, retained)",
 		// here the value of the cell changes, so the rule is invoked
-		"[rule] condCountLT: when()")
+		"[info] condCountLT: when()")
 
 	s.publish("/devices/somedev/controls/countItLT", "42", "somedev/countItLT")
 	s.Verify(
 		"tst -> /devices/somedev/controls/countItLT: [42] (QoS 1, retained)",
-		"[rule] condCountLT: when()",
+		"[info] condCountLT: when()",
 		// when function called during the first run + when countItLT
 		// value changed to 42
-		"[rule] condCountLT fired, count=3")
+		"[info] condCountLT fired, count=3")
 
 	s.publish("/devices/somedev/controls/countItLT", "43", "somedev/countItLT")
 	s.Verify(
 		"tst -> /devices/somedev/controls/countItLT: [43] (QoS 1, retained)",
-		"[rule] condCountLT: when()",
-		"[rule] condCountLT fired, count=4")
+		"[info] condCountLT: when()",
+		"[info] condCountLT fired, count=4")
 
 	s.publish("/devices/somedev/controls/countItLT", "0", "somedev/countItLT")
 	s.Verify(
 		"tst -> /devices/somedev/controls/countItLT: [0] (QoS 1, retained)",
-		"[rule] condCountLT: when()")
+		"[info] condCountLT: when()")
 
 	s.publish("/devices/somedev/controls/countItLT", "1", "somedev/countItLT")
 	s.Verify(
 		"tst -> /devices/somedev/controls/countItLT: [1] (QoS 1, retained)",
-		"[rule] condCountLT: when()")
+		"[info] condCountLT: when()")
 }
 
 type RuleReadOnlyCellSuite struct {
@@ -908,10 +922,10 @@ func (s *RuleCronSuite) TestCron() {
 	s.cron.invokeEntries("@hourly")
 
 	s.Verify(
-		"[rule] @hourly rule fired",
-		"[rule] @hourly rule fired",
-		"[rule] @daily rule fired",
-		"[rule] @hourly rule fired",
+		"[info] @hourly rule fired",
+		"[info] @hourly rule fired",
+		"[info] @daily rule fired",
+		"[info] @hourly rule fired",
 	)
 
 	// the new script contains rules with same names as in
@@ -927,10 +941,10 @@ func (s *RuleCronSuite) TestCron() {
 	s.cron.invokeEntries("@hourly")
 
 	s.Verify(
-		"[rule] @hourly rule fired (new)",
-		"[rule] @hourly rule fired (new)",
-		"[rule] @daily rule fired (new)",
-		"[rule] @hourly rule fired (new)",
+		"[info] @hourly rule fired (new)",
+		"[info] @hourly rule fired (new)",
+		"[info] @daily rule fired (new)",
+		"[info] @hourly rule fired (new)",
 	)
 }
 
@@ -941,9 +955,9 @@ type RuleReloadSuite struct {
 func (s *RuleReloadSuite) SetupTest() {
 	s.SetupSkippingDefs("testrules_reload_1.js", "testrules_reload_2.js")
 	s.Verify(
-		"[rule] detRun",
-		"[rule] detectRun: (no cell) (s=false, a=10)",
-		"[rule] detectRun1: (no cell) (s=false, a=10)",
+		"[info] detRun",
+		"[info] detectRun: (no cell) (s=false, a=10)",
+		"[info] detectRun1: (no cell) (s=false, a=10)",
 	)
 }
 
@@ -952,21 +966,21 @@ func (s *RuleReloadSuite) TestReload() {
 	s.Verify(
 		"tst -> /devices/vdev/controls/someCell/on: [1] (QoS 1)",
 		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
-		"[rule] detRun",
-		"[rule] detectRun: vdev/someCell (s=true, a=10)",
-		"[rule] detectRun1: vdev/someCell (s=true, a=10)",
-		"[rule] rule1: vdev/someCell=true",
-		"[rule] rule2: vdev/someCell=true",
+		"[info] detRun",
+		"[info] detectRun: vdev/someCell (s=true, a=10)",
+		"[info] detectRun1: vdev/someCell (s=true, a=10)",
+		"[info] rule1: vdev/someCell=true",
+		"[info] rule2: vdev/someCell=true",
 	)
 
 	s.publish("/devices/vdev/controls/anotherCell/on", "17", "vdev/anotherCell")
 	s.Verify(
 		"tst -> /devices/vdev/controls/anotherCell/on: [17] (QoS 1)",
 		"driver -> /devices/vdev/controls/anotherCell: [17] (QoS 1, retained)",
-		"[rule] detRun",
-		"[rule] detectRun: vdev/anotherCell (s=true, a=17)",
-		"[rule] detectRun1: vdev/anotherCell (s=true, a=17)",
-		"[rule] rule3: vdev/anotherCell=17",
+		"[info] detRun",
+		"[info] detectRun: vdev/anotherCell (s=true, a=17)",
+		"[info] detectRun1: vdev/anotherCell (s=true, a=17)",
+		"[info] rule3: vdev/anotherCell=17",
 	)
 
 	s.ReplaceScript("testrules_reload_2.js", "testrules_reload_2_changed.js")
@@ -986,8 +1000,8 @@ func (s *RuleReloadSuite) TestReload() {
 		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/vdev/controls/someCell/on",
 		// rules are run after reload
-		"[rule] detRun",
-		"[rule] detectRun: (no cell) (s=true)",
+		"[info] detRun",
+		"[info] detectRun: (no cell) (s=true)",
 		// change notification for the client-side script editor
 		"driver -> /wbrules/updates/changed: [testrules_reload_2.js] (QoS 1)",
 	)
@@ -1001,9 +1015,9 @@ func (s *RuleReloadSuite) TestReload() {
 		"tst -> /devices/vdev/controls/anotherCell/on: [11] (QoS 1)",
 		"tst -> /devices/vdev/controls/someCell/on: [0] (QoS 1)",
 		"driver -> /devices/vdev/controls/someCell: [0] (QoS 1, retained)",
-		"[rule] detRun",
-		"[rule] detectRun: vdev/someCell (s=false)",
-		"[rule] rule1: vdev/someCell=false",
+		"[info] detRun",
+		"[info] detectRun: vdev/someCell (s=false)",
+		"[info] rule1: vdev/someCell=false",
 		// rule2 is gone, rule3 is gone together with its anotherCell
 	)
 
@@ -1011,9 +1025,9 @@ func (s *RuleReloadSuite) TestReload() {
 	s.Verify(
 		"tst -> /devices/vdev/controls/someCell/on: [1] (QoS 1)",
 		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
-		"[rule] detRun",
-		"[rule] detectRun: vdev/someCell (s=true)",
-		"[rule] rule1: vdev/someCell=true",
+		"[info] detRun",
+		"[info] detectRun: vdev/someCell (s=true)",
+		"[info] rule1: vdev/someCell=true",
 	)
 
 	// TBD: stop any timers started while evaluating the script.
@@ -1029,7 +1043,7 @@ func (s *RuleReloadSuite) TestRemoveScript() {
 		"Unsubscribe -- driver: /devices/vdev/controls/someCell/on",
 		"Unsubscribe -- driver: /devices/vdev1/controls/qqq/on",
 		// rules are run after removal
-		"[rule] detRun",
+		"[info] detRun",
 		// removal notification for the client-side script editor
 		"driver -> /wbrules/updates/removed: [testrules_reload_2.js] (QoS 1)",
 	)
@@ -1048,7 +1062,7 @@ func (s *RuleReloadSuite) TestRemoveScript() {
 	s.Verify(
 		"tst -> /devices/vdev0/controls/someCell/on: [1] (QoS 1)",
 		"driver -> /devices/vdev0/controls/someCell: [1] (QoS 1, retained)",
-		"[rule] detRun",
+		"[info] detRun",
 	)
 }
 
@@ -1068,8 +1082,8 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 		"driver -> /devices/cellch/controls/button: [1] (QoS 1)", // no 'retained' flag for button
 		"driver -> /devices/cellch/controls/sw: [1] (QoS 1, retained)",
 		"driver -> /devices/cellch/controls/misc: [1] (QoS 1, retained)",
-		"[rule] startCellChange: sw <- true",
-		"[rule] switchChanged: sw=true",
+		"[info] startCellChange: sw <- true",
+		"[info] switchChanged: sw=true",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
@@ -1084,8 +1098,8 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 		"driver -> /devices/cellch/controls/button: [1] (QoS 1)", // no 'retained' flag for button
 		"driver -> /devices/cellch/controls/sw: [0] (QoS 1, retained)",
 		"driver -> /devices/cellch/controls/misc: [1] (QoS 1, retained)",
-		"[rule] startCellChange: sw <- false",
-		"[rule] switchChanged: sw=false",
+		"[info] startCellChange: sw <- false",
+		"[info] switchChanged: sw=false",
 		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
@@ -1231,6 +1245,38 @@ func (s *LocationSuite) TestRemoval() {
 	}, s.listSourceFiles())
 }
 
+type LogSuite struct {
+	RuleSuiteBase
+}
+
+func (s *LogSuite) SetupTest() {
+	s.SetupSkippingDefs("testrules_log.js")
+}
+
+func (s *LogSuite) TestLog() {
+	s.engine.EvalScript("testLog()")
+	s.Verify(
+		"[info] log()",
+		"[info] log.info(42)",
+		"[warning] log.warning(42)",
+		"[error] log.error(42)",
+	)
+	s.publish("/devices/wbrules/controls/Rule debugging/on", "1", "wbrules/Rule debugging")
+	s.Verify(
+		"tst -> /devices/wbrules/controls/Rule debugging/on: [1] (QoS 1)",
+		"driver -> /devices/wbrules/controls/Rule debugging: [1] (QoS 1, retained)",
+	)
+	s.engine.EvalScript("testLog()")
+	s.Verify(
+		"[info] log()",
+		"[debug] debug()",
+		"[debug] log.debug(42)",
+		"[info] log.info(42)",
+		"[warning] log.warning(42)",
+		"[error] log.error(42)",
+	)
+}
+
 func TestRuleSuite(t *testing.T) {
 	wbgo.RunSuites(t,
 		new(RuleDefSuite),
@@ -1246,6 +1292,7 @@ func TestRuleSuite(t *testing.T) {
 		new(RuleReloadSuite),
 		new(RuleCellChangesSuite),
 		new(LocationSuite),
+		new(LogSuite),
 	)
 }
 

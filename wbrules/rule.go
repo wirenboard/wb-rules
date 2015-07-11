@@ -7,7 +7,7 @@ import (
 
 type DepTracker interface {
 	StartTrackingDeps()
-	StoreRuleCellSpec(rule *Rule, cellSpec CellSpec)
+	StoreRuleCellSpec(rule *Rule, cellSpec *CellSpec)
 	StoreRuleDeps(rule *Rule)
 }
 
@@ -25,7 +25,7 @@ type RuleCondition interface {
 	// case nil is returned as the optional value,
 	// the value of cell must be used.
 	Check(cell *Cell) (bool, interface{})
-	GetCells() []CellSpec
+	GetCells() []*CellSpec
 	MaybeAddToCron(cron Cron, thunk func()) error
 }
 
@@ -35,8 +35,8 @@ func (ruleCond *RuleConditionBase) Check(Cell *Cell) (bool, interface{}) {
 	return false, nil
 }
 
-func (ruleCond *RuleConditionBase) GetCells() []CellSpec {
-	return []CellSpec{}
+func (ruleCond *RuleConditionBase) GetCells() []*CellSpec {
+	return []*CellSpec{}
 }
 
 func (ruleCond *RuleConditionBase) MaybeAddToCron(cron Cron, thunk func()) error {
@@ -109,8 +109,8 @@ func NewCellChangedRuleCondition(cellSpec CellSpec) (*CellChangedRuleCondition, 
 	}, nil
 }
 
-func (ruleCond *CellChangedRuleCondition) GetCells() []CellSpec {
-	return []CellSpec{ruleCond.cellSpec}
+func (ruleCond *CellChangedRuleCondition) GetCells() []*CellSpec {
+	return []*CellSpec{&ruleCond.cellSpec}
 }
 
 func (ruleCond *CellChangedRuleCondition) Check(cell *Cell) (bool, interface{}) {
@@ -164,8 +164,8 @@ func NewOrRuleCondition(conds []RuleCondition) *OrRuleCondition {
 	return &OrRuleCondition{conds: conds}
 }
 
-func (ruleCond *OrRuleCondition) GetCells() []CellSpec {
-	r := make([]CellSpec, 0, 10)
+func (ruleCond *OrRuleCondition) GetCells() []*CellSpec {
+	r := make([]*CellSpec, 0, 10)
 	for _, cond := range ruleCond.conds {
 		r = append(r, cond.GetCells()...)
 	}

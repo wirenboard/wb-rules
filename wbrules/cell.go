@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	wbgo "github.com/contactless/wbgo"
+	"log"
 	"sort"
 	"strconv"
 	"sync"
@@ -64,6 +65,7 @@ type CellModel struct {
 type CellModelDevice interface {
 	wbgo.DeviceModel
 	EnsureCell(name string) (cell *Cell)
+	MustGetCell(name string) (cell *Cell)
 	setValue(name, value string, notify bool)
 	queryParams()
 	shouldSetValueImmediately() bool
@@ -183,6 +185,18 @@ func (model *CellModel) makeLocalDevice(name string, title string) (dev *CellMod
 	return
 }
 
+func (model *CellModel) MustGetDevice(name string) (dev CellModelDevice) {
+	dev, found := model.devices[name]
+	if !found {
+		log.Panicf("device not found: %s", name)
+	}
+	return
+}
+
+func (model *CellModel) MustGetCell(cellSpec *CellSpec) *Cell {
+	return model.MustGetDevice(cellSpec.DevName).MustGetCell(cellSpec.CellName)
+}
+
 func (model *CellModel) EnsureDevice(name string) (dev CellModelDevice) {
 	dev, found := model.devices[name]
 	if !found {
@@ -190,6 +204,10 @@ func (model *CellModel) EnsureDevice(name string) (dev CellModelDevice) {
 		model.Observer.OnNewDevice(dev)
 	}
 	return
+}
+
+func (model *CellModel) EnsureCell(cellSpec *CellSpec) *Cell {
+	return model.EnsureDevice(cellSpec.DevName).EnsureCell(cellSpec.CellName)
 }
 
 func (model *CellModel) RemoveLocalDevice(name string) {
@@ -306,6 +324,14 @@ func (dev *CellModelDeviceBase) SetRangeCell(name string, value interface{}, max
 
 func (dev *CellModelDeviceBase) SetButtonCell(name string) (cell *Cell) {
 	return dev.setCell(name, "pushbutton", 0, true, -1, false)
+}
+
+func (dev *CellModelDeviceBase) MustGetCell(name string) (cell *Cell) {
+	cell, found := dev.cells[name]
+	if !found {
+		log.Panicf("cell not found: %s/%s", dev.DevName, name)
+	}
+	return
 }
 
 func (dev *CellModelDeviceBase) EnsureCell(name string) (cell *Cell) {
