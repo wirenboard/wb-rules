@@ -1,4 +1,5 @@
 gom 'code.google.com/p/go.net/websocket'
+gom 'code.google.com/p/go-uuid/uuid'
 gom 'git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git'
 gom 'github.com/GeertJohan/go.rice'
 gom 'github.com/contactless/wbgo'
