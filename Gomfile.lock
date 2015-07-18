@@ -1,4 +1,5 @@
 gom 'code.google.com/p/go.net/websocket'
+gom 'code.google.com/p/go-uuid/uuid'
 gom 'git.eclipse.org/gitroot/paho/org.eclipse.paho.mqtt.golang.git', :commit => '0d95fb886332902c477408b4b554667f65d01605'
 gom 'github.com/GeertJohan/go.rice', :commit => 'b4a18af231435326dd7995d2dd0f3ee31b81f212'
 gom 'github.com/contactless/wbgo', :commit => '7f5435d7aeee2681604b2acfed6c1f2bff3ed502'
