@@ -69,7 +69,6 @@ var logVerifyRx = regexp.MustCompile(`^\[(info|debug|warning|error)\] (.*)`)
 
 func (s *RuleSuiteBase) Verify(items ...string) {
 	for n, item := range items {
-		// TBD: [info] [debug] [warn] [error]
 		groups := logVerifyRx.FindStringSubmatch(item)
 		if groups == nil {
 			continue
@@ -628,7 +627,6 @@ func (s *RuleRetainedStateSuite) TestRetainedState() {
 		"tst -> /devices/somedev/controls/temp/meta/type: [temperature] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)",
 	)
-	wbgo.Debug.Printf("-------------------------------")
 	s.publish("/devices/somedev/controls/temp", "16", "somedev/temp")
 	s.Verify(
 		"tst -> /devices/somedev/controls/temp: [16] (QoS 1, retained)",
