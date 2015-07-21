@@ -33,6 +33,16 @@ type ESContext struct {
 	syncFunc      ESSyncFunc
 }
 
+type ESError struct {
+	Path      string
+	Message   string
+	Traceback ESTraceback
+}
+
+func (err ESError) Error() string {
+	return err.Message
+}
+
 func newESContext(syncFunc ESSyncFunc) *ESContext {
 	ctx := &ESContext{
 		duktape.NewContext(),
@@ -286,13 +296,7 @@ func (ctx *ESContext) RemoveCallback(key ESCallback) {
 func (ctx *ESContext) EvalScript(code string) error {
 	defer ctx.Pop()
 	if r := ctx.PevalString(code); r != 0 {
-		ctx.GetPropString(-1, "stack")
-		message := ctx.SafeToString(-1)
-		ctx.Pop()
-		if message == "" {
-			message = ctx.SafeToString(-1)
-		}
-		return fmt.Errorf("failed to eval %s: %s", code, message)
+		return ctx.GetScriptError()
 	}
 	return nil
 }
@@ -300,13 +304,7 @@ func (ctx *ESContext) EvalScript(code string) error {
 func (ctx *ESContext) LoadScript(path string) error {
 	defer ctx.Pop()
 	if r := ctx.PevalFile(path); r != 0 {
-		ctx.GetPropString(-1, "stack")
-		message := ctx.SafeToString(-1)
-		ctx.Pop()
-		if message == "" {
-			message = ctx.SafeToString(-1)
-		}
-		return fmt.Errorf("failed to load %s: %s", path, message)
+		return ctx.GetScriptError()
 	}
 	return nil
 }
@@ -366,14 +364,15 @@ func (ctx *ESContext) Format() string {
 
 var fileRx = regexp.MustCompile(`^\s*\S+\s+(.*):(\d+)(?:\s+[^:]*)?$`)
 
-func (ctx *ESContext) GetTraceback() (r ESTraceback) {
-	ctx.PushErrorObject(duktape.DUK_ERR_ERROR, "fake")
+func (ctx *ESContext) GetScriptError() (r ESError) {
+	r.Traceback = ESTraceback{}
 	if !ctx.GetPropString(-1, "stack") {
-		ctx.Pop2()
-		return ESTraceback{}
+		r.Message = ctx.SafeToString(-1)
+		ctx.Pop()
+		return
 	}
 	stackLines := strings.Split(ctx.SafeToString(-1), "\n")
-	r = make(ESTraceback, 0, len(stackLines))
+	r.Traceback = make(ESTraceback, 0, len(stackLines))
 	for _, line := range stackLines {
 		groups := fileRx.FindStringSubmatch(line)
 		if groups != nil {
@@ -382,11 +381,18 @@ func (ctx *ESContext) GetTraceback() (r ESTraceback) {
 				wbgo.Warn.Printf("bad js line number: %s", lineNumber)
 				continue
 			}
-			r = append(r, ESLocation{groups[1], lineNumber})
+			r.Traceback = append(r.Traceback, ESLocation{groups[1], lineNumber})
 		}
 	}
-	ctx.Pop2()
+	r.Message = ctx.SafeToString(-1)
+	ctx.Pop()
 	return
+}
+
+func (ctx *ESContext) GetTraceback() ESTraceback {
+	ctx.PushErrorObject(duktape.DUK_ERR_ERROR, "fake")
+	defer ctx.Pop()
+	return ctx.GetScriptError().Traceback
 }
 
 // TBD: handle loops in object graphs in PushJSObject

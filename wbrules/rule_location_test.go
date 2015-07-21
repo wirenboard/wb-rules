@@ -143,6 +143,55 @@ func (s *RuleLocationSuite) TestRemoval() {
 	}, s.listSourceFiles())
 }
 
+func (s *RuleLocationSuite) TestFaultyScript() {
+	err := s.OverwriteScript("testrules_locations_faulty.js", "testrules_locations_faulty.js")
+	s.NotNil(err, "error expected")
+	scriptErr, ok := err.(ScriptError)
+	s.Require().True(ok, "ScriptError expected")
+	s.Contains(scriptErr.Message, "ReferenceError")
+	s.Equal([]LocItem{
+		{6, "testrules_locations_faulty.js"},
+	}, scriptErr.Traceback)
+	s.Equal([]LocFileEntry{
+		{
+			VirtualPath:  "loc1/testrules_more.js",
+			PhysicalPath: s.ScriptPath("loc1/testrules_more.js"),
+			Devices: []LocItem{
+				{4, "qqq"},
+			},
+			Rules: []LocItem{},
+		},
+		{
+			VirtualPath:  "testrules_defhelper.js",
+			PhysicalPath: s.ScriptPath("testrules_defhelper.js"),
+			Devices:      []LocItem{},
+			Rules:        []LocItem{},
+		},
+		{
+			VirtualPath:  "testrules_locations.js",
+			PhysicalPath: s.ScriptPath("testrules_locations.js"),
+			Devices: []LocItem{
+				{4, "misc"},
+				{14, "foo"},
+			},
+			Rules: []LocItem{
+				{7, "whateverRule"},
+				// the problem with duktape: the last line of the
+				// defineRule() call is recorded
+				{24, "another"},
+			},
+		},
+		{
+			VirtualPath:  "testrules_locations_faulty.js",
+			PhysicalPath: s.ScriptPath("testrules_locations_faulty.js"),
+			Devices: []LocItem{
+				{4, "nonFaultyDev"},
+			},
+			Rules: []LocItem{},
+		},
+	}, s.listSourceFiles())
+}
+
 func TestRuleLocationSuite(t *testing.T) {
 	wbgo.RunSuites(t,
 		new(RuleLocationSuite),

@@ -1,6 +1,7 @@
 package wbrules
 
 import (
+	"errors"
 	"fmt"
 	"github.com/contactless/wbgo"
 	"github.com/stretchr/objx"
@@ -19,17 +20,24 @@ const (
 type EditorSuite struct {
 	wbgo.Suite
 	*wbgo.FakeMQTTFixture
-	client      wbgo.MQTTClient
-	rpc         *wbgo.MQTTRPCServer
-	scriptDir   string
-	rmScriptDir func()
-	id          uint64
+	*ScriptFixture
+	client         wbgo.MQTTClient
+	rpc            *wbgo.MQTTRPCServer
+	id             uint64
+	liveWritePath  string
+	liveWriteError error
+}
+
+func (s *EditorSuite) T() *testing.T {
+	return s.Suite.T()
 }
 
 func (s *EditorSuite) SetupTest() {
 	s.Suite.SetupTest()
 	s.id = 1
-	s.scriptDir, s.rmScriptDir = wbgo.SetupTempDir(s.T())
+	s.liveWritePath = ""
+	s.liveWriteError = nil
+	s.ScriptFixture = NewScriptFixture(s.T())
 	s.addSampleFiles()
 	s.FakeMQTTFixture = wbgo.NewFakeMQTTFixture(s.T())
 	s.rpc = wbgo.NewMQTTRPCServer("wbrules", s.Broker.MakeClient("wbrules"))
@@ -47,24 +55,51 @@ func (s *EditorSuite) SetupTest() {
 }
 
 func (s *EditorSuite) TearDownTest() {
-	s.rmScriptDir()
+	s.TearDownScripts()
 	s.rpc.Stop()
 	s.Suite.TearDownTest()
 }
 
 func (s *EditorSuite) ScriptDir() string {
-	return s.scriptDir
+	return s.ScriptTmpDir
+}
+
+func (s *EditorSuite) LiveWriteScript(virtualPath, content string) error {
+	if s.liveWritePath == "" {
+		s.Require().Fail("unexpected LiveWriteScript()")
+	}
+	defer func() {
+		s.liveWritePath = ""
+		s.liveWriteError = nil
+	}()
+	s.Equal(s.liveWritePath, virtualPath, "bad write path")
+	if s.liveWriteError != nil {
+		if _, ok := s.liveWriteError.(ScriptError); !ok {
+			return s.liveWriteError
+		}
+	}
+	s.WriteScript(virtualPath, content)
+	return s.liveWriteError
+}
+
+func (s *EditorSuite) expectLiveWrite(path string, err error) {
+	s.liveWritePath = path
+	s.liveWriteError = err
+}
+
+func (s *EditorSuite) verifyLiveWrite() {
+	s.Equal("", s.liveWritePath, "LiveWriteScript() wasn't called")
 }
 
 func (s *EditorSuite) walkSources(walkFn func(virtualPath, physicalPath string)) {
-	s.Ck("Walk()", filepath.Walk(s.scriptDir, func(path string, fi os.FileInfo, err error) error {
+	s.Ck("Walk()", filepath.Walk(s.ScriptTmpDir, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if fi.IsDir() {
 			return nil
 		}
-		relPath, err := filepath.Rel(s.scriptDir, path)
+		relPath, err := filepath.Rel(s.ScriptTmpDir, path)
 		if err != nil {
 			return err
 		}
@@ -95,15 +130,9 @@ func (s *EditorSuite) ListSourceFiles() (entries []LocFileEntry, err error) {
 	return
 }
 
-func (s *EditorSuite) writeScript(filename, content string) string {
-	fullPath := filepath.Join(s.scriptDir, filename)
-	s.Ck("WriteFile()", ioutil.WriteFile(fullPath, []byte(content), 0777))
-	return fullPath
-}
-
 func (s *EditorSuite) addSampleFiles() {
-	s.writeScript("sample1.js", "// sample1")
-	s.writeScript("sample2.js", "// sample2")
+	s.WriteScript("sample1.js", "// sample1")
+	s.WriteScript("sample2.js", "// sample2")
 }
 
 func (s *EditorSuite) verifySources(expected map[string]string) {
@@ -116,7 +145,7 @@ func (s *EditorSuite) verifySources(expected map[string]string) {
 	s.Equal(expected, actual, "sources")
 }
 
-func (s *EditorSuite) verifyRpcRaw(subtopic string, params objx.Map, expectedResponse objx.Map) {
+func (s *EditorSuite) verifyRpcRaw(subtopic string, params, expectedResponse objx.Map) {
 	replyId := strconv.FormatUint(s.id, 10)
 	request := objx.Map{
 		"id":     replyId,
@@ -134,8 +163,8 @@ func (s *EditorSuite) verifyRpcRaw(subtopic string, params objx.Map, expectedRes
 	)
 }
 
-func (s *EditorSuite) verifyRpc(subtopic string, param objx.Map, expectedResult interface{}) {
-	s.verifyRpcRaw(subtopic, param, objx.Map{"result": expectedResult})
+func (s *EditorSuite) verifyRpc(subtopic string, params objx.Map, expectedResult interface{}) {
+	s.verifyRpcRaw(subtopic, params, objx.Map{"result": expectedResult})
 }
 
 func (s *EditorSuite) verifyRpcError(subtopic string, param objx.Map, code int, typ string, msg string) {
@@ -172,24 +201,60 @@ func (s *EditorSuite) TestListFiles() {
 	})
 }
 
+func (s *EditorSuite) verifySave(params, expectedResult objx.Map, err error) {
+	s.expectLiveWrite(expectedResult["path"].(string), err)
+	s.verifyRpc("Save", params, expectedResult)
+	s.verifyLiveWrite()
+}
+
 func (s *EditorSuite) TestSaveFile() {
-	s.verifyRpc("Save", objx.Map{"path": "sample1.js", "content": "// sample1 (changed)"}, true)
+	s.verifySave(
+		objx.Map{"path": "sample1.js", "content": "// sample1 (changed)"},
+		objx.Map{"path": "sample1.js"},
+		nil,
+	)
 	s.verifySources(map[string]string{
 		"sample1.js": "// sample1 (changed)",
 		"sample2.js": "// sample2",
 	})
-	s.verifyRpc("Save", objx.Map{"path": "sample3.js", "content": "// sample3"}, true)
+	s.verifySave(
+		objx.Map{"path": "//sample3.js", "content": "// sample3"},
+		objx.Map{"path": "sample3.js"},
+		nil,
+	)
 	s.verifySources(map[string]string{
 		"sample1.js": "// sample1 (changed)",
 		"sample2.js": "// sample2",
 		"sample3.js": "// sample3",
 	})
-	s.verifyRpc("Save", objx.Map{"path": "sub/sample4.js", "content": "// sample4"}, true)
+	s.verifySave(
+		objx.Map{"path": "sub/sample4.js", "content": "// sample4"},
+		objx.Map{"path": "sub/sample4.js"},
+		nil,
+	)
+	s.verifySave(
+		objx.Map{"path": "sub/sample5.js", "content": "sample5 -- error"},
+		objx.Map{
+			"error": "syntax error!",
+			"path":  "sub/sample5.js",
+			"traceback": []objx.Map{
+				{"line": 1, "name": "sub/sample5.js"},
+				{"line": 42, "name": "foobar.js"},
+			},
+		},
+		NewScriptError(
+			"syntax error!", []LocItem{
+				{1, "sub/sample5.js"},
+				{42, "foobar.js"},
+			},
+		),
+	)
 	s.verifySources(map[string]string{
 		"sample1.js":     "// sample1 (changed)",
 		"sample2.js":     "// sample2",
 		"sample3.js":     "// sample3",
 		"sub/sample4.js": "// sample4",
+		"sub/sample5.js": "sample5 -- error",
 	})
 
 	s.verifyRpcError("Save", objx.Map{"path": "../foo/bar.js", "content": "evilfile"},
@@ -201,7 +266,17 @@ func (s *EditorSuite) TestSaveFile() {
 		"sample2.js":     "// sample2",
 		"sample3.js":     "// sample3",
 		"sub/sample4.js": "// sample4",
+		"sub/sample5.js": "sample5 -- error",
 	})
+	s.EnsureNoErrorsOrWarnings()
+
+	s.expectLiveWrite("zzz.js", errors.New("fail!"))
+	s.verifyRpcError(
+		"Save",
+		objx.Map{"path": "zzz.js", "content": "// sample5"},
+		EDITOR_ERROR_WRITE, "EditorError",
+		"Error writing the file")
+	s.EnsureGotErrors()
 }
 
 func (s *EditorSuite) TestRemoveFile() {
@@ -211,7 +286,7 @@ func (s *EditorSuite) TestRemoveFile() {
 	})
 	s.verifyRpcError("Remove", objx.Map{"path": "nosuchfile.js"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
-	s.writeScript("unlisted.js.ok", "// unlisted")
+	s.WriteScript("unlisted.js.ok", "// unlisted")
 	s.verifyRpcError("Remove", objx.Map{"path": "unlisted.js.ok"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
 	s.verifySources(map[string]string{
@@ -226,7 +301,7 @@ func (s *EditorSuite) TestLoadFile() {
 	})
 	s.verifyRpcError("Load", objx.Map{"path": "nosuchfile.js"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
-	s.writeScript("unlisted.js.ok", "// unlisted")
+	s.WriteScript("unlisted.js.ok", "// unlisted")
 	s.verifyRpcError("Load", objx.Map{"path": "unlisted.js.ok"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
 }

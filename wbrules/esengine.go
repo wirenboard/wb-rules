@@ -7,7 +7,9 @@ import (
 	wbgo "github.com/contactless/wbgo"
 	duktape "github.com/ivan4th/go-duktape"
 	"github.com/stretchr/objx"
+	"io/ioutil"
 	"log"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -34,6 +36,7 @@ type ESEngine struct {
 	sources       sourceMap
 	currentSource *LocFileEntry
 	sourcesMtx    sync.Mutex
+	tracker       *ContentTracker
 }
 
 func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine) {
@@ -42,6 +45,7 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine
 		ctx:        newESContext(model.CallSync),
 		scriptBox:  rice.MustFindBox("scripts"),
 		sources:    make(sourceMap),
+		tracker:    NewContentTracker(),
 	}
 
 	engine.ctx.PushGlobalObject()
@@ -250,15 +254,38 @@ func (engine *ESEngine) checkSourcePath(path string) (cleanPath string, virtualP
 	return
 }
 
-func (engine *ESEngine) LoadScript(path string) error {
+func (engine *ESEngine) checkVirtualPath(path string) (cleanPath string, virtualPath string, err error) {
+	physicalPath := filepath.Join(engine.sourceRoot, filepath.Clean(path))
+	cleanPath, virtualPath, underSourceRoot, err := engine.checkSourcePath(physicalPath)
+	if err == nil && !underSourceRoot {
+		err = errors.New("path not under source root")
+	}
+	return
+}
+
+func (engine *ESEngine) LoadScript(path string) (err error) {
+	_, err = engine.loadScript(path, true)
+	return
+}
+
+func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, error) {
 	path, virtualPath, underSourceRoot, err := engine.checkSourcePath(path)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if engine.currentSource != nil {
 		// must use a stack of sources to support recursive LoadScript()
 		panic("recursive LoadScript() calls not supported")
+	}
+
+	wasChangedOrFirstSeen, err := engine.tracker.Track(virtualPath, path)
+	if err != nil {
+		return false, err
+	}
+	if !loadIfUnchanged && !wasChangedOrFirstSeen {
+		wbgo.Debug.Printf("script %s unchanged, not reloading (possibly just reloaded)", path)
+		return false, nil
 	}
 
 	// remove rules and devices defined in the previous
@@ -287,7 +314,29 @@ func (engine *ESEngine) LoadScript(path string) error {
 		}()
 	}
 
-	return engine.ctx.LoadScript(path)
+	return true, engine.convertESError(engine.ctx.LoadScript(path))
+}
+
+func (engine *ESEngine) convertESError(err error) error {
+	esError, ok := err.(ESError)
+	if !ok {
+		return err
+	}
+
+	// ESError contains physical file paths in its traceback.
+	// Here we need to translate them to virtual paths.
+	// We skip any frames that refer to files that don't
+	// reside under the source root.
+	traceback := make([]LocItem, 0, len(esError.Traceback))
+	for _, esLoc := range esError.Traceback {
+		_, virtualPath, underSourceRoot, err :=
+			engine.checkSourcePath(esLoc.filename)
+		if err == nil && underSourceRoot {
+			traceback = append(traceback, LocItem{esLoc.line, virtualPath})
+		}
+	}
+
+	return NewScriptError(esError.Message, traceback)
 }
 
 func (engine *ESEngine) maybePublishUpdate(subtopic, physicalPath string) {
@@ -300,18 +349,59 @@ func (engine *ESEngine) maybePublishUpdate(subtopic, physicalPath string) {
 	}
 }
 
-// LiveLoadScript loads the specified script in the running engine.
-// If the engine isn't ready yet, the function waits for it to become
-// ready.
-func (engine *ESEngine) LiveLoadScript(path string) error {
-	r := make(chan error)
-	engine.model.WhenReady(func() {
-		err := engine.LoadScript(path)
+func (engine *ESEngine) loadScriptAndRefresh(path string, loadIfUnchanged bool) (err error) {
+	loaded, err := engine.loadScript(path, loadIfUnchanged)
+	if loaded {
 		// must call refresh() even in case of LoadScript() error,
 		// because a part of script was still probably loaded
 		engine.Refresh()
 		engine.maybePublishUpdate("changed", path)
-		r <- err
+	}
+	return
+}
+
+func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
+	r := make(chan error)
+	engine.model.WhenReady(func() {
+		wbgo.Debug.Printf("OverwriteScript(%s)", virtualPath)
+		cleanPath, virtualPath, err := engine.checkVirtualPath(virtualPath)
+		wbgo.Debug.Printf("OverwriteScript: %s %s %v", cleanPath, virtualPath, err)
+		if err != nil {
+			r <- err
+			return
+		}
+
+		// Make sure directories that contain the script exist
+		if strings.Contains(virtualPath, "/") {
+			if err = os.MkdirAll(filepath.Dir(cleanPath), 0777); err != nil {
+				wbgo.Error.Printf("error making dirs for %s: %s", cleanPath, err)
+				r <- err
+				return
+			}
+		}
+
+		// WriteFile() will cause Loader to wake up and invoke
+		// LiveLoadScript for the file, but as the new content
+		// will be already registered with the contentTracker,
+		// duplicate reload will not happen
+		err = ioutil.WriteFile(cleanPath, []byte(content), 0777)
+		if err != nil {
+			r <- err
+			return
+		}
+		r <- engine.loadScriptAndRefresh(cleanPath, true)
+	})
+	return <-r
+}
+
+// LiveLoadScript loads the specified script in the running engine.
+// If the engine isn't ready yet, the function waits for it to become
+// ready. If the script didn't change since the last time it was loaded,
+// the script isn't loaded.
+func (engine *ESEngine) LiveLoadScript(path string) error {
+	r := make(chan error)
+	engine.model.WhenReady(func() {
+		r <- engine.loadScriptAndRefresh(path, false)
 	})
 
 	return <-r

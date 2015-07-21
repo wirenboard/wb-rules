@@ -14,3 +14,5 @@ defineRule("detRun", {
     log("detRun");
   }
 });
+
+testrules_reload_1_loaded = true;

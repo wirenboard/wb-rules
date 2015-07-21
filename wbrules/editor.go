@@ -4,7 +4,7 @@ import (
 	"github.com/contactless/wbgo"
 	"io/ioutil"
 	"os"
-	"path/filepath"
+	"path"
 	"regexp"
 	"strings"
 )
@@ -60,26 +60,37 @@ type EditorSaveArgs struct {
 	Content string `json:"content"`
 }
 
-func (editor *Editor) Save(args *EditorSaveArgs, reply *bool) error {
-	if !editorPathRx.MatchString(args.Path) {
+type EditorSaveResponse struct {
+	Error     interface{} `json:"error,omitempty",`
+	Path      string      `json:"path"`
+	Traceback []LocItem   `json:"traceback,omitempty"`
+}
+
+func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) error {
+	pth := path.Clean(args.Path)
+
+	for strings.HasPrefix(pth, "/") {
+		pth = pth[1:]
+	}
+
+	if !editorPathRx.MatchString(pth) {
 		return invalidPathError
 	}
 
-	targetPath := filepath.Join(editor.locFileManager.ScriptDir(), args.Path)
+	*reply = EditorSaveResponse{nil, pth, nil}
 
-	if strings.Contains(args.Path, "/") {
-		if err := os.MkdirAll(filepath.Dir(targetPath), 0777); err != nil {
-			wbgo.Error.Printf("error making dirs for %s: %s", targetPath, err)
-			return writeError
-		}
-	}
-
-	if err := ioutil.WriteFile(targetPath, []byte(args.Content), 0777); err != nil {
-		wbgo.Error.Printf("error writing %s: %s", targetPath, err)
+	err := editor.locFileManager.LiveWriteScript(pth, args.Content)
+	switch err.(type) {
+	case nil:
+		return nil
+	case ScriptError:
+		reply.Error = err.Error()
+		reply.Traceback = err.(ScriptError).Traceback
+	default:
+		wbgo.Error.Printf("error writing %s: %s", pth, err)
 		return writeError
 	}
 
-	*reply = true
 	return nil
 }
 

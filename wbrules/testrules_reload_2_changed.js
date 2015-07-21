@@ -41,3 +41,5 @@ function defDetectRun(name) {
 
 defDetectRun("detectRun");
 defChangeRule("rule1", "vdev/someCell");
+
+testrules_reload_2_n++;

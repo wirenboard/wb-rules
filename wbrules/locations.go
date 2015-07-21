@@ -19,4 +19,20 @@ type LocFileEntry struct {
 type LocFileManager interface {
 	ScriptDir() string
 	ListSourceFiles() ([]LocFileEntry, error)
+	LiveWriteScript(virtualPath, content string) error
+}
+
+// ScriptError denotes an error that was caused by JavaScript code.
+// Files with such errors are partially loaded.
+type ScriptError struct {
+	Message   string
+	Traceback []LocItem
+}
+
+func NewScriptError(message string, traceback []LocItem) ScriptError {
+	return ScriptError{message, traceback}
+}
+
+func (err ScriptError) Error() string {
+	return err.Message
 }

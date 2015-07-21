@@ -3,11 +3,8 @@ package wbrules
 import (
 	"fmt"
 	"github.com/contactless/wbgo"
-	"io/ioutil"
 	"os"
-	"path/filepath"
 	"regexp"
-	"strings"
 	"testing"
 	"time"
 )
@@ -56,11 +53,10 @@ func (cron *fakeCron) invokeEntries(spec string) {
 type RuleSuiteBase struct {
 	CellSuiteBase
 	ruleFile string
+	*ScriptFixture
 	*wbgo.FakeTimerFixture
-	engine      *ESEngine
-	cron        *fakeCron
-	scriptDir   string
-	rmScriptDir func()
+	engine *ESEngine
+	cron   *fakeCron
 }
 
 var logVerifyRx = regexp.MustCompile(`^\[(info|debug|warning|error)\] (.*)`)
@@ -79,6 +75,7 @@ func (s *RuleSuiteBase) Verify(items ...string) {
 
 func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	s.CellSuiteBase.SetupTest(waitForRetained)
+	s.ScriptFixture = NewScriptFixture(s.T())
 	s.FakeTimerFixture = wbgo.NewFakeTimerFixture(s.T(), s.Recorder)
 	s.cron = nil
 	s.engine = NewESEngine(s.model, s.driverClient)
@@ -94,41 +91,33 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	}
 }
 
-func (s *RuleSuiteBase) ScriptPath(script string) string {
-	return filepath.Join(s.scriptDir, script)
-}
-
-func (s *RuleSuiteBase) copyScriptToTempDir(sourceName, targetName string) (targetPath string) {
-	data, err := ioutil.ReadFile(sourceName)
-	s.Ck("ReadFile()", err)
-	targetPath = s.ScriptPath(targetName)
-	if strings.Contains(targetName, "/") {
-		// the target file is under a subdir
-		s.Ck("MkdirAll", os.MkdirAll(filepath.Dir(targetPath), 0777))
-	}
-	s.Ck("WriteFile", ioutil.WriteFile(targetPath, data, 0777))
-	return
-}
-
 func (s *RuleSuiteBase) loadScripts(scripts []string) {
 	wd, err := os.Getwd()
 	s.Ck("Getwd()", err)
-	s.scriptDir, s.rmScriptDir = wbgo.SetupTempDir(s.T()) // this does chdir
-	s.Ck("SetSourceRoot()", s.engine.SetSourceRoot(s.scriptDir))
+	s.Ck("SetSourceRoot()", s.engine.SetSourceRoot(s.ScriptTmpDir))
 	// change back to the original working directory
 	s.Ck("Chdir()", os.Chdir(wd))
 	// Copy scripts to the temporary directory recreating a part
 	// of original directory structure that contains these
 	// scripts.
 	for _, script := range scripts {
-		copiedScriptPath := s.copyScriptToTempDir(script, script)
+		copiedScriptPath := s.CopyScriptToTempDir(script, script)
 		s.Ck("LoadScript()", s.engine.LoadScript(copiedScriptPath))
 	}
 }
 
 func (s *RuleSuiteBase) ReplaceScript(oldName, newName string) {
-	copiedScriptPath := s.copyScriptToTempDir(newName, oldName)
+	copiedScriptPath := s.CopyScriptToTempDir(newName, oldName)
 	s.Ck("LiveLoadScript()", s.engine.LiveLoadScript(copiedScriptPath))
+}
+
+func (s *RuleSuiteBase) OverwriteScript(oldName, newName string) error {
+	return s.engine.LiveWriteScript(oldName, s.ReadSourceScript(newName))
+}
+
+func (s *RuleSuiteBase) LiveLoadScript(script string) error {
+	copiedScriptPath := s.CopyScriptToTempDir(script, script)
+	return s.engine.LiveLoadScript(copiedScriptPath)
 }
 
 func (s *RuleSuiteBase) RemoveScript(oldName string) {
@@ -165,7 +154,7 @@ func (s *RuleSuiteBase) SetCellValue(device, cellName string, value interface{})
 }
 
 func (s *RuleSuiteBase) TearDownTest() {
-	s.rmScriptDir()
+	s.TearDownScripts()
 	s.CellSuiteBase.TearDownTest()
 	s.WaitFor(func() bool {
 		return !s.engine.IsActive()

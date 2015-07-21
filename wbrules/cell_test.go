@@ -2,7 +2,7 @@ package wbrules
 
 import (
 	"fmt"
-	wbgo "github.com/contactless/wbgo"
+	"github.com/contactless/wbgo"
 	"log"
 	"strings"
 	"testing"

@@ -64,3 +64,5 @@ defDetectRun("detectRun1"); // removed in the altered version
 defChangeRule("rule1", "vdev/someCell");
 defChangeRule("rule2", "vdev/someCell"); // removed in the altered version
 defChangeRule("rule3", "vdev/anotherCell"); // removed in the altered version
+
+testrules_reload_2_n = 0;
