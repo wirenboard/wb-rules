@@ -6,6 +6,6 @@ Standards-Version: 3.9.2
 Build-Depends: debhelper (>= 9), pkg-config
 
 Package: wb-rules
-Architecture: armel
+Architecture: armel amd64 i386
 Depends: libc6 (>= 2.13), ${misc:Depends}
 Description: Wiren Board Rule Engine
