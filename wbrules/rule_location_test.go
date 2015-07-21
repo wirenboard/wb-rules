@@ -192,6 +192,19 @@ func (s *RuleLocationSuite) TestFaultyScript() {
 	}, s.listSourceFiles())
 }
 
+func (s *RuleLocationSuite) TestSyntaxError() {
+	err := s.OverwriteScript(
+		"testrules_locations_syntax_error.js",
+		"testrules_locations_syntax_error.js")
+	s.NotNil(err, "error expected")
+	scriptErr, ok := err.(ScriptError)
+	s.Require().True(ok, "ScriptError expected")
+	s.Contains(scriptErr.Message, "SyntaxError")
+	s.Equal([]LocItem{
+		{4, "testrules_locations_syntax_error.js"},
+	}, scriptErr.Traceback)
+}
+
 func TestRuleLocationSuite(t *testing.T) {
 	wbgo.RunSuites(t,
 		new(RuleLocationSuite),

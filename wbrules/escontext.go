@@ -34,7 +34,6 @@ type ESContext struct {
 }
 
 type ESError struct {
-	Path      string
 	Message   string
 	Traceback ESTraceback
 }
@@ -296,15 +295,17 @@ func (ctx *ESContext) RemoveCallback(key ESCallback) {
 func (ctx *ESContext) EvalScript(code string) error {
 	defer ctx.Pop()
 	if r := ctx.PevalString(code); r != 0 {
-		return ctx.GetScriptError()
+		return ctx.GetESError()
 	}
 	return nil
 }
 
+var syntaxErrorRx = regexp.MustCompile(`^SyntaxError:.*?\(line\s+(\d+)\)\s*(\n|$)`)
+
 func (ctx *ESContext) LoadScript(path string) error {
 	defer ctx.Pop()
 	if r := ctx.PevalFile(path); r != 0 {
-		return ctx.GetScriptError()
+		return ctx.GetESErrorAugmentingSyntaxErrors(path)
 	}
 	return nil
 }
@@ -364,7 +365,7 @@ func (ctx *ESContext) Format() string {
 
 var fileRx = regexp.MustCompile(`^\s*\S+\s+(.*):(\d+)(?:\s+[^:]*)?$`)
 
-func (ctx *ESContext) GetScriptError() (r ESError) {
+func (ctx *ESContext) GetESError() (r ESError) {
 	r.Traceback = ESTraceback{}
 	if !ctx.GetPropString(-1, "stack") {
 		r.Message = ctx.SafeToString(-1)
@@ -389,10 +390,40 @@ func (ctx *ESContext) GetScriptError() (r ESError) {
 	return
 }
 
+func (ctx *ESContext) GetESErrorAugmentingSyntaxErrors(path string) (r ESError) {
+	// SyntaxError have no script files in their stack trace,
+	// but provide line number info in the message
+	// FIXME: need to use ctx.GetErrorCode() to check
+	// for SyntaxError (requires newer duktape)
+	r = ctx.GetESError()
+	if len(r.Traceback) != 0 {
+		return
+	}
+
+	groups := syntaxErrorRx.FindStringSubmatch(r.Message)
+	if groups == nil {
+		return
+	}
+
+	lineNumber, err := strconv.Atoi(groups[1])
+	if err != nil {
+		wbgo.Warn.Printf("bad js line number: %s", lineNumber)
+		return
+	}
+
+	r = ESError{
+		r.Message,
+		ESTraceback{
+			{filename: path, line: lineNumber},
+		},
+	}
+	return
+}
+
 func (ctx *ESContext) GetTraceback() ESTraceback {
 	ctx.PushErrorObject(duktape.DUK_ERR_ERROR, "fake")
 	defer ctx.Pop()
-	return ctx.GetScriptError().Traceback
+	return ctx.GetESError().Traceback
 }
 
 // TBD: handle loops in object graphs in PushJSObject
