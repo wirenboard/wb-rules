@@ -1,5 +1,20 @@
 GOM=gom
-.PHONY: all clean
+.PHONY: all prepare clean
+
+GOPATH := $(HOME)/go
+PATH := $(HOME)/progs/go/bin:$(GOPATH)/bin:$(PATH)
+
+DEB_TARGET_ARCH ?= armel
+
+ifeq ($(DEB_TARGET_ARCH),armel)
+GO_ENV := GOARCH=arm GOARM=5 CC_FOR_TARGET=arm-linux-gnueabi-gcc CGO_ENABLED=1
+endif
+ifeq ($(DEB_TARGET_ARCH),amd64)
+GO_ENV := GOARCH=amd64 CC=x86_64-linux-gnu-gcc
+endif
+ifeq ($(DEB_TARGET_ARCH),i386)
+GO_ENV := GOARCH=386 CC=i586-linux-gnu-gcc
+endif
 
 all: clean wb-rules
 
@@ -7,8 +22,6 @@ prepare:
 	go get -u github.com/mattn/gom
 	go get -u github.com/GeertJohan/go.rice
 	go get -u github.com/GeertJohan/go.rice/rice
-	PATH=$(HOME)/progs/go/bin:$(PATH) GOARM=5 GOARCH=arm GOOS=linux \
-	  CC_FOR_TARGET=arm-linux-gnueabi-gcc CGO_ENABLED=1 $(GOM) install
 
 clean:
 	rm -rf wb-rules wbrules/*.rice-box.go
@@ -18,9 +31,9 @@ clean:
 # (changes in lib.js being ignored)
 
 wb-rules: main.go wbrules/*.go
+	$(GO_ENV) $(GOM) install
 	(cd wbrules && $(HOME)/go/bin/rice embed-go)
-	PATH=$(HOME)/progs/go/bin:$(PATH) GOARM=5 GOARCH=arm GOOS=linux \
-	  CC_FOR_TARGET=arm-linux-gnueabi-gcc CGO_ENABLED=1 $(GOM) build
+	$(GO_ENV) $(GOM) build
 	rm -f wbrules/*.rice-box.go
 
 install:
