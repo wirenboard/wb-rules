@@ -48,6 +48,10 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine
 		tracker:    NewContentTracker(),
 	}
 
+	engine.ctx.SetCallbackErrorHandler(func(err ESError) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("ECMAScript error: %s", err))
+	})
+
 	engine.ctx.PushGlobalObject()
 	engine.ctx.DefineFunctions(map[string]func() int{
 		"defineVirtualDevice":  engine.esDefineVirtualDevice,

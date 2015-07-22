@@ -22,6 +22,7 @@ type ESLocation struct {
 type ESTraceback []ESLocation
 type ESCallback uint64
 type ESCallbackFunc func(args objx.Map) interface{}
+type ESCallbackErrorHandler func(err ESError)
 
 // ESSyncFunc denotes a function that executes the specified
 // thunk in the context of the goroutine which utilizes the context
@@ -29,8 +30,9 @@ type ESSyncFunc func(thunk func())
 
 type ESContext struct {
 	*duktape.Context
-	callbackIndex ESCallback
-	syncFunc      ESSyncFunc
+	callbackIndex        ESCallback
+	syncFunc             ESSyncFunc
+	callbackErrorHandler ESCallbackErrorHandler
 }
 
 type ESError struct {
@@ -47,10 +49,20 @@ func newESContext(syncFunc ESSyncFunc) *ESContext {
 		duktape.NewContext(),
 		1,
 		syncFunc,
+		nil,
 	}
+	ctx.callbackErrorHandler = ctx.DefaultCallbackErrorHandler
 	ctx.initGlobalObject()
 	ctx.initGlobalProperty("_esCallbacks")
 	return ctx
+}
+
+func (ctx *ESContext) DefaultCallbackErrorHandler(err ESError) {
+	wbgo.Error.Printf("failed to invoke callback: %s", err)
+}
+
+func (ctx *ESContext) SetCallbackErrorHandler(handler ESCallbackErrorHandler) {
+	ctx.callbackErrorHandler = handler
 }
 
 func (ctx *ESContext) getObject(objIndex int) map[string]interface{} {
@@ -221,7 +233,7 @@ func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} 
 	}
 	defer ctx.Pop3() // pop: result, callback list object, global stash
 	if s := ctx.PcallProp(-2-argCount, argCount); s != 0 {
-		wbgo.Error.Printf("failed to invoke callback %v: %s", key, ctx.SafeToString(-1))
+		ctx.callbackErrorHandler(ctx.GetESError())
 		return nil
 	} else if ctx.IsBoolean(-1) {
 		return ctx.ToBoolean(-1)
