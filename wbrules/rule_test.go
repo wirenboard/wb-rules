@@ -61,9 +61,13 @@ type RuleSuiteBase struct {
 
 var logVerifyRx = regexp.MustCompile(`^\[(info|debug|warning|error)\] (.*)`)
 
-func (s *RuleSuiteBase) Verify(items ...string) {
+func (s *RuleSuiteBase) Verify(items ...interface{}) {
 	for n, item := range items {
-		groups := logVerifyRx.FindStringSubmatch(item)
+		itemStr, ok := item.(string)
+		if !ok {
+			continue
+		}
+		groups := logVerifyRx.FindStringSubmatch(itemStr)
 		if groups == nil {
 			continue
 		}
