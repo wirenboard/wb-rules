@@ -21,6 +21,8 @@ func (s *LogSuite) TestLog() {
 		"[warning] log.warning(42)",
 		"[error] log.error(42)",
 	)
+	s.EnsureGotErrors()
+	s.EnsureGotWarnings()
 	s.publish("/devices/wbrules/controls/Rule debugging/on", "1", "wbrules/Rule debugging")
 	s.Verify(
 		"tst -> /devices/wbrules/controls/Rule debugging/on: [1] (QoS 1)",
@@ -35,6 +37,8 @@ func (s *LogSuite) TestLog() {
 		"[warning] log.warning(42)",
 		"[error] log.error(42)",
 	)
+	s.EnsureGotErrors()
+	s.EnsureGotWarnings()
 }
 
 func TestLogSuite(t *testing.T) {

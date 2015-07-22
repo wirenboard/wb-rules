@@ -709,10 +709,10 @@ func (engine *RuleEngine) Log(level EngineLogLevel, message string) {
 		wbgo.Info.Printf("[rule info] %s", message)
 		topicItem = "info"
 	case ENGINE_LOG_WARNING:
-		wbgo.Info.Printf("[rule warning] %s", message)
+		wbgo.Warn.Printf("[rule warning] %s", message)
 		topicItem = "warning"
 	case ENGINE_LOG_ERROR:
-		wbgo.Info.Printf("[rule error] %s", message)
+		wbgo.Error.Printf("[rule error] %s", message)
 		topicItem = "error"
 	}
 	engine.Publish("/wbrules/log/"+topicItem, message, 1, false)
