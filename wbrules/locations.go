@@ -8,10 +8,11 @@ type LocItem struct {
 
 // LocFileEntry represents a source file
 type LocFileEntry struct {
-	Devices      []LocItem `json:"devices"`
-	Rules        []LocItem `json:"rules"`
-	VirtualPath  string    `json:"virtualPath"`
-	PhysicalPath string    `json:"-"`
+	Devices      []LocItem    `json:"devices"`
+	Error        *ScriptError `json:"error,omitempty"`
+	Rules        []LocItem    `json:"rules"`
+	VirtualPath  string       `json:"virtualPath"`
+	PhysicalPath string       `json:"-"`
 }
 
 // LocFileManager interface provides a way to access a list of source
@@ -25,8 +26,8 @@ type LocFileManager interface {
 // ScriptError denotes an error that was caused by JavaScript code.
 // Files with such errors are partially loaded.
 type ScriptError struct {
-	Message   string
-	Traceback []LocItem
+	Message   string    `json:"message"`
+	Traceback []LocItem `json:"traceback"`
 }
 
 func NewScriptError(message string, traceback []LocItem) ScriptError {

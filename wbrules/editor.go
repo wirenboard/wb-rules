@@ -98,29 +98,29 @@ type EditorPathArgs struct {
 	Path string `json:"path"`
 }
 
-func (editor *Editor) validatePath(virtualPath string) (string, error) {
+func (editor *Editor) locateFile(virtualPath string) (*LocFileEntry, error) {
 	entries, err := editor.locFileManager.ListSourceFiles()
 	if err != nil {
-		return "", listDirError
+		return nil, listDirError
 	}
 
 	for _, entry := range entries {
 		if entry.VirtualPath != virtualPath {
 			continue
 		}
-		return entry.PhysicalPath, nil
+		return &entry, nil
 	}
 
-	return "", fileNotFoundError
+	return nil, fileNotFoundError
 }
 
 func (editor *Editor) Remove(args *EditorPathArgs, reply *bool) error {
-	physicalPath, err := editor.validatePath(args.Path)
+	entry, err := editor.locateFile(args.Path)
 	if err != nil {
 		return err
 	}
-	if err = os.Remove(physicalPath); err != nil {
-		wbgo.Error.Printf("error removing %s: %s", physicalPath, err)
+	if err = os.Remove(entry.PhysicalPath); err != nil {
+		wbgo.Error.Printf("error removing %s: %s", entry.PhysicalPath, err)
 		return rmError
 	}
 	*reply = true
@@ -128,19 +128,23 @@ func (editor *Editor) Remove(args *EditorPathArgs, reply *bool) error {
 }
 
 type EditorContentResponse struct {
-	Content string `json:"content"`
+	Content string       `json:"content"`
+	Error   *ScriptError `json:"error,omitempty"`
 }
 
 func (editor *Editor) Load(args *EditorPathArgs, reply *EditorContentResponse) error {
-	physicalPath, err := editor.validatePath(args.Path)
+	entry, err := editor.locateFile(args.Path)
 	if err != nil {
 		return err
 	}
-	content, err := ioutil.ReadFile(physicalPath)
+	content, err := ioutil.ReadFile(entry.PhysicalPath)
 	if err != nil {
-		wbgo.Error.Printf("error reading %s: %s", physicalPath, err)
+		wbgo.Error.Printf("error reading %s: %s", entry.PhysicalPath, err)
 		return writeError
 	}
-	*reply = EditorContentResponse{string(content)}
+	*reply = EditorContentResponse{
+		string(content),
+		entry.Error,
+	}
 	return nil
 }

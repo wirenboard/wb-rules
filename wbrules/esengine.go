@@ -318,10 +318,10 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 		}()
 	}
 
-	return true, engine.convertESError(engine.ctx.LoadScript(path))
+	return true, engine.trackESError(path, engine.ctx.LoadScript(path))
 }
 
-func (engine *ESEngine) convertESError(err error) error {
+func (engine *ESEngine) trackESError(path string, err error) error {
 	esError, ok := err.(ESError)
 	if !ok {
 		return err
@@ -340,7 +340,11 @@ func (engine *ESEngine) convertESError(err error) error {
 		}
 	}
 
-	return NewScriptError(esError.Message, traceback)
+	scriptErr := NewScriptError(esError.Message, traceback)
+	if engine.currentSource != nil {
+		engine.currentSource.Error = &scriptErr
+	}
+	return scriptErr
 }
 
 func (engine *ESEngine) maybePublishUpdate(subtopic, physicalPath string) {

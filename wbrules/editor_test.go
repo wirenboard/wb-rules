@@ -21,11 +21,13 @@ type EditorSuite struct {
 	wbgo.Suite
 	*wbgo.FakeMQTTFixture
 	*ScriptFixture
-	client         wbgo.MQTTClient
-	rpc            *wbgo.MQTTRPCServer
-	id             uint64
-	liveWritePath  string
-	liveWriteError error
+	client          wbgo.MQTTClient
+	rpc             *wbgo.MQTTRPCServer
+	id              uint64
+	liveWritePath   string
+	liveWriteError  error
+	scriptErrorPath string
+	scriptError     *ScriptError
 }
 
 func (s *EditorSuite) T() *testing.T {
@@ -37,6 +39,8 @@ func (s *EditorSuite) SetupTest() {
 	s.id = 1
 	s.liveWritePath = ""
 	s.liveWriteError = nil
+	s.scriptErrorPath = ""
+	s.scriptError = nil
 	s.ScriptFixture = NewScriptFixture(s.T())
 	s.addSampleFiles()
 	s.FakeMQTTFixture = wbgo.NewFakeMQTTFixture(s.T())
@@ -125,6 +129,9 @@ func (s *EditorSuite) ListSourceFiles() (entries []LocFileEntry, err error) {
 			entry.Devices = []LocItem{{1, "abc"}, {2, "def"}}
 			entry.Rules = []LocItem{{10, "foobar"}}
 		}
+		if s.scriptError != nil && virtualPath == s.scriptErrorPath {
+			entry.Error = s.scriptError
+		}
 		entries = append(entries, entry)
 	})
 	return
@@ -182,6 +189,14 @@ func (s *EditorSuite) verifyRpcError(subtopic string, param objx.Map, code int, 
 }
 
 func (s *EditorSuite) TestListFiles() {
+	s.scriptErrorPath = "sample2.js"
+	scriptErr := NewScriptError(
+		"syntax error!", []LocItem{
+			{1, "sample2.js"},
+			{42, "foobar.js"},
+		},
+	)
+	s.scriptError = &scriptErr
 	s.verifyRpc("List", objx.Map{}, []objx.Map{
 		{
 			"virtualPath": "sample1.js",
@@ -197,6 +212,13 @@ func (s *EditorSuite) TestListFiles() {
 			"virtualPath": "sample2.js",
 			"devices":     []objx.Map{},
 			"rules":       []objx.Map{},
+			"error": objx.Map{
+				"message": "syntax error!",
+				"traceback": []objx.Map{
+					{"line": 1, "name": "sample2.js"},
+					{"line": 42, "name": "foobar.js"},
+				},
+			},
 		},
 	})
 }
@@ -298,6 +320,24 @@ func (s *EditorSuite) TestRemoveFile() {
 func (s *EditorSuite) TestLoadFile() {
 	s.verifyRpc("Load", objx.Map{"path": "sample1.js"}, objx.Map{
 		"content": "// sample1",
+	})
+	s.scriptErrorPath = "sample1.js"
+	scriptErr := NewScriptError(
+		"syntax error!", []LocItem{
+			{1, "sub/sample5.js"},
+			{42, "foobar.js"},
+		},
+	)
+	s.scriptError = &scriptErr
+	s.verifyRpc("Load", objx.Map{"path": "sample1.js"}, objx.Map{
+		"content": "// sample1",
+		"error": objx.Map{
+			"message": "syntax error!",
+			"traceback": []objx.Map{
+				{"line": 1, "name": "sub/sample5.js"},
+				{"line": 42, "name": "foobar.js"},
+			},
+		},
 	})
 	s.verifyRpcError("Load", objx.Map{"path": "nosuchfile.js"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")

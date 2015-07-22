@@ -188,6 +188,7 @@ func (s *RuleLocationSuite) TestFaultyScript() {
 				{4, "nonFaultyDev"},
 			},
 			Rules: []LocItem{},
+			Error: &scriptErr,
 		},
 	}, s.listSourceFiles())
 }
