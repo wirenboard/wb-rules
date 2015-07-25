@@ -14,6 +14,7 @@ func main() {
 	editDir := flag.String("editdir", "", "Editable script directory")
 	debug := flag.Bool("debug", false, "Enable debugging")
 	useSyslog := flag.Bool("syslog", false, "Use syslog for logging")
+	mqttDebug := flag.Bool("mqttdebug", false, "Enable MQTT debugging")
 	flag.Parse()
 	if flag.NArg() < 1 {
 		wbgo.Error.Fatal("must specify rule file/directory name(s)")
@@ -23,6 +24,9 @@ func main() {
 	}
 	if *debug {
 		wbgo.SetDebuggingEnabled(true)
+	}
+	if *mqttDebug {
+		wbgo.EnableMQTTDebugLog()
 	}
 	model := wbrules.NewCellModel()
 	mqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID, true)
