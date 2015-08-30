@@ -43,7 +43,7 @@ func (s *RuleLocationSuite) TestLocations() {
 	s.Equal([]LocFileEntry{
 		{
 			VirtualPath:  "loc1/testrules_more.js",
-			PhysicalPath: s.ScriptPath("loc1/testrules_more.js"),
+			PhysicalPath: s.DataFilePath("loc1/testrules_more.js"),
 			Devices: []LocItem{
 				{4, "qqq"},
 			},
@@ -51,13 +51,13 @@ func (s *RuleLocationSuite) TestLocations() {
 		},
 		{
 			VirtualPath:  "testrules_defhelper.js",
-			PhysicalPath: s.ScriptPath("testrules_defhelper.js"),
+			PhysicalPath: s.DataFilePath("testrules_defhelper.js"),
 			Devices:      []LocItem{},
 			Rules:        []LocItem{},
 		},
 		{
 			VirtualPath:  "testrules_locations.js",
-			PhysicalPath: s.ScriptPath("testrules_locations.js"),
+			PhysicalPath: s.DataFilePath("testrules_locations.js"),
 			Devices: []LocItem{
 				{4, "misc"},
 				{14, "foo"},
@@ -78,7 +78,7 @@ func (s *RuleLocationSuite) TestUpdatingLocations() {
 	s.Equal([]LocFileEntry{
 		{
 			VirtualPath:  "loc1/testrules_more.js",
-			PhysicalPath: s.ScriptPath("loc1/testrules_more.js"),
+			PhysicalPath: s.DataFilePath("loc1/testrules_more.js"),
 			Devices: []LocItem{
 				{4, "qqqNew"},
 			},
@@ -86,13 +86,13 @@ func (s *RuleLocationSuite) TestUpdatingLocations() {
 		},
 		{
 			VirtualPath:  "testrules_defhelper.js",
-			PhysicalPath: s.ScriptPath("testrules_defhelper.js"),
+			PhysicalPath: s.DataFilePath("testrules_defhelper.js"),
 			Devices:      []LocItem{},
 			Rules:        []LocItem{},
 		},
 		{
 			VirtualPath:  "testrules_locations.js",
-			PhysicalPath: s.ScriptPath("testrules_locations.js"),
+			PhysicalPath: s.DataFilePath("testrules_locations.js"),
 			Devices: []LocItem{
 				{4, "miscNew"},
 				{14, "foo"},
@@ -115,7 +115,7 @@ func (s *RuleLocationSuite) TestRemoval() {
 	s.Equal([]LocFileEntry{
 		{
 			VirtualPath:  "loc1/testrules_more.js",
-			PhysicalPath: s.ScriptPath("loc1/testrules_more.js"),
+			PhysicalPath: s.DataFilePath("loc1/testrules_more.js"),
 			Devices: []LocItem{
 				{4, "qqq"},
 			},
@@ -123,7 +123,7 @@ func (s *RuleLocationSuite) TestRemoval() {
 		},
 		{
 			VirtualPath:  "testrules_defhelper.js",
-			PhysicalPath: s.ScriptPath("testrules_defhelper.js"),
+			PhysicalPath: s.DataFilePath("testrules_defhelper.js"),
 			Devices:      []LocItem{},
 			Rules:        []LocItem{},
 		},
@@ -136,7 +136,7 @@ func (s *RuleLocationSuite) TestRemoval() {
 	s.Equal([]LocFileEntry{
 		{
 			VirtualPath:  "testrules_defhelper.js",
-			PhysicalPath: s.ScriptPath("testrules_defhelper.js"),
+			PhysicalPath: s.DataFilePath("testrules_defhelper.js"),
 			Devices:      []LocItem{},
 			Rules:        []LocItem{},
 		},
@@ -155,7 +155,7 @@ func (s *RuleLocationSuite) TestFaultyScript() {
 	s.Equal([]LocFileEntry{
 		{
 			VirtualPath:  "loc1/testrules_more.js",
-			PhysicalPath: s.ScriptPath("loc1/testrules_more.js"),
+			PhysicalPath: s.DataFilePath("loc1/testrules_more.js"),
 			Devices: []LocItem{
 				{4, "qqq"},
 			},
@@ -163,13 +163,13 @@ func (s *RuleLocationSuite) TestFaultyScript() {
 		},
 		{
 			VirtualPath:  "testrules_defhelper.js",
-			PhysicalPath: s.ScriptPath("testrules_defhelper.js"),
+			PhysicalPath: s.DataFilePath("testrules_defhelper.js"),
 			Devices:      []LocItem{},
 			Rules:        []LocItem{},
 		},
 		{
 			VirtualPath:  "testrules_locations.js",
-			PhysicalPath: s.ScriptPath("testrules_locations.js"),
+			PhysicalPath: s.DataFilePath("testrules_locations.js"),
 			Devices: []LocItem{
 				{4, "misc"},
 				{14, "foo"},
@@ -183,7 +183,7 @@ func (s *RuleLocationSuite) TestFaultyScript() {
 		},
 		{
 			VirtualPath:  "testrules_locations_faulty.js",
-			PhysicalPath: s.ScriptPath("testrules_locations_faulty.js"),
+			PhysicalPath: s.DataFilePath("testrules_locations_faulty.js"),
 			Devices: []LocItem{
 				{4, "nonFaultyDev"},
 			},
