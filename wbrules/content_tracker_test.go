@@ -7,7 +7,7 @@ import (
 
 type ContentTrackerSuite struct {
 	wbgo.Suite
-	*ScriptFixture
+	*wbgo.DataFileFixture
 	tracker *ContentTracker
 }
 
@@ -17,25 +17,25 @@ func (s *ContentTrackerSuite) T() *testing.T {
 
 func (s *ContentTrackerSuite) SetupTest() {
 	s.Suite.SetupTest()
-	s.ScriptFixture = NewScriptFixture(s.Suite.T())
+	s.DataFileFixture = wbgo.NewDataFileFixture(s.Suite.T())
 	s.tracker = NewContentTracker()
 }
 
 func (s *ContentTrackerSuite) TearDownTest() {
-	s.TearDownScripts()
+	s.TearDownDataFiles()
 	s.Suite.TearDownTest()
 }
 
 func (s *ContentTrackerSuite) track(filename string) bool {
-	r, err := s.tracker.Track(filename, s.ScriptPath(filename))
+	r, err := s.tracker.Track(filename, s.DataFilePath(filename))
 	s.Ck("Track()", err)
 	return r
 }
 
 func (s *ContentTrackerSuite) TestTracking() {
-	s.WriteScript("abc.js", "// abc.js")
-	s.WriteScript("def.js", "// def.js")
-	s.WriteScript("foo/bar.js", "// foo/bar.js")
+	s.WriteDataFile("abc.js", "// abc.js")
+	s.WriteDataFile("def.js", "// def.js")
+	s.WriteDataFile("foo/bar.js", "// foo/bar.js")
 
 	s.True(s.track("abc.js"))
 	s.True(s.track("def.js"))
@@ -46,8 +46,8 @@ func (s *ContentTrackerSuite) TestTracking() {
 		s.False(s.track("foo/bar.js"))
 	}
 
-	s.WriteScript("def.js", "// def.js (changed)")
-	s.WriteScript("foo/bar.js", "// foo/bar.js (changed)")
+	s.WriteDataFile("def.js", "// def.js (changed)")
+	s.WriteDataFile("foo/bar.js", "// foo/bar.js (changed)")
 
 	s.False(s.track("abc.js"))
 	s.True(s.track("def.js"))

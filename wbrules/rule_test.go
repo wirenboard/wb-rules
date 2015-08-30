@@ -53,7 +53,7 @@ func (cron *fakeCron) invokeEntries(spec string) {
 type RuleSuiteBase struct {
 	CellSuiteBase
 	ruleFile string
-	*ScriptFixture
+	*wbgo.DataFileFixture
 	*wbgo.FakeTimerFixture
 	engine *ESEngine
 	cron   *fakeCron
@@ -79,7 +79,7 @@ func (s *RuleSuiteBase) Verify(items ...interface{}) {
 
 func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	s.CellSuiteBase.SetupTest(waitForRetained)
-	s.ScriptFixture = NewScriptFixture(s.T())
+	s.DataFileFixture = wbgo.NewDataFileFixture(s.T())
 	s.FakeTimerFixture = wbgo.NewFakeTimerFixture(s.T(), s.Recorder)
 	s.cron = nil
 	s.engine = NewESEngine(s.model, s.driverClient)
@@ -98,34 +98,34 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 func (s *RuleSuiteBase) loadScripts(scripts []string) {
 	wd, err := os.Getwd()
 	s.Ck("Getwd()", err)
-	s.Ck("SetSourceRoot()", s.engine.SetSourceRoot(s.ScriptTmpDir))
+	s.Ck("SetSourceRoot()", s.engine.SetSourceRoot(s.DataFileTempDir()))
 	// change back to the original working directory
 	s.Ck("Chdir()", os.Chdir(wd))
 	// Copy scripts to the temporary directory recreating a part
 	// of original directory structure that contains these
 	// scripts.
 	for _, script := range scripts {
-		copiedScriptPath := s.CopyScriptToTempDir(script, script)
+		copiedScriptPath := s.CopyDataFileToTempDir(script, script)
 		s.Ck("LoadScript()", s.engine.LoadScript(copiedScriptPath))
 	}
 }
 
 func (s *RuleSuiteBase) ReplaceScript(oldName, newName string) {
-	copiedScriptPath := s.CopyScriptToTempDir(newName, oldName)
+	copiedScriptPath := s.CopyDataFileToTempDir(newName, oldName)
 	s.Ck("LiveLoadScript()", s.engine.LiveLoadScript(copiedScriptPath))
 }
 
 func (s *RuleSuiteBase) OverwriteScript(oldName, newName string) error {
-	return s.engine.LiveWriteScript(oldName, s.ReadSourceScript(newName))
+	return s.engine.LiveWriteScript(oldName, s.ReadSourceDataFile(newName))
 }
 
 func (s *RuleSuiteBase) LiveLoadScript(script string) error {
-	copiedScriptPath := s.CopyScriptToTempDir(script, script)
+	copiedScriptPath := s.CopyDataFileToTempDir(script, script)
 	return s.engine.LiveLoadScript(copiedScriptPath)
 }
 
 func (s *RuleSuiteBase) RemoveScript(oldName string) {
-	s.engine.LiveRemoveScript(s.ScriptPath(oldName))
+	s.engine.LiveRemoveScript(s.DataFilePath(oldName))
 }
 
 func (s *RuleSuiteBase) SetupSkippingDefs(ruleFiles ...string) {
@@ -158,7 +158,7 @@ func (s *RuleSuiteBase) SetCellValue(device, cellName string, value interface{})
 }
 
 func (s *RuleSuiteBase) TearDownTest() {
-	s.TearDownScripts()
+	s.TearDownDataFiles()
 	s.CellSuiteBase.TearDownTest()
 	s.WaitFor(func() bool {
 		return !s.engine.IsActive()

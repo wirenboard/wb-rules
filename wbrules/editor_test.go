@@ -20,7 +20,7 @@ const (
 type EditorSuite struct {
 	wbgo.Suite
 	*wbgo.FakeMQTTFixture
-	*ScriptFixture
+	*wbgo.DataFileFixture
 	client          wbgo.MQTTClient
 	rpc             *wbgo.MQTTRPCServer
 	id              uint64
@@ -41,7 +41,7 @@ func (s *EditorSuite) SetupTest() {
 	s.liveWriteError = nil
 	s.scriptErrorPath = ""
 	s.scriptError = nil
-	s.ScriptFixture = NewScriptFixture(s.T())
+	s.DataFileFixture = wbgo.NewDataFileFixture(s.T())
 	s.addSampleFiles()
 	s.FakeMQTTFixture = wbgo.NewFakeMQTTFixture(s.T())
 	s.rpc = wbgo.NewMQTTRPCServer("wbrules", s.Broker.MakeClient("wbrules"))
@@ -59,18 +59,18 @@ func (s *EditorSuite) SetupTest() {
 }
 
 func (s *EditorSuite) TearDownTest() {
-	s.TearDownScripts()
+	s.TearDownDataFiles()
 	s.rpc.Stop()
 	s.Suite.TearDownTest()
 }
 
 func (s *EditorSuite) ScriptDir() string {
-	return s.ScriptTmpDir
+	return s.DataFileTempDir()
 }
 
 func (s *EditorSuite) LiveWriteScript(virtualPath, content string) error {
 	if s.liveWritePath == "" {
-		s.Require().Fail("unexpected LiveWriteScript()")
+		s.Require().Fail("unexpected LiveWriteDataFile()")
 	}
 	defer func() {
 		s.liveWritePath = ""
@@ -82,7 +82,7 @@ func (s *EditorSuite) LiveWriteScript(virtualPath, content string) error {
 			return s.liveWriteError
 		}
 	}
-	s.WriteScript(virtualPath, content)
+	s.WriteDataFile(virtualPath, content)
 	return s.liveWriteError
 }
 
@@ -92,18 +92,18 @@ func (s *EditorSuite) expectLiveWrite(path string, err error) {
 }
 
 func (s *EditorSuite) verifyLiveWrite() {
-	s.Equal("", s.liveWritePath, "LiveWriteScript() wasn't called")
+	s.Equal("", s.liveWritePath, "LiveWriteDataFile() wasn't called")
 }
 
 func (s *EditorSuite) walkSources(walkFn func(virtualPath, physicalPath string)) {
-	s.Ck("Walk()", filepath.Walk(s.ScriptTmpDir, func(path string, fi os.FileInfo, err error) error {
+	s.Ck("Walk()", filepath.Walk(s.DataFileTempDir(), func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if fi.IsDir() {
 			return nil
 		}
-		relPath, err := filepath.Rel(s.ScriptTmpDir, path)
+		relPath, err := filepath.Rel(s.DataFileTempDir(), path)
 		if err != nil {
 			return err
 		}
@@ -138,8 +138,8 @@ func (s *EditorSuite) ListSourceFiles() (entries []LocFileEntry, err error) {
 }
 
 func (s *EditorSuite) addSampleFiles() {
-	s.WriteScript("sample1.js", "// sample1")
-	s.WriteScript("sample2.js", "// sample2")
+	s.WriteDataFile("sample1.js", "// sample1")
+	s.WriteDataFile("sample2.js", "// sample2")
 }
 
 func (s *EditorSuite) verifySources(expected map[string]string) {
@@ -308,7 +308,7 @@ func (s *EditorSuite) TestRemoveFile() {
 	})
 	s.verifyRpcError("Remove", objx.Map{"path": "nosuchfile.js"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
-	s.WriteScript("unlisted.js.ok", "// unlisted")
+	s.WriteDataFile("unlisted.js.ok", "// unlisted")
 	s.verifyRpcError("Remove", objx.Map{"path": "unlisted.js.ok"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
 	s.verifySources(map[string]string{
@@ -341,7 +341,7 @@ func (s *EditorSuite) TestLoadFile() {
 	})
 	s.verifyRpcError("Load", objx.Map{"path": "nosuchfile.js"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
-	s.WriteScript("unlisted.js.ok", "// unlisted")
+	s.WriteDataFile("unlisted.js.ok", "// unlisted")
 	s.verifyRpcError("Load", objx.Map{"path": "unlisted.js.ok"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
 }
