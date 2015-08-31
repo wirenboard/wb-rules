@@ -2,28 +2,19 @@ package wbrules
 
 import (
 	"errors"
-	"fmt"
 	"github.com/contactless/wbgo"
 	"github.com/stretchr/objx"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 )
 
-const (
-	SAMPLE_CLIENT_ID = "11111111"
-)
-
 type EditorSuite struct {
 	wbgo.Suite
-	*wbgo.FakeMQTTFixture
 	*wbgo.DataFileFixture
-	client          wbgo.MQTTClient
-	rpc             *wbgo.MQTTRPCServer
-	id              uint64
+	*wbgo.RpcFixture
 	liveWritePath   string
 	liveWriteError  error
 	scriptErrorPath string
@@ -36,31 +27,21 @@ func (s *EditorSuite) T() *testing.T {
 
 func (s *EditorSuite) SetupTest() {
 	s.Suite.SetupTest()
-	s.id = 1
 	s.liveWritePath = ""
 	s.liveWriteError = nil
 	s.scriptErrorPath = ""
 	s.scriptError = nil
 	s.DataFileFixture = wbgo.NewDataFileFixture(s.T())
 	s.addSampleFiles()
-	s.FakeMQTTFixture = wbgo.NewFakeMQTTFixture(s.T())
-	s.rpc = wbgo.NewMQTTRPCServer("wbrules", s.Broker.MakeClient("wbrules"))
-	s.rpc.Register(NewEditor(s))
-	s.client = s.Broker.MakeClient("tst")
-	s.client.Start()
-	s.rpc.Start()
-	s.Verify(
-		"Subscribe -- wbrules: /rpc/v1/wbrules/+/+/+",
-		"wbrules -> /rpc/v1/wbrules/Editor/List: [1] (QoS 1, retained)",
-		"wbrules -> /rpc/v1/wbrules/Editor/Load: [1] (QoS 1, retained)",
-		"wbrules -> /rpc/v1/wbrules/Editor/Remove: [1] (QoS 1, retained)",
-		"wbrules -> /rpc/v1/wbrules/Editor/Save: [1] (QoS 1, retained)",
-	)
+	s.RpcFixture = wbgo.NewRpcFixture(
+		s.T(), "wbrules", "Editor", "wbrules",
+		NewEditor(s),
+		"List", "Load", "Remove", "Save")
 }
 
 func (s *EditorSuite) TearDownTest() {
+	s.TearDownRPC()
 	s.TearDownDataFiles()
-	s.rpc.Stop()
 	s.Suite.TearDownTest()
 }
 
@@ -152,42 +133,6 @@ func (s *EditorSuite) verifySources(expected map[string]string) {
 	s.Equal(expected, actual, "sources")
 }
 
-func (s *EditorSuite) verifyRpcRaw(subtopic string, params, expectedResponse objx.Map) {
-	replyId := strconv.FormatUint(s.id, 10)
-	request := objx.Map{
-		"id":     replyId,
-		"params": params,
-	}
-	s.id++
-	topic := fmt.Sprintf("/rpc/v1/wbrules/Editor/%s/%s", subtopic, SAMPLE_CLIENT_ID)
-	payload := request.MustJSON()
-	s.client.Publish(wbgo.MQTTMessage{topic, payload, 1, false})
-	resp := expectedResponse.Copy()
-	resp["id"] = replyId
-	s.Verify(
-		fmt.Sprintf("tst -> %s: [%s] (QoS 1)", topic, payload),
-		fmt.Sprintf("wbrules -> %s/reply: [%s] (QoS 1)", topic, resp.MustJSON()),
-	)
-}
-
-func (s *EditorSuite) verifyRpc(subtopic string, params objx.Map, expectedResult interface{}) {
-	s.verifyRpcRaw(subtopic, params, objx.Map{"result": expectedResult})
-}
-
-func (s *EditorSuite) verifyRpcError(subtopic string, param objx.Map, code int, typ string, msg string) {
-	s.verifyRpcRaw(
-		subtopic,
-		param,
-		objx.Map{
-			"error": objx.Map{
-				"message": msg,
-				"code":    code,
-				"data":    typ,
-			},
-		},
-	)
-}
-
 func (s *EditorSuite) TestListFiles() {
 	s.scriptErrorPath = "sample2.js"
 	scriptErr := NewScriptError(
@@ -197,7 +142,7 @@ func (s *EditorSuite) TestListFiles() {
 		},
 	)
 	s.scriptError = &scriptErr
-	s.verifyRpc("List", objx.Map{}, []objx.Map{
+	s.VerifyRpc("List", objx.Map{}, []objx.Map{
 		{
 			"virtualPath": "sample1.js",
 			"devices": []objx.Map{
@@ -225,7 +170,7 @@ func (s *EditorSuite) TestListFiles() {
 
 func (s *EditorSuite) verifySave(params, expectedResult objx.Map, err error) {
 	s.expectLiveWrite(expectedResult["path"].(string), err)
-	s.verifyRpc("Save", params, expectedResult)
+	s.VerifyRpc("Save", params, expectedResult)
 	s.verifyLiveWrite()
 }
 
@@ -279,9 +224,9 @@ func (s *EditorSuite) TestSaveFile() {
 		"sub/sample5.js": "sample5 -- error",
 	})
 
-	s.verifyRpcError("Save", objx.Map{"path": "../foo/bar.js", "content": "evilfile"},
+	s.VerifyRpcError("Save", objx.Map{"path": "../foo/bar.js", "content": "evilfile"},
 		EDITOR_ERROR_INVALID_PATH, "EditorError", "Invalid path")
-	s.verifyRpcError("Save", objx.Map{"path": "qqq / rrr.js", "content": "lamefile"},
+	s.VerifyRpcError("Save", objx.Map{"path": "qqq / rrr.js", "content": "lamefile"},
 		EDITOR_ERROR_INVALID_PATH, "EditorError", "Invalid path")
 	s.verifySources(map[string]string{
 		"sample1.js":     "// sample1 (changed)",
@@ -293,7 +238,7 @@ func (s *EditorSuite) TestSaveFile() {
 	s.EnsureNoErrorsOrWarnings()
 
 	s.expectLiveWrite("zzz.js", errors.New("fail!"))
-	s.verifyRpcError(
+	s.VerifyRpcError(
 		"Save",
 		objx.Map{"path": "zzz.js", "content": "// sample5"},
 		EDITOR_ERROR_WRITE, "EditorError",
@@ -302,14 +247,14 @@ func (s *EditorSuite) TestSaveFile() {
 }
 
 func (s *EditorSuite) TestRemoveFile() {
-	s.verifyRpc("Remove", objx.Map{"path": "sample1.js"}, true)
+	s.VerifyRpc("Remove", objx.Map{"path": "sample1.js"}, true)
 	s.verifySources(map[string]string{
 		"sample2.js": "// sample2",
 	})
-	s.verifyRpcError("Remove", objx.Map{"path": "nosuchfile.js"},
+	s.VerifyRpcError("Remove", objx.Map{"path": "nosuchfile.js"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
 	s.WriteDataFile("unlisted.js.ok", "// unlisted")
-	s.verifyRpcError("Remove", objx.Map{"path": "unlisted.js.ok"},
+	s.VerifyRpcError("Remove", objx.Map{"path": "unlisted.js.ok"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
 	s.verifySources(map[string]string{
 		"sample2.js":     "// sample2",
@@ -318,7 +263,7 @@ func (s *EditorSuite) TestRemoveFile() {
 }
 
 func (s *EditorSuite) TestLoadFile() {
-	s.verifyRpc("Load", objx.Map{"path": "sample1.js"}, objx.Map{
+	s.VerifyRpc("Load", objx.Map{"path": "sample1.js"}, objx.Map{
 		"content": "// sample1",
 	})
 	s.scriptErrorPath = "sample1.js"
@@ -329,7 +274,7 @@ func (s *EditorSuite) TestLoadFile() {
 		},
 	)
 	s.scriptError = &scriptErr
-	s.verifyRpc("Load", objx.Map{"path": "sample1.js"}, objx.Map{
+	s.VerifyRpc("Load", objx.Map{"path": "sample1.js"}, objx.Map{
 		"content": "// sample1",
 		"error": objx.Map{
 			"message": "syntax error!",
@@ -339,10 +284,10 @@ func (s *EditorSuite) TestLoadFile() {
 			},
 		},
 	})
-	s.verifyRpcError("Load", objx.Map{"path": "nosuchfile.js"},
+	s.VerifyRpcError("Load", objx.Map{"path": "nosuchfile.js"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
 	s.WriteDataFile("unlisted.js.ok", "// unlisted")
-	s.verifyRpcError("Load", objx.Map{"path": "unlisted.js.ok"},
+	s.VerifyRpcError("Load", objx.Map{"path": "unlisted.js.ok"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
 }
 
