@@ -36,7 +36,7 @@ type ESEngine struct {
 	sources       sourceMap
 	currentSource *LocFileEntry
 	sourcesMtx    sync.Mutex
-	tracker       *ContentTracker
+	tracker       *wbgo.ContentTracker
 }
 
 func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine) {
@@ -45,7 +45,7 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine
 		ctx:        newESContext(model.CallSync),
 		scriptBox:  rice.MustFindBox("scripts"),
 		sources:    make(sourceMap),
-		tracker:    NewContentTracker(),
+		tracker:    wbgo.NewContentTracker(),
 	}
 
 	engine.ctx.SetCallbackErrorHandler(func(err ESError) {
@@ -388,7 +388,7 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 			}
 		}
 
-		// WriteFile() will cause Loader to wake up and invoke
+		// WriteFile() will cause DirWatcher to wake up and invoke
 		// LiveLoadFile for the file, but as the new content
 		// will be already registered with the contentTracker,
 		// duplicate reload will not happen
