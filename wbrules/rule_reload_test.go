@@ -156,7 +156,7 @@ func (s *RuleReloadSuite) TestWriteScript() {
 		s.OverwriteScript("subdir/testrules_reload_42.js", "testrules_reload_2_changed.js"))
 	s.verifyReloadCount(3)
 
-	// the following ReplaceScript() which calls LiveLoadScript()
+	// the following ReplaceScript() which calls LiveLoadFile()
 	// has now effect because the new content is already registered
 	s.ReplaceScript("testrules_reload_2.js", "testrules_reload_2_changed.js")
 	s.verifyReloadCount(3)
