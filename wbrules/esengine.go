@@ -267,7 +267,7 @@ func (engine *ESEngine) checkVirtualPath(path string) (cleanPath string, virtual
 	return
 }
 
-func (engine *ESEngine) LoadScript(path string) (err error) {
+func (engine *ESEngine) LoadFile(path string) (err error) {
 	_, err = engine.loadScript(path, true)
 	return
 }
@@ -280,7 +280,7 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 
 	if engine.currentSource != nil {
 		// must use a stack of sources to support recursive LoadScript()
-		panic("recursive LoadScript() calls not supported")
+		panic("recursive loadScript() calls not supported")
 	}
 
 	wasChangedOrFirstSeen, err := engine.tracker.Track(virtualPath, path)
@@ -360,7 +360,7 @@ func (engine *ESEngine) maybePublishUpdate(subtopic, physicalPath string) {
 func (engine *ESEngine) loadScriptAndRefresh(path string, loadIfUnchanged bool) (err error) {
 	loaded, err := engine.loadScript(path, loadIfUnchanged)
 	if loaded {
-		// must call refresh() even in case of LoadScript() error,
+		// must call refresh() even in case of loadScript() error,
 		// because a part of script was still probably loaded
 		engine.Refresh()
 		engine.maybePublishUpdate("changed", path)
@@ -389,7 +389,7 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 		}
 
 		// WriteFile() will cause Loader to wake up and invoke
-		// LiveLoadScript for the file, but as the new content
+		// LiveLoadFile for the file, but as the new content
 		// will be already registered with the contentTracker,
 		// duplicate reload will not happen
 		err = ioutil.WriteFile(cleanPath, []byte(content), 0777)
@@ -402,11 +402,11 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 	return <-r
 }
 
-// LiveLoadScript loads the specified script in the running engine.
+// LiveLoadFile loads the specified script in the running engine.
 // If the engine isn't ready yet, the function waits for it to become
 // ready. If the script didn't change since the last time it was loaded,
 // the script isn't loaded.
-func (engine *ESEngine) LiveLoadScript(path string) error {
+func (engine *ESEngine) LiveLoadFile(path string) error {
 	r := make(chan error)
 	engine.model.WhenReady(func() {
 		r <- engine.loadScriptAndRefresh(path, false)
@@ -415,7 +415,7 @@ func (engine *ESEngine) LiveLoadScript(path string) error {
 	return <-r
 }
 
-func (engine *ESEngine) LiveRemoveScript(path string) error {
+func (engine *ESEngine) LiveRemoveFile(path string) error {
 	engine.model.WhenReady(func() {
 		engine.cleanup.RunCleanups(path)
 		engine.Refresh()

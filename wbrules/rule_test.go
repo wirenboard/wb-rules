@@ -106,13 +106,13 @@ func (s *RuleSuiteBase) loadScripts(scripts []string) {
 	// scripts.
 	for _, script := range scripts {
 		copiedScriptPath := s.CopyDataFileToTempDir(script, script)
-		s.Ck("LoadScript()", s.engine.LoadScript(copiedScriptPath))
+		s.Ck("LoadFile()", s.engine.LoadFile(copiedScriptPath))
 	}
 }
 
 func (s *RuleSuiteBase) ReplaceScript(oldName, newName string) {
 	copiedScriptPath := s.CopyDataFileToTempDir(newName, oldName)
-	s.Ck("LiveLoadScript()", s.engine.LiveLoadScript(copiedScriptPath))
+	s.Ck("LiveLoadFile()", s.engine.LiveLoadFile(copiedScriptPath))
 }
 
 func (s *RuleSuiteBase) OverwriteScript(oldName, newName string) error {
@@ -121,11 +121,11 @@ func (s *RuleSuiteBase) OverwriteScript(oldName, newName string) error {
 
 func (s *RuleSuiteBase) LiveLoadScript(script string) error {
 	copiedScriptPath := s.CopyDataFileToTempDir(script, script)
-	return s.engine.LiveLoadScript(copiedScriptPath)
+	return s.engine.LiveLoadFile(copiedScriptPath)
 }
 
 func (s *RuleSuiteBase) RemoveScript(oldName string) {
-	s.engine.LiveRemoveScript(s.DataFilePath(oldName))
+	s.engine.LiveRemoveFile(s.DataFilePath(oldName))
 }
 
 func (s *RuleSuiteBase) SetupSkippingDefs(ruleFiles ...string) {
