@@ -37,7 +37,9 @@ wb-rules: main.go wbrules/*.go
 	rm -f wbrules/*.rice-box.go
 
 install:
-	mkdir -p $(DESTDIR)/usr/bin/ $(DESTDIR)/etc/init.d/ $(DESTDIR)/etc/wb-rules/
+	mkdir -p $(DESTDIR)/usr/bin/ $(DESTDIR)/etc/init.d/ $(DESTDIR)/etc/wb-rules/ $(DESTDIR)/etc/wb-configs.d
 	install -m 0755 wb-rules $(DESTDIR)/usr/bin/
 	install -m 0755 initscripts/wb-rules $(DESTDIR)/etc/init.d/wb-rules
 	install -m 0655 rules/rules.js $(DESTDIR)/etc/wb-rules/rules.js
+	install -m 0644  wb-rules.wbconfigs $(DESTDIR)/etc/wb-configs.d/13wb-rules
+
