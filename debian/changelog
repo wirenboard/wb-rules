@@ -1,3 +1,9 @@
+wb-rules (1.5.1) stable; urgency=medium
+
+  * add configfile list to wb-configs
+
+ -- Evgeny Boger <boger@contactless.ru>  Sun, 18 Oct 2015 01:46:16 +0300
+
 wb-rules (1.5) stable; urgency=medium
 
   * Rule editor support
