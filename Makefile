@@ -2,7 +2,7 @@ GOM=gom
 .PHONY: all prepare clean
 
 GOPATH := $(HOME)/go
-PATH := $(HOME)/progs/go/bin:$(GOPATH)/bin:$(PATH)
+PATH := $(GOPATH)/bin:$(PATH)
 
 DEB_TARGET_ARCH ?= armel
 
@@ -41,3 +41,6 @@ install:
 	install -m 0755 wb-rules $(DESTDIR)/usr/bin/
 	install -m 0755 initscripts/wb-rules $(DESTDIR)/etc/init.d/wb-rules
 	install -m 0655 rules/rules.js $(DESTDIR)/etc/wb-rules/rules.js
+
+deb: prepare
+	CC=arm-linux-gnueabi-gcc dpkg-buildpackage -b -aarmel -us -uc

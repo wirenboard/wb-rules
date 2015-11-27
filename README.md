@@ -48,8 +48,7 @@ cd wb-rules/
 export GOPATH=~/go
 mkdir -p $GOPATH
 export PATH=$HOME/progs/go/bin:$GOPATH/bin:$PATH
-make prepare
-dpkg-buildpackage -b -aarmel -us -uc
+make deb
 ```
 
 Сборка тестовой версии под архитектуру текущей системы (например, x86_64):
