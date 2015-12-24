@@ -43,7 +43,7 @@ SYSTEM_RULE_DIR=/usr/share/wb-rules-system/rules/
 # and status_of_proc is working.
 . /lib/lsb/init-functions
 
-DAEMON_ARGS="$WB_RULES_OPTIONS -syslog '$SYSTEM_RULE_DIR' '$RULE_DIR'"
+DAEMON_ARGS="$WB_RULES_OPTIONS -syslog -editdir '$RULE_DIR' '$SYSTEM_RULE_DIR' '$RULE_DIR'"
 
 #
 # Function that starts the daemon/service
