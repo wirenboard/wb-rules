@@ -251,3 +251,67 @@ String.prototype.format = function () {
 function cron(spec) {
   return new _WbRules.CronEntry(spec);
 }
+
+var Notify = {
+  EMAIL: "email",
+  SMS: "sms",
+  _smsQueue: [],
+  _smsBusy: false,
+
+  send: function send (method, to, subject, text) {
+    switch (method) {
+    case Notify.EMAIL:
+      this._sendEmail(to, subject, text);
+      break;
+    case Notify.SMS:
+      this._sendSms(to, subject ? subject + ": " + text : text);
+      break;
+    default:
+      throw new Error("unknown notification method: " + method);
+    }
+  },
+
+  _sendEmail: function _sendEmail (to, subject, text) {
+    debug("sending email to {}: {}", to, subject);
+    runShellCommand("/usr/sbin/sendmail '{}'".format(to), {
+      captureErrorOutput: true,
+      captureOutput: true,
+      input: "Subject: {}\n\n{}".format(subject, text),
+      exitCallback: function exitCallback (exitCode, capturedOutput, capturedErrorOutput) {
+        if (exitCode != 0)
+          log.error("error sending email to {}:\n{}\n{}", to, capturedOutput, capturedErrorOutput);
+      }
+    });
+  },
+
+  _advanceSmsQueue: function () {
+    if (!this._smsQueue.length)
+      return;
+    var next = this._smsQueue.shift();
+    next();
+  },
+
+  _sendSms: function _sendSms (to, text) {
+    var doSend = function () {
+      this._smsBusy = true;
+      debug("sending sms to {}: {}", to, text);
+      runShellCommand("wb-gsm restart_if_broken && gammu sendsms TEXT '{}' -unicode".format(to), {
+        captureErrorOutput: true,
+        captureOutput: true,
+        input: text,
+        exitCallback: function (exitCode, capturedOutput, capturedErrorOutput) {
+          this._smsBusy = false;
+          if (exitCode != 0)
+            log.error("error sending sms to {}:\n{}\n{}", to, capturedOutput, capturedErrorOutput);
+          this._advanceSmsQueue();
+        }.bind(this)
+      });
+    }.bind(this);
+
+    if (this._smsBusy) {
+      debug("queueing sms to {}: {}", to, text);
+      this._smsQueue.push(doSend);
+    } else
+      doSend();
+  }
+};
