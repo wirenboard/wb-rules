@@ -161,6 +161,7 @@ type RuleEngine struct {
 	statusMtx         sync.Mutex
 	debugMtx          sync.Mutex
 	debugEnabled      bool
+	readyCh           chan struct{}
 }
 
 func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
@@ -183,9 +184,17 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		cronMaker:         func() Cron { return cron.New() },
 		cron:              nil,
 		debugEnabled:      wbgo.DebuggingEnabled(),
+		readyCh:           nil,
 	}
 	engine.setupRuleEngineSettingsDevice()
 	return
+}
+
+func (engine *RuleEngine) ReadyCh() <-chan struct{} {
+	if engine.readyCh == nil {
+		panic("cannot engine's readyCh before the engine is started")
+	}
+	return engine.readyCh
 }
 
 func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
@@ -382,6 +391,7 @@ func (engine *RuleEngine) handleStop() {
 	engine.model.ReleaseCellChangeChannel(engine.cellChange)
 	engine.statusMtx.Lock()
 	engine.cellChange = nil
+	engine.readyCh = nil
 	engine.statusMtx.Unlock()
 }
 
@@ -407,12 +417,12 @@ func (engine *RuleEngine) Start() {
 	if engine.cellChange != nil {
 		return
 	}
+	engine.readyCh = make(chan struct{})
 	engine.statusMtx.Lock()
 	engine.cellChange = engine.model.AcquireCellChangeChannel()
 	engine.statusMtx.Unlock()
 	ready := make(chan struct{})
 	engine.model.WhenReady(func() {
-		engine.RunRules(nil, NO_TIMER_NAME)
 		close(ready)
 	})
 	go func() {
@@ -437,9 +447,14 @@ func (engine *RuleEngine) Start() {
 				}
 			}
 		}
+		wbgo.Debug.Printf("doing the first rule run")
+		engine.model.CallSync(func() {
+			engine.RunRules(nil, NO_TIMER_NAME)
+		})
 		wbgo.Debug.Printf("setting up cron")
 		engine.model.CallSync(engine.setupCron)
 		wbgo.Debug.Printf("the engine is ready")
+		close(engine.readyCh)
 		for {
 			select {
 			case cellSpec, ok := <-engine.cellChange:
