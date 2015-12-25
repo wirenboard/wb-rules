@@ -61,20 +61,31 @@ type RuleSuiteBase struct {
 
 var logVerifyRx = regexp.MustCompile(`^\[(info|debug|warning|error)\] (.*)`)
 
-func (s *RuleSuiteBase) Verify(items ...interface{}) {
+func (s *RuleSuiteBase) preprocessItemsForVerify(items []interface{}) (newItems []interface{}) {
+	newItems = make([]interface{}, len(items))
 	for n, item := range items {
 		itemStr, ok := item.(string)
 		if !ok {
+			newItems[n] = item
 			continue
 		}
 		groups := logVerifyRx.FindStringSubmatch(itemStr)
 		if groups == nil {
+			newItems[n] = item
 			continue
 		}
 		logLevelStr, message := groups[1], groups[2]
-		items[n] = fmt.Sprintf("driver -> /wbrules/log/%s: [%s] (QoS 1)", logLevelStr, message)
+		newItems[n] = fmt.Sprintf("driver -> /wbrules/log/%s: [%s] (QoS 1)", logLevelStr, message)
 	}
-	s.CellSuiteBase.Verify(items...)
+	return
+}
+
+func (s *RuleSuiteBase) Verify(items ...interface{}) {
+	s.CellSuiteBase.Verify(s.preprocessItemsForVerify(items)...)
+}
+
+func (s *RuleSuiteBase) VerifyUnordered(items ...interface{}) {
+	s.CellSuiteBase.VerifyUnordered(s.preprocessItemsForVerify(items)...)
 }
 
 func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
@@ -132,6 +143,7 @@ func (s *RuleSuiteBase) SetupSkippingDefs(ruleFiles ...string) {
 	s.SetupTest(false, ruleFiles...)
 	s.SkipTill("tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)")
 	s.engine.Start()
+	<-s.engine.ReadyCh()
 	return
 }
 

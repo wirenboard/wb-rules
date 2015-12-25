@@ -25,7 +25,8 @@ func (s *RuleTimersSuite) VerifyTimers(prefix string) {
 	)
 
 	s.publish("/devices/somedev/controls/foo", prefix+"s", "somedev/foo")
-	s.Verify(
+	s.VerifyUnordered(
+		// NOTE: actually, it's only order of timer.Stop() calls which can vary here
 		"tst -> /devices/somedev/controls/foo: ["+prefix+"s] (QoS 1, retained)",
 		"timer.Stop(): 1",
 		"timer.Stop(): 2",
@@ -41,7 +42,9 @@ func (s *RuleTimersSuite) VerifyTimers(prefix string) {
 	ts := s.AdvanceTime(500 * time.Millisecond)
 	s.FireTimer(1, ts)
 	s.FireTimer(2, ts)
-	s.Verify(
+	s.VerifyUnordered(
+		// the order in which fake timers fire is not strictly defined
+		// (engine's timer handlers run in parallel)
 		"timer.fire(): 1",
 		"timer.fire(): 2",
 		"[info] timer fired",
@@ -76,7 +79,7 @@ func (s *RuleTimersSuite) VerifyTimers(prefix string) {
 	ts = s.AdvanceTime(5 * 500 * time.Millisecond)
 	s.FireTimer(1, ts)
 	s.FireTimer(2, ts)
-	s.Verify(
+	s.VerifyUnordered(
 		"timer.fire(): 1",
 		"timer.fire(): 2",
 		"[info] timer fired",
