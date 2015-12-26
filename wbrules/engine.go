@@ -681,7 +681,7 @@ func (engine *RuleEngine) DefineRule(rule *Rule) {
 	})
 }
 
-// refresh() should be called after engine rules are altered
+// Refresh() should be called after engine rules are altered
 // while the engine is running.
 func (engine *RuleEngine) Refresh() {
 	engine.rev++ // invalidate cell proxies
