@@ -53,14 +53,22 @@ var _WbRules = {
     });
   },
 
-  defineAlias: function (name, fullName) {
-    if (!name || !fullName)
-      throw new Error("invalid alias definition");
-    var m = fullName.match(/([^\/]+)+\/([^\/]+)+$/);
+  parseCellRef: function parseCellRef (cellRef) {
+    var m = cellRef.match(/([^\/]+)+\/([^\/]+)+$/);
     if (!m)
-      throw new Error("invalid cell full name for alias");
-    _WbRules.aliases[name] = fullName;
-    var devName = m[1], cellName = m[2], d = null;
+      throw new Error("invalid cell reference");
+    return {
+      device: m[1],
+      control: m[2]
+    };
+  },
+
+  defineAlias: function (name, cellRef) {
+    if (!name || !cellRef)
+      throw new Error("invalid alias definition");
+    var ref = _WbRules.parseCellRef(cellRef);
+    _WbRules.aliases[name] = cellRef;
+    var d = null;
     Object.defineProperty(
       (function () { return this; })(),
       name,
@@ -68,13 +76,13 @@ var _WbRules = {
         configurable: true,
         get: function () {
           if (!d)
-            d = dev[devName];
-          return d[cellName];
+            d = dev[ref.device];
+          return d[ref.control];
         },
         set: function (value) {
           if (!d)
-            d = dev[devName];
-          d[cellName] = value;
+            d = dev[ref.device];
+          d[ref.control] = value;
         }
       });
   },
@@ -173,7 +181,7 @@ var timers = _WbRules.autoload(_WbRules.timers, function (name) {
   };
 });
 
-defineRule = _WbRules.defineRule;
+var defineRule = _WbRules.defineRule;
 
 function startTimer (name, ms) {
   _WbRules.startTimer(name, ms, false);
@@ -239,7 +247,7 @@ function runShellCommand(cmd, options) {
   spawn("/bin/sh", ["-c", cmd], options);
 }
 
-defineAlias = _WbRules.defineAlias;
+var defineAlias = _WbRules.defineAlias;
 
 String.prototype.format = function () {
   var args = [ this ];
@@ -252,66 +260,183 @@ function cron(spec) {
   return new _WbRules.CronEntry(spec);
 }
 
-var Notify = {
-  EMAIL: "email",
-  SMS: "sms",
-  _smsQueue: [],
-  _smsBusy: false,
+var Notify = (function (){
+  var _smsQueue = [],
+      _smsBusy = false;
 
-  send: function send (method, to, subject, text) {
-    switch (method) {
-    case Notify.EMAIL:
-      this._sendEmail(to, subject, text);
-      break;
-    case Notify.SMS:
-      this._sendSms(to, subject ? subject + ": " + text : text);
-      break;
-    default:
-      throw new Error("unknown notification method: " + method);
-    }
-  },
-
-  _sendEmail: function _sendEmail (to, subject, text) {
-    debug("sending email to {}: {}", to, subject);
-    runShellCommand("/usr/sbin/sendmail '{}'".format(to), {
-      captureErrorOutput: true,
-      captureOutput: true,
-      input: "Subject: {}\n\n{}".format(subject, text),
-      exitCallback: function exitCallback (exitCode, capturedOutput, capturedErrorOutput) {
-        if (exitCode != 0)
-          log.error("error sending email to {}:\n{}\n{}", to, capturedOutput, capturedErrorOutput);
-      }
-    });
-  },
-
-  _advanceSmsQueue: function () {
-    if (!this._smsQueue.length)
+  function _advanceSmsQueue () {
+    if (!_smsQueue.length)
       return;
-    var next = this._smsQueue.shift();
+    var next = _smsQueue.shift();
     next();
-  },
+  }
 
-  _sendSms: function _sendSms (to, text) {
-    var doSend = function () {
-      this._smsBusy = true;
-      debug("sending sms to {}: {}", to, text);
-      runShellCommand("wb-gsm restart_if_broken && gammu sendsms TEXT '{}' -unicode".format(to), {
+  return {
+    sendEmail: function sendEmail (to, subject, text) {
+      debug("sending email to {}: {}", to, subject);
+      runShellCommand("/usr/sbin/sendmail '{}'".format(to), {
         captureErrorOutput: true,
         captureOutput: true,
-        input: text,
-        exitCallback: function (exitCode, capturedOutput, capturedErrorOutput) {
-          this._smsBusy = false;
+        input: "Subject: {}\n\n{}".format(subject, text),
+        exitCallback: function exitCallback (exitCode, capturedOutput, capturedErrorOutput) {
           if (exitCode != 0)
-            log.error("error sending sms to {}:\n{}\n{}", to, capturedOutput, capturedErrorOutput);
-          this._advanceSmsQueue();
-        }.bind(this)
+            log.error("error sending email to {}:\n{}\n{}", to, capturedOutput, capturedErrorOutput);
+        }
       });
-    }.bind(this);
+    },
 
-    if (this._smsBusy) {
-      debug("queueing sms to {}: {}", to, text);
-      this._smsQueue.push(doSend);
-    } else
-      doSend();
+    sendSMS: function sendSMS (to, text) {
+      var doSend = function () {
+        _smsBusy = true;
+        debug("sending sms to {}: {}", to, text);
+        runShellCommand("wb-gsm restart_if_broken && gammu sendsms TEXT '{}' -unicode".format(to), {
+          captureErrorOutput: true,
+          captureOutput: true,
+          input: text,
+          exitCallback: function (exitCode, capturedOutput, capturedErrorOutput) {
+            _smsBusy = false;
+            if (exitCode != 0)
+              log.error("error sending sms to {}:\n{}\n{}", to, capturedOutput, capturedErrorOutput);
+            _advanceSmsQueue();
+          }
+        });
+      };
+
+      if (_smsBusy) {
+        debug("queueing sms to {}: {}", to, text);
+        _smsQueue.push(doSend);
+      } else
+        doSend();
+    }
+  };
+})();
+
+var Alarms = (function () {
+  var recipientTypes = {
+    email: function getEmailSendFunc (src) {
+      if (!src.hasOwnProperty("to"))
+        throw new Error("email recipient without 'to'");
+      var subject = src.hasOwnProperty("subject") ? "" + src.subject : "{}";
+      return function sendEmailWrapper (text) {
+        Notify.sendEmail(src.to, maybeFormat(subject, text), text);
+      };
+    },
+
+    sms: function getSMSSendFunc (src) {
+      if (!src.hasOwnProperty("to"))
+        throw new Error("sms recipient without 'to'");
+      return function sendSMSWrapper (text) {
+        Notify.sendSMS(src.to, text);
+      };
+    }
+  };
+
+  function maybeFormat(text, arg) {
+    return text.indexOf("{}") >= 0 ? text.format(arg) : text;
   }
-};
+
+  function getSendFunc (src) {
+    if (!src || typeof src != "object" || !src.hasOwnProperty("type") ||
+        !recipientTypes.hasOwnProperty(src.type))
+      throw new Error("invalid recipient spec: %s", JSON.stringify(src));
+    return recipientTypes[src.type](src);
+  }
+
+  var seq = 1;
+
+  function loadAlarm (alarmSrc, notify) {
+    if (!alarmSrc || typeof alarmSrc != "object" || !alarmSrc.hasOwnProperty("cell"))
+      throw new Error("invalid alarm definition");
+
+    function checkHasNumKey (key) {
+      if (!alarmSrc.hasOwnProperty(key))
+        return false;
+
+      if (typeof alarmSrc[key] != "number")
+        throw new Error("{}: {}: number expected!".format(JSON.stringify(alarmSrc), key));
+
+      return true;
+    }
+
+    var ref = _WbRules.parseCellRef(alarmSrc.cell);
+    var namePrefix = "__alarm{}__{}__".format(seq++, alarmSrc.cell),
+        hasExpectedValue = alarmSrc.hasOwnProperty("expectedValue"),
+        hasMinValue = alarmSrc.hasOwnProperty("minValue"),
+        hasMaxValue = alarmSrc.hasOwnProperty("maxValue"),
+        min, max;
+
+    if (hasExpectedValue) {
+        if (hasMinValue || hasMaxValue)
+          throw new Error("{}: cannot have both expectedValue and minValue/maxValue"
+                          .format(JSON.stringify(alarmSrc)));
+    } else {
+      if (!hasMinValue && !hasMaxValue)
+        throw new Error("{}: must specify either expectedValue or value range"
+                        .format(JSON.stringify(alarmSrc)));
+      min = hasMinValue ? alarmSrc.minValue : -Infinity;
+      max = hasMaxValue ? alarmSrc.maxValue : Infinity;
+    }
+
+    var d = null;
+    function cellValue () {
+      if (!d)
+        d = dev[ref.device];
+      return d[ref.control];
+    }
+
+    var alarmMessage = alarmSrc.alarmMessage ||
+          alarmSrc.cell + (hasExpectedValue ? " has unexpected value = {}" : "is out of bounds, value = {}");
+    var noAlarmMessage = alarmSrc.noAlarmMessage ||
+          alarmSrc.cell + " is back to normal, value = {}";
+
+    var wasActive = false;
+    defineRule(namePrefix + "activate", {
+      asSoonAs: hasExpectedValue ? function () {
+        // log("cv={}; ev={}", JSON.stringify(cellValue()), JSON.stringify(alarmSrc.expectedValue));
+        return cellValue() != alarmSrc.expectedValue;
+      } : function () {
+        // log("cv={}; min={}, max={}", JSON.stringify(cellValue()), min, max);
+        return cellValue() < min || cellValue() > max;
+      },
+      then: function () {
+        wasActive = true;
+        notify(maybeFormat(alarmMessage, cellValue()));
+      }
+    });
+
+    defineRule(namePrefix + "deactivate", {
+      asSoonAs: hasExpectedValue ? function () {
+        return cellValue() == alarmSrc.expectedValue;
+      } : function () {
+        return cellValue() >= min && cellValue() <= max;
+      },
+      then: function () {
+        if (wasActive)
+          notify(maybeFormat(noAlarmMessage, cellValue()));
+      }
+    });
+  }
+
+  function doLoad (src) {
+    if (!src.hasOwnProperty("recipients") || !Array.isArray(src.recipients) || !src.recipients.length)
+      throw new Error("no (proper) recipients specified");
+
+    if (!src.hasOwnProperty("alarms") || !Array.isArray(src.alarms) || !src.alarms.length)
+      throw new Error("no (proper) alarms specified");
+
+    var sendFuncs = src.recipients.map(getSendFunc);
+    function notify (text) {
+      sendFuncs.forEach(function (sendFunc) { sendFunc.call(null, text); });
+    }
+
+    src.alarms.forEach(function (alarmSrc) {
+      loadAlarm(alarmSrc, notify);
+    });
+  }
+
+  return {
+    load: function (src) {
+      return doLoad(typeof src == "string" ? readConfig(src) : src);
+    }
+  };
+})();
