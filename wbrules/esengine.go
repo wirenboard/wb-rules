@@ -3,6 +3,7 @@ package wbrules
 import (
 	"errors"
 	"fmt"
+	"github.com/DisposaBoy/JsonConfigReader"
 	"github.com/GeertJohan/go.rice"
 	wbgo "github.com/contactless/wbgo"
 	duktape "github.com/ivan4th/go-duktape"
@@ -67,6 +68,7 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine
 		"_wbSpawn":             engine.esWbSpawn,
 		"_wbDefineRule":        engine.esWbDefineRule,
 		"runRules":             engine.esWbRunRules,
+		"readConfig":           engine.esReadConfig,
 	})
 	engine.ctx.GetPropString(-1, "log")
 	engine.ctx.DefineFunctions(map[string]func() int{
@@ -693,6 +695,37 @@ func (engine *ESEngine) esWbRunRules() int {
 		return duktape.DUK_RET_ERROR
 	}
 	return 0
+}
+
+func (engine *ESEngine) esReadConfig() int {
+	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(0) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("invalid readConfig call"))
+		return duktape.DUK_RET_ERROR
+	}
+	path := engine.ctx.GetString(0)
+	in, err := os.Open(path)
+	if err != nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("failed to open config file: %s", path))
+		return duktape.DUK_RET_ERROR
+	}
+	defer in.Close()
+
+	reader := JsonConfigReader.New(in)
+	preprocessedContent, err := ioutil.ReadAll(reader)
+	if err != nil {
+		// JsonConfigReader doesn't produce its own errors, thus
+		// any errors returned from it are I/O errors.
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("failed to read config file: %s", path))
+		return duktape.DUK_RET_ERROR
+	}
+
+	parsedJSON, err := objx.FromJSON(string(preprocessedContent))
+	if err != nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("failed to parse json: %s", path))
+		return duktape.DUK_RET_ERROR
+	}
+	engine.ctx.PushJSObject(parsedJSON)
+	return 1
 }
 
 func (engine *ESEngine) EvalScript(code string) error {
