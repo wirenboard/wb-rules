@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/contactless/wbgo"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -15,11 +17,26 @@ type AlarmSuite struct {
 func (s *AlarmSuite) SetupTest() {
 	s.SetupSkippingDefs("testrules_alarm.js")
 	s.publishTestDev()
-	s.loadAlarms()
 }
 
 func (s *AlarmSuite) loadAlarms() {
-	confPath := s.CopyDataFileToTempDir("alarms.conf", "alarms.conf")
+	s.loadAlarmsSkipping("")
+}
+
+func (s *AlarmSuite) loadAlarmsSkipping(skipLine string) {
+	confPath := s.CopyModifiedDataFileToTempDir("alarms.conf", "alarms.conf", func(text string) string {
+		if skipLine == "" {
+			return text
+		}
+		lines := strings.Split(text, "\n")
+		out := make([]string, 0, len(lines))
+		for _, line := range lines {
+			if !strings.Contains(line, skipLine) {
+				out = append(out, line)
+			}
+		}
+		return strings.Join(out, "\n")
+	})
 	confPathJS, err := json.Marshal(confPath)
 	if err != nil {
 		panic("json.Marshal() failed on string?")
@@ -94,6 +111,7 @@ func (s *AlarmSuite) verifyNotificationMsgs(text string) {
 }
 
 func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
+	s.loadAlarms()
 	for i := 0; i < 3; i++ {
 		s.publishCellValue("somedev", "importantDevicePower", "0",
 			"sampleAlarms/importantDeviceIsOff", "sampleAlarms/log")
@@ -126,6 +144,7 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 }
 
 func (s *AlarmSuite) TestNonRepeatedExpectedValueAlarm() {
+	s.loadAlarms()
 	for i := 0; i < 3; i++ {
 		s.publishCellValue("somedev", "unnecessaryDevicePower", "1",
 			"sampleAlarms/unnecessaryDeviceIsOn", "sampleAlarms/log")
@@ -147,13 +166,30 @@ func (s *AlarmSuite) TestNonRepeatedExpectedValueAlarm() {
 	}
 }
 
-func (s *AlarmSuite) TestRepeatedMinMaxAlarmWithMaxCount() {
-	// go below min
-	s.publishCellValue("somedev", "devTemp", "9",
+func (s *AlarmSuite) setOutOfRangeTemp(temp int) {
+	s.publishCellValue("somedev", "devTemp", strconv.Itoa(temp),
 		"sampleAlarms/temperatureOutOfBounds", "sampleAlarms/log")
 	s.verifyAlarmCellChange("temperatureOutOfBounds", true)
-	s.verifyNotificationMsgs("Temperature out of bounds, value = 9")
+	s.verifyNotificationMsgs(fmt.Sprintf("Temperature out of bounds, value = %d", temp))
 	s.Verify("new fake ticker: 1, 10000")
+}
+
+func (s *AlarmSuite) setOkTemp(temp int, stopTimer bool) {
+	s.publishCellValue("somedev", "devTemp", strconv.Itoa(temp),
+		"sampleAlarms/temperatureOutOfBounds", "sampleAlarms/log")
+	s.verifyAlarmCellChange("temperatureOutOfBounds", false)
+	if stopTimer {
+		s.Verify("timer.Stop(): 1")
+	}
+	s.verifyNotificationMsgs(fmt.Sprintf("Temperature is within bounds again, value = %d", temp))
+	s.VerifyEmpty()
+}
+
+func (s *AlarmSuite) TestRepeatedMinMaxAlarmWithMaxCount() {
+	s.loadAlarms()
+
+	// go below min
+	s.setOutOfRangeTemp(9)
 
 	s.publishCellValue("somedev", "devTemp", "8")
 	s.VerifyEmpty() // still out of bounds, but timer wasn't fired yet
@@ -167,29 +203,24 @@ func (s *AlarmSuite) TestRepeatedMinMaxAlarmWithMaxCount() {
 	}
 	s.Verify("timer.Stop(): 1")
 
-	s.publishCellValue("somedev", "devTemp", "10",
-		"sampleAlarms/temperatureOutOfBounds", "sampleAlarms/log")
-	s.verifyAlarmCellChange("temperatureOutOfBounds", false)
-	s.verifyNotificationMsgs("Temperature is within bounds again, value = 10")
-	s.VerifyEmpty()
+	s.setOkTemp(10, false)
 
 	// go over max
-	s.publishCellValue("somedev", "devTemp", "16",
-		"sampleAlarms/temperatureOutOfBounds", "sampleAlarms/log")
-	s.verifyAlarmCellChange("temperatureOutOfBounds", true)
-	s.verifyNotificationMsgs("Temperature out of bounds, value = 16")
-	s.Verify("new fake ticker: 1, 10000")
-
-	s.publishCellValue("somedev", "devTemp", "15",
-		"sampleAlarms/temperatureOutOfBounds", "sampleAlarms/log")
-	s.verifyAlarmCellChange("temperatureOutOfBounds", false)
-	s.Verify("timer.Stop(): 1")
-	s.verifyNotificationMsgs("Temperature is within bounds again, value = 15")
-	s.VerifyEmpty()
+	s.setOutOfRangeTemp(16)
+	s.setOkTemp(15, true)
 }
 
-// TBD: test min alarm
-// TBD: test max alarm
+func (s *AlarmSuite) TestMinAlarm() {
+	s.loadAlarmsSkipping("**maxtemp**")
+	s.setOutOfRangeTemp(9)
+	s.setOkTemp(16, true) // maxValue removed, 16 must be ok
+}
+
+func (s *AlarmSuite) TestMaxAlarm() {
+	s.loadAlarmsSkipping("**mintemp**")
+	s.setOutOfRangeTemp(16)
+	s.setOkTemp(9, true) // minValue removed, 9 must be ok
+}
 
 func TestAlarmSuite(t *testing.T) {
 	wbgo.RunSuites(t,
