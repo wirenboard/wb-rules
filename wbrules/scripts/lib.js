@@ -361,12 +361,13 @@ var Alarms = (function () {
     var ref = _WbRules.parseCellRef(alarmSrc.cell);
     var namePrefix = "__alarm{}__{}__".format(seq++, alarmSrc.cell),
         hasExpectedValue = alarmSrc.hasOwnProperty("expectedValue"),
-        hasMinValue = alarmSrc.hasOwnProperty("minValue"),
-        hasMaxValue = alarmSrc.hasOwnProperty("maxValue"),
+        hasMinValue = checkHasNumKey("minValue"),
+        hasMaxValue = checkHasNumKey("maxValue"),
         alarmMessage = alarmSrc.alarmMessage ||
           alarmSrc.cell + (hasExpectedValue ? " has unexpected value = {}" : "is out of bounds, value = {}"),
         noAlarmMessage = alarmSrc.noAlarmMessage ||
           alarmSrc.cell + " is back to normal, value = {}",
+        maxCount = checkHasNumKey("maxCount") ? Math.floor(alarmSrc.maxCount) : null,
         min, max, interval = null;
 
     if (hasExpectedValue) {
@@ -395,10 +396,20 @@ var Alarms = (function () {
       return d[ref.control];
     }
 
-    var wasActive = false, intervalId = null;
+    var wasActive = false, intervalId = null, remainingCount = null;
+
+    function stopRepeating() {
+      if (intervalId != null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    }
 
     function notifyAboutActiveAlarm() {
-      notify(maybeFormat(alarmMessage, cellValue()));
+      if (remainingCount === null || remainingCount > 0)
+        notify(maybeFormat(alarmMessage, cellValue()));
+      if (remainingCount !== null && --remainingCount <= 0)
+        stopRepeating();
     }
 
     defineRule(namePrefix + "activate", {
@@ -413,6 +424,7 @@ var Alarms = (function () {
         if (wasActive)
           return;
         wasActive = true;
+        remainingCount = maxCount;
         notifyAboutActiveAlarm();
         if (interval !== null)
           intervalId = setInterval(notifyAboutActiveAlarm, interval);
@@ -430,10 +442,7 @@ var Alarms = (function () {
           return;
 
         wasActive = false;
-        if (intervalId != null) {
-          clearInterval(intervalId);
-          intervalId = null;
-        }
+        stopRepeating();
 
         notify(maybeFormat(noAlarmMessage, cellValue()));
       }
