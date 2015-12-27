@@ -344,7 +344,7 @@ var Alarms = (function () {
 
   var seq = 1;
 
-  function loadAlarm (alarmSrc, notify) {
+  function loadAlarm (alarmSrc, notify, alarmDeviceName) {
     if (!alarmSrc || typeof alarmSrc != "object" || !alarmSrc.hasOwnProperty("cell"))
       throw new Error("invalid alarm definition");
 
@@ -360,6 +360,7 @@ var Alarms = (function () {
 
     var ref = _WbRules.parseCellRef(alarmSrc.cell);
     var namePrefix = "__alarm{}__{}__".format(seq++, alarmSrc.cell),
+        cellName = alarmSrc.hasOwnProperty("name") ? "alarm_" + alarmSrc.name : namePrefix + "cell",
         hasExpectedValue = alarmSrc.hasOwnProperty("expectedValue"),
         hasMinValue = checkHasNumKey("minValue"),
         hasMaxValue = checkHasNumKey("maxValue"),
@@ -391,9 +392,15 @@ var Alarms = (function () {
 
     var d = null;
     function cellValue () {
-      if (!d)
+      if (d === null)
         d = dev[ref.device];
       return d[ref.control];
+    }
+
+    function setAlarmActiveCell(active) {
+      active = !!active;
+      if (dev[alarmDeviceName][cellName] !== active)
+        dev[alarmDeviceName][cellName] = active;
     }
 
     var wasActive = false, intervalId = null, remainingCount = null;
@@ -412,57 +419,103 @@ var Alarms = (function () {
         stopRepeating();
     }
 
-    defineRule(namePrefix + "activate", {
-      asSoonAs: hasExpectedValue ? function () {
-        // log("cv={}; ev={}", JSON.stringify(cellValue()), JSON.stringify(alarmSrc.expectedValue));
-        return cellValue() != alarmSrc.expectedValue;
-      } : function () {
-        // log("cv={}; min={}, max={}", JSON.stringify(cellValue()), min, max);
-        return cellValue() < min || cellValue() > max;
-      },
-      then: function () {
-        if (wasActive)
-          return;
-        wasActive = true;
-        remainingCount = maxCount;
-        notifyAboutActiveAlarm();
-        if (interval !== null)
-          intervalId = setInterval(notifyAboutActiveAlarm, interval);
+    return {
+      cellName: cellName,
+      defineRules: function () {
+        defineRule(namePrefix + "activate", {
+          asSoonAs: hasExpectedValue ? function () {
+            // log("cv={}; ev={}", JSON.stringify(cellValue()), JSON.stringify(alarmSrc.expectedValue));
+            return cellValue() != alarmSrc.expectedValue;
+          } : function () {
+            // log("cv={}; min={}, max={}", JSON.stringify(cellValue()), min, max);
+            return cellValue() < min || cellValue() > max;
+          },
+          then: function () {
+            if (wasActive)
+              return;
+
+            setAlarmActiveCell(true);
+
+            wasActive = true;
+            remainingCount = maxCount;
+
+            notifyAboutActiveAlarm();
+
+            if (interval !== null)
+              intervalId = setInterval(notifyAboutActiveAlarm, interval);
+          }
+        });
+
+        defineRule(namePrefix + "deactivate", {
+          asSoonAs: hasExpectedValue ? function () {
+            return cellValue() == alarmSrc.expectedValue;
+          } : function () {
+            return cellValue() >= min && cellValue() <= max;
+          },
+          then: function () {
+            // Set 'alarm active' cell to false during the
+            // first rule run, too. This will clear any
+            // alarms remaining from before wb-rules startup /
+            // loading of this rule file.
+            setAlarmActiveCell(false);
+
+            if (!wasActive)
+              return;
+
+            wasActive = false;
+            stopRepeating();
+
+            notify(maybeFormat(noAlarmMessage, cellValue()));
+          }
+        });
       }
-    });
-
-    defineRule(namePrefix + "deactivate", {
-      asSoonAs: hasExpectedValue ? function () {
-        return cellValue() == alarmSrc.expectedValue;
-      } : function () {
-        return cellValue() >= min && cellValue() <= max;
-      },
-      then: function () {
-        if (!wasActive)
-          return;
-
-        wasActive = false;
-        stopRepeating();
-
-        notify(maybeFormat(noAlarmMessage, cellValue()));
-      }
-    });
+    };
   }
 
   function doLoad (src) {
+    if (!src.hasOwnProperty("deviceName"))
+      throw new Error("deviceName not specified for alarms");
+
     if (!src.hasOwnProperty("recipients") || !Array.isArray(src.recipients) || !src.recipients.length)
-      throw new Error("no (proper) recipients specified");
+      throw new Error("no (proper) recipients specified for alarms");
 
     if (!src.hasOwnProperty("alarms") || !Array.isArray(src.alarms) || !src.alarms.length)
-      throw new Error("no (proper) alarms specified");
+      throw new Error("no (proper) alarms specified for alarms");
 
     var sendFuncs = src.recipients.map(getSendFunc);
     function notify (text) {
+      dev[src.deviceName].log = text;
       sendFuncs.forEach(function (sendFunc) { sendFunc.call(null, text); });
     }
 
-    src.alarms.forEach(function (alarmSrc) {
-      loadAlarm(alarmSrc, notify);
+    var loadedAlarms = src.alarms.map(function (alarmSrc) {
+      return loadAlarm(alarmSrc, notify, src.deviceName);
+    });
+
+    var deviceDef = {
+      cells: {
+        log: {
+          type: "text",
+          value: "",
+          readonly: true
+        }
+      }
+    };
+    if (src.hasOwnProperty("deviceTitle"))
+      deviceDef.title = src.deviceTitle;
+
+    loadedAlarms.forEach(function (alarm) {
+      deviceDef.cells[alarm.cellName] = {
+        type: "alarm",
+        value: false,
+        readonly: true
+      };
+    });
+
+    defineVirtualDevice(src.deviceName, deviceDef);
+
+    loadedAlarms.forEach(function (alarm) {
+      alarm.defineRules();
     });
   }
 
