@@ -363,7 +363,11 @@ var Alarms = (function () {
         hasExpectedValue = alarmSrc.hasOwnProperty("expectedValue"),
         hasMinValue = alarmSrc.hasOwnProperty("minValue"),
         hasMaxValue = alarmSrc.hasOwnProperty("maxValue"),
-        min, max;
+        alarmMessage = alarmSrc.alarmMessage ||
+          alarmSrc.cell + (hasExpectedValue ? " has unexpected value = {}" : "is out of bounds, value = {}"),
+        noAlarmMessage = alarmSrc.noAlarmMessage ||
+          alarmSrc.cell + " is back to normal, value = {}",
+        min, max, interval = null;
 
     if (hasExpectedValue) {
         if (hasMinValue || hasMaxValue)
@@ -377,6 +381,13 @@ var Alarms = (function () {
       max = hasMaxValue ? alarmSrc.maxValue : Infinity;
     }
 
+    if (alarmSrc.hasOwnProperty("interval")) {
+      // !(alarmSrc.interval > 0) covers NaN case
+      if (typeof alarmSrc.interval != "number" || !(alarmSrc.interval > 0))
+        throw new Error("invalid alarm interval");
+      interval = alarmSrc.interval * 1000;
+    }
+
     var d = null;
     function cellValue () {
       if (!d)
@@ -384,12 +395,12 @@ var Alarms = (function () {
       return d[ref.control];
     }
 
-    var alarmMessage = alarmSrc.alarmMessage ||
-          alarmSrc.cell + (hasExpectedValue ? " has unexpected value = {}" : "is out of bounds, value = {}");
-    var noAlarmMessage = alarmSrc.noAlarmMessage ||
-          alarmSrc.cell + " is back to normal, value = {}";
+    var wasActive = false, intervalId = null;
 
-    var wasActive = false;
+    function notifyAboutActiveAlarm() {
+      notify(maybeFormat(alarmMessage, cellValue()));
+    }
+
     defineRule(namePrefix + "activate", {
       asSoonAs: hasExpectedValue ? function () {
         // log("cv={}; ev={}", JSON.stringify(cellValue()), JSON.stringify(alarmSrc.expectedValue));
@@ -399,8 +410,12 @@ var Alarms = (function () {
         return cellValue() < min || cellValue() > max;
       },
       then: function () {
+        if (wasActive)
+          return;
         wasActive = true;
-        notify(maybeFormat(alarmMessage, cellValue()));
+        notifyAboutActiveAlarm();
+        if (interval !== null)
+          intervalId = setInterval(notifyAboutActiveAlarm, interval);
       }
     });
 
@@ -411,8 +426,16 @@ var Alarms = (function () {
         return cellValue() >= min && cellValue() <= max;
       },
       then: function () {
-        if (wasActive)
-          notify(maybeFormat(noAlarmMessage, cellValue()));
+        if (!wasActive)
+          return;
+
+        wasActive = false;
+        if (intervalId != null) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+
+        notify(maybeFormat(noAlarmMessage, cellValue()));
       }
     });
   }

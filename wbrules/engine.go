@@ -41,12 +41,12 @@ func newTimer(id int, d time.Duration, periodic bool) wbgo.Timer {
 
 type TimerEntry struct {
 	sync.Mutex
-	timer    wbgo.Timer
-	periodic bool
-	quit     chan struct{}
-	name     string
-	thunk    func()
-	active   bool
+	timer         wbgo.Timer
+	periodic      bool
+	quit, quitted chan struct{}
+	name          string
+	thunk         func()
+	active        bool
 }
 
 func (entry *TimerEntry) stop() {
@@ -54,6 +54,8 @@ func (entry *TimerEntry) stop() {
 	defer entry.Unlock()
 	if entry.quit != nil {
 		close(entry.quit)
+		// make sure the timer is really stopped before continuing
+		<-entry.quitted
 	}
 	entry.active = false
 }
@@ -493,6 +495,7 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 	entry := &TimerEntry{
 		periodic: periodic,
 		quit:     nil,
+		quitted:  nil,
 		name:     name,
 		active:   true,
 	}
@@ -524,7 +527,8 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 			// stopped before the engine is ready
 			return
 		}
-		entry.quit = make(chan struct{}, 2)
+		entry.quit = make(chan struct{}, 2) // FIXME: is 2 necessary here?
+		entry.quitted = make(chan struct{})
 		entry.timer = engine.timerFunc(n, interval, periodic)
 		tickCh := entry.timer.GetChannel()
 		go func() {
@@ -544,6 +548,7 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 					}
 				case <-entry.quit:
 					entry.timer.Stop()
+					close(entry.quitted)
 					return
 				}
 			}
