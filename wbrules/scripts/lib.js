@@ -273,7 +273,7 @@ var Notify = (function (){
 
   return {
     sendEmail: function sendEmail (to, subject, text) {
-      debug("sending email to {}: {}", to, subject);
+      log("sending email to {}: {}", to, subject);
       runShellCommand("/usr/sbin/sendmail '{}'".format(to), {
         captureErrorOutput: true,
         captureOutput: true,
@@ -288,7 +288,7 @@ var Notify = (function (){
     sendSMS: function sendSMS (to, text) {
       var doSend = function () {
         _smsBusy = true;
-        debug("sending sms to {}: {}", to, text);
+        log("sending sms to {}: {}", to, text);
         runShellCommand("wb-gsm restart_if_broken && gammu sendsms TEXT '{}' -unicode".format(to), {
           captureErrorOutput: true,
           captureOutput: true,
@@ -365,7 +365,7 @@ var Alarms = (function () {
         hasMinValue = checkHasNumKey("minValue"),
         hasMaxValue = checkHasNumKey("maxValue"),
         alarmMessage = alarmSrc.alarmMessage ||
-          alarmSrc.cell + (hasExpectedValue ? " has unexpected value = {}" : "is out of bounds, value = {}"),
+          alarmSrc.cell + (hasExpectedValue ? " has unexpected value = {}" : " is out of bounds, value = {}"),
         noAlarmMessage = alarmSrc.noAlarmMessage ||
           alarmSrc.cell + " is back to normal, value = {}",
         maxCount = checkHasNumKey("maxCount") ? Math.floor(alarmSrc.maxCount) : null,
@@ -476,11 +476,11 @@ var Alarms = (function () {
     if (!src.hasOwnProperty("deviceName"))
       throw new Error("deviceName not specified for alarms");
 
-    if (!src.hasOwnProperty("recipients") || !Array.isArray(src.recipients) || !src.recipients.length)
-      throw new Error("no (proper) recipients specified for alarms");
+    if (!src.hasOwnProperty("recipients") || !Array.isArray(src.recipients))
+      throw new Error("absent/invalid recipients spec specified for alarms");
 
-    if (!src.hasOwnProperty("alarms") || !Array.isArray(src.alarms) || !src.alarms.length)
-      throw new Error("no (proper) alarms specified for alarms");
+    if (!src.hasOwnProperty("alarms") || !Array.isArray(src.alarms))
+      throw new Error("absent/invalid alarms spec");
 
     var sendFuncs = src.recipients.map(getSendFunc);
     function notify (text) {
