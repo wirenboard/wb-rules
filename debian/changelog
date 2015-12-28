@@ -1,3 +1,10 @@
+wb-rules (1.6) stable; urgency=medium
+
+   * Alarms
+   * Misc bugfixes
+
+ -- Ivan Shvedunov <ivan4th@gmail.com>  Mon, 28 Dec 2015 07:12:59 +0300
+
 wb-rules (1.5) stable; urgency=medium
 
   * Rule editor support
