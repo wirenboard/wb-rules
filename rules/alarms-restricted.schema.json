@@ -152,8 +152,12 @@
             }
           },
           "required": ["name", "cell", "minValue"]
-        }
-      ]
+        },
+        {
+          "not": {
+            "required" : ["maxValue"]
+          }
+        }      ]
     },
     "maxValueAlarm": {
       "title": "Maximum Value Alarm",
@@ -168,6 +172,11 @@
             }
           },
           "required": ["name", "cell", "maxValue"]
+        },
+        {
+          "not": {
+            "required" : ["minValue"]
+          }
         }
       ]
     },
@@ -188,26 +197,35 @@
             }
           },
           "required": ["name", "cell", "minValue", "maxValue"]
-        }
+        },
+
       ]
     },
     "recipient": {
       "options": {
         "remove_empty_properties": true
       },
+      "title" : "Recipient",
       "oneOf": [
         { "$ref": "#/definitions/emailRecipient" },
         { "$ref": "#/definitions/smsRecipient" }        
-      ]
+      ],
+      "options": {
+        "disable_collapse" : true
+      }
     },
     "alarm": {
-      "headerTemplate": "Alarm{{: |self.name}}{{ for |self.cell}}",
+      "headerTemplate": "Alarm{{: |self.name}}",
       "oneOf": [
         { "$ref": "#/definitions/expectedValueAlarm" },
         { "$ref": "#/definitions/minValueAlarm" },
         { "$ref": "#/definitions/maxValueAlarm" },
         { "$ref": "#/definitions/minMaxValueAlarm" }
-      ]
+      ],
+      "options": {
+        "disable_collapse" : true,
+      }
+
     }
   },
   "properties": {
@@ -217,24 +235,37 @@
       "description": "Device name to be used in MQTT topics for logging & alarm cells",
       "pattern": "^[^\\s/]+$",
       "minLength": 1,
-      "propertyOrder": 1
+      "propertyOrder": 6,
+      "options" : {
+        "hidden" : true
+      }
     },
     "deviceTitle": {
       "type": "string",
       "title": "Alarm device title",
-      "propertyOrder": 2
+      "propertyOrder": 7,
+      "options" : {
+        "hidden" : true
+      }
     },
     "recipients": {
       "type": "array",
       "title": "Recipients",
       "items": { "$ref": "#/definitions/recipient" },
-      "propertyOrder": 3
+      "propertyOrder": 2,
+      "options" : {
+        "disable_array_reorder" : true
+      }
     },
     "alarms": {
       "type": "array",
       "title": "Alarms",
       "items": { "$ref": "#/definitions/alarm" },
-      "propertyOrder": 4
+      "propertyOrder": 1,
+      "options": {
+        "disable_collapse" : true,
+        "disable_array_reorder" : true
+      }
     }
   },
   "required": ["deviceName", "recipients", "alarms"],
