@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/contactless/wbgo"
 	"log"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -43,14 +44,19 @@ func (s *CellSuiteBase) SetupTest(waitForRetained bool) {
 }
 
 func (s *CellSuiteBase) expectCellChange(expectedCellNames ...string) {
-	for _, expectedCellName := range expectedCellNames {
+	// Notifications happen asynchronously and aren't guaranteed to be
+	// keep original order. Perhaps this needs to be fixed.
+	actualCellNames := make([]string, len(expectedCellNames))
+	for i := range actualCellNames {
 		cellSpec := <-s.cellChange
 		fullName := ""
 		if cellSpec != nil {
 			fullName = fmt.Sprintf("%s/%s", cellSpec.DevName, cellSpec.CellName)
 		}
-		s.Equal(expectedCellName, fullName)
+		actualCellNames[i] = fullName
 	}
+	sort.Strings(expectedCellNames)
+	sort.Strings(actualCellNames)
 	timer := time.NewTimer(EXTRA_CELL_CHANGE_WAIT_TIME_MS * time.Millisecond)
 	select {
 	case <-timer.C:

@@ -26,6 +26,7 @@ var cellTypeMap map[string]CellType = map[string]CellType{
 	"text":                 CELL_TYPE_TEXT,
 	"switch":               CELL_TYPE_BOOLEAN,
 	"wo-switch":            CELL_TYPE_BOOLEAN,
+	"alarm":                CELL_TYPE_BOOLEAN,
 	"pushbutton":           CELL_TYPE_BUTTON,
 	"temperature":          CELL_TYPE_FLOAT,
 	"rel_humidity":         CELL_TYPE_FLOAT,
