@@ -1,0 +1,231 @@
+{
+  "$schema": "http://json-schema.org/draft-04/schema#",
+  "type": "object",
+  "title": "Alarm Configuration",
+  "description": "Lists alarms",
+  "strictProps": true,
+  "definitions": {
+    "emailRecipient": {
+      "title": "E-mail recipient",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "enum": ["email"],
+          "default": "email",
+          "options": {
+            "hidden": true
+          },
+          "propertyOrder": 1
+        },
+        "to": {
+          "type": "string",
+          "title": "E-mail address",
+          "minLength": 1,
+          "propertyOrder": 2
+        },
+        "subject": {
+          "type": "string",
+          "title": "Subject",
+          "description": "{} will be replaced with alarm message text",
+          "propertyOrder": 3
+        }
+      },
+      "required": ["type", "to"]
+    },
+    "smsRecipient": {
+      "title": "SMS recipient",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "enum": ["sms"],
+          "default": "sms",
+          "options": {
+            "hidden": true
+          },
+          "propertyOrder": 1
+        },
+        "to": {
+          "type": "string",
+          "title": "Phone number",
+          "minLength": 1,
+          "propertyOrder": 2
+        }
+      },
+      "required": ["type", "to"]
+    },
+    "alarmBase": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "Alarm name",
+          "minLength": 1,
+          "propertyOrder": 1
+        },
+        "cell": {
+          "type": "string",
+          "title": "Cell",
+          "description": "Use the following format: device/control",
+          "pattern": "^[^\\s/]+/[^\\s/]+$",
+          "minLength": 3,
+          "propertyOrder": 2
+        },
+        "alarmMessage": {
+          "type": "string",
+          "title": "Alarm activation message",
+          "description": "{} will be replaced by target cell value",
+          "propertyOrder": 3
+        },
+        "noAlarmMessage": {
+          "type": "string",
+          "title": "Alarm deactivation message",
+          "description": "{} will be replaced by target cell value",
+          "propertyOrder": 4
+        },
+        "interval": {
+          "type": "integer",
+          "title": "Alarm interval in seconds",
+          "description": "If specified, alarm messages will be repeated while the alarm is active",
+          "propertyOrder": 5
+        },
+        "maxCount": {
+          "type": "integer",
+          "title": "Maximum number of messages",
+          "description": "Maximum number of messages to send while the alarm is active",
+          "propertyOrder": 6
+        }
+      }
+    },
+    "minValue": {
+      "type": "number",
+      "title": "Minimum value",
+      "description": "Alarm activates when cell value is less than the minimum value"
+    },
+    "maxValue": {
+      "type": "number",
+      "title": "Maximum value",
+      "description": "Alarm activates when cell value is greater than the maximum value"
+    },
+    "expectedValueAlarm": {
+      "title": "Expected Value Alarm",
+      "defaultProperties": ["name", "cell", "alarmMessage", "noAlarmMessage", "expectedValue"],
+      "allOf": [
+        { "$ref": "#/definitions/alarmBase" },
+        {
+          "properties": {
+            "expectedValue": {
+              "title": "Expected value",
+              "description": "Alarm activates when cell value differs from the expected value"
+            }
+          },
+          "required": ["name", "cell", "expectedValue"]
+        }
+      ]
+    },
+    "minValueAlarm": {
+      "title": "Minimum Value Alarm",
+      "defaultProperties": ["name", "cell", "alarmMessage", "noAlarmMessage", "minValue"],
+      "allOf": [
+        { "$ref": "#/definitions/alarmBase" },
+        {
+          "properties": {
+            "minValue": {
+              "$ref": "#/definitions/minValue",
+              "propertyOrder": 10
+            }
+          },
+          "required": ["name", "cell", "minValue"]
+        }
+      ]
+    },
+    "maxValueAlarm": {
+      "title": "Maximum Value Alarm",
+      "defaultProperties": ["name", "cell", "alarmMessage", "noAlarmMessage", "maxValue"],
+      "allOf": [
+        { "$ref": "#/definitions/alarmBase" },
+        {
+          "properties": {
+            "maxValue": {
+              "$ref": "#/definitions/maxValue",
+              "propertyOrder": 10
+            }
+          },
+          "required": ["name", "cell", "maxValue"]
+        }
+      ]
+    },
+    "minMaxValueAlarm": {
+      "title": "Minimum&Maximum Value Alarm",
+      "defaultProperties": ["name", "cell", "alarmMessage", "noAlarmMessage", "minValue", "maxValue"],
+      "allOf": [
+        { "$ref": "#/definitions/alarmBase" },
+        {
+          "properties": {
+            "minValue": {
+              "$ref": "#/definitions/minValue",
+              "propertyOrder": 10
+            },
+            "maxValue": {
+              "$ref": "#/definitions/maxValue",
+              "propertyOrder": 11
+            }
+          },
+          "required": ["name", "cell", "minValue", "maxValue"]
+        }
+      ]
+    },
+    "recipient": {
+      "options": {
+        "remove_empty_properties": true
+      },
+      "oneOf": [
+        { "$ref": "#/definitions/emailRecipient" },
+        { "$ref": "#/definitions/smsRecipient" }        
+      ]
+    },
+    "alarm": {
+      "oneOf": [
+        { "$ref": "#/definitions/expectedValueAlarm" },
+        { "$ref": "#/definitions/minValueAlarm" },
+        { "$ref": "#/definitions/maxValueAlarm" },
+        { "$ref": "#/definitions/minMaxValueAlarm" }
+      ]
+    }
+  },
+  "properties": {
+    "deviceName": {
+      "type": "string",
+      "title": "Alarm device name",
+      "description": "Device name to be used in MQTT topics for logging & alarm cells",
+      "pattern": "^[^\\s/]+$",
+      "minLength": 1,
+      "propertyOrder": 1
+    },
+    "deviceTitle": {
+      "type": "string",
+      "title": "Alarm device title",
+      "propertyOrder": 2
+    },
+    "recipients": {
+      "type": "array",
+      "title": "Recipients",
+      "items": { "$ref": "#/definitions/recipient" },
+      "propertyOrder": 3
+    },
+    "alarms": {
+      "type": "array",
+      "title": "Alarms",
+      "items": { "$ref": "#/definitions/alarm" },
+      "propertyOrder": 4
+    }
+  },
+  "required": ["deviceName", "recipients", "alarms"],
+  "configFile": {
+    "path": "/etc/wb-rules/alarms.conf",
+    "service": "wb-rules"
+  }
+}

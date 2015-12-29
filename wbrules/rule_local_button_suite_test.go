@@ -12,6 +12,7 @@ type RuleLocalButtonSuite struct {
 func (s *RuleLocalButtonSuite) SetupTest() {
 	s.RuleSuiteBase.SetupTest(false, "testrules_localbutton.js")
 	s.engine.Start()
+	<-s.engine.ReadyCh()
 }
 
 func (s *RuleLocalButtonSuite) TestLocalButtons() {

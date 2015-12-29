@@ -36,6 +36,8 @@ func (s *RuleRetainedStateSuite) TestRetainedState() {
 	s.VerifyEmpty()
 
 	s.Broker.SetReady()
+	<-s.engine.ReadyCh()
+
 	s.Verify(
 		"driver -> /devices/stabSettings/controls/enabled/meta/type: [switch] (QoS 1, retained)",
 		"driver -> /devices/stabSettings/controls/enabled/meta/order: [1] (QoS 1, retained)",

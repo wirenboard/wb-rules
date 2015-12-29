@@ -53,14 +53,22 @@ var _WbRules = {
     });
   },
 
-  defineAlias: function (name, fullName) {
-    if (!name || !fullName)
-      throw new Error("invalid alias definition");
-    var m = fullName.match(/([^\/]+)+\/([^\/]+)+$/);
+  parseCellRef: function parseCellRef (cellRef) {
+    var m = cellRef.match(/([^\/]+)+\/([^\/]+)+$/);
     if (!m)
-      throw new Error("invalid cell full name for alias");
-    _WbRules.aliases[name] = fullName;
-    var devName = m[1], cellName = m[2], d = null;
+      throw new Error("invalid cell reference");
+    return {
+      device: m[1],
+      control: m[2]
+    };
+  },
+
+  defineAlias: function (name, cellRef) {
+    if (!name || !cellRef)
+      throw new Error("invalid alias definition");
+    var ref = _WbRules.parseCellRef(cellRef);
+    _WbRules.aliases[name] = cellRef;
+    var d = null;
     Object.defineProperty(
       (function () { return this; })(),
       name,
@@ -68,13 +76,13 @@ var _WbRules = {
         configurable: true,
         get: function () {
           if (!d)
-            d = dev[devName];
-          return d[cellName];
+            d = dev[ref.device];
+          return d[ref.control];
         },
         set: function (value) {
           if (!d)
-            d = dev[devName];
-          d[cellName] = value;
+            d = dev[ref.device];
+          d[ref.control] = value;
         }
       });
   },
@@ -173,7 +181,7 @@ var timers = _WbRules.autoload(_WbRules.timers, function (name) {
   };
 });
 
-defineRule = _WbRules.defineRule;
+var defineRule = _WbRules.defineRule;
 
 function startTimer (name, ms) {
   _WbRules.startTimer(name, ms, false);
@@ -239,7 +247,7 @@ function runShellCommand(cmd, options) {
   spawn("/bin/sh", ["-c", cmd], options);
 }
 
-defineAlias = _WbRules.defineAlias;
+var defineAlias = _WbRules.defineAlias;
 
 String.prototype.format = function () {
   var args = [ this ];
@@ -251,3 +259,269 @@ String.prototype.format = function () {
 function cron(spec) {
   return new _WbRules.CronEntry(spec);
 }
+
+var Notify = (function (){
+  var _smsQueue = [],
+      _smsBusy = false;
+
+  function _advanceSmsQueue () {
+    if (!_smsQueue.length)
+      return;
+    var next = _smsQueue.shift();
+    next();
+  }
+
+  return {
+    sendEmail: function sendEmail (to, subject, text) {
+      log("sending email to {}: {}", to, subject);
+      runShellCommand("/usr/sbin/sendmail '{}'".format(to), {
+        captureErrorOutput: true,
+        captureOutput: true,
+        input: "Subject: {}\n\n{}".format(subject, text),
+        exitCallback: function exitCallback (exitCode, capturedOutput, capturedErrorOutput) {
+          if (exitCode != 0)
+            log.error("error sending email to {}:\n{}\n{}", to, capturedOutput, capturedErrorOutput);
+        }
+      });
+    },
+
+    sendSMS: function sendSMS (to, text) {
+      var doSend = function () {
+        _smsBusy = true;
+        log("sending sms to {}: {}", to, text);
+        runShellCommand("wb-gsm restart_if_broken && gammu sendsms TEXT '{}' -unicode".format(to), {
+          captureErrorOutput: true,
+          captureOutput: true,
+          input: text,
+          exitCallback: function (exitCode, capturedOutput, capturedErrorOutput) {
+            _smsBusy = false;
+            if (exitCode != 0)
+              log.error("error sending sms to {}:\n{}\n{}", to, capturedOutput, capturedErrorOutput);
+            _advanceSmsQueue();
+          }
+        });
+      };
+
+      if (_smsBusy) {
+        debug("queueing sms to {}: {}", to, text);
+        _smsQueue.push(doSend);
+      } else
+        doSend();
+    }
+  };
+})();
+
+var Alarms = (function () {
+  var recipientTypes = {
+    email: function getEmailSendFunc (src) {
+      if (!src.hasOwnProperty("to"))
+        throw new Error("email recipient without 'to'");
+      var subject = src.hasOwnProperty("subject") ? "" + src.subject : "{}";
+      return function sendEmailWrapper (text) {
+        Notify.sendEmail(src.to, maybeFormat(subject, text), text);
+      };
+    },
+
+    sms: function getSMSSendFunc (src) {
+      if (!src.hasOwnProperty("to"))
+        throw new Error("sms recipient without 'to'");
+      return function sendSMSWrapper (text) {
+        Notify.sendSMS(src.to, text);
+      };
+    }
+  };
+
+  function maybeFormat(text, arg) {
+    return text.indexOf("{}") >= 0 ? text.format(arg) : text;
+  }
+
+  function getSendFunc (src) {
+    if (!src || typeof src != "object" || !src.hasOwnProperty("type") ||
+        !recipientTypes.hasOwnProperty(src.type))
+      throw new Error("invalid recipient spec: %s", JSON.stringify(src));
+    return recipientTypes[src.type](src);
+  }
+
+  var seq = 1;
+
+  function loadAlarm (alarmSrc, notify, alarmDeviceName) {
+    if (!alarmSrc || typeof alarmSrc != "object" || !alarmSrc.hasOwnProperty("cell"))
+      throw new Error("invalid alarm definition");
+
+    function checkHasNumKey (key) {
+      if (!alarmSrc.hasOwnProperty(key))
+        return false;
+
+      if (typeof alarmSrc[key] != "number")
+        throw new Error("{}: {}: number expected!".format(JSON.stringify(alarmSrc), key));
+
+      return true;
+    }
+
+    var ref = _WbRules.parseCellRef(alarmSrc.cell);
+    var namePrefix = "__alarm{}__{}__".format(seq++, alarmSrc.cell),
+        cellName = alarmSrc.hasOwnProperty("name") ? "alarm_" + alarmSrc.name : namePrefix + "cell",
+        hasExpectedValue = alarmSrc.hasOwnProperty("expectedValue"),
+        hasMinValue = checkHasNumKey("minValue"),
+        hasMaxValue = checkHasNumKey("maxValue"),
+        alarmMessage = alarmSrc.alarmMessage ||
+          alarmSrc.cell + (hasExpectedValue ? " has unexpected value = {}" : " is out of bounds, value = {}"),
+        noAlarmMessage = alarmSrc.noAlarmMessage ||
+          alarmSrc.cell + " is back to normal, value = {}",
+        maxCount = checkHasNumKey("maxCount") ? Math.floor(alarmSrc.maxCount) : null,
+        min, max, interval = null;
+
+    if (hasExpectedValue) {
+        if (hasMinValue || hasMaxValue)
+          throw new Error("{}: cannot have both expectedValue and minValue/maxValue"
+                          .format(JSON.stringify(alarmSrc)));
+    } else {
+      if (!hasMinValue && !hasMaxValue)
+        throw new Error("{}: must specify either expectedValue or value range"
+                        .format(JSON.stringify(alarmSrc)));
+      min = hasMinValue ? alarmSrc.minValue : -Infinity;
+      max = hasMaxValue ? alarmSrc.maxValue : Infinity;
+    }
+
+    if (alarmSrc.hasOwnProperty("interval")) {
+      // !(alarmSrc.interval > 0) covers NaN case
+      if (typeof alarmSrc.interval != "number" || !(alarmSrc.interval > 0))
+        throw new Error("invalid alarm interval");
+      interval = alarmSrc.interval * 1000;
+    }
+
+    var d = null;
+    function cellValue () {
+      if (d === null)
+        d = dev[ref.device];
+      return d[ref.control];
+    }
+
+    function setAlarmActiveCell(active) {
+      active = !!active;
+      if (dev[alarmDeviceName][cellName] !== active)
+        dev[alarmDeviceName][cellName] = active;
+    }
+
+    var wasActive = false, intervalId = null, remainingCount = null;
+
+    function stopRepeating() {
+      if (intervalId != null) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    }
+
+    function notifyAboutActiveAlarm() {
+      if (remainingCount === null || remainingCount > 0)
+        notify(maybeFormat(alarmMessage, cellValue()));
+      if (remainingCount !== null && --remainingCount <= 0)
+        stopRepeating();
+    }
+
+    return {
+      cellName: cellName,
+      defineRules: function () {
+        defineRule(namePrefix + "activate", {
+          asSoonAs: hasExpectedValue ? function () {
+            // log("cv={}; ev={}", JSON.stringify(cellValue()), JSON.stringify(alarmSrc.expectedValue));
+            return cellValue() != alarmSrc.expectedValue;
+          } : function () {
+            // log("cv={}; min={}, max={}", JSON.stringify(cellValue()), min, max);
+            return cellValue() < min || cellValue() > max;
+          },
+          then: function () {
+            if (wasActive)
+              return;
+
+            setAlarmActiveCell(true);
+
+            wasActive = true;
+            remainingCount = maxCount;
+
+            notifyAboutActiveAlarm();
+
+            if (interval !== null)
+              intervalId = setInterval(notifyAboutActiveAlarm, interval);
+          }
+        });
+
+        defineRule(namePrefix + "deactivate", {
+          asSoonAs: hasExpectedValue ? function () {
+            return cellValue() == alarmSrc.expectedValue;
+          } : function () {
+            return cellValue() >= min && cellValue() <= max;
+          },
+          then: function () {
+            // Set 'alarm active' cell to false during the
+            // first rule run, too. This will clear any
+            // alarms remaining from before wb-rules startup /
+            // loading of this rule file.
+            setAlarmActiveCell(false);
+
+            if (!wasActive)
+              return;
+
+            wasActive = false;
+            stopRepeating();
+
+            notify(maybeFormat(noAlarmMessage, cellValue()));
+          }
+        });
+      }
+    };
+  }
+
+  function doLoad (src) {
+    if (!src.hasOwnProperty("deviceName"))
+      throw new Error("deviceName not specified for alarms");
+
+    if (!src.hasOwnProperty("recipients") || !Array.isArray(src.recipients))
+      throw new Error("absent/invalid recipients spec specified for alarms");
+
+    if (!src.hasOwnProperty("alarms") || !Array.isArray(src.alarms))
+      throw new Error("absent/invalid alarms spec");
+
+    var sendFuncs = src.recipients.map(getSendFunc);
+    function notify (text) {
+      dev[src.deviceName].log = text;
+      sendFuncs.forEach(function (sendFunc) { sendFunc.call(null, text); });
+    }
+
+    var loadedAlarms = src.alarms.map(function (alarmSrc) {
+      return loadAlarm(alarmSrc, notify, src.deviceName);
+    });
+
+    var deviceDef = {
+      cells: {
+        log: {
+          type: "text",
+          value: "",
+          readonly: true
+        }
+      }
+    };
+    if (src.hasOwnProperty("deviceTitle"))
+      deviceDef.title = src.deviceTitle;
+
+    loadedAlarms.forEach(function (alarm) {
+      deviceDef.cells[alarm.cellName] = {
+        type: "alarm",
+        value: false,
+        readonly: true
+      };
+    });
+
+    defineVirtualDevice(src.deviceName, deviceDef);
+
+    loadedAlarms.forEach(function (alarm) {
+      alarm.defineRules();
+    });
+  }
+
+  return {
+    load: function (src) {
+      return doLoad(typeof src == "string" ? readConfig(src) : src);
+    }
+  };
+})();

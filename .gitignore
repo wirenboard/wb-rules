@@ -29,7 +29,7 @@ _testmain.go
 /wb-rules
 
 _vendor
-*.rice-box.go
+*rice-box.go
 
 debian/files
 debian/wb-rules*

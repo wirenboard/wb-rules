@@ -41,12 +41,12 @@ func newTimer(id int, d time.Duration, periodic bool) wbgo.Timer {
 
 type TimerEntry struct {
 	sync.Mutex
-	timer    wbgo.Timer
-	periodic bool
-	quit     chan struct{}
-	name     string
-	thunk    func()
-	active   bool
+	timer         wbgo.Timer
+	periodic      bool
+	quit, quitted chan struct{}
+	name          string
+	thunk         func()
+	active        bool
 }
 
 func (entry *TimerEntry) stop() {
@@ -54,6 +54,8 @@ func (entry *TimerEntry) stop() {
 	defer entry.Unlock()
 	if entry.quit != nil {
 		close(entry.quit)
+		// make sure the timer is really stopped before continuing
+		<-entry.quitted
 	}
 	entry.active = false
 }
@@ -161,6 +163,7 @@ type RuleEngine struct {
 	statusMtx         sync.Mutex
 	debugMtx          sync.Mutex
 	debugEnabled      bool
+	readyCh           chan struct{}
 }
 
 func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
@@ -183,9 +186,17 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		cronMaker:         func() Cron { return cron.New() },
 		cron:              nil,
 		debugEnabled:      wbgo.DebuggingEnabled(),
+		readyCh:           nil,
 	}
 	engine.setupRuleEngineSettingsDevice()
 	return
+}
+
+func (engine *RuleEngine) ReadyCh() <-chan struct{} {
+	if engine.readyCh == nil {
+		panic("cannot engine's readyCh before the engine is started")
+	}
+	return engine.readyCh
 }
 
 func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
@@ -382,6 +393,7 @@ func (engine *RuleEngine) handleStop() {
 	engine.model.ReleaseCellChangeChannel(engine.cellChange)
 	engine.statusMtx.Lock()
 	engine.cellChange = nil
+	engine.readyCh = nil
 	engine.statusMtx.Unlock()
 }
 
@@ -407,12 +419,12 @@ func (engine *RuleEngine) Start() {
 	if engine.cellChange != nil {
 		return
 	}
+	engine.readyCh = make(chan struct{})
 	engine.statusMtx.Lock()
 	engine.cellChange = engine.model.AcquireCellChangeChannel()
 	engine.statusMtx.Unlock()
 	ready := make(chan struct{})
 	engine.model.WhenReady(func() {
-		engine.RunRules(nil, NO_TIMER_NAME)
 		close(ready)
 	})
 	go func() {
@@ -437,9 +449,14 @@ func (engine *RuleEngine) Start() {
 				}
 			}
 		}
+		wbgo.Debug.Printf("doing the first rule run")
+		engine.model.CallSync(func() {
+			engine.RunRules(nil, NO_TIMER_NAME)
+		})
 		wbgo.Debug.Printf("setting up cron")
 		engine.model.CallSync(engine.setupCron)
 		wbgo.Debug.Printf("the engine is ready")
+		close(engine.readyCh)
 		for {
 			select {
 			case cellSpec, ok := <-engine.cellChange:
@@ -478,6 +495,7 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 	entry := &TimerEntry{
 		periodic: periodic,
 		quit:     nil,
+		quitted:  nil,
 		name:     name,
 		active:   true,
 	}
@@ -509,7 +527,8 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 			// stopped before the engine is ready
 			return
 		}
-		entry.quit = make(chan struct{}, 2)
+		entry.quit = make(chan struct{}, 2) // FIXME: is 2 necessary here?
+		entry.quitted = make(chan struct{})
 		entry.timer = engine.timerFunc(n, interval, periodic)
 		tickCh := entry.timer.GetChannel()
 		go func() {
@@ -529,6 +548,7 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 					}
 				case <-entry.quit:
 					entry.timer.Stop()
+					close(entry.quitted)
 					return
 				}
 			}
@@ -666,7 +686,7 @@ func (engine *RuleEngine) DefineRule(rule *Rule) {
 	})
 }
 
-// refresh() should be called after engine rules are altered
+// Refresh() should be called after engine rules are altered
 // while the engine is running.
 func (engine *RuleEngine) Refresh() {
 	engine.rev++ // invalidate cell proxies

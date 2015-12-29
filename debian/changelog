@@ -1,8 +1,9 @@
-wb-rules (1.5.1) stable; urgency=medium
+wb-rules (1.6) stable; urgency=medium
 
-  * add configfile list to wb-configs
+   * Alarms
+   * Misc bugfixes
 
- -- Evgeny Boger <boger@contactless.ru>  Sun, 18 Oct 2015 01:46:16 +0300
+ -- Ivan Shvedunov <ivan4th@gmail.com>  Mon, 28 Dec 2015 07:12:59 +0300
 
 wb-rules (1.5) stable; urgency=medium
 

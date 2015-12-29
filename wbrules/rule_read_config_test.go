@@ -1,0 +1,79 @@
+package wbrules
+
+import (
+	"fmt"
+	"github.com/contactless/wbgo"
+	"io/ioutil"
+	"path/filepath"
+	"testing"
+)
+
+type RuleReadConfigSuite struct {
+	RuleSuiteBase
+	configDir string
+	cleanup   func()
+}
+
+func (s *RuleReadConfigSuite) SetupTest() {
+	s.SetupSkippingDefs("testrules_read_config.js")
+	s.configDir, s.cleanup = wbgo.SetupTempDir(s.T())
+}
+
+func (s *RuleReadConfigSuite) TearDownTest() {
+	if s.cleanup != nil {
+		s.cleanup()
+	}
+	s.RuleSuiteBase.TearDownTest()
+}
+
+func (s *RuleReadConfigSuite) WriteConfig(filename, text string) (configPath string) {
+	configPath = filepath.Join(s.configDir, "conf.json")
+	// note that this is JSON config which supports comments, not just json
+	ioutil.WriteFile(configPath, []byte(text), 0777)
+	return
+}
+
+func (s *RuleReadConfigSuite) TryReadingConfig(configPath string) {
+	s.publish("/devices/somedev/controls/readSampleConfig/meta/type", "text", "somedev/cmd")
+	s.publish("/devices/somedev/controls/readSampleConfig", configPath, "somedev/cmd")
+}
+
+func (s *RuleReadConfigSuite) verifyReadConfRuleLog(configPath string, msgs ...interface{}) {
+	msgs = append([]interface{}{
+		"tst -> /devices/somedev/controls/readSampleConfig/meta/type: [text] (QoS 1, retained)",
+		fmt.Sprintf(
+			"tst -> /devices/somedev/controls/readSampleConfig: [%s] (QoS 1, retained)",
+			configPath),
+	}, msgs...)
+	s.Verify(msgs...)
+}
+
+func (s *RuleReadConfigSuite) TestReadConfig() {
+	configPath := s.WriteConfig("conf.json", "{ // whatever! \n\"xyz\": 42 }")
+	s.TryReadingConfig(configPath)
+	s.verifyReadConfRuleLog(configPath, "[info] config: {\"xyz\":42}")
+}
+
+func (s *RuleReadConfigSuite) TestReadConfigErrors() {
+	configPath := filepath.Join(s.configDir, "nosuchconf.json")
+	s.TryReadingConfig(configPath)
+	s.verifyReadConfRuleLog(
+		configPath,
+		fmt.Sprintf("[error] failed to open config file: %s", configPath),
+		"[error] readConfig error!")
+	s.EnsureGotErrors()
+
+	configPath = s.WriteConfig("badconf.json", "{")
+	s.TryReadingConfig(configPath)
+	s.verifyReadConfRuleLog(
+		configPath,
+		fmt.Sprintf("[error] failed to parse json: %s", configPath),
+		"[error] readConfig error!")
+	s.EnsureGotErrors()
+}
+
+func TestRuleReadConfigSuite(t *testing.T) {
+	wbgo.RunSuites(t,
+		new(RuleReadConfigSuite),
+	)
+}

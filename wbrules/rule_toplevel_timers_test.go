@@ -26,6 +26,7 @@ func (s *RuleToplevelTimersSuite) TestToplevelTimers() {
 	)
 	s.VerifyEmpty()
 	s.Broker.SetReady()
+	<-s.engine.ReadyCh()
 	s.VerifyUnordered(
 		"new fake timer: 1, 1000",
 		"driver -> /devices/wbrules/controls/Rule debugging/meta/type: [switch] (QoS 1, retained)",

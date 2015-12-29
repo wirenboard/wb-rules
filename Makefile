@@ -2,7 +2,7 @@ GOM=gom
 .PHONY: all prepare clean
 
 GOPATH := $(HOME)/go
-PATH := $(HOME)/progs/go/bin:$(GOPATH)/bin:$(PATH)
+PATH := $(GOPATH)/bin:$(PATH)
 
 DEB_TARGET_ARCH ?= armel
 
@@ -37,9 +37,15 @@ wb-rules: main.go wbrules/*.go
 	rm -f wbrules/*.rice-box.go
 
 install:
-	mkdir -p $(DESTDIR)/usr/bin/ $(DESTDIR)/etc/init.d/ $(DESTDIR)/etc/wb-rules/ $(DESTDIR)/etc/wb-configs.d
+	mkdir -p $(DESTDIR)/usr/bin/ $(DESTDIR)/etc/init.d/ $(DESTDIR)/etc/wb-rules/ $(DESTDIR)/etc/wb-mqtt-confed/schemas
 	install -m 0755 wb-rules $(DESTDIR)/usr/bin/
 	install -m 0755 initscripts/wb-rules $(DESTDIR)/etc/init.d/wb-rules
 	install -m 0655 rules/rules.js $(DESTDIR)/etc/wb-rules/rules.js
 	install -m 0644  wb-rules.wbconfigs $(DESTDIR)/etc/wb-configs.d/13wb-rules
 
+	install -m 0655 rules/load_alarms.js $(DESTDIR)/etc/wb-rules/load_alarms.js
+	install -m 0655 rules/alarms.conf $(DESTDIR)/etc/wb-rules/alarms.conf
+	install -m 0655 rules/alarms.schema.json $(DESTDIR)/etc/wb-mqtt-confed/schemas/alarms.schema.json
+
+deb: prepare
+	CC=arm-linux-gnueabi-gcc dpkg-buildpackage -b -aarmel -us -uc
