@@ -139,8 +139,12 @@
             }
           },
           "required": ["name", "cell", "minValue"]
-        }
-      ]
+        },
+        {
+          "not": {
+            "required" : ["maxValue"]
+          }
+        }      ]
     },
     "maxValueAlarm": {
       "title": "Maximum Value Alarm",
@@ -155,7 +159,12 @@
             }
           },
           "required": ["name", "cell", "maxValue"]
-        }
+        },
+        {
+          "not": {
+            "required" : ["minValue"]
+          }
+        } 
       ]
     },
     "minMaxValueAlarm": {
@@ -182,18 +191,27 @@
       "options": {
         "remove_empty_properties": true
       },
+      "title" : "Recipient",
       "oneOf": [
         { "$ref": "#/definitions/emailRecipient" },
         { "$ref": "#/definitions/smsRecipient" }        
-      ]
+      ],
+      "options": {
+        "disable_collapse" : true
+      }
     },
     "alarm": {
+      "headerTemplate": "Alarm{{: |self.name}}",
       "oneOf": [
         { "$ref": "#/definitions/expectedValueAlarm" },
         { "$ref": "#/definitions/minValueAlarm" },
         { "$ref": "#/definitions/maxValueAlarm" },
         { "$ref": "#/definitions/minMaxValueAlarm" }
-      ]
+      ],
+      "options": {
+        "disable_collapse" : true,
+      }
+
     }
   },
   "properties": {
@@ -214,13 +232,20 @@
       "type": "array",
       "title": "Recipients",
       "items": { "$ref": "#/definitions/recipient" },
-      "propertyOrder": 3
+      "propertyOrder": 3,
+      "options" : {
+        "disable_array_reorder" : true
+      }
     },
     "alarms": {
       "type": "array",
       "title": "Alarms",
       "items": { "$ref": "#/definitions/alarm" },
-      "propertyOrder": 4
+      "propertyOrder": 4,
+      "options": {
+        "disable_collapse" : true,
+        "disable_array_reorder" : true
+      }
     }
   },
   "required": ["deviceName", "recipients", "alarms"],
