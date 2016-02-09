@@ -1,3 +1,9 @@
+wb-rules (1.6.1) stable; urgency=medium
+
+  * relocates schemas
+
+ -- Evgeny Boger <boger@contactless.ru>  Tue, 09 Feb 2016 15:49:08 +0300
+
 wb-rules (1.6) stable; urgency=medium
 
    * Alarms
