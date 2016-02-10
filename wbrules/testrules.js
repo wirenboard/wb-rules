@@ -3,11 +3,18 @@
 if ((function () { return this; })() !== global)
   throw new Error("global object not defined!");
 
-// extra test for format()
+// extra test for format() / xformat()
 (function () {
   var formatted = "{{}abc {{} {} {{}".format(1);
   if (formatted != "{}abc {} 1 {}")
     throw new Error("oops! format error: " + formatted);
+
+  var xformatted = "\\{}abc \\{} {} {} -- {{ (31).toString(16) }} \\{}".xformat(1, "zz");
+  if (xformatted != "{}abc {} 1 zz -- 1f {}")
+    throw new Error("oops! xformat error: " + xformatted);
+  xformatted = "{{ (function(){ throw new Error('zzzerr'); })() }}".xformat();
+  if (xformatted != "<eval failed:  (function(){ throw new Error('zzzerr'); })() : Error: zzzerr>")
+    throw new Error("oops! xformat exception handling error: " + xformatted);
 })();
 
 function cellSpec(devName, cellName) {

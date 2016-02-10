@@ -256,6 +256,22 @@ String.prototype.format = function () {
   return format.apply(null, args);
 };
 
+String.prototype.xformat = function () {
+  var parts = this.split(/\\\{/g), i = 0,
+      args = Array.prototype.slice.apply(arguments);
+  return parts.map(function (part) {
+    return part.replace(/\{\{(.*?)\}\}/g, function (all, expr) {
+      try {
+        return eval(expr);
+      } catch (e) {
+        return "<eval failed: " + expr + ": " + e + ">";
+      }
+    }).replace(/\{\}/g, function () {
+      return i < args.length ? args[i++] : "";
+    });
+  }).join("{");
+};
+
 function cron(spec) {
   return new _WbRules.CronEntry(spec);
 }
@@ -332,7 +348,7 @@ var Alarms = (function () {
   };
 
   function maybeFormat(text, arg) {
-    return text.indexOf("{}") >= 0 ? text.format(arg) : text;
+    return text.indexOf("{}") >= 0 || text.indexOf("{{") > 0 ? text.xformat(arg) : text;
   }
 
   function getSendFunc (src) {
