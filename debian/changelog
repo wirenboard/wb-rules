@@ -1,3 +1,10 @@
+wb-rules (1.6.2) stable; urgency=medium
+
+  * added String.prototype.xformat()
+  * updated alarms to use String.prototype.xformat()
+
+ -- Ivan Shvedunov <ivan4th@gmail.com>  Sat, 13 Feb 2016 09:38:44 +0300
+
 wb-rules (1.6.1) stable; urgency=medium
 
   * relocates schemas
