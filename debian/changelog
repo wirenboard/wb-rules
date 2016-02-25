@@ -1,3 +1,9 @@
+wb-rules (1.6.3) stable; urgency=medium
+
+  * fix deps
+
+ -- Ivan Shvedunov <ivan4th@gmail.com>  Thu, 25 Feb 2016 05:37:36 +0300
+
 wb-rules (1.6.2) stable; urgency=medium
 
   * added String.prototype.xformat()
