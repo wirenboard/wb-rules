@@ -244,6 +244,7 @@ func (engine *RuleEngine) storeRuleCell(rule *Rule, cell *Cell) {
 	}
 	wbgo.Debug.Printf("adding cell %s for rule %s", cell.Name(), rule.name)
 	engine.cellToRuleMap[cell] = append(list, rule)
+	engine.rulesWithoutCells[rule] = false
 }
 
 func (engine *RuleEngine) storeRuleTimer(rule *Rule, timerName string) {
@@ -263,8 +264,17 @@ func (engine *RuleEngine) StoreRuleDeps(rule *Rule) {
 		for timerName, _ := range engine.notedTimers {
 			engine.storeRuleTimer(rule, timerName)
 		}
-	} else {
-		wbgo.Debug.Printf("rule %s doesn't use any cells inside condition functions", rule.name)
+	} else if _, found := engine.rulesWithoutCells[rule]; !found {
+		// Rules without cells in their conditions negatively affect
+		// the engine performance because they must be checked
+		// too often. Only mark a rule as such if it doesn't have
+		// any cells associa
+		if wbgo.DebuggingEnabled() {
+			// Here we use Warn output but only in case if debugging is enabled.
+			// This improves testability (due to EnsureNoErrorsOrWarnings()) but
+			// avoids polluting logs with endless warnings when debugging is off.
+			wbgo.Warn.Printf("rule %s doesn't use any cells inside condition functions", rule.name)
+		}
 		engine.rulesWithoutCells[rule] = true
 	}
 	engine.notedCells = nil
@@ -348,8 +358,10 @@ func (engine *RuleEngine) RunRules(cellSpec *CellSpec, timerName string) {
 				}
 			}
 		}
-		for rule, _ := range engine.rulesWithoutCells {
-			rule.ShouldCheck()
+		for rule, isWithoutCells := range engine.rulesWithoutCells {
+			if isWithoutCells {
+				rule.ShouldCheck()
+			}
 		}
 	}
 
@@ -461,14 +473,16 @@ func (engine *RuleEngine) Start() {
 			select {
 			case cellSpec, ok := <-engine.cellChange:
 				if ok {
-					wbgo.Debug.Printf("cell change: %v", cellSpec)
-					if cellSpec != nil {
-						wbgo.Debug.Printf(
-							"rule engine: running rules after cell change: %s/%s",
-							cellSpec.DevName, cellSpec.CellName)
-					} else {
-						wbgo.Debug.Printf(
-							"rule engine: running rules")
+					if wbgo.DebuggingEnabled() {
+						wbgo.Debug.Printf("cell change: %v", cellSpec)
+						if cellSpec != nil {
+							wbgo.Debug.Printf(
+								"rule engine: running rules after cell change: %s/%s",
+								cellSpec.DevName, cellSpec.CellName)
+						} else {
+							wbgo.Debug.Printf(
+								"rule engine: running rules")
+						}
 					}
 					if cellSpec == nil || engine.isDebugCell(cellSpec) {
 						engine.updateDebugEnabled()

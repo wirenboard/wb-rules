@@ -14,6 +14,13 @@ func (s *RuleCellChangesSuite) SetupTest() {
 }
 
 func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
+	// There was a problem with 'whenChanged' rules being marked as
+	// 'rules without cells' which was negatively affecting performance
+	// (related to SOFT-181).
+	// The engine prints warnings if a rule gets marked as cell-less,
+	// but only in case if debugging is enabled, as not to pollute
+	// logs with too much warnings.
+	wbgo.SetDebuggingEnabled(true)
 	s.publish("/devices/cellch/controls/button/on", "1",
 		"cellch/button", "cellch/sw", "cellch/misc")
 	s.Verify(
@@ -45,6 +52,8 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 	s.Verify(
 		"tst -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
 	)
+	// SOFT-181, see comment at the beginning of this test
+	s.EnsureNoErrorsOrWarnings()
 }
 
 func TestRuleCellChangesSuite(t *testing.T) {
