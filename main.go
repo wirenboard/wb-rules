@@ -4,6 +4,9 @@ import (
 	wbrules "./wbrules"
 	"flag"
 	"github.com/contactless/wbgo"
+	"os"
+	"os/signal"
+	"runtime/pprof"
 	"time"
 )
 
@@ -15,6 +18,7 @@ func main() {
 	debug := flag.Bool("debug", false, "Enable debugging")
 	useSyslog := flag.Bool("syslog", false, "Use syslog for logging")
 	mqttDebug := flag.Bool("mqttdebug", false, "Enable MQTT debugging")
+	cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
 	flag.Parse()
 	if flag.NArg() < 1 {
 		wbgo.Error.Fatal("must specify rule file/directory name(s)")
@@ -57,6 +61,21 @@ func main() {
 		rpc := wbgo.NewMQTTRPCServer("wbrules", mqttClient)
 		rpc.Register(wbrules.NewEditor(engine))
 		rpc.Start()
+	}
+
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			wbgo.Error.Fatalf("error creating profiling file: %s", err)
+		}
+		pprof.StartCPUProfile(f)
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, os.Interrupt)
+		go func() {
+			<-ch
+			pprof.StopCPUProfile()
+			os.Exit(130)
+		}()
 	}
 
 	engine.Start()
