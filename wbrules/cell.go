@@ -345,7 +345,10 @@ func (dev *CellModelDeviceBase) EnsureCell(name string) (cell *Cell) {
 }
 
 func (dev *CellModelDeviceBase) AcceptValue(name, value string) {
-	wbgo.Debug.Printf("cell %s <- %v", name, value)
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Printf("cell %s <- %v", name, value)
+	}
+
 	cell := dev.EnsureCell(name)
 	cell.value = value
 	cell.gotValue = true
@@ -363,7 +366,9 @@ func (dev *CellModelDeviceBase) setValue(name, value string, notify bool) {
 }
 
 func (dev *CellModelLocalDevice) AcceptOnValue(name, value string) bool {
-	wbgo.Debug.Printf("cell %s <- %v [.../on]", name, value)
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Printf("cell %s <- %v [.../on]", name, value)
+	}
 	cell := dev.EnsureCell(name)
 	cell.value = value
 	cell.gotValue = true
@@ -435,7 +440,10 @@ func (cell *Cell) Max() float64 {
 }
 
 func (cell *Cell) Value() interface{} {
-	wbgo.Debug.Printf("cell %s internal value = %v", cell.name, cell.value)
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Printf("cell %s internal value = %v", cell.name, cell.value)
+	}
+
 	switch cellType(cell.controlType) {
 	case CELL_TYPE_TEXT:
 		return cell.value
