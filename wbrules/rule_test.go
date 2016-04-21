@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/contactless/wbgo"
 	"github.com/contactless/wbgo/testutils"
-	"os"
 	"regexp"
 	"testing"
 	"time"
@@ -108,11 +107,7 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 }
 
 func (s *RuleSuiteBase) loadScripts(scripts []string) {
-	wd, err := os.Getwd()
-	s.Ck("Getwd()", err)
 	s.Ck("SetSourceRoot()", s.engine.SetSourceRoot(s.DataFileTempDir()))
-	// change back to the original working directory
-	s.Ck("Chdir()", os.Chdir(wd))
 	// Copy scripts to the temporary directory recreating a part
 	// of original directory structure that contains these
 	// scripts.
