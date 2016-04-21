@@ -151,14 +151,14 @@ func (engine *ESEngine) buildRuleCond(defIndex int) (RuleCondition, error) {
 		// _cron is added by lib.js. Under normal circumstances
 		// it may not be combined with 'when' here, so no special message
 		return nil, errors.New(
-			"invalid rule -- cannot combine 'when' with 'asSoonAs' or 'whenChanged'")
+			"invalid rule -- cannot combine 'when' with 'asSoonAs', 'whenChanged' or 'cron'")
 
 	case hasWhen:
 		return NewLevelTriggeredRuleCondition(engine.wrapRuleCondFunc(defIndex, "when")), nil
 
 	case hasAsSoonAs && (hasWhenChanged || hasCron):
 		return nil, errors.New(
-			"invalid rule -- cannot combine 'asSoonAs' with 'whenChanged'")
+			"invalid rule -- cannot combine 'asSoonAs' with 'whenChanged' or 'cron'")
 
 	case hasAsSoonAs:
 		return NewEdgeTriggeredRuleCondition(

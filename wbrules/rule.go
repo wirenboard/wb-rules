@@ -26,7 +26,7 @@ type RuleCondition interface {
 	// the value of cell must be used.
 	Check(cell *Cell) (bool, interface{})
 	GetCells() []*CellSpec
-	MaybeAddToCron(cron Cron, thunk func()) error
+	MaybeAddToCron(cron Cron, thunk func()) (added bool, err error)
 }
 
 type RuleConditionBase struct{}
@@ -39,8 +39,8 @@ func (ruleCond *RuleConditionBase) GetCells() []*CellSpec {
 	return []*CellSpec{}
 }
 
-func (ruleCond *RuleConditionBase) MaybeAddToCron(cron Cron, thunk func()) error {
-	return nil
+func (ruleCond *RuleConditionBase) MaybeAddToCron(cron Cron, thunk func()) (bool, error) {
+	return false, nil
 }
 
 type SimpleCallbackCondition struct {
@@ -190,8 +190,10 @@ func NewCronRuleCondition(spec string) *CronRuleCondition {
 	return &CronRuleCondition{spec: spec}
 }
 
-func (ruleCond *CronRuleCondition) MaybeAddToCron(cron Cron, thunk func()) error {
-	return cron.AddFunc(ruleCond.spec, thunk)
+func (ruleCond *CronRuleCondition) MaybeAddToCron(cron Cron, thunk func()) (added bool, err error) {
+	err = cron.AddFunc(ruleCond.spec, thunk)
+	added = err == nil
+	return
 }
 
 type Rule struct {
@@ -200,6 +202,7 @@ type Rule struct {
 	cond        RuleCondition
 	then        ESCallbackFunc
 	shouldCheck bool
+	nonCellRule bool
 }
 
 func NewRule(tracker DepTracker, name string, cond RuleCondition, then ESCallbackFunc) *Rule {
@@ -209,6 +212,7 @@ func NewRule(tracker DepTracker, name string, cond RuleCondition, then ESCallbac
 		cond:        cond,
 		then:        then,
 		shouldCheck: false,
+		nonCellRule: false,
 	}
 	rule.StoreInitiallyKnownDeps()
 	return rule
@@ -256,7 +260,8 @@ func (rule *Rule) Check(cell *Cell) {
 }
 
 func (rule *Rule) MaybeAddToCron(cron Cron) {
-	err := rule.cond.MaybeAddToCron(cron, func() {
+	var err error
+	rule.nonCellRule, err = rule.cond.MaybeAddToCron(cron, func() {
 		rule.then(nil)
 	})
 	if err != nil {
@@ -267,4 +272,11 @@ func (rule *Rule) MaybeAddToCron(cron Cron) {
 func (rule *Rule) Destroy() {
 	rule.then = nil
 	rule.cond = NewDestroyedRuleCondition()
+}
+
+// IsNonCellRule() returns true if the rule doesn't use any cells for
+// its condition yet shouldn't be invoked upon every RunRules().
+// This is currently used for cron rules.
+func (rule *Rule) IsNonCellRule() bool {
+	return rule.nonCellRule
 }
