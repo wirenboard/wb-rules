@@ -264,18 +264,21 @@ func (engine *RuleEngine) StoreRuleDeps(rule *Rule) {
 		for timerName, _ := range engine.notedTimers {
 			engine.storeRuleTimer(rule, timerName)
 		}
-	} else if _, found := engine.rulesWithoutCells[rule]; !found {
-		// Rules without cells in their conditions negatively affect
-		// the engine performance because they must be checked
-		// too often. Only mark a rule as such if it doesn't have
-		// any cells associa
-		if wbgo.DebuggingEnabled() {
-			// Here we use Warn output but only in case if debugging is enabled.
-			// This improves testability (due to EnsureNoErrorsOrWarnings()) but
-			// avoids polluting logs with endless warnings when debugging is off.
-			wbgo.Warn.Printf("rule %s doesn't use any cells inside condition functions", rule.name)
+	} else if !rule.IsNonCellRule() {
+		if _, found := engine.rulesWithoutCells[rule]; !found {
+			// Rules without cells in their conditions negatively affect
+			// the engine performance because they must be checked
+			// too often. Only mark a rule as such if it doesn't have
+			// any cells associated with it and it isn't a non-cell rule
+			// (such as a cron rule)
+			if wbgo.DebuggingEnabled() {
+				// Here we use Warn output but only in case if debugging is enabled.
+				// This improves testability (due to EnsureNoErrorsOrWarnings()) but
+				// avoids polluting logs with endless warnings when debugging is off.
+				wbgo.Warn.Printf("rule %s doesn't use any cells inside condition functions", rule.name)
+			}
+			engine.rulesWithoutCells[rule] = true
 		}
-		engine.rulesWithoutCells[rule] = true
 	}
 	engine.notedCells = nil
 	engine.notedTimers = nil
@@ -389,7 +392,8 @@ func (engine *RuleEngine) setupCron() {
 	// note for rule reloading: will need to restart cron
 	// to reload rules properly
 	for _, name := range engine.ruleList {
-		engine.ruleMap[name].MaybeAddToCron(engine.cron)
+		rule := engine.ruleMap[name]
+		rule.MaybeAddToCron(engine.cron)
 	}
 	engine.cron.Start()
 }
@@ -461,14 +465,15 @@ func (engine *RuleEngine) Start() {
 				}
 			}
 		}
+		wbgo.Debug.Printf("setting up cron")
+		engine.model.CallSync(engine.setupCron)
 		wbgo.Debug.Printf("doing the first rule run")
 		engine.model.CallSync(func() {
 			engine.RunRules(nil, NO_TIMER_NAME)
 		})
-		wbgo.Debug.Printf("setting up cron")
-		engine.model.CallSync(engine.setupCron)
-		wbgo.Debug.Printf("the engine is ready")
 		close(engine.readyCh)
+		wbgo.Debug.Printf("the engine is ready")
+		// wbgo.Info.Printf("******** READY ********")
 		for {
 			select {
 			case cellSpec, ok := <-engine.cellChange:
@@ -572,6 +577,7 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 }
 
 func (engine *RuleEngine) Publish(topic, payload string, qos byte, retain bool) {
+	engine.mqttClient.Start()
 	engine.mqttClient.Publish(wbgo.MQTTMessage{
 		Topic:    topic,
 		Payload:  payload,
