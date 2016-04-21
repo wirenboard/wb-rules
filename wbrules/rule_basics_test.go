@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"testing"
 )
 
@@ -212,7 +212,7 @@ func (s *RuleBasicsSuite) TestFuncValueChange() {
 }
 
 func TestRuleBasicsSuite(t *testing.T) {
-	wbgo.RunSuites(t,
+	testutils.RunSuites(t,
 		new(RuleBasicsSuite),
 	)
 }

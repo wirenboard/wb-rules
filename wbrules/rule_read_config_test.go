@@ -2,7 +2,7 @@ package wbrules
 
 import (
 	"fmt"
-	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"io/ioutil"
 	"path/filepath"
 	"testing"
@@ -16,7 +16,7 @@ type RuleReadConfigSuite struct {
 
 func (s *RuleReadConfigSuite) SetupTest() {
 	s.SetupSkippingDefs("testrules_read_config.js")
-	s.configDir, s.cleanup = wbgo.SetupTempDir(s.T())
+	s.configDir, s.cleanup = testutils.SetupTempDir(s.T())
 }
 
 func (s *RuleReadConfigSuite) TearDownTest() {
@@ -73,7 +73,7 @@ func (s *RuleReadConfigSuite) TestReadConfigErrors() {
 }
 
 func TestRuleReadConfigSuite(t *testing.T) {
-	wbgo.RunSuites(t,
+	testutils.RunSuites(t,
 		new(RuleReadConfigSuite),
 	)
 }

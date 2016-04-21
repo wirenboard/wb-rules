@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"os"
 	"path"
 	"testing"
@@ -33,7 +33,7 @@ func (s *RuleShellCommandSuite) verifyFileExists(path string) {
 }
 
 func (s *RuleShellCommandSuite) TestRunShellCommand() {
-	dir, cleanup := wbgo.SetupTempDir(s.T())
+	dir, cleanup := testutils.SetupTempDir(s.T())
 	defer cleanup()
 
 	s.publish("/devices/somedev/controls/cmd/meta/type", "text", "somedev/cmd")
@@ -105,7 +105,7 @@ func (s *RuleShellCommandSuite) TestRunShellCommandIO() {
 }
 
 func TestRuleShellCommandSuite(t *testing.T) {
-	wbgo.RunSuites(t,
+	testutils.RunSuites(t,
 		new(RuleShellCommandSuite),
 	)
 }

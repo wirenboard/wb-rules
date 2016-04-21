@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"testing"
 	"time"
 )
@@ -115,7 +115,7 @@ func (s *RuleTimersSuite) TestShortTimers() {
 }
 
 func TestRuleTimersSuite(t *testing.T) {
-	wbgo.RunSuites(t,
+	testutils.RunSuites(t,
 		new(RuleTimersSuite),
 	)
 }

@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"sync"
 	"testing"
 )
@@ -207,7 +207,7 @@ func (s *RuleLocationSuite) TestSyntaxError() {
 }
 
 func TestRuleLocationSuite(t *testing.T) {
-	wbgo.RunSuites(t,
+	testutils.RunSuites(t,
 		new(RuleLocationSuite),
 	)
 }
