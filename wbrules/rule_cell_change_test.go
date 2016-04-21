@@ -22,6 +22,10 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 	// but only in case if debugging is enabled, as not to pollute
 	// logs with too much warnings.
 	wbgo.SetDebuggingEnabled(true)
+	// We don't want to skew other test resuls becuse Engine
+	// initializes its MQTT debug flag fron wbgo debug flag
+	defer wbgo.SetDebuggingEnabled(false)
+
 	s.publish("/devices/cellch/controls/button/on", "1",
 		"cellch/button", "cellch/sw", "cellch/misc")
 	s.Verify(
