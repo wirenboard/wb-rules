@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"testing"
 )
 
@@ -52,7 +52,7 @@ func (s *RuleLocalButtonSuite) TestLocalButtons() {
 }
 
 func TestRuleLocalButtonsSuite(t *testing.T) {
-	wbgo.RunSuites(t,
+	testutils.RunSuites(t,
 		new(RuleLocalButtonSuite),
 	)
 }

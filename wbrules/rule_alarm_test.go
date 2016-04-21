@@ -3,7 +3,7 @@ package wbrules
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"strconv"
 	"strings"
 	"testing"
@@ -223,7 +223,7 @@ func (s *AlarmSuite) TestMaxAlarm() {
 }
 
 func TestAlarmSuite(t *testing.T) {
-	wbgo.RunSuites(t,
+	testutils.RunSuites(t,
 		new(AlarmSuite),
 	)
 }

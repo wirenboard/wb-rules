@@ -3,6 +3,7 @@ package wbrules
 import (
 	"fmt"
 	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"os"
 	"regexp"
 	"testing"
@@ -53,8 +54,8 @@ func (cron *fakeCron) invokeEntries(spec string) {
 type RuleSuiteBase struct {
 	CellSuiteBase
 	ruleFile string
-	*wbgo.DataFileFixture
-	*wbgo.FakeTimerFixture
+	*testutils.DataFileFixture
+	*testutils.FakeTimerFixture
 	engine *ESEngine
 	cron   *fakeCron
 }
@@ -90,8 +91,8 @@ func (s *RuleSuiteBase) VerifyUnordered(items ...interface{}) {
 
 func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	s.CellSuiteBase.SetupTest(waitForRetained)
-	s.DataFileFixture = wbgo.NewDataFileFixture(s.T())
-	s.FakeTimerFixture = wbgo.NewFakeTimerFixture(s.T(), s.Recorder)
+	s.DataFileFixture = testutils.NewDataFileFixture(s.T())
+	s.FakeTimerFixture = testutils.NewFakeTimerFixture(s.T(), s.Recorder)
 	s.cron = nil
 	s.engine = NewESEngine(s.model, s.driverClient)
 	s.engine.SetTimerFunc(s.newFakeTimer)

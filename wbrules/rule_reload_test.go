@@ -2,7 +2,7 @@ package wbrules
 
 import (
 	"fmt"
-	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"testing"
 )
 
@@ -163,7 +163,7 @@ func (s *RuleReloadSuite) TestWriteScript() {
 }
 
 func TestRuleReloadSuite(t *testing.T) {
-	wbgo.RunSuites(t,
+	testutils.RunSuites(t,
 		new(RuleReloadSuite),
 	)
 }

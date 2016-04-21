@@ -2,6 +2,7 @@ package wbrules
 
 import (
 	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"testing"
 )
 
@@ -57,7 +58,7 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 }
 
 func TestRuleCellChangesSuite(t *testing.T) {
-	wbgo.RunSuites(t,
+	testutils.RunSuites(t,
 		new(RuleCellChangesSuite),
 	)
 }

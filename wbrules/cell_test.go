@@ -3,6 +3,7 @@ package wbrules
 import (
 	"fmt"
 	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"log"
 	"sort"
 	"strings"
@@ -15,8 +16,8 @@ const (
 )
 
 type CellSuiteBase struct {
-	wbgo.Suite
-	*wbgo.FakeMQTTFixture
+	testutils.Suite
+	*testutils.FakeMQTTFixture
 	driver               *wbgo.Driver
 	client, driverClient wbgo.MQTTClient
 	model                *CellModel
@@ -29,7 +30,7 @@ func (s *CellSuiteBase) T() *testing.T {
 
 func (s *CellSuiteBase) SetupTest(waitForRetained bool) {
 	s.Suite.SetupTest()
-	s.FakeMQTTFixture = wbgo.NewFakeMQTTFixture(s.T())
+	s.FakeMQTTFixture = testutils.NewFakeMQTTFixture(s.T())
 	s.model = NewCellModel()
 	if waitForRetained {
 		s.Broker.SetWaitForRetained(true)
@@ -441,5 +442,5 @@ func (s *WaitForRetainedCellSuite) TestAcceptRetainedValuesForLocalCells() {
 }
 
 func TestCellSuite(t *testing.T) {
-	wbgo.RunSuites(t, new(CellSuite), new(WaitForRetainedCellSuite))
+	testutils.RunSuites(t, new(CellSuite), new(WaitForRetainedCellSuite))
 }

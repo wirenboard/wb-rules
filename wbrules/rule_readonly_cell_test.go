@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"testing"
 )
 
@@ -38,7 +38,7 @@ func (s *RuleReadOnlyCellSuite) TestReadOnlyCells() {
 }
 
 func TestRuleReadOnlyCellSuite(t *testing.T) {
-	wbgo.RunSuites(t,
+	testutils.RunSuites(t,
 		new(RuleReadOnlyCellSuite),
 	)
 }

@@ -2,7 +2,7 @@ package wbrules
 
 import (
 	"errors"
-	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"github.com/stretchr/objx"
 	"io/ioutil"
 	"os"
@@ -12,9 +12,9 @@ import (
 )
 
 type EditorSuite struct {
-	wbgo.Suite
-	*wbgo.DataFileFixture
-	*wbgo.RpcFixture
+	testutils.Suite
+	*testutils.DataFileFixture
+	*testutils.RpcFixture
 	liveWritePath   string
 	liveWriteError  error
 	scriptErrorPath string
@@ -31,9 +31,9 @@ func (s *EditorSuite) SetupTest() {
 	s.liveWriteError = nil
 	s.scriptErrorPath = ""
 	s.scriptError = nil
-	s.DataFileFixture = wbgo.NewDataFileFixture(s.T())
+	s.DataFileFixture = testutils.NewDataFileFixture(s.T())
 	s.addSampleFiles()
-	s.RpcFixture = wbgo.NewRpcFixture(
+	s.RpcFixture = testutils.NewRpcFixture(
 		s.T(), "wbrules", "Editor", "wbrules",
 		NewEditor(s),
 		"List", "Load", "Remove", "Save")
@@ -292,7 +292,7 @@ func (s *EditorSuite) TestLoadFile() {
 }
 
 func TestEditorSuite(t *testing.T) {
-	wbgo.RunSuites(t, new(EditorSuite))
+	testutils.RunSuites(t, new(EditorSuite))
 }
 
 // TBD: test trying to overwrite or remove readonly files

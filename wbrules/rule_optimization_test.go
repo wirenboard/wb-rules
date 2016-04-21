@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"testing"
 )
 
@@ -89,7 +89,7 @@ func (s *RuleOptimizationSuite) TestRuleCheckOptimization() {
 }
 
 func TestRuleOptimizationSuite(t *testing.T) {
-	wbgo.RunSuites(t,
+	testutils.RunSuites(t,
 		new(RuleOptimizationSuite),
 	)
 }

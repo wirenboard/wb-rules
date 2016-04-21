@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 	"regexp"
 	"testing"
 )
@@ -27,7 +27,7 @@ func (s *RuleRuntimeErrorsSuite) TestRuntimeErrors() {
 }
 
 func TestRuleRuntimeErrorsSuite(t *testing.T) {
-	wbgo.RunSuites(t,
+	testutils.RunSuites(t,
 		new(RuleRuntimeErrorsSuite),
 	)
 }
