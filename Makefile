@@ -1,4 +1,3 @@
-GOM=gom
 .PHONY: all prepare clean
 
 GOPATH := $(HOME)/go
@@ -18,23 +17,16 @@ endif
 
 all: clean wb-rules
 
-prepare:
-	go get -u github.com/mattn/gom
-	go get -u github.com/GeertJohan/go.rice
-	go get -u github.com/GeertJohan/go.rice/rice
-
 clean:
-	rm -rf wb-rules wbrules/*.rice-box.go
+	rm -rf wb-rules
 
 # We remove the box file after build because
 # it may cause problems during development
 # (changes in lib.js being ignored)
 
 wb-rules: main.go wbrules/*.go
-	$(GO_ENV) $(GOM) install
-	(cd wbrules && $(HOME)/go/bin/rice embed-go)
-	$(GO_ENV) $(GOM) build
-	rm -f wbrules/*.rice-box.go
+	$(GO_ENV) glide install
+	$(GO_ENV) go build
 
 install:
 	mkdir -p $(DESTDIR)/usr/bin/ $(DESTDIR)/etc/init.d/ $(DESTDIR)/etc/wb-rules/ $(DESTDIR)/usr/share/wb-mqtt-confed/schemas $(DESTDIR)/etc/wb-configs.d $(DESTDIR)/usr/share/wb-rules-system/scripts/
@@ -48,5 +40,5 @@ install:
 	install -m 0644 rules/alarms.conf $(DESTDIR)/etc/wb-rules/alarms.conf
 	install -m 0644 rules/alarms.schema.json $(DESTDIR)/usr/share/wb-mqtt-confed/schemas/alarms.schema.json
 
-deb: prepare
+deb:
 	CC=arm-linux-gnueabi-gcc dpkg-buildpackage -b -aarmel -us -uc
