@@ -28,7 +28,7 @@ _testmain.go
 
 /wb-rules
 
-_vendor
+vendor
 
 debian/files
 debian/wb-rules*
