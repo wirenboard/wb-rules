@@ -1,8 +1,5 @@
 .PHONY: all prepare clean
 
-GOPATH := $(HOME)/go
-PATH := $(GOPATH)/bin:$(PATH)
-
 DEB_TARGET_ARCH ?= armel
 
 ifeq ($(DEB_TARGET_ARCH),armel)
