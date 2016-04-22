@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/DisposaBoy/JsonConfigReader"
-	"github.com/GeertJohan/go.rice"
 	wbgo "github.com/contactless/wbgo"
 	duktape "github.com/ivan4th/go-duktape"
 	"github.com/stretchr/objx"
@@ -22,17 +21,22 @@ type itemType int
 
 const (
 	LIB_FILE           = "lib.js"
+	LIB_SYS_PATH       = "/usr/share/wb-rules-system/scripts"
+	LIB_REL_PATH_1     = "scripts"
+	LIB_REL_PATH_2     = "../scripts"
 	MIN_INTERVAL_MS    = 1
 	SOURCE_ITEM_DEVICE = itemType(iota)
 	SOURCE_ITEM_RULE
 )
+
+var noLibJs = errors.New("unable to locate lib.js")
+var searchDirs = []string{LIB_SYS_PATH}
 
 type sourceMap map[string]*LocFileEntry
 
 type ESEngine struct {
 	*RuleEngine
 	ctx           *ESContext
-	scriptBox     *rice.Box
 	sourceRoot    string
 	sources       sourceMap
 	currentSource *LocFileEntry
@@ -40,11 +44,20 @@ type ESEngine struct {
 	tracker       *wbgo.ContentTracker
 }
 
+func init() {
+	if wd, err := os.Getwd(); err == nil {
+		searchDirs = []string{
+			LIB_SYS_PATH,
+			filepath.Join(wd, LIB_REL_PATH_1),
+			filepath.Join(wd, LIB_REL_PATH_2),
+		}
+	}
+}
+
 func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine) {
 	engine = &ESEngine{
 		RuleEngine: NewRuleEngine(model, mqttClient),
 		ctx:        newESContext(model.CallSync),
-		scriptBox:  rice.MustFindBox("scripts"),
 		sources:    make(sourceMap),
 		tracker:    wbgo.NewContentTracker(),
 	}
@@ -195,11 +208,13 @@ func (engine *ESEngine) buildRule(name string, defIndex int) (*Rule, error) {
 }
 
 func (engine *ESEngine) loadLib() error {
-	libStr, err := engine.scriptBox.String(LIB_FILE)
-	if err != nil {
-		return err
+	for _, dir := range searchDirs {
+		path := filepath.Join(dir, LIB_FILE)
+		if _, err := os.Stat(path); err == nil {
+			return engine.ctx.LoadScript(path)
+		}
 	}
-	return engine.ctx.LoadEmbeddedScript(LIB_FILE, libStr)
+	return noLibJs
 }
 
 func (engine *ESEngine) maybeRegisterSourceItem(typ itemType, name string) {

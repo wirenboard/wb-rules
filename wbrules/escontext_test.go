@@ -129,7 +129,7 @@ func TestCallLocation(t *testing.T) {
 	ctx.Pop()
 	for _, loc := range locTests {
 		storedTracebacks = make([]ESTraceback, 0, 10)
-		ctx.LoadEmbeddedScript(loc.filename, loc.content)
+		ctx.LoadScriptFromString(loc.filename, loc.content)
 		assert.Equal(t, loc.tracebacks, storedTracebacks)
 	}
 }
