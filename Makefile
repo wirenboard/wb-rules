@@ -17,10 +17,6 @@ all: clean wb-rules
 clean:
 	rm -rf wb-rules
 
-# We remove the box file after build because
-# it may cause problems during development
-# (changes in lib.js being ignored)
-
 wb-rules: main.go wbrules/*.go
 	$(GO_ENV) glide install
 	$(GO_ENV) go build
