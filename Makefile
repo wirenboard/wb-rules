@@ -17,6 +17,9 @@ all: clean wb-rules
 clean:
 	rm -rf wb-rules
 
+amd64:
+	$(MAKE) DEB_TARGET_ARCH=amd64
+
 wb-rules: main.go wbrules/*.go
 	$(GO_ENV) glide install
 	$(GO_ENV) go build
