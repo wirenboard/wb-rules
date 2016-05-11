@@ -143,7 +143,7 @@ func (s *RuleSuiteBase) SetupSkippingDefs(ruleFiles ...string) {
 	return
 }
 
-func (s *RuleSuiteBase) newFakeTimer(id int, d time.Duration, periodic bool) wbgo.Timer {
+func (s *RuleSuiteBase) newFakeTimer(id uint64, d time.Duration, periodic bool) wbgo.Timer {
 	return s.NewFakeTimerOrTicker(id, d, periodic)
 }
 

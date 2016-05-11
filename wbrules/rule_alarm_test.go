@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/contactless/wbgo/testutils"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -117,7 +118,14 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 			"sampleAlarms/importantDeviceIsOff", "sampleAlarms/log")
 		s.verifyAlarmCellChange("importantDeviceIsOff", true)
 		s.verifyNotificationMsgs("Important device is off")
-		s.Verify("new fake ticker: 1, 200000")
+		var timerId int
+		s.Verify(testutils.RegexpCaptureMatcher(
+			`^new fake ticker: (\d+), 200000`, func(m []string) bool {
+				var err error
+				timerId, err = strconv.Atoi(m[1])
+				s.Ck("Atoi()", err)
+				return true
+			}))
 
 		// no repeated alarm upon the same value
 		s.publishCellValue("somedev", "importantDevicePower", "0")
@@ -125,8 +133,8 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 
 		for j := 0; j < 3; j++ {
 			ts := s.AdvanceTime(200 * time.Second)
-			s.FireTimer(1, ts)
-			s.Verify("timer.fire(): 1")
+			s.FireTimer(uint64(timerId), ts)
+			s.Verify(fmt.Sprintf("timer.fire(): %d", timerId))
 			s.expectCellChange("sampleAlarms/importantDeviceIsOff")
 			s.verifyNotificationMsgs("Important device is off")
 		}
@@ -134,7 +142,7 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 		s.publishCellValue("somedev", "importantDevicePower", "1",
 			"sampleAlarms/importantDeviceIsOff", "sampleAlarms/log")
 		s.verifyAlarmCellChange("importantDeviceIsOff", false)
-		s.Verify("timer.Stop(): 1")
+		s.Verify(fmt.Sprintf("timer.Stop(): %d", timerId))
 		s.verifyNotificationMsgs("Important device is back on")
 
 		// alarm stays off
@@ -171,7 +179,7 @@ func (s *AlarmSuite) setOutOfRangeTemp(temp int) {
 		"sampleAlarms/temperatureOutOfBounds", "sampleAlarms/log")
 	s.verifyAlarmCellChange("temperatureOutOfBounds", true)
 	s.verifyNotificationMsgs(fmt.Sprintf("Temperature out of bounds, value = %d", temp))
-	s.Verify("new fake ticker: 1, 10000")
+	s.Verify(regexp.MustCompile(`^new fake ticker: \d+, 10000$`))
 }
 
 func (s *AlarmSuite) setOkTemp(temp int, stopTimer bool) {
@@ -179,7 +187,7 @@ func (s *AlarmSuite) setOkTemp(temp int, stopTimer bool) {
 		"sampleAlarms/temperatureOutOfBounds", "sampleAlarms/log")
 	s.verifyAlarmCellChange("temperatureOutOfBounds", false)
 	if stopTimer {
-		s.Verify("timer.Stop(): 1")
+		s.Verify(regexp.MustCompile(`^timer\.Stop\(\): \d+`))
 	}
 	s.verifyNotificationMsgs(fmt.Sprintf("Temperature is within bounds again, value = %d", temp))
 	s.VerifyEmpty()

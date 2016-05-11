@@ -28,16 +28,18 @@ func (s *RuleToplevelTimersSuite) TestToplevelTimers() {
 	s.Broker.SetReady()
 	<-s.engine.ReadyCh()
 	s.VerifyUnordered(
-		"new fake timer: 1, 1000",
+		// timer id = 2 because timer 1 was created & removed immediately
+		// before the engine was ready
+		"new fake timer: 2, 1000",
 		"driver -> /devices/wbrules/controls/Rule debugging/meta/type: [switch] (QoS 1, retained)",
 		"driver -> /devices/wbrules/controls/Rule debugging/meta/order: [1] (QoS 1, retained)",
 		"driver -> /devices/wbrules/controls/Rule debugging: [0] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/wbrules/controls/Rule debugging/on",
 	)
 	ts := s.AdvanceTime(1000 * time.Millisecond)
-	s.FireTimer(1, ts)
+	s.FireTimer(2, ts)
 	s.Verify(
-		"timer.fire(): 1",
+		"timer.fire(): 2",
 		"[info] timer fired",
 	)
 	s.VerifyEmpty()

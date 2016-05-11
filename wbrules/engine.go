@@ -16,7 +16,6 @@ type EngineLogLevel int
 const (
 	NO_TIMER_NAME                 = ""
 	DEFAULT_CELL_MAX              = 255.0
-	TIMERS_CAPACITY               = 128
 	RULES_CAPACITY                = 256
 	CELL_RULES_CAPACITY           = 8
 	NO_CALLBACK                   = ESCallback(0)
@@ -29,9 +28,9 @@ const (
 	ENGINE_LOG_ERROR
 )
 
-type TimerFunc func(id int, d time.Duration, periodic bool) wbgo.Timer
+type TimerFunc func(id uint64, d time.Duration, periodic bool) wbgo.Timer
 
-func newTimer(id int, d time.Duration, periodic bool) wbgo.Timer {
+func newTimer(id uint64, d time.Duration, periodic bool) wbgo.Timer {
 	if periodic {
 		return wbgo.NewRealTicker(d)
 	} else {
@@ -148,7 +147,8 @@ type RuleEngine struct {
 	mqttClient        wbgo.MQTTClient
 	cellChange        chan *CellSpec
 	timerFunc         TimerFunc
-	timers            []*TimerEntry
+	nextTimerId       uint64
+	timers            map[uint64]*TimerEntry
 	callbackIndex     ESCallback
 	ruleMap           map[string]*Rule
 	ruleList          []string
@@ -173,7 +173,8 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		model:             model,
 		mqttClient:        mqttClient,
 		timerFunc:         newTimer,
-		timers:            make([]*TimerEntry, 0, TIMERS_CAPACITY),
+		nextTimerId:       1,
+		timers:            make(map[uint64]*TimerEntry),
 		callbackIndex:     1,
 		ruleMap:           make(map[string]*Rule),
 		ruleList:          make([]string, 0, RULES_CAPACITY),
@@ -301,9 +302,9 @@ func (engine *RuleEngine) CheckTimer(timerName string) bool {
 	return engine.currentTimer != NO_TIMER_NAME && engine.currentTimer == timerName
 }
 
-func (engine *RuleEngine) fireTimer(n int) {
-	entry := engine.timers[n-1]
-	if entry == nil {
+func (engine *RuleEngine) fireTimer(n uint64) {
+	entry, found := engine.timers[n]
+	if !found {
 		wbgo.Error.Printf("firing unknown timer %d", n)
 		return
 	}
@@ -318,25 +319,25 @@ func (engine *RuleEngine) fireTimer(n int) {
 	}
 }
 
-func (engine *RuleEngine) removeTimer(n int) {
-	engine.timers[n-1] = nil
+func (engine *RuleEngine) removeTimer(n uint64) {
+	delete(engine.timers, n)
 }
 
 func (engine *RuleEngine) StopTimerByName(name string) {
-	for i, entry := range engine.timers {
+	for n, entry := range engine.timers {
 		if entry != nil && name == entry.name {
-			engine.removeTimer(i + 1)
+			engine.removeTimer(n)
 			entry.stop()
 			break
 		}
 	}
 }
 
-func (engine *RuleEngine) StopTimerByIndex(n int) {
-	if n == 0 || n > len(engine.timers) {
+func (engine *RuleEngine) StopTimerByIndex(n uint64) {
+	if n == 0 {
 		return
 	}
-	if entry := engine.timers[n-1]; entry != nil {
+	if entry, found := engine.timers[n]; found {
 		engine.removeTimer(n)
 		entry.stop()
 	} else {
@@ -401,11 +402,9 @@ func (engine *RuleEngine) setupCron() {
 func (engine *RuleEngine) handleStop() {
 	wbgo.Debug.Printf("engine stopped")
 	for _, entry := range engine.timers {
-		if entry != nil {
-			entry.stop()
-		}
+		entry.stop()
 	}
-	engine.timers = engine.timers[:0]
+	engine.timers = make(map[uint64]*TimerEntry)
 	engine.model.ReleaseCellChangeChannel(engine.cellChange)
 	engine.statusMtx.Lock()
 	engine.cellChange = nil
@@ -510,7 +509,7 @@ func (engine *RuleEngine) IsActive() bool {
 	return engine.cellChange != nil
 }
 
-func (engine *RuleEngine) StartTimer(name string, callback func(), interval time.Duration, periodic bool) int {
+func (engine *RuleEngine) StartTimer(name string, callback func(), interval time.Duration, periodic bool) uint64 {
 	entry := &TimerEntry{
 		periodic: periodic,
 		quit:     nil,
@@ -519,19 +518,9 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 		active:   true,
 	}
 
-	var n = 0
-
-	for i := 0; i < len(engine.timers); i++ {
-		if engine.timers[i] == nil {
-			engine.timers[i] = entry
-			n = i + 1
-			break
-		}
-	}
-	if n == 0 {
-		engine.timers = append(engine.timers, entry)
-		n = len(engine.timers)
-	}
+	n := engine.nextTimerId
+	engine.nextTimerId += 1
+	engine.timers[n] = entry
 
 	if name == NO_TIMER_NAME {
 		entry.thunk = callback

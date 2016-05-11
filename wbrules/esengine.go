@@ -603,7 +603,7 @@ func (engine *ESEngine) esWbStopTimer() int {
 		return duktape.DUK_RET_ERROR
 	}
 	if engine.ctx.IsNumber(0) {
-		n := engine.ctx.GetInt(-1)
+		n := uint64(engine.ctx.GetNumber(-1))
 		if n == 0 {
 			wbgo.Error.Printf("timer id cannot be zero")
 			return 0
