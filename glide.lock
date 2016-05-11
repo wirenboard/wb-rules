@@ -1,12 +1,12 @@
-hash: ed0253cfacaec99be88d6adb0f727956f7d2f82ff90454a2d2d0c236cd421db0
-updated: 2016-04-22T18:16:37.392051525Z
+hash: 65774ad6ed8ca48b92575ae134ee65d96b5bd1e17a61c26918d6544f2d0cbc2c
+updated: 2016-05-11T23:35:03.082302305Z
 imports:
 - name: github.com/contactless/org.eclipse.paho.mqtt.golang
   version: ab132c5592358c9449a19cd5be42301d2ce55c7e
   subpackages:
   - packets
 - name: github.com/contactless/wbgo
-  version: 72c84f27ae3d7316ff54c8694ac9e254c88d42fe
+  version: ac4458c1a3ad18ec42fc06a8c2608f7a54984e75
   subpackages:
   - testutils
 - name: github.com/DisposaBoy/JsonConfigReader
@@ -20,17 +20,17 @@ imports:
 - name: github.com/stretchr/objx
   version: 1a9d0bb9f541897e62256577b352fdbc1fb4fd94
 - name: github.com/stretchr/testify
-  version: c5d7a69bf8a2c9c374798160849c071093e41dd1
+  version: 6cb3b85ef5a0efef77caef88363ec4d4b5c0976d
   subpackages:
   - assert
   - require
   - suite
 - name: golang.org/x/net
-  version: 815d315ead425c4365077d904a2331ee9e179820
+  version: 96dbb961a39ddccf16860cdd355bfa639c497f23
   subpackages:
   - websocket
 - name: golang.org/x/sys
-  version: f64b50fbea64174967a8882830d621a18ee1548e
+  version: 806cb00533e5af545ce95e84b349404f8e5ff7a8
   subpackages:
   - unix
 - name: gopkg.in/fsnotify.v1
