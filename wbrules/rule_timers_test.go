@@ -35,18 +35,18 @@ func (s *RuleTimersSuite) VerifyTimers(prefix string) {
 	s.publish("/devices/somedev/controls/foo", prefix+"t", "somedev/foo")
 	s.Verify(
 		"tst -> /devices/somedev/controls/foo: ["+prefix+"t] (QoS 1, retained)",
-		"new fake timer: 1, 500",
-		"new fake timer: 2, 500",
+		"new fake timer: 3, 500",
+		"new fake timer: 4, 500",
 	)
 
 	ts := s.AdvanceTime(500 * time.Millisecond)
-	s.FireTimer(1, ts)
-	s.FireTimer(2, ts)
+	s.FireTimer(3, ts)
+	s.FireTimer(4, ts)
 	s.VerifyUnordered(
 		// the order in which fake timers fire is not strictly defined
 		// (engine's timer handlers run in parallel)
-		"timer.fire(): 1",
-		"timer.fire(): 2",
+		"timer.fire(): 3",
+		"timer.fire(): 4",
 		"[info] timer fired",
 		"[info] timer1 fired",
 	)
@@ -54,14 +54,14 @@ func (s *RuleTimersSuite) VerifyTimers(prefix string) {
 	s.publish("/devices/somedev/controls/foo", prefix+"p", "somedev/foo")
 	s.Verify(
 		"tst -> /devices/somedev/controls/foo: ["+prefix+"p] (QoS 1, retained)",
-		"new fake ticker: 1, 500",
+		"new fake ticker: 5, 500",
 	)
 
 	for i := 1; i < 4; i++ {
 		targetTime := s.AdvanceTime(time.Duration(500*i) * time.Millisecond)
-		s.FireTimer(1, targetTime)
+		s.FireTimer(5, targetTime)
 		s.Verify(
-			"timer.fire(): 1",
+			"timer.fire(): 5",
 			"[info] timer fired",
 		)
 	}
@@ -71,17 +71,17 @@ func (s *RuleTimersSuite) VerifyTimers(prefix string) {
 		"tst -> /devices/somedev/controls/foo: [" + prefix + "t] (QoS 1, retained)",
 	)
 	s.VerifyUnordered(
-		"timer.Stop(): 1",
-		"new fake timer: 1, 500",
-		"new fake timer: 2, 500",
+		"timer.Stop(): 5",
+		"new fake timer: 6, 500",
+		"new fake timer: 7, 500",
 	)
 
 	ts = s.AdvanceTime(5 * 500 * time.Millisecond)
-	s.FireTimer(1, ts)
-	s.FireTimer(2, ts)
+	s.FireTimer(6, ts)
+	s.FireTimer(7, ts)
 	s.VerifyUnordered(
-		"timer.fire(): 1",
-		"timer.fire(): 2",
+		"timer.fire(): 6",
+		"timer.fire(): 7",
 		"[info] timer fired",
 		"[info] timer1 fired",
 	)
