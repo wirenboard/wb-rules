@@ -47,6 +47,8 @@ defineVirtualDevice("stabSettings", {
 
 defineRule("heaterOn", {
   asSoonAs: function () {
+    if (dev["stabSettings/lowThreshold"] !== dev.stabSettings.lowThreshold)
+      throw new Error("/-notation in dev name doesn't work");
     return stabEnabled && temp < dev.stabSettings.lowThreshold;
   },
   then: function (newValue, devName, cellName) {

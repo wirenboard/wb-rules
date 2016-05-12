@@ -33,7 +33,11 @@ var _WbRules = {
     });
   },
 
-  wrapDevice: function (name) {
+  wrapDevice: function wrapDevice (name) {
+    var slashPosition = name.indexOf("/");
+    if (slashPosition > 0 && slashPosition < name.length - 1)
+      return wrapDevice(name.slice(0, slashPosition))[name.slice(slashPosition + 1)];
+
     var cells = {};
     function ensureCell (dev, name) {
       return cells.hasOwnProperty(name) ?
