@@ -77,7 +77,7 @@ defineRule("startClicking", {
   asSoonAs: function () {
     // edge-triggered-правило - выполняется, только когда значение
     // данной функции меняется и при этом становится истинным
-    return dev.relayClicker.enabled && (dev.uchm121rx["Input 0"] == "0");
+    return dev["relayClicker/enabled"] && (dev["uchm121rx/Input 0"] == "0");
   },
   then: function () {
     // выполняется при срабатывании правила
@@ -87,7 +87,7 @@ defineRule("startClicking", {
 
 defineRule("stopClicking", {
   asSoonAs: function () {
-    return !dev.relayClicker.enabled || dev.uchm121rx["Input 0"] != "0";
+    return !dev["relayClicker/enabled"] || dev["uchm121rx/Input 0"] != "0";
   },
   then: function () {
     timers.clickTimer.stop();
@@ -104,7 +104,7 @@ defineRule("doClick", {
   },
   then: function () {
     // отправляем значение в /devices/uchm121rx/controls/Relay 0/on
-    dev.uchm121rx["Relay 0"] = !dev.uchm121rx["Relay 0"];
+    dev["uchm121rx/Relay 0"] = !dev["uchm121rx/Relay 0"];
   }
 });
 
@@ -137,13 +137,13 @@ defineRule("funcValueChange2", {
   whenChanged: [
     // Правило срабатывает, когда изменяется значение
     // /devices/somedev/controls/cellforfunc1 или
-    // меняется значение выражения dev.somedev.cellforfunc2 > 3.
+    // меняется значение выражения dev["somedev/cellforfunc2"] > 3.
     // Также оно срабатывает при первоначальном просмотре
     // правил если хотя бы один из используемых в
     // whenChanged параметров находится среди retained-значений.
     "somedev/cellforfunc1",
     function () {
-      return dev.somedev.cellforfunc2 > 3;
+      return dev["somedev/cellforfunc2"] > 3;
     }
   ],
   then: function (newValue, devName, cellName) {
@@ -219,9 +219,12 @@ defineRule("crontest_hourly", {
 
 ### Объект `dev`
 
-`dev` задаёт доступные параметры и устройства. `dev["abc"]["def"]` (или, что то же самое,
-`dev.abc.def`) задаёт параметр `def` устройства `abc`, доступный по MQTT-топику
-`/devices/.../controls/...`.
+`dev` задаёт доступные параметры и устройства. `dev["abc/def"]` задаёт
+параметр `def` устройства `abc`, доступный по MQTT-топику
+`/devices/.../controls/...`. Альтернативная нотация -
+`dev["abc"]["def"]` (или, что в данном случае то же самое,
+dev.abc.def).
+
 Значение параметра зависит от его типа: `switch`, `wo-switch`, `alarm` -
 булевский тип, "text" - строковой, остальные известные типы параметров,
 кроме уставок диммеров (тип rgb), считаются числовыми, уставки диммеров (тип rgb)
@@ -234,11 +237,11 @@ defineRule("crontest_hourly", {
 и функций обработки таймеров (коллбэки `setInterval` /
 `setTimeout`). В обоих случаях последствия не определены.
 
-Операция присваивания `dev[...][...] = ...` в `then`-всегда приводит к
+Операция присваивания `dev[...] = ...` в `then`-всегда приводит к
 публикации MQTT-сообщения, даже если значение параметра не изменилось.
 В случае виртуальных устройств новое значение публикуется в топике
 `/devices/.../controls/...`, и соответствующее значение
-`dev[...][...]` изменяется сразу:
+`dev[...]` изменяется сразу:
 ```js
 defineVirtualDevice("virtdev", {
   // ...
@@ -247,22 +250,22 @@ defineVirtualDevice("virtdev", {
 defineRule("someRule", {
   when: ...,
   then: function () {
-    dev["virtdev"]["someparam"] = 42; // публикация 42 -> /devices/virtdev/controls/someparam
-    log("v={}", dev["virtdev"]["someparam"]); // всегда выдаёт v=42
+    dev["virtdev/someparam"] = 42; // публикация 42 -> /devices/virtdev/controls/someparam
+    log("v={}", dev["virtdev/someparam"]); // всегда выдаёт v=42
   }
 });
 ```
 
 В случае внешних устройств новое значение публикуется в топике
 `/devices/.../controls/.../on`, а соответствующее значение
-`dev[...][...]` изменится только после получения ответного значения в
+`dev[...]` изменится только после получения ответного значения в
 топике `/devices/.../controls/...` от драйвера устройства:
 ```js
 defineRule("anotherRule", {
   when: ...,
   then: function () {
-    dev["extdev"]["someparam"] = 42; // публикация 42 -> /devices/extdev/controls/someparam
-    log("v={}", dev["extdev"]["someparam"]); // выдаёт старое значение
+    dev["extdev/someparam"] = 42; // публикация 42 -> /devices/extdev/controls/someparam
+    log("v={}", dev["extdev/someparam"]); // выдаёт старое значение
   }
 });
 ```
@@ -408,7 +411,7 @@ cron-выражению.
 
 `defineAlias(name, "device/param")` задаёт альтернативное имя для параметра.
 Например, после выполнения `defineAlias("heaterRelayOn", "Relays/Relay 1");` выражение
-`heaterRelayOn = true` означает то же самое, что `dev["Relays"]["Relay 1"] = true`.
+`heaterRelayOn = true` означает то же самое, что `dev["Relays/Relay 1"] = true`.
 
 `startTimer(name, milliseconds)`
 запускает однократный таймер с указанным именем.
@@ -443,7 +446,7 @@ cron-выражению.
 даёт `"a=q {}"` (важно! в `format()`, в отличие от `xformat()`,
 для escape используется две фигурные скобки). Кроме того, `xformat()`
 позволяет включать в текст результат выполнения произвольных ECMAScript-выражений:
-`"Some value: {{dev["abc"]["def"]}}"`. В этой связи `xformat()`
+`"Some value: {{dev["abc/def"]}}"`. В этой связи `xformat()`
 следует использовать с осторожностью в тех случаях, когда
 непривелегированный пользователь может влиять на содержимое
 строки формата.
