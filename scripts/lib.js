@@ -19,7 +19,7 @@ var _WbRules = {
     return IncompleteCellCaught;
   })(),
 
-  autoload: function (target, acquire, setValue) {
+  autoload: function (target, acquire) {
     return new Proxy(target, {
       get: function (o, name) {
         if (!(name in o)) {
@@ -33,10 +33,15 @@ var _WbRules = {
     });
   },
 
-  wrapDevice: function wrapDevice (name) {
+  getDevValue: function getDevValue (o, name) {
     var slashPosition = name.indexOf("/");
-    if (slashPosition > 0 && slashPosition < name.length - 1)
-      return wrapDevice(name.slice(0, slashPosition))[name.slice(slashPosition + 1)];
+    if (slashPosition > 0 && slashPosition < name.length - 1) {
+      var target = _WbRules.getDevValue(o, name.slice(0, slashPosition));
+      return target[name.slice(slashPosition + 1)];
+    }
+
+    if (name in o)
+      return o[name];
 
     var cells = {};
     function ensureCell (dev, name) {
@@ -44,7 +49,7 @@ var _WbRules = {
         cells[name] :
         cells[name] = _wbCellObject(dev, name);
     }
-    return new Proxy(_wbDevObject(name), {
+    return o[name] = new Proxy(_wbDevObject(name), {
       get: function (dev, name) {
         var cell = ensureCell(dev, name);
         if (_WbRules.requireCompleteCells && !cell.isComplete())
@@ -55,6 +60,15 @@ var _WbRules = {
         ensureCell(dev, name).setValue({ v: value });
       }
     });
+  },
+
+  setDevValue: function setDevValue (o, name, value) {
+    var slashPosition = name.indexOf("/");
+    if (slashPosition > 0 && slashPosition < name.length - 1) {
+      var target = _WbRules.getDevValue(o, name.slice(0, slashPosition));
+      target[name.slice(slashPosition + 1)] = value;
+    } else
+      throw new Error("setting unsupported proxy value: " + name);
   },
 
   parseCellRef: function parseCellRef (cellRef) {
@@ -173,7 +187,11 @@ var _WbRules = {
   }
 };
 
-var dev = _WbRules.autoload({}, _WbRules.wrapDevice);
+var dev = new Proxy({}, {
+  get: _WbRules.getDevValue,
+  set: _WbRules.setDevValue
+});
+
 var timers = _WbRules.autoload(_WbRules.timers, function (name) {
   return {
     get firing() {

@@ -64,8 +64,8 @@ defineRule("heaterOff", {
   },
   then: function (newValue, devName, cellName) {
     log("heaterOff fired, changed: {} -> {}", cellSpec(devName, cellName),
-       newValue === undefined ? "(none)" : newValue);
-    sw = false;
+        newValue === undefined ? "(none)" : newValue);
+    dev["somedev/sw"] = false;
   }
 });
 
