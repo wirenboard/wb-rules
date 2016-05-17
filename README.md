@@ -163,7 +163,9 @@ defineRule("funcValueChange2", {
 
 `defineRule(name, { asSoonAs|when: function() { ... }, then: function () { ... } })` или
 `defineRule(name, { whenChanged: ["dev1/name1", "dev2/name2", somefunc, ...], then: function (value, dev, name) { ... })`
-задаёт правило. Правила просматриваются при получении значений
+задаёт правило. `name` - имя правила, которое должно быть
+уникальным в рамках текущего файла.
+Правила просматриваются при получении значений
 параметров по MQTT и срабатывании таймеров (см. `startTimer()`
 `startTicker()` ниже). При задании `whenChanged` правило срабатывает
 при любых изменениях значений параметров или функций, указанных в списке.

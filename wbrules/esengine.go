@@ -685,7 +685,11 @@ func (engine *ESEngine) esWbDefineRule() int {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad rule definition"))
 		return duktape.DUK_RET_ERROR
 	}
-	name := engine.ctx.GetString(0)
+	shortName := engine.ctx.GetString(0)
+	name := shortName
+	if engine.currentSource != nil {
+		name = engine.currentSource.VirtualPath + "/" + shortName
+	}
 	if rule, err := engine.buildRule(name, 1); err != nil {
 		// FIXME: proper error handling
 		engine.Log(ENGINE_LOG_ERROR,
@@ -693,7 +697,7 @@ func (engine *ESEngine) esWbDefineRule() int {
 		return duktape.DUK_RET_ERROR
 	} else {
 		engine.DefineRule(rule)
-		engine.maybeRegisterSourceItem(SOURCE_ITEM_RULE, name)
+		engine.maybeRegisterSourceItem(SOURCE_ITEM_RULE, shortName)
 	}
 	return 0
 }
