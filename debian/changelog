@@ -1,3 +1,12 @@
+wb-rules (1.6.5) stable; urgency=medium
+
+  * Fix MQTT disconnection problem
+  * Support dev["device/control"] notation
+  * Per-file rule name isolation
+  * Unique timer ids
+
+ -- Ivan Shvedunov <ivan4th@gmail.com>  Tue, 17 May 2016 04:11:59 +0300
+
 wb-rules (1.6.4) stable; urgency=medium
 
   * Performance improvements due to patched MQTT driver
