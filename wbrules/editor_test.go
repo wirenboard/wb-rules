@@ -185,14 +185,15 @@ func (s *EditorSuite) TestSaveFile() {
 		"sample2.js": "// sample2",
 	})
 	s.verifySave(
-		objx.Map{"path": "//sample3.js", "content": "// sample3"},
-		objx.Map{"path": "sample3.js"},
+		// make sure spaces are allowed in filenames
+		objx.Map{"path": "//sample 3.js", "content": "// sample 3"},
+		objx.Map{"path": "sample 3.js"},
 		nil,
 	)
 	s.verifySources(map[string]string{
-		"sample1.js": "// sample1 (changed)",
-		"sample2.js": "// sample2",
-		"sample3.js": "// sample3",
+		"sample1.js":  "// sample1 (changed)",
+		"sample2.js":  "// sample2",
+		"sample 3.js": "// sample 3",
 	})
 	s.verifySave(
 		objx.Map{"path": "sub/sample4.js", "content": "// sample4"},
@@ -219,19 +220,19 @@ func (s *EditorSuite) TestSaveFile() {
 	s.verifySources(map[string]string{
 		"sample1.js":     "// sample1 (changed)",
 		"sample2.js":     "// sample2",
-		"sample3.js":     "// sample3",
+		"sample 3.js":    "// sample 3",
 		"sub/sample4.js": "// sample4",
 		"sub/sample5.js": "sample5 -- error",
 	})
 
 	s.VerifyRpcError("Save", objx.Map{"path": "../foo/bar.js", "content": "evilfile"},
 		EDITOR_ERROR_INVALID_PATH, "EditorError", "Invalid path")
-	s.VerifyRpcError("Save", objx.Map{"path": "qqq / rrr.js", "content": "lamefile"},
+	s.VerifyRpcError("Save", objx.Map{"path": "qqq/$$$rrr.js", "content": "lamefile"},
 		EDITOR_ERROR_INVALID_PATH, "EditorError", "Invalid path")
 	s.verifySources(map[string]string{
 		"sample1.js":     "// sample1 (changed)",
 		"sample2.js":     "// sample2",
-		"sample3.js":     "// sample3",
+		"sample 3.js":    "// sample 3",
 		"sub/sample4.js": "// sample4",
 		"sub/sample5.js": "sample5 -- error",
 	})

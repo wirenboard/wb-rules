@@ -1,3 +1,9 @@
+wb-rules (1.6.6) stable; urgency=medium
+
+  * editor: allow spaces in filenames
+
+ -- Ivan Shvedunov <ivan4th@gmail.com>  Wed, 18 May 2016 22:01:14 +0300
+
 wb-rules (1.6.5) stable; urgency=medium
 
   * Fix MQTT disconnection problem

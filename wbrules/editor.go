@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-var editorPathRx = regexp.MustCompile(`^[\w/-]{0,256}[\w-]{1,253}\.js$`)
+var editorPathRx = regexp.MustCompile(`^[\w /-]{0,256}[\w -]{1,253}\.js$`)
 
 type Editor struct {
 	locFileManager LocFileManager
