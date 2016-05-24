@@ -1,3 +1,13 @@
+wb-rules (1.6.7) stable; urgency=medium
+  
+  * adds support for delays to alarm engine:
+      alarmDelayMs: if set, the alarm condition must be violated for
+          the specified time interval (in ms) for the alarm to be triggered
+      noAlarmDelayMs: if set,  the alarm condition must be met for the 
+          specified time interval (in ms) for the alarm to be cleared
+
+ -- Evgeny Boger <boger@contactless.ru>  Tue, 24 May 2016 20:27:21 +0300
+
 wb-rules (1.6.6) stable; urgency=medium
 
   * editor: allow spaces in filenames

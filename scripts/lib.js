@@ -407,6 +407,8 @@ var Alarms = (function () {
         noAlarmMessage = alarmSrc.noAlarmMessage ||
           alarmSrc.cell + " is back to normal, value = {}",
         maxCount = checkHasNumKey("maxCount") ? Math.floor(alarmSrc.maxCount) : null,
+        alarmDelayMs = checkHasNumKey("alarmDelayMs") ? alarmDelayMs : 0,
+        noAlarmDelayMs = checkHasNumKey("noAlarmDelayMs") ? noAlarmDelayMs : 0,
         min, max, interval = null;
 
     if (hasExpectedValue) {
@@ -441,7 +443,8 @@ var Alarms = (function () {
         dev[alarmDeviceName][cellName] = active;
     }
 
-    var wasActive = false, intervalId = null, remainingCount = null;
+    var wasActive = false, wasTriggered = false, intervalId = null, remainingCount = null;
+    var activateTimerId = null, deactivateTimerId = null;
 
     function stopRepeating() {
       if (intervalId != null) {
@@ -457,6 +460,27 @@ var Alarms = (function () {
         stopRepeating();
     }
 
+    function activateAlarm() {
+      setAlarmActiveCell(true);
+
+      remainingCount = maxCount;
+
+      notifyAboutActiveAlarm();
+
+      if (interval !== null)
+        intervalId = setInterval(notifyAboutActiveAlarm, interval);
+
+      alarmTimerId = null;
+      wasActive = true;
+    }
+
+    function deactivateAlarm() {
+      setAlarmActiveCell(false);
+      stopRepeating();
+      notify(maybeFormat(noAlarmMessage, cellValue()));
+      wasActive = false;
+    }
+
     return {
       cellName: cellName,
       defineRules: function () {
@@ -469,18 +493,22 @@ var Alarms = (function () {
             return cellValue() < min || cellValue() > max;
           },
           then: function () {
-            if (wasActive)
+            if (wasTriggered)
               return;
 
-            setAlarmActiveCell(true);
+            wasTriggered = true;
 
-            wasActive = true;
-            remainingCount = maxCount;
+            if (!wasActive) {
+              if (alarmSrc.alarmDelayMs > 0)
+                activateTimerId = setTimeout(activateAlarm, alarmSrc.alarmDelayMs);
+              else
+                activateAlarm();
+            }
 
-            notifyAboutActiveAlarm();
-
-            if (interval !== null)
-              intervalId = setInterval(notifyAboutActiveAlarm, interval);
+            if (deactivateTimerId != null) {
+              clearTimeout(deactivateTimerId);
+              deactivateTimerId = null;
+            }
           }
         });
 
@@ -495,15 +523,24 @@ var Alarms = (function () {
             // first rule run, too. This will clear any
             // alarms remaining from before wb-rules startup /
             // loading of this rule file.
-            setAlarmActiveCell(false);
-
-            if (!wasActive)
+            if (!wasTriggered) {
+              setAlarmActiveCell(false);
               return;
+            }
 
-            wasActive = false;
-            stopRepeating();
+            wasTriggered = false;
 
-            notify(maybeFormat(noAlarmMessage, cellValue()));
+            if (wasActive) {
+              if (alarmSrc.noAlarmDelayMs > 0) {
+                deactivateTimerId = setTimeout(deactivateAlarm, alarmSrc.noAlarmDelayMs);
+              } else
+                deactivateAlarm();
+            }
+
+            if (activateTimerId != null) {
+              clearTimeout(activateTimerId);
+              activateTimerId = null;
+            }
           }
         });
       }
