@@ -97,6 +97,22 @@
           "title": "Maximum number of messages",
           "description": "Maximum number of messages to send while the alarm is active",
           "propertyOrder": 6
+        },
+        "alarmDelayMs" : {
+          "type": "integer",
+          "title" : "Alarm Activation Delay",
+          "description" : "If set, the alarm condition must be violated for the specified time interval (in ms) for the alarm to be triggered",
+          "minimum" : 0,
+          "default" : 0,
+          "propertyOrder" : 7
+        },
+        "noAlarmDelayMs" : {
+          "type": "integer",
+          "title" : "Alarm Deactivation Delay",
+          "description" : "If set, the alarm condition must be met for the specified time interval (in ms) for the alarm to be cleared",
+          "minimum" : 0,
+          "default" : 0,
+          "propertyOrder" : 8
         }
       }
     },
@@ -112,7 +128,7 @@
     },
     "expectedValueAlarm": {
       "title": "Expected Value Alarm",
-      "defaultProperties": ["name", "cell", "alarmMessage", "noAlarmMessage", "expectedValue"],
+      "defaultProperties": ["name", "cell", "alarmMessage", "noAlarmMessage", "alarmDelayMs", "expectedValue"],
       "allOf": [
         { "$ref": "#/definitions/alarmBase" },
         {
@@ -128,7 +144,7 @@
     },
     "minValueAlarm": {
       "title": "Minimum Value Alarm",
-      "defaultProperties": ["name", "cell", "alarmMessage", "noAlarmMessage", "minValue"],
+      "defaultProperties": ["name", "cell", "alarmMessage", "noAlarmMessage", "alarmDelayMs", "minValue"],
       "allOf": [
         { "$ref": "#/definitions/alarmBase" },
         {
@@ -148,7 +164,7 @@
     },
     "maxValueAlarm": {
       "title": "Maximum Value Alarm",
-      "defaultProperties": ["name", "cell", "alarmMessage", "noAlarmMessage", "maxValue"],
+      "defaultProperties": ["name", "cell", "alarmMessage", "noAlarmMessage", "alarmDelayMs", "maxValue"],
       "allOf": [
         { "$ref": "#/definitions/alarmBase" },
         {
