@@ -3,7 +3,8 @@
   "type": "object",
   "title": "Alarm Configuration",
   "description": "Lists alarms",
-  "strictProps": true,
+  "limited": true,
+  "strictProps": false,
   "definitions": {
     "emailRecipient": {
       "title": "E-mail recipient",
