@@ -1,3 +1,9 @@
+wb-rules (1.6.8+alpha3) stable; urgency=medium
+
+  * add "remove old load_alarms.js" rule 
+
+ -- Nikita Maslov <webconn@webconn-laptop>  Fri, 24 Jun 2016 14:19:37 +0300
+
 wb-rules (1.6.8+alpha2) stable; urgency=medium
 
   * fix initscript 

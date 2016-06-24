@@ -1,14 +1,5 @@
 #!/bin/sh
-set -e
 
 if dpkg-maintscript-helper supports rm_conffile 2>/dev/null; then
     dpkg-maintscript-helper rm_conffile /etc/wb-rules/load_alarms.js 1.6.7 -- "$@"
 fi
-
-if [ "$1" = "purge" ] ; then
-	update-rc.d wb-rules remove >/dev/null
-fi
-
-#DEBHELPER#
-
-exit 0
