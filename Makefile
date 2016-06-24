@@ -25,14 +25,14 @@ wb-rules: main.go wbrules/*.go
 	$(GO_ENV) go build
 
 install:
-	mkdir -p $(DESTDIR)/usr/bin/ $(DESTDIR)/etc/init.d/ $(DESTDIR)/etc/wb-rules/ $(DESTDIR)/usr/share/wb-mqtt-confed/schemas $(DESTDIR)/etc/wb-configs.d $(DESTDIR)/usr/share/wb-rules-system/scripts/
+	mkdir -p $(DESTDIR)/usr/bin/ $(DESTDIR)/etc/init.d/ $(DESTDIR)/etc/wb-rules/ $(DESTDIR)/usr/share/wb-mqtt-confed/schemas $(DESTDIR)/etc/wb-configs.d $(DESTDIR)/usr/share/wb-rules-system/scripts/ $(DESTDIR)/usr/share/wb-rules/
 	install -m 0755 wb-rules $(DESTDIR)/usr/bin/
 	install -m 0755 initscripts/wb-rules $(DESTDIR)/etc/init.d/wb-rules
 	install -m 0644 rules/rules.js $(DESTDIR)/etc/wb-rules/rules.js
 	install -m 0644 wb-rules.wbconfigs $(DESTDIR)/etc/wb-configs.d/13wb-rules
 
 	install -m 0644 scripts/lib.js $(DESTDIR)/usr/share/wb-rules-system/scripts/lib.js
-	install -m 0644 rules/load_alarms.js $(DESTDIR)/etc/wb-rules/load_alarms.js
+	install -m 0644 rules/load_alarms.js $(DESTDIR)/usr/share/wb-rules/load_alarms.js
 	install -m 0644 rules/alarms.conf $(DESTDIR)/etc/wb-rules/alarms.conf
 	install -m 0644 rules/alarms.schema.json $(DESTDIR)/usr/share/wb-mqtt-confed/schemas/alarms.schema.json
 
