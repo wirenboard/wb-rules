@@ -1,0 +1,94 @@
+{
+    "excluded_channels" : [
+        "wb-mr11_123/K21"
+    ],
+    "schedules" : [
+        {
+            "name" : "Июнь",
+            "start_date" : 1464728400000,
+            "end_date" : "2016-06-30T21:00:00",
+            "tasks" : [
+                {
+                    "name" : "switches-on",
+                    "run_at" : "3-59/10 * * * * *",
+                    "actions" : [
+                        {
+                            "channel" : "wb-mr11_123/K1",
+                            "set_value" : 1
+                        },
+                        {
+                            "channel" : "wb-mr11_123/K2",
+                            "set_value" : 1
+                        }
+                    ]
+                },
+                {
+                    "name" : "switches-off",
+                    "run_at" : "7-59/10 * * * * *",
+                    "actions" : [
+                        {
+                            "channel" : "wb-mr11_123/K1",
+                            "set_value" : 0
+                        },
+                        {
+                            "channel" : "wb-mr11_123/K2",
+                            "set_value" : 0
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name" : "Тест",
+            "start_date" : "2016-06-27T18:51:00",
+            "end_date" : "2016-07-07T18:51:15",
+            "tasks" : [
+                {
+                    "name" : "undconditional periodic task",
+                    "enabled" : true,
+                    "run_at" : "@every 10s",
+                    "actions" : [
+                        {
+                            "channel" : "wb-mr11_123/K10",
+                            "set_value" : 1
+                        }
+                    ]
+                },
+                {
+                    "name" : "as_soon_as (edge-triggered) task",
+                    "as_soon_as" : "dev['relayClicker/enabled'] && dev['buzzer/enabled']",
+                    "actions" : [
+                        {
+                            "channel" : "wb-mr11_123/K11",
+                            "set_value" : 1
+                        }
+                    ]
+                },
+                {
+                    "name" : "conditional periodic task",
+                    "enabled" : true,
+                    "run_at" : "@every 1s",
+                    "if" : "dev['relayClicker/enabled']",
+                    "actions" : [
+                        {
+                            "channel" : "wb-mr11_123/K12",
+                            "set_value" : 1
+                        }
+                    ]
+                },
+                {
+                    "name" : "conditional(level-triggered) task",
+                    "when" : "dev['relayClicker/enabled']",
+                    "actions" : [
+                        {
+                            "channel" : "wb-mr11_123/K13",
+                            "set_value" : 1
+                        }
+                    ]
+                }
+
+
+            ]
+        }
+    ]
+}
