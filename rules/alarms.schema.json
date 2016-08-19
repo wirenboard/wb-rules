@@ -3,7 +3,7 @@
   "type": "object",
   "title": "Alarm Configuration",
   "description": "Lists alarms",
-  "limited": true,
+  "limited": false,
   "strictProps": false,
   "definitions": {
     "emailRecipient": {
@@ -71,7 +71,7 @@
           "type": "string",
           "title": "Cell",
           "description": "Use the following format: device/control",
-          "pattern": "^[^\\s/]+/[^\\s/]+$",
+          "pattern": "^[^/+#]+/[^/+#]+$",
           "minLength": 3,
           "propertyOrder": 2
         },
@@ -227,6 +227,7 @@
       ],
       "options": {
         "disable_collapse" : true,
+        "remove_empty_properties": true
       }
 
     }
