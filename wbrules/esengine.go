@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/DisposaBoy/JsonConfigReader"
+	"github.com/boltdb/bolt"
 	wbgo "github.com/contactless/wbgo"
 	duktape "github.com/ivan4th/go-duktape"
 	"github.com/stretchr/objx"
@@ -20,12 +21,14 @@ import (
 type itemType int
 
 const (
-	LIB_FILE           = "lib.js"
-	LIB_SYS_PATH       = "/usr/share/wb-rules-system/scripts"
-	LIB_REL_PATH_1     = "scripts"
-	LIB_REL_PATH_2     = "../scripts"
-	MIN_INTERVAL_MS    = 1
-	SOURCE_ITEM_DEVICE = itemType(iota)
+	LIB_FILE            = "lib.js"
+	LIB_SYS_PATH        = "/usr/share/wb-rules-system/scripts"
+	LIB_REL_PATH_1      = "scripts"
+	LIB_REL_PATH_2      = "../scripts"
+	MIN_INTERVAL_MS     = 1
+	PERSISTENT_DB_FILE  = "/var/lib/wirenboard/wbrules-persistent.db"
+	PERSISTENT_DB_CHMOD = 0640
+	SOURCE_ITEM_DEVICE  = itemType(iota)
 	SOURCE_ITEM_RULE
 )
 
@@ -36,12 +39,14 @@ type sourceMap map[string]*LocFileEntry
 
 type ESEngine struct {
 	*RuleEngine
-	ctx           *ESContext
-	sourceRoot    string
-	sources       sourceMap
-	currentSource *LocFileEntry
-	sourcesMtx    sync.Mutex
-	tracker       *wbgo.ContentTracker
+	ctx               *ESContext
+	sourceRoot        string
+	sources           sourceMap
+	currentSource     *LocFileEntry
+	sourcesMtx        sync.Mutex
+	tracker           *wbgo.ContentTracker
+	persistentDBCache map[string]string
+	persistentDB      *bolt.DB
 }
 
 func init() {
@@ -56,10 +61,12 @@ func init() {
 
 func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine) {
 	engine = &ESEngine{
-		RuleEngine: NewRuleEngine(model, mqttClient),
-		ctx:        newESContext(model.CallSync),
-		sources:    make(sourceMap),
-		tracker:    wbgo.NewContentTracker(),
+		RuleEngine:        NewRuleEngine(model, mqttClient),
+		ctx:               newESContext(model.CallSync),
+		sources:           make(sourceMap),
+		tracker:           wbgo.NewContentTracker(),
+		persistentDBCache: make(map[string]string),
+		persistentDB:      nil,
 	}
 
 	engine.ctx.SetCallbackErrorHandler(func(err ESError) {
@@ -82,6 +89,9 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine
 		"_wbDefineRule":        engine.esWbDefineRule,
 		"runRules":             engine.esWbRunRules,
 		"readConfig":           engine.esReadConfig,
+		"_wbPersistentName":    engine.esPersistentName,
+		"_wbPersistentSet":     engine.esPersistentSet,
+		"_wbPersistentGet":     engine.esPersistentGet,
 	})
 	engine.ctx.GetPropString(-1, "log")
 	engine.ctx.DefineFunctions(map[string]func() int{
@@ -757,4 +767,194 @@ func (engine *ESEngine) EvalScript(code string) error {
 		ch <- err
 	})
 	return <-ch
+}
+
+// Persistent storage features
+
+// Create or open DB file
+func (engine *ESEngine) CreateOrOpenPersistentDB() error {
+	var err error
+	engine.persistentDB, err = bolt.Open(PERSISTENT_DB_FILE, PERSISTENT_DB_CHMOD,
+		&bolt.Options{Timeout: 1 * time.Second})
+
+	if err != nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("can't open persistent DB file: %s", err))
+		return err
+	}
+
+	return nil
+}
+
+// Creates a name for persistent storage bucket.
+// Used in 'PersistentStorage(name, options)'
+func (engine *ESEngine) esPersistentName() int {
+	// arguments: (name string[, options = { global bool }])
+	var name string
+	global := false
+
+	numArgs := engine.ctx.GetTop()
+
+	if numArgs < 1 || numArgs > 2 {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad persistent storage definition"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	// parse name
+	if !engine.ctx.IsString(0) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage name must be string"))
+		return duktape.DUK_RET_ERROR
+	}
+	name = engine.ctx.GetString(0)
+
+	// parse options object
+	if numArgs == 2 && !engine.ctx.IsUndefined(1) {
+		if !engine.ctx.IsObject(1) {
+			engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage options must be object"))
+			return duktape.DUK_RET_ERROR
+		}
+
+		if engine.ctx.HasPropString(1, "global") {
+			ctx := engine.ctx
+			ctx.GetPropString(1, "global")
+
+			if !ctx.IsBoolean(-1) {
+				ctx.Pop()
+				engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage 'global' option must be bool"))
+				return duktape.DUK_RET_ERROR
+			}
+
+			global = ctx.GetBoolean(-1)
+			ctx.Pop()
+		}
+	}
+
+	// non-global storages are not supported yet
+	// TODO: true files isolation and fileName params for areas
+	if !global {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("Non-global persistent storages are not supported yet; force {global: true} to use it"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	// push name as return value
+	engine.ctx.PushString(name)
+
+	return 1
+}
+
+// Writes new value down to persistent DB
+func (engine *ESEngine) esPersistentSet() int {
+	// arguments: (bucket string, key string, value)
+	var bucket, key, value string
+
+	if engine.ctx.GetTop() != 3 {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad persistentSet request, arg number mismatch"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	// parse bucket name
+	if !engine.ctx.IsString(0) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage bucket name must be string"))
+		return duktape.DUK_RET_ERROR
+	}
+	bucket = engine.ctx.GetString(0)
+
+	// parse key
+	if !engine.ctx.IsString(1) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage key must be string"))
+		return duktape.DUK_RET_ERROR
+	}
+	key = engine.ctx.GetString(1)
+
+	// parse value
+	value = engine.ctx.JsonEncode(2)
+
+	// check if DB is opened
+	if engine.persistentDB == nil {
+		err := engine.CreateOrOpenPersistentDB()
+		if err != nil {
+			return duktape.DUK_RET_ERROR
+		}
+	}
+
+	// perform a transaction
+	engine.persistentDB.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte(bucket))
+		if err != nil {
+			return err
+		}
+
+		if err := b.Put([]byte(key), []byte(value)); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	// save value in cache
+	engine.persistentDBCache[key] = value
+
+	return 0
+}
+
+// Gets a value from persitent DB
+func (engine *ESEngine) esPersistentGet() int {
+	// arguments: (bucket string, key string)
+	var bucket, key, value string
+
+	if engine.ctx.GetTop() != 2 {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad persistentGet request, arg number mismatch"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	// parse bucket name
+	if !engine.ctx.IsString(0) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage bucket name must be string"))
+		return duktape.DUK_RET_ERROR
+	}
+	bucket = engine.ctx.GetString(0)
+
+	// parse key
+	if !engine.ctx.IsString(1) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage key must be string"))
+		return duktape.DUK_RET_ERROR
+	}
+	key = engine.ctx.GetString(1)
+
+	// try to get these from cache
+	var ok bool
+	if value, ok = engine.persistentDBCache[key]; !ok {
+		// no value in cache, read it from DB
+		// check if DB is opened
+		if engine.persistentDB == nil {
+			err := engine.CreateOrOpenPersistentDB()
+			if err != nil {
+				return duktape.DUK_RET_ERROR
+			}
+		}
+		// read value
+		engine.persistentDB.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket([]byte(bucket))
+			if b == nil { // no such bucket -> undefined
+				ok = false
+				return nil
+			}
+			ok = true
+			value = string(b.Get([]byte(key)))
+			return nil
+		})
+
+		if ok {
+			engine.persistentDBCache[key] = value
+		}
+	}
+
+	if !ok {
+		// push 'undefined'
+		engine.ctx.PushUndefined()
+	} else {
+		// push value into stack and decode JSON
+		engine.ctx.PushString(value)
+		engine.ctx.JsonDecode(-1)
+	}
+
+	return 1
 }
