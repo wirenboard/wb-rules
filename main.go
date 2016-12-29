@@ -7,7 +7,10 @@ import (
 	"time"
 )
 
-const DRIVER_CLIENT_ID = "rules"
+const (
+	DRIVER_CLIENT_ID   = "rules"
+	PERSISTENT_DB_FILE = "/var/lib/wirenboard/wbrules-persistent.db"
+)
 
 func main() {
 	brokerAddress := flag.String("broker", "tcp://localhost:1883", "MQTT broker url")
@@ -34,6 +37,7 @@ func main() {
 	driver.SetAutoPoll(false)
 	driver.SetAcceptsExternalDevices(true)
 	engine := wbrules.NewESEngine(model, mqttClient)
+	engine.SetPersistentDB(PERSISTENT_DB_FILE)
 	gotSome := false
 	watcher := wbgo.NewDirWatcher("\\.js$", engine)
 	if *editDir != "" {

@@ -772,9 +772,9 @@ func (engine *ESEngine) EvalScript(code string) error {
 // Persistent storage features
 
 // Create or open DB file
-func (engine *ESEngine) CreateOrOpenPersistentDB() error {
+func (engine *ESEngine) SetPersistentDB(filename string) error {
 	var err error
-	engine.persistentDB, err = bolt.Open(PERSISTENT_DB_FILE, PERSISTENT_DB_CHMOD,
+	engine.persistentDB, err = bolt.Open(filename, PERSISTENT_DB_CHMOD,
 		&bolt.Options{Timeout: 1 * time.Second})
 
 	if err != nil {
@@ -785,9 +785,30 @@ func (engine *ESEngine) CreateOrOpenPersistentDB() error {
 	return nil
 }
 
+// Force close DB
+func (engine *ESEngine) ClosePersistentDB() error {
+	var err error
+
+	if engine.persistentDB == nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("DB is not opened, nothing to close"))
+		return fmt.Errorf("nothing to close")
+	}
+
+	if err = engine.persistentDB.Close(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Creates a name for persistent storage bucket.
 // Used in 'PersistentStorage(name, options)'
 func (engine *ESEngine) esPersistentName() int {
+	if engine.persistentDB == nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
+		return duktape.DUK_RET_ERROR
+	}
+
 	// arguments: (name string[, options = { global bool }])
 	var name string
 	global := false
@@ -843,6 +864,11 @@ func (engine *ESEngine) esPersistentName() int {
 
 // Writes new value down to persistent DB
 func (engine *ESEngine) esPersistentSet() int {
+	if engine.persistentDB == nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
+		return duktape.DUK_RET_ERROR
+	}
+
 	// arguments: (bucket string, key string, value)
 	var bucket, key, value string
 
@@ -868,14 +894,6 @@ func (engine *ESEngine) esPersistentSet() int {
 	// parse value
 	value = engine.ctx.JsonEncode(2)
 
-	// check if DB is opened
-	if engine.persistentDB == nil {
-		err := engine.CreateOrOpenPersistentDB()
-		if err != nil {
-			return duktape.DUK_RET_ERROR
-		}
-	}
-
 	// perform a transaction
 	engine.persistentDB.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists([]byte(bucket))
@@ -889,14 +907,16 @@ func (engine *ESEngine) esPersistentSet() int {
 		return nil
 	})
 
-	// save value in cache
-	engine.persistentDBCache[key] = value
-
 	return 0
 }
 
 // Gets a value from persitent DB
 func (engine *ESEngine) esPersistentGet() int {
+	if engine.persistentDB == nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
+		return duktape.DUK_RET_ERROR
+	}
+
 	// arguments: (bucket string, key string)
 	var bucket, key, value string
 
@@ -921,31 +941,17 @@ func (engine *ESEngine) esPersistentGet() int {
 
 	// try to get these from cache
 	var ok bool
-	if value, ok = engine.persistentDBCache[key]; !ok {
-		// no value in cache, read it from DB
-		// check if DB is opened
-		if engine.persistentDB == nil {
-			err := engine.CreateOrOpenPersistentDB()
-			if err != nil {
-				return duktape.DUK_RET_ERROR
-			}
-		}
-		// read value
-		engine.persistentDB.View(func(tx *bolt.Tx) error {
-			b := tx.Bucket([]byte(bucket))
-			if b == nil { // no such bucket -> undefined
-				ok = false
-				return nil
-			}
-			ok = true
-			value = string(b.Get([]byte(key)))
+	// read value
+	engine.persistentDB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
+		if b == nil { // no such bucket -> undefined
+			ok = false
 			return nil
-		})
-
-		if ok {
-			engine.persistentDBCache[key] = value
 		}
-	}
+		ok = true
+		value = string(b.Get([]byte(key)))
+		return nil
+	})
 
 	if !ok {
 		// push 'undefined'
