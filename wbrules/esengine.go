@@ -26,7 +26,6 @@ const (
 	LIB_REL_PATH_1      = "scripts"
 	LIB_REL_PATH_2      = "../scripts"
 	MIN_INTERVAL_MS     = 1
-	PERSISTENT_DB_FILE  = "/var/lib/wirenboard/wbrules-persistent.db"
 	PERSISTENT_DB_CHMOD = 0640
 	SOURCE_ITEM_DEVICE  = itemType(iota)
 	SOURCE_ITEM_RULE
