@@ -287,7 +287,7 @@ func (engine *RuleEngine) storeVirtualCellValueToDBRaw(device string, control st
 		return
 	}
 
-	wbgo.Debug.Printf("%s/%s: set cell value \"%s\"",
+	wbgo.Debug.Printf("%s/%s: store virtual cell value to DB: \"%s\"",
 		device, control, value)
 
 	return
@@ -295,6 +295,13 @@ func (engine *RuleEngine) storeVirtualCellValueToDBRaw(device string, control st
 
 func (engine *RuleEngine) storeVirtualCellValueToDB(cellSpec *CellSpec) (err error) {
 	cell := engine.model.EnsureCell(cellSpec)
+
+	// check that this cell belongs to virtual device
+	// FIXME: this is awful
+	if _, ok := cell.device.(*CellModelLocalDevice); !ok {
+		return nil
+	}
+
 	return engine.storeVirtualCellValueToDBRaw(cellSpec.DevName, cellSpec.CellName, cell.value)
 }
 
