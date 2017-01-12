@@ -240,7 +240,7 @@ func (engine *RuleEngine) getVirtualCellValueFromDB(device string, control strin
 		return
 	}
 
-	engine.virtualCellsStorage.View(func(tx *bolt.Tx) error {
+	err = engine.virtualCellsStorage.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(device))
 		if b == nil { // no bucket for this device
 			ok = false
@@ -260,14 +260,14 @@ func (engine *RuleEngine) getVirtualCellValueFromDB(device string, control strin
 
 // Set cell value in virtual cells DB
 func (engine *RuleEngine) storeVirtualCellValueToDBRaw(device string, control string, value string) (err error) {
-	var ok bool
+	ok := true
 
 	if engine.virtualCellsStorage == nil {
 		err = fmt.Errorf("DB is not initialized")
 		return
 	}
 
-	engine.virtualCellsStorage.Update(func(tx *bolt.Tx) error {
+	err = engine.virtualCellsStorage.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists([]byte(device))
 		if err != nil {
 			ok = false
@@ -283,8 +283,12 @@ func (engine *RuleEngine) storeVirtualCellValueToDBRaw(device string, control st
 	})
 
 	if !ok {
-		err = fmt.Errorf("error writing cell value to DB")
+		err = fmt.Errorf("error writing cell value to DB: %s", err)
+		return
 	}
+
+	wbgo.Debug.Printf("%s/%s: set cell value \"%s\"",
+		device, control, value)
 
 	return
 }
@@ -589,7 +593,10 @@ func (engine *RuleEngine) Start() {
 					//
 					// TODO: insert virtual cell storage here
 					//
-					engine.storeVirtualCellValueToDB(cellSpec)
+					if err := engine.storeVirtualCellValueToDB(cellSpec); err != nil {
+						wbgo.Warn.Printf("%s/%s: can't set virtual cell value: %s",
+							cellSpec.DevName, cellSpec.CellName, err)
+					}
 
 					engine.model.CallSync(func() {
 						engine.RunRules(cellSpec, NO_TIMER_NAME)
@@ -763,6 +770,11 @@ func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
 		if !forceDefault {
 			if v, err := engine.getVirtualCellValueFromDB(name, cellName); err == nil {
 				cellValue = v
+				wbgo.Debug.Printf("%s/%s: set previous virtual cell value \"%s\"",
+					name, cellName, cellValue)
+			} else {
+				wbgo.Warn.Printf("%s/%s: can't get previous virtual cell value: %s",
+					name, cellName, err)
 			}
 		}
 
