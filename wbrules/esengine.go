@@ -36,6 +36,29 @@ var searchDirs = []string{LIB_SYS_PATH}
 
 type sourceMap map[string]*LocFileEntry
 
+type ESEngineOptions struct {
+	*RuleEngineOptions
+	PersistentDBFile     string
+	PersistentDBFileMode os.FileMode
+}
+
+func NewESEngineOptions() *ESEngineOptions {
+	return &ESEngineOptions{
+		RuleEngineOptions:    NewRuleEngineOptions(),
+		PersistentDBFileMode: PERSISTENT_DB_CHMOD,
+	}
+}
+
+func (o *ESEngineOptions) SetPersistentDBFile(file string) *ESEngineOptions {
+	o.PersistentDBFile = file
+	return o
+}
+
+func (o *ESEngineOptions) SetPersistentDBFileMode(mode os.FileMode) *ESEngineOptions {
+	o.PersistentDBFileMode = mode
+	return o
+}
+
 type ESEngine struct {
 	*RuleEngine
 	ctx               *ESContext
@@ -58,14 +81,25 @@ func init() {
 	}
 }
 
-func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine) {
+func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngineOptions) (engine *ESEngine) {
+	if options == nil {
+		panic("no options given to NewESEngine")
+	}
+
 	engine = &ESEngine{
-		RuleEngine:        NewRuleEngine(model, mqttClient),
+		RuleEngine:        NewRuleEngine(model, mqttClient, options.RuleEngineOptions),
 		ctx:               newESContext(model.CallSync),
 		sources:           make(sourceMap),
 		tracker:           wbgo.NewContentTracker(),
 		persistentDBCache: make(map[string]string),
 		persistentDB:      nil,
+	}
+
+	if options.PersistentDBFile != "" {
+		if err := engine.SetPersistentDBMode(options.PersistentDBFile,
+			options.PersistentDBFileMode); err != nil {
+			panic("error opening persistent DB file: " + err.Error())
+		}
 	}
 
 	engine.ctx.SetCallbackErrorHandler(func(err ESError) {
@@ -772,32 +806,38 @@ func (engine *ESEngine) EvalScript(code string) error {
 
 // Create or open DB file
 func (engine *ESEngine) SetPersistentDB(filename string) error {
-	var err error
-	engine.persistentDB, err = bolt.Open(filename, PERSISTENT_DB_CHMOD,
+	return engine.SetPersistentDBMode(filename, PERSISTENT_DB_CHMOD)
+}
+
+func (engine *ESEngine) SetPersistentDB(filename string, mode os.Mode) (err error) {
+	if engine.persistentDB != nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage DB is already opened"))
+		err = fmt.Errorf("persistent storage DB is already opened")
+		return
+	}
+
+	engine.persistentDB, err = bolt.Open(filename, mode,
 		&bolt.Options{Timeout: 1 * time.Second})
 
 	if err != nil {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("can't open persistent DB file: %s", err))
-		return err
+		return
 	}
 
 	return nil
 }
 
 // Force close DB
-func (engine *ESEngine) ClosePersistentDB() error {
-	var err error
-
+func (engine *ESEngine) ClosePersistentDB() (err error) {
 	if engine.persistentDB == nil {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("DB is not opened, nothing to close"))
-		return fmt.Errorf("nothing to close")
+		err = fmt.Errorf("nothing to close")
+		return
 	}
 
-	if err = engine.persistentDB.Close(); err != nil {
-		return err
-	}
+	err = engine.persistentDB.Close()
 
-	return nil
+	return
 }
 
 // Creates a name for persistent storage bucket.
