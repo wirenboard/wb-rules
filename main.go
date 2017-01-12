@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	DRIVER_CLIENT_ID   = "rules"
-	PERSISTENT_DB_FILE = "/var/lib/wirenboard/wbrules-persistent.db"
+	DRIVER_CLIENT_ID      = "rules"
+	PERSISTENT_DB_FILE    = "/var/lib/wirenboard/wbrules-persistent.db"
+	VIRTUAL_CELLS_DB_FILE = "/var/lib/wirenboard/wbrules-vcells.db"
 )
 
 func main() {
@@ -37,7 +38,14 @@ func main() {
 	driver.SetAutoPoll(false)
 	driver.SetAcceptsExternalDevices(true)
 	engine := wbrules.NewESEngine(model, mqttClient)
-	engine.SetPersistentDB(PERSISTENT_DB_FILE)
+
+	if err := engine.SetPersistentDB(PERSISTENT_DB_FILE); err != nil {
+		wbgo.Warn.Printf("PersistentStorage init failed: %s", err)
+	}
+	if err := engine.SetVirtualCellsDB(VIRTUAL_CELLS_DB_FILE); err != nil {
+		wbgo.Warn.Printf("Virtual cells DB init failed: %s", err)
+	}
+
 	gotSome := false
 	watcher := wbgo.NewDirWatcher("\\.js$", engine)
 	if *editDir != "" {
