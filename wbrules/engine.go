@@ -7,6 +7,7 @@ import (
 	"github.com/robfig/cron"
 	"github.com/stretchr/objx"
 	"log"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -23,7 +24,6 @@ const (
 	RULE_ENGINE_SETTINGS_DEV_NAME = "wbrules"
 	RULE_DEBUG_CELL_NAME          = "Rule debugging"
 
-	VIRTUAL_CELLS_DB_FILE  = "/var/lib/wirenboard/wbrules-vcells.db"
 	VIRTUAL_CELLS_DB_CHMOD = 0640
 
 	ENGINE_LOG_DEBUG = EngineLogLevel(iota)
@@ -144,6 +144,27 @@ func (cp cronProxy) AddFunc(spec string, cmd func()) error {
 	})
 }
 
+type RuleEngineOptions struct {
+	VirtualCellsStorageFile     string
+	VirtualCellsStorageFileMode os.FileMode
+}
+
+func NewRuleEngineOptions() *RuleEngineOptions {
+	return &RuleEngineOptions{
+		VirtualCellsStorageFileMode: VIRTUAL_CELLS_DB_CHMOD,
+	}
+}
+
+func (o *RuleEngineOptions) SetVirtualCellsStorageFileMode(mode os.FileMode) *RuleEngineOptions {
+	o.VirtualCellsStorageFileMode = mode
+	return o
+}
+
+func (o *RuleEngineOptions) SetVirtualCellsStorageFile(file string) *RuleEngineOptions {
+	o.VirtualCellsStorageFile = file
+	return o
+}
+
 type RuleEngine struct {
 	cleanup             *ScopedCleanup
 	rev                 uint64
@@ -171,7 +192,11 @@ type RuleEngine struct {
 	virtualCellsStorage *bolt.DB
 }
 
-func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
+func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *RuleEngineOptions) (engine *RuleEngine) {
+	if options == nil {
+		panic("no options given to NewRuleEngine")
+	}
+
 	engine = &RuleEngine{
 		cleanup:             MakeScopedCleanup(),
 		rev:                 0,
@@ -195,6 +220,14 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEn
 		readyCh:             nil,
 		virtualCellsStorage: nil,
 	}
+
+	if options.VirtualCellsStorageFile != "" {
+		if err := engine.SetVirtualCellsDBMode(options.VirtualCellsStorageFile,
+			options.VirtualCellsStorageFileMode); err != nil {
+			panic("error opening virtual cells storage: " + err.Error())
+		}
+	}
+
 	engine.setupRuleEngineSettingsDevice()
 	return
 }
@@ -208,7 +241,17 @@ func (engine *RuleEngine) ReadyCh() <-chan struct{} {
 
 // Create or open virtual cells DB file
 func (engine *RuleEngine) SetVirtualCellsDB(filename string) (err error) {
-	engine.virtualCellsStorage, err = bolt.Open(filename, VIRTUAL_CELLS_DB_CHMOD,
+	return engine.SetVirtualCellsDBMode(filename, VIRTUAL_CELLS_DB_CHMOD)
+}
+
+func (engine *RuleEngine) SetVirtualCellsDBMode(filename string, mode os.FileMode) (err error) {
+	if engine.virtualCellsStorage != nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("virtual cells DB is already opened"))
+		err = fmt.Errorf("virtual cells DB is aleready opened")
+		return
+	}
+
+	engine.virtualCellsStorage, err = bolt.Open(filename, mode,
 		&bolt.Options{Timeout: 1 * time.Second})
 
 	if err != nil {
