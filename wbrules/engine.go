@@ -259,7 +259,7 @@ func (engine *RuleEngine) getVirtualCellValueFromDB(device string, control strin
 }
 
 // Set cell value in virtual cells DB
-func (engine *RuleEngine) setVirtualCellValueInDB(device string, control string, value string) (err error) {
+func (engine *RuleEngine) storeVirtualCellValueToDBRaw(device string, control string, value string) (err error) {
 	var ok bool
 
 	if engine.virtualCellsStorage == nil {
@@ -287,6 +287,11 @@ func (engine *RuleEngine) setVirtualCellValueInDB(device string, control string,
 	}
 
 	return
+}
+
+func (engine *RuleEngine) storeVirtualCellValueToDB(cellSpec *CellSpec) (err error) {
+	cell := engine.model.EnsureCell(cellSpec)
+	return engine.storeVirtualCellValueToDBRaw(cellSpec.DevName, cellSpec.CellName, cell.value)
 }
 
 func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
@@ -584,6 +589,7 @@ func (engine *RuleEngine) Start() {
 					//
 					// TODO: insert virtual cell storage here
 					//
+					engine.storeVirtualCellValueToDB(cellSpec)
 
 					engine.model.CallSync(func() {
 						engine.RunRules(cellSpec, NO_TIMER_NAME)
@@ -735,11 +741,29 @@ func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
 		//
 		// TODO: insert pre-saved value from persistent storage here
 		//
+		forceDefault := false
+		forceDefaultRaw, hasForceDefault := cellDef["forceDefault"]
+
+		if hasForceDefault {
+			ok := false
+			forceDefault, ok = forceDefaultRaw.(bool)
+			if !ok {
+				return fmt.Errorf("%s/%s: non-boolean value of forceDefault propery",
+					name, cellName)
+			}
+		}
 
 		cellValue, ok := cellDef["value"]
 		if !ok {
 			return fmt.Errorf("%s/%s: cell value required for cell type %s",
 				name, cellName, cellType)
+		}
+
+		// try to get last stored value of virtual cell
+		if !forceDefault {
+			if v, err := engine.getVirtualCellValueFromDB(name, cellName); err == nil {
+				cellValue = v
+			}
 		}
 
 		cellReadonly := false

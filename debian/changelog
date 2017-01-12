@@ -1,3 +1,9 @@
+wb-rules (1.6.9~beta2) stable; urgency=medium
+
+  * Save virtual devices cells to persistent storage and restore 'em on bootup
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Thu, 12 Jan 2017 11:50:42 +0300
+
 wb-rules (1.6.9~beta1) stable; urgency=medium
 
   * PersistentStorage support (global only right now)
