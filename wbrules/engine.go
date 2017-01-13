@@ -642,9 +642,6 @@ func (engine *RuleEngine) Start() {
 						engine.updateDebugEnabled()
 					}
 
-					//
-					// TODO: insert virtual cell storage here
-					//
 					if cellSpec != nil {
 						if err := engine.storeVirtualCellValueToDB(cellSpec); err != nil {
 							wbgo.Warn.Printf("%s/%s: can't set virtual cell value: %s",
@@ -799,9 +796,6 @@ func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
 			continue
 		}
 
-		//
-		// TODO: insert pre-saved value from persistent storage here
-		//
 		forceDefault := false
 		forceDefaultRaw, hasForceDefault := cellDef["forceDefault"]
 
