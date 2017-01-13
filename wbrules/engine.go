@@ -272,6 +272,13 @@ func (engine *RuleEngine) CloseVirtualCellsDB() (err error) {
 	return
 }
 
+// "Cell not found" error
+type CellNotFoundError struct{}
+
+func (e *CellNotFoundError) Error() string {
+	return ""
+}
+
 // Get cell value by name from virtual cells DB
 func (engine *RuleEngine) getVirtualCellValueFromDB(device string, control string) (value string, err error) {
 	var ok bool
@@ -288,12 +295,19 @@ func (engine *RuleEngine) getVirtualCellValueFromDB(device string, control strin
 			return nil
 		}
 		ok = true
-		value = string(b.Get([]byte(control)))
+
+		rval := b.Get([]byte(control))
+		if rval == nil {
+			ok = false
+			return nil
+		}
+
+		value = string(rval)
 		return nil
 	})
 
 	if !ok {
-		err = fmt.Errorf("cell not found")
+		err = &CellNotFoundError{}
 	}
 
 	return
@@ -820,9 +834,11 @@ func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
 				cellValue = v
 				wbgo.Debug.Printf("%s/%s: set previous virtual cell value \"%s\"",
 					name, cellName, cellValue)
+			} else if _, ok = err.(*CellNotFoundError); ok {
+				// cell not found, do nothing
+				wbgo.Debug.Printf("%s/%s: previous cell value not found", name, cellName)
 			} else {
-				// TODO: ignore 'cell not found' and make this a warning
-				wbgo.Debug.Printf("%s/%s: can't get previous virtual cell value: %s",
+				wbgo.Warn.Printf("%s/%s: can't get previous virtual cell value: %s",
 					name, cellName, err)
 			}
 		}
