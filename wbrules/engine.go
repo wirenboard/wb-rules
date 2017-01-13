@@ -335,6 +335,10 @@ func (engine *RuleEngine) storeVirtualCellValueToDBRaw(device string, control st
 }
 
 func (engine *RuleEngine) storeVirtualCellValueToDB(cellSpec *CellSpec) (err error) {
+	if cellSpec == nil {
+		return fmt.Errorf("cellSpec is nil")
+	}
+
 	cell := engine.model.EnsureCell(cellSpec)
 
 	// check that this cell belongs to virtual device
@@ -641,9 +645,11 @@ func (engine *RuleEngine) Start() {
 					//
 					// TODO: insert virtual cell storage here
 					//
-					if err := engine.storeVirtualCellValueToDB(cellSpec); err != nil {
-						wbgo.Warn.Printf("%s/%s: can't set virtual cell value: %s",
-							cellSpec.DevName, cellSpec.CellName, err)
+					if cellSpec != nil {
+						if err := engine.storeVirtualCellValueToDB(cellSpec); err != nil {
+							wbgo.Warn.Printf("%s/%s: can't set virtual cell value: %s",
+								cellSpec.DevName, cellSpec.CellName, err)
+						}
 					}
 
 					engine.model.CallSync(func() {
