@@ -155,14 +155,12 @@ func NewRuleEngineOptions() *RuleEngineOptions {
 	}
 }
 
-func (o *RuleEngineOptions) SetVirtualCellsStorageFileMode(mode os.FileMode) *RuleEngineOptions {
+func (o *RuleEngineOptions) SetVirtualCellsStorageFileMode(mode os.FileMode) {
 	o.VirtualCellsStorageFileMode = mode
-	return o
 }
 
-func (o *RuleEngineOptions) SetVirtualCellsStorageFile(file string) *RuleEngineOptions {
+func (o *RuleEngineOptions) SetVirtualCellsStorageFile(file string) {
 	o.VirtualCellsStorageFile = file
-	return o
 }
 
 type RuleEngine struct {
@@ -823,7 +821,8 @@ func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
 				wbgo.Debug.Printf("%s/%s: set previous virtual cell value \"%s\"",
 					name, cellName, cellValue)
 			} else {
-				wbgo.Warn.Printf("%s/%s: can't get previous virtual cell value: %s",
+				// TODO: ignore 'cell not found' and make this a warning
+				wbgo.Debug.Printf("%s/%s: can't get previous virtual cell value: %s",
 					name, cellName, err)
 			}
 		}

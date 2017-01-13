@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"github.com/contactless/wbgo"
 	"github.com/contactless/wbgo/testutils"
+	"io/ioutil"
+	"os"
 	"regexp"
 	"testing"
 	"time"
@@ -57,9 +59,35 @@ type RuleSuiteBase struct {
 	*testutils.FakeTimerFixture
 	engine *ESEngine
 	cron   *fakeCron
+
+	PersistentDBFile        string
+	VirtualCellsStorageFile string
+	CleanUp                 func()
 }
 
 var logVerifyRx = regexp.MustCompile(`^\[(info|debug|warning|error)\] (.*)`)
+
+// creates necessary file paths if some are not defined already
+func (s *RuleSuiteBase) createTempFiles() {
+	tmpDir, err := ioutil.TempDir(os.TempDir(), "wbrulestest")
+	if err != nil {
+		s.FailNow("can't create temp directory")
+	}
+	wbgo.Debug.Printf("created temp dir %s", tmpDir)
+
+	if s.PersistentDBFile == "" {
+		s.PersistentDBFile = tmpDir + "/test-persistent.db"
+	}
+	if s.VirtualCellsStorageFile == "" {
+		s.VirtualCellsStorageFile = tmpDir + "/test-vcells.db"
+	}
+
+	s.CleanUp = func() {
+		os.RemoveAll(tmpDir)
+	}
+
+	wbgo.Debug.Printf("RuleSuiteBase created temp dir %s", tmpDir)
+}
 
 func (s *RuleSuiteBase) preprocessItemsForVerify(items []interface{}) (newItems []interface{}) {
 	newItems = make([]interface{}, len(items))
@@ -93,7 +121,16 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	s.DataFileFixture = testutils.NewDataFileFixture(s.T())
 	s.FakeTimerFixture = testutils.NewFakeTimerFixture(s.T(), s.Recorder)
 	s.cron = nil
-	s.engine = NewESEngine(s.model, s.driverClient)
+
+	if s.VirtualCellsStorageFile == "" || s.PersistentDBFile == "" {
+		s.createTempFiles()
+	}
+
+	engineOptions := NewESEngineOptions()
+	engineOptions.SetPersistentDBFile(s.PersistentDBFile)
+	engineOptions.SetVirtualCellsStorageFile(s.VirtualCellsStorageFile)
+
+	s.engine = NewESEngine(s.model, s.driverClient, engineOptions)
 	s.engine.SetTimerFunc(s.newFakeTimer)
 	s.engine.SetCronMaker(func() Cron {
 		s.cron = newFakeCron(s.T())
@@ -171,6 +208,15 @@ func (s *RuleSuiteBase) TearDownTest() {
 	s.WaitFor(func() bool {
 		return !s.engine.IsActive()
 	})
+
+	s.engine.ClosePersistentDB()
+	s.engine.CloseVirtualCellsDB()
+	s.PersistentDBFile = ""
+	s.VirtualCellsStorageFile = ""
+
+	if s.CleanUp != nil {
+		s.CleanUp()
+	}
 }
 
 // TBD: metadata (like, meta["devname"]["controlName"])

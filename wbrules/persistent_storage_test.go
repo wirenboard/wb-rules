@@ -27,12 +27,11 @@ func (s *PersistentStorageSuite) TearDownFixture() {
 }
 
 func (s *PersistentStorageSuite) SetupTest() {
+	s.PersistentDBFile = s.tmpDir + "/test_persistent.db"
 	s.SetupSkippingDefs("testrules_persistent.js")
-	s.engine.SetPersistentDB(s.tmpDir + "/temp_persistent.db")
 }
 
 func (s *PersistentStorageSuite) TearDownTest() {
-	s.engine.ClosePersistentDB()
 	s.RuleSuiteBase.TearDownTest()
 }
 
