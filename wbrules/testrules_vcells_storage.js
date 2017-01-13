@@ -17,6 +17,7 @@ defineVirtualDevice("test-vdev", {
         },
         cellText: {
             type: "text",
+            readonly: false,
             value: "foo"
         }
     }
