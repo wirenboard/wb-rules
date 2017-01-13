@@ -37,14 +37,12 @@ func main() {
 	driver := wbgo.NewDriver(model, mqttClient)
 	driver.SetAutoPoll(false)
 	driver.SetAcceptsExternalDevices(true)
-	engine := wbrules.NewESEngine(model, mqttClient)
 
-	if err := engine.SetPersistentDB(PERSISTENT_DB_FILE); err != nil {
-		wbgo.Warn.Printf("PersistentStorage init failed: %s", err)
-	}
-	if err := engine.SetVirtualCellsDB(VIRTUAL_CELLS_DB_FILE); err != nil {
-		wbgo.Warn.Printf("Virtual cells DB init failed: %s", err)
-	}
+	engineOptions := wbrules.NewESEngineOptions()
+	engineOptions.SetPersistentDBFile(PERSISTENT_DB_FILE)
+	engineOptions.SetVirtualCellsStorageFile(VIRTUAL_CELLS_DB_FILE)
+
+	engine := wbrules.NewESEngine(model, mqttClient, engineOptions)
 
 	gotSome := false
 	watcher := wbgo.NewDirWatcher("\\.js$", engine)

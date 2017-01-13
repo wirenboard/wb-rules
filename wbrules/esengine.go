@@ -49,14 +49,12 @@ func NewESEngineOptions() *ESEngineOptions {
 	}
 }
 
-func (o *ESEngineOptions) SetPersistentDBFile(file string) *ESEngineOptions {
+func (o *ESEngineOptions) SetPersistentDBFile(file string) {
 	o.PersistentDBFile = file
-	return o
 }
 
-func (o *ESEngineOptions) SetPersistentDBFileMode(mode os.FileMode) *ESEngineOptions {
+func (o *ESEngineOptions) SetPersistentDBFileMode(mode os.FileMode) {
 	o.PersistentDBFileMode = mode
-	return o
 }
 
 type ESEngine struct {
@@ -809,7 +807,7 @@ func (engine *ESEngine) SetPersistentDB(filename string) error {
 	return engine.SetPersistentDBMode(filename, PERSISTENT_DB_CHMOD)
 }
 
-func (engine *ESEngine) SetPersistentDB(filename string, mode os.Mode) (err error) {
+func (engine *ESEngine) SetPersistentDBMode(filename string, mode os.FileMode) (err error) {
 	if engine.persistentDB != nil {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage DB is already opened"))
 		err = fmt.Errorf("persistent storage DB is already opened")
