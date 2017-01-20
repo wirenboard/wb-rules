@@ -376,7 +376,7 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 		}()
 	}
 
-	return true, engine.trackESError(path, engine.ctx.LoadScript(path))
+	return true, engine.trackESError(path, engine.ctx.LoadScenario(path))
 }
 
 func (engine *ESEngine) trackESError(path string, err error) error {

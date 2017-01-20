@@ -3,15 +3,17 @@ package wbrules
 import (
 	"bytes"
 	"fmt"
-	wbgo "github.com/contactless/wbgo"
-	duktape "github.com/ivan4th/go-duktape"
-	"github.com/stretchr/objx"
+	"io/ioutil"
 	"log"
 	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
+
+	wbgo "github.com/contactless/wbgo"
+	duktape "github.com/ivan4th/go-duktape"
+	"github.com/stretchr/objx"
 )
 
 type ESLocation struct {
@@ -319,6 +321,31 @@ func (ctx *ESContext) LoadScript(path string) error {
 	if r := ctx.PevalFile(path); r != 0 {
 		return ctx.GetESErrorAugmentingSyntaxErrors(path)
 	}
+	return nil
+}
+
+// LoadScenario wraps loaded script into closure
+// and gives extra global objects with additional information
+// about environment
+func (ctx *ESContext) LoadScenario(path string) error {
+	// load script file
+	srcRaw, err := ioutil.ReadFile(path)
+
+	if err != nil {
+		return err
+	}
+
+	// wrap source code
+	src := "(function(){" + string(srcRaw) + "})();"
+
+	// TODO: push global object here
+
+	if err = ctx.LoadScriptFromString(path, src); err != nil {
+		return err
+	}
+
+	// TODO: remove global object here
+
 	return nil
 }
 
