@@ -1,3 +1,9 @@
+wb-rules (1.7~alpha1) stable; urgency=medium
+
+  * Rules isolation
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Mon, 23 Jan 2017 17:28:04 +0300
+
 wb-rules (1.6.9~beta2) stable; urgency=medium
 
   * Save virtual devices cells to persistent storage and restore 'em on bootup
