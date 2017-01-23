@@ -2,7 +2,6 @@ package wbrules
 
 import (
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"reflect"
@@ -354,11 +353,11 @@ func (ctx *ESContext) LoadScriptFromString(filename, content string) error {
 	// we use PcompileStringFilename here to get readable stacktraces
 	if r := ctx.PcompileStringFilename(0, content); r != 0 {
 		defer ctx.Pop()
-		return fmt.Errorf("failed to compile %s: %s", filename, ctx.SafeToString(-1))
+		return ctx.GetESErrorAugmentingSyntaxErrors(filename)
 	}
 	defer ctx.Pop()
 	if r := ctx.Pcall(0); r != 0 {
-		return fmt.Errorf("failed to run %s: %s", filename, ctx.SafeToString(-1))
+		return ctx.GetESErrorAugmentingSyntaxErrors(filename)
 	}
 	return nil
 }
