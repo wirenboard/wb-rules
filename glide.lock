@@ -18,7 +18,7 @@ imports:
 - name: github.com/DisposaBoy/JsonConfigReader
   version: 33a99fdf1d5ee1f79b5077e9c06f955ad356d5f4
 - name: github.com/ivan4th/go-duktape
-  version: eaa33641120743ac97315445a0a739c2776182e5
+  version: 3cfd5915835f159715a95466edb9570f913372ec
 - name: github.com/pmezard/go-difflib
   version: d8ed2627bdf02c080bf22230dbb337003b7aba2d
   subpackages:
