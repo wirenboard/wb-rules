@@ -356,7 +356,7 @@ func (ctx *ESContext) LoadScriptFromString(filename, content string) error {
 	return ctx.loadScriptFromStringFlags(filename, content, 0)
 }
 
-func (ctx *ESContext) loadScriptFromStringFlags(filename, content string, int flags) error {
+func (ctx *ESContext) loadScriptFromStringFlags(filename, content string, flags uint) error {
 	ctx.PushString(filename)
 	// we use PcompileStringFilename here to get readable stacktraces
 	if r := ctx.PcompileStringFilename(flags, content); r != 0 {
