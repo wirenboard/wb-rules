@@ -1,4 +1,4 @@
-function testLog () {
+global.testLog = function testLog () {
   log("log()");
   debug("debug()");
   log.debug("log.debug({})", 42);

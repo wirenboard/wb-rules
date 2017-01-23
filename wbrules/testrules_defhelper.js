@@ -5,7 +5,7 @@
 // the definition, even if some helper functions are used to define
 // rules or devices.
 
-function defineSomeRule(name) {
+global.defineSomeRule = function defineSomeRule(name) {
   var ruleName = name + "Rule";
   defineRule(ruleName, {
     asSoonAs: function () {
@@ -17,7 +17,7 @@ function defineSomeRule(name) {
   });
 }
 
-function defineSomeDevice(name) {
+global.defineSomeDevice = function defineSomeDevice(name) {
   defineVirtualDevice(name, {
     title: name,
     cells: {
