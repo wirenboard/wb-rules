@@ -335,11 +335,11 @@ func (ctx *ESContext) LoadScenario(path string) error {
 	}
 
 	// wrap source code
-	src := "(function(){" + string(srcRaw) + "})();"
+	src := "function(){" + string(srcRaw) + "}"
 
 	// TODO: push global object here
 
-	if err = ctx.LoadScriptFromString(path, src); err != nil {
+	if err = ctx.LoadAndCallFunctionFromString(path, src); err != nil {
 		return err
 	}
 
@@ -348,10 +348,18 @@ func (ctx *ESContext) LoadScenario(path string) error {
 	return nil
 }
 
+func (ctx *ESContext) LoadAndCallFunctionFromString(filename, content string) error {
+	return ctx.loadScriptFromStringFlags(filename, content, duktape.DUK_COMPILE_FUNCTION)
+}
+
 func (ctx *ESContext) LoadScriptFromString(filename, content string) error {
+	return ctx.loadScriptFromStringFlags(filename, content, 0)
+}
+
+func (ctx *ESContext) loadScriptFromStringFlags(filename, content string, int flags) error {
 	ctx.PushString(filename)
 	// we use PcompileStringFilename here to get readable stacktraces
-	if r := ctx.PcompileStringFilename(0, content); r != 0 {
+	if r := ctx.PcompileStringFilename(flags, content); r != 0 {
 		defer ctx.Pop()
 		return ctx.GetESErrorAugmentingSyntaxErrors(filename)
 	}
