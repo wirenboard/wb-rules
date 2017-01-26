@@ -2,15 +2,20 @@ package main
 
 import (
 	"flag"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/contactless/wb-rules/wbrules"
 	"github.com/contactless/wbgo"
-	"time"
 )
 
 const (
 	DRIVER_CLIENT_ID      = "rules"
 	PERSISTENT_DB_FILE    = "/var/lib/wirenboard/wbrules-persistent.db"
 	VIRTUAL_CELLS_DB_FILE = "/var/lib/wirenboard/wbrules-vcells.db"
+
+	WBRULES_MODULES_ENV = "WBRULES_MODULES"
 )
 
 func main() {
@@ -41,6 +46,7 @@ func main() {
 	engineOptions := wbrules.NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(PERSISTENT_DB_FILE)
 	engineOptions.SetVirtualCellsStorageFile(VIRTUAL_CELLS_DB_FILE)
+	engineOptions.SetScriptDirs(strings.Split(os.Getenv(WBRULES_MODULES_ENV), ":"))
 
 	engine := wbrules.NewESEngine(model, mqttClient, engineOptions)
 
