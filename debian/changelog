@@ -1,3 +1,11 @@
+wb-rules (1.7~alpha2) stable; urgency=medium
+
+  * modules - initial version
+  * detect errors in virtual device name
+  * switch to contactless/go-duktape
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Thu, 26 Jan 2017 20:28:32 +0300
+
 wb-rules (1.7~alpha1) stable; urgency=medium
 
   * Rules isolation
