@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -748,6 +749,17 @@ func (engine *RuleEngine) Publish(topic, payload string, qos byte, retain bool) 
 }
 
 func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
+
+	// check device name (non-zero length, no wildcard symbols)
+	if len(name) == 0 {
+		return fmt.Errorf("invalid virtual device name: empty string")
+	}
+
+	if strings.ContainsAny(name, "#+") {
+		return fmt.Errorf("invalid virtual device name '%s': "+
+			"device name must not contain wildcard characters ('#' and '+')", name)
+	}
+
 	title := name
 	if obj.Has("title") {
 		title = obj.Get("title").Str(name)
