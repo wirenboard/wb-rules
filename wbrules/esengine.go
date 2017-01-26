@@ -504,7 +504,8 @@ func (engine *ESEngine) esDefineVirtualDevice() int {
 	obj := engine.ctx.GetJSObject(-1).(objx.Map)
 	if err := engine.DefineVirtualDevice(name, obj); err != nil {
 		wbgo.Error.Printf("device definition error: %s", err)
-		return duktape.DUK_RET_ERROR
+		engine.ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
+		return duktape.DUK_RET_INSTACK_ERROR
 	}
 	engine.maybeRegisterSourceItem(SOURCE_ITEM_DEVICE, name)
 	return 0
