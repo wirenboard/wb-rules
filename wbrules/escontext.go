@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	duktape "github.com/contactless/go-duktape"
 	wbgo "github.com/contactless/wbgo"
-	duktape "github.com/ivan4th/go-duktape"
 	"github.com/stretchr/objx"
 )
 

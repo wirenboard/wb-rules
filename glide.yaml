@@ -5,7 +5,7 @@ import:
   subpackages:
   - testutils
   version: 0.0.3
-- package: github.com/ivan4th/go-duktape
+- package: github.com/contactless/go-duktape
 - package: github.com/robfig/cron
 - package: github.com/stretchr/objx
 - package: github.com/stretchr/testify
