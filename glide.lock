@@ -17,8 +17,8 @@ imports:
   - spew
 - name: github.com/DisposaBoy/JsonConfigReader
   version: 33a99fdf1d5ee1f79b5077e9c06f955ad356d5f4
-- name: github.com/ivan4th/go-duktape
-  version: 3cfd5915835f159715a95466edb9570f913372ec
+- name: github.com/contactless/go-duktape
+  version: e07bb742a6e3b60faba047bab30cd33089a6d983
 - name: github.com/pmezard/go-difflib
   version: d8ed2627bdf02c080bf22230dbb337003b7aba2d
   subpackages:
