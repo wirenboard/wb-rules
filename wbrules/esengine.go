@@ -40,6 +40,7 @@ type ESEngineOptions struct {
 	*RuleEngineOptions
 	PersistentDBFile     string
 	PersistentDBFileMode os.FileMode
+	ScriptDirs           []string
 }
 
 func NewESEngineOptions() *ESEngineOptions {
@@ -57,6 +58,10 @@ func (o *ESEngineOptions) SetPersistentDBFileMode(mode os.FileMode) {
 	o.PersistentDBFileMode = mode
 }
 
+func (o *ESEngineOptions) SetScriptDirs(dirs []string) {
+	o.ScriptDirs = dirs
+}
+
 type ESEngine struct {
 	*RuleEngine
 	ctx               *ESContext
@@ -67,6 +72,7 @@ type ESEngine struct {
 	tracker           *wbgo.ContentTracker
 	persistentDBCache map[string]string
 	persistentDB      *bolt.DB
+	scriptDirs        []string
 }
 
 func init() {
@@ -91,6 +97,7 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 		tracker:           wbgo.NewContentTracker(),
 		persistentDBCache: make(map[string]string),
 		persistentDB:      nil,
+		scriptDirs:        options.ScriptDirs,
 	}
 
 	if options.PersistentDBFile != "" {
@@ -103,6 +110,14 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 	engine.ctx.SetCallbackErrorHandler(func(err ESError) {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("ECMAScript error: %s", err))
 	})
+
+	// export modSearch
+	engine.ctx.GetGlobalString("Duktape")
+	engine.ctx.PushGoFunc(func(c *duktape.Context) int {
+		return engine.ModSearch(c)
+	})
+	engine.ctx.PutPropString(-2, "modSearch")
+	engine.ctx.Pop()
 
 	engine.ctx.PushGlobalObject()
 	engine.ctx.DefineFunctions(map[string]func() int{
@@ -1001,4 +1016,40 @@ func (engine *ESEngine) esPersistentGet() int {
 	}
 
 	return 1
+}
+
+// native modSearch implementation
+func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
+	// arguments:
+	// 0: id
+	// 1: require
+	// 2: exports
+	// 3: module
+
+	// get module name (id)
+	id := ctx.GetString(0)
+	wbgo.Debug.Printf("[modsearch] required module %s", id)
+
+	// try to find this module in directory
+	for _, dir := range engine.scriptDirs {
+		path := dir + "/" + id + ".js"
+		wbgo.Debug.Printf("[modsearch] trying to read file %s", path)
+
+		// TODO: something external to load scripts properly
+		// now just try to read file
+		src, err := ioutil.ReadFile(path)
+
+		if err == nil {
+			wbgo.Debug.Printf("[modsearch] file found!")
+			wbgo.Debug.Printf("[modsearch] script file: %s", string(src))
+			// TODO: export all stuff
+			ctx.PushString(string(src))
+
+			return 1
+		}
+	}
+
+	wbgo.Warn.Printf("error requiring module %s, not found", id)
+
+	return duktape.DUK_RET_ERROR
 }
