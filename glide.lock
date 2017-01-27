@@ -3,12 +3,12 @@ updated: 2016-12-27T21:35:05.532319961+03:00
 imports:
 - name: github.com/boltdb/bolt
   version: 2e25e3bb4285d41d223bb80b12658a2c9b9bf3e3
-- name: github.com/contactless/org.eclipse.paho.mqtt.golang
-  version: bc107ec72972f0e7048787415ea061578b5c3f33
+- name: github.com/eclipse/paho.mqtt.golang
+  version: d4f545eb108a2d19f9b1a735689dbfb719bc21fb
   subpackages:
   - packets
 - name: github.com/contactless/wbgo
-  version: b4f50f05d953975e0dc0401a65c604f8fe98f496
+  version: 56d21ce90e0359b7c61b51e8c31034ef60f1380c
   subpackages:
   - testutils
 - name: github.com/davecgh/go-spew
