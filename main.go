@@ -35,7 +35,7 @@ func main() {
 		wbgo.SetDebuggingEnabled(true)
 	}
 	if *mqttDebug {
-		wbgo.EnableMQTTDebugLog()
+		wbgo.EnableMQTTDebugLog(*useSyslog)
 	}
 	model := wbrules.NewCellModel()
 	mqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID, true)
