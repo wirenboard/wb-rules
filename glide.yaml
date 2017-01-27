@@ -4,7 +4,7 @@ import:
 - package: github.com/contactless/wbgo
   subpackages:
   - testutils
-  # version: 0.0.3
+  version: quickfix/queue_size
 - package: github.com/contactless/go-duktape
 - package: github.com/robfig/cron
 - package: github.com/stretchr/objx
