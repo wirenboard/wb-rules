@@ -1,3 +1,11 @@
+wb-rules (1.7~alpha3) stable; urgency=medium
+
+  * wbgo: use separated Publish and Subscribe MQTT connection to avoid hang
+  * wbgo: move Ready() call to goroutine in driver main loop
+  * wbgo: run subscriptions to external devices after main loop start
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Thu, 02 Feb 2017 14:32:46 +0300
+
 wb-rules (1.7~alpha2) stable; urgency=medium
 
   * modules - initial version
