@@ -365,6 +365,10 @@ func (dev *CellModelDeviceBase) setValue(name, value string, notify bool) {
 	}
 }
 
+func (dev *CellModelLocalDevice) CleanupOnRemove() bool {
+	return true
+}
+
 func (dev *CellModelLocalDevice) AcceptOnValue(name, value string) bool {
 	if wbgo.DebuggingEnabled() {
 		wbgo.Debug.Printf("cell %s <- %v [.../on]", name, value)
