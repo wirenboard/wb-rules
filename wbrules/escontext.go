@@ -345,6 +345,12 @@ func (ctx *ESContext) LoadScenario(path string) error {
 	// push 'module' argument
 	ctx.PushObject()
 
+	// set module prototype
+	ctx.PushGlobalObject()
+	ctx.GetPropString(-1, "__wbModulePrototype")
+	ctx.SetPrototype(-3)
+	ctx.Pop()
+
 	// set 'filename' param
 	ctx.PushString(path)
 	ctx.PutPropString(-2, "filename")

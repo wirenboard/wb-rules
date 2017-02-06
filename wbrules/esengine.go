@@ -119,6 +119,9 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 	engine.ctx.PutPropString(-2, "modSearch")
 	engine.ctx.Pop()
 
+	// init __wbModulePrototype
+	engine.initModulePrototype()
+
 	engine.ctx.PushGlobalObject()
 	engine.ctx.DefineFunctions(map[string]func() int{
 		"defineVirtualDevice":  engine.esDefineVirtualDevice,
@@ -146,11 +149,35 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 		"warning": engine.makeLogFunc(ENGINE_LOG_WARNING),
 		"error":   engine.makeLogFunc(ENGINE_LOG_ERROR),
 	})
-	engine.ctx.Pop2()
+	engine.ctx.Pop()
+
+	// set global prototype to __wbModulePrototype
+	engine.ctx.GetPropString(-1, "__wbModulePrototype")
+	engine.ctx.SetPrototype(-2)
+
+	engine.ctx.Pop()
+
 	if err := engine.loadLib(); err != nil {
 		wbgo.Error.Panicf("failed to load runtime library: %s", err)
 	}
 	return
+}
+
+// initModulePrototype inits __wbModulePrototype object
+// with methodes such as defineVirtualDevice etc.
+func (engine *ESEngine) initModulePrototype() {
+	engine.ctx.PushGlobalObject()
+	defer engine.ctx.Pop()
+
+	engine.ctx.PushObject()
+	// [ global __wbModulePrototype ]
+
+	engine.ctx.DefineFunctions(map[string]func() int{
+		"defineVirtualDevice": engine.esDefineVirtualDevice,
+		"_wbPersistentName":   engine.esPersistentName,
+	})
+
+	engine.ctx.PutPropString(-2, "__wbModulePrototype")
 }
 
 func (engine *ESEngine) ScriptDir() string {
