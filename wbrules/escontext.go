@@ -335,25 +335,44 @@ func (ctx *ESContext) LoadScenario(path string) error {
 	}
 
 	// wrap source code
-	src := "function(){" + string(srcRaw) + "}"
+	src := "function(module){" + string(srcRaw) + "}"
 
-	// TODO: push global object here
-
-	if err = ctx.LoadAndCallFunctionFromString(path, src); err != nil {
+	// compile function
+	if err = ctx.LoadFunctionFromString(path, src); err != nil {
 		return err
 	}
 
-	// TODO: remove global object here
+	// push 'module' argument
+	ctx.PushObject()
+
+	// set 'filename' param
+	ctx.PushString(path)
+	ctx.PutPropString(-2, "filename")
+
+	// call function
+	defer ctx.Pop()
+	if r := ctx.Pcall(1); r != 0 {
+		return ctx.GetESErrorAugmentingSyntaxErrors(path)
+	}
 
 	return nil
 }
 
-func (ctx *ESContext) LoadAndCallFunctionFromString(filename, content string) error {
+func (ctx *ESContext) LoadFunctionFromString(filename, content string) error {
 	return ctx.loadScriptFromStringFlags(filename, content, duktape.DUK_COMPILE_FUNCTION)
 }
 
 func (ctx *ESContext) LoadScriptFromString(filename, content string) error {
-	return ctx.loadScriptFromStringFlags(filename, content, 0)
+	if err := ctx.loadScriptFromStringFlags(filename, content, 0); err != nil {
+		return err
+	}
+
+	defer ctx.Pop()
+	if r := ctx.Pcall(0); r != 0 {
+		return ctx.GetESErrorAugmentingSyntaxErrors(filename)
+	}
+
+	return nil
 }
 
 func (ctx *ESContext) loadScriptFromStringFlags(filename, content string, flags uint) error {
@@ -361,10 +380,6 @@ func (ctx *ESContext) loadScriptFromStringFlags(filename, content string, flags 
 	// we use PcompileStringFilename here to get readable stacktraces
 	if r := ctx.PcompileStringFilename(flags, content); r != 0 {
 		defer ctx.Pop()
-		return ctx.GetESErrorAugmentingSyntaxErrors(filename)
-	}
-	defer ctx.Pop()
-	if r := ctx.Pcall(0); r != 0 {
 		return ctx.GetESErrorAugmentingSyntaxErrors(filename)
 	}
 	return nil
