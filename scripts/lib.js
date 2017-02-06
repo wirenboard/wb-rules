@@ -602,8 +602,8 @@ var Alarms = (function () {
 })();
 
 
-function PersistentStorage(name, options) {
-    return new Proxy({name: _wbPersistentName(name, options)}, {
+__wbModulePrototype.PersistentStorage = function(name, options) {
+    return new Proxy({name: this._wbPersistentName(name, options)}, {
         get: function (o, key) {
             return _wbPersistentGet(o.name, key);
         },

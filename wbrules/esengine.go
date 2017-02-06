@@ -138,7 +138,6 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 		"_wbDefineRule":        engine.esWbDefineRule,
 		"runRules":             engine.esWbRunRules,
 		"readConfig":           engine.esReadConfig,
-		"_wbPersistentName":    engine.esPersistentName,
 		"_wbPersistentSet":     engine.esPersistentSet,
 		"_wbPersistentGet":     engine.esPersistentGet,
 	})
@@ -882,7 +881,7 @@ func (engine *ESEngine) ClosePersistentDB() (err error) {
 }
 
 // Creates a name for persistent storage bucket.
-// Used in 'PersistentStorage(name, options)'
+// Used in 'module.PersistentStorage(name, options)'
 func (engine *ESEngine) esPersistentName() int {
 	if engine.persistentDB == nil {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
@@ -932,8 +931,22 @@ func (engine *ESEngine) esPersistentName() int {
 	// non-global storages are not supported yet
 	// TODO: true files isolation and fileName params for areas
 	if !global {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("Non-global persistent storages are not supported yet; force {global: true} to use it"))
-		return duktape.DUK_RET_ERROR
+		// get pointer to 'this'
+		engine.ctx.PushThis()
+
+		filename := "unknown"
+		// try to get filename
+		if engine.ctx.GetPropString(-1, "filename") {
+			filename = engine.ctx.GetString(-1)
+		} else {
+			engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("no filename property in parent object"))
+
+		}
+		engine.ctx.Pop()
+
+		name = fmt.Sprintf("local-%s-%s", filename, name)
+	} else {
+		name = "global-" + name
 	}
 
 	// push name as return value
