@@ -40,7 +40,7 @@ type ESEngineOptions struct {
 	*RuleEngineOptions
 	PersistentDBFile     string
 	PersistentDBFileMode os.FileMode
-	ScriptDirs           []string
+	ModulesDirs          []string
 }
 
 func NewESEngineOptions() *ESEngineOptions {
@@ -58,8 +58,8 @@ func (o *ESEngineOptions) SetPersistentDBFileMode(mode os.FileMode) {
 	o.PersistentDBFileMode = mode
 }
 
-func (o *ESEngineOptions) SetScriptDirs(dirs []string) {
-	o.ScriptDirs = dirs
+func (o *ESEngineOptions) SetModulesDirs(dirs []string) {
+	o.ModulesDirs = dirs
 }
 
 type ESEngine struct {
@@ -72,7 +72,7 @@ type ESEngine struct {
 	tracker           *wbgo.ContentTracker
 	persistentDBCache map[string]string
 	persistentDB      *bolt.DB
-	scriptDirs        []string
+	modulesDirs       []string
 }
 
 func init() {
@@ -97,7 +97,7 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 		tracker:           wbgo.NewContentTracker(),
 		persistentDBCache: make(map[string]string),
 		persistentDB:      nil,
-		scriptDirs:        options.ScriptDirs,
+		modulesDirs:       options.ModulesDirs,
 	}
 
 	if options.PersistentDBFile != "" {
@@ -1031,7 +1031,7 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 	wbgo.Debug.Printf("[modsearch] required module %s", id)
 
 	// try to find this module in directory
-	for _, dir := range engine.scriptDirs {
+	for _, dir := range engine.modulesDirs {
 		path := dir + "/" + id + ".js"
 		wbgo.Debug.Printf("[modsearch] trying to read file %s", path)
 

@@ -46,7 +46,7 @@ func main() {
 	engineOptions := wbrules.NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(PERSISTENT_DB_FILE)
 	engineOptions.SetVirtualCellsStorageFile(VIRTUAL_CELLS_DB_FILE)
-	engineOptions.SetScriptDirs(strings.Split(os.Getenv(WBRULES_MODULES_ENV), ":"))
+	engineOptions.SetModulesDirs(strings.Split(os.Getenv(WBRULES_MODULES_ENV), ":"))
 
 	engine := wbrules.NewESEngine(model, mqttClient, engineOptions)
 
