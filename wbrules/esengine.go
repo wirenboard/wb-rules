@@ -1042,7 +1042,13 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 		if err == nil {
 			wbgo.Debug.Printf("[modsearch] file found!")
 			wbgo.Debug.Printf("[modsearch] script file: %s", string(src))
-			// TODO: export all stuff
+
+			// set module properties
+			// put module.filename
+			ctx.PushString(path)
+			ctx.PutPropString(3, "filename")
+
+			// return module sources
 			ctx.PushString(string(src))
 
 			return 1
