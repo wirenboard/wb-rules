@@ -218,6 +218,9 @@ func (model *CellModel) RemoveLocalDevice(name string) {
 	}
 	delete(model.devices, name)
 	model.Observer.RemoveDevice(dev)
+	if dev.CleanupOnRemove() {
+		model.publishDoneCh <- struct{}{}
+	}
 }
 
 func (model *CellModel) EnsureLocalDevice(name, title string) *CellModelLocalDevice {
