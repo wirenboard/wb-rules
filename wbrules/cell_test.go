@@ -347,10 +347,29 @@ func (s *CellSuite) TestDeviceRedefinition() {
 		dev.SetCell("temp", "temperature", 18, false)
 	})
 
-	// retained values are preserved
+	// values are preserved, but cleaned up first
 	s.Verify(
 		"Unsubscribe -- driver: /devices/somedev/controls/sw/on",
 		"Unsubscribe -- driver: /devices/somedev/controls/temp/on",
+
+		"driver -> /devices/somedev/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/meta/type: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/meta/units: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/meta/readonly: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/meta/writable: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/meta/order: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/meta/max: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/temp/meta/type: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/temp/meta/units: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/temp/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/temp/meta/readonly: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/temp/meta/writable: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/temp/meta/order: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/temp/meta/max: [] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/temp: [] (QoS 1, retained)",
+
 		"driver -> /devices/somedev/meta/name: [SomeDev1] (QoS 1, retained)",
 		"driver -> /devices/somedev/controls/sw/meta/type: [switch] (QoS 1, retained)",
 		"driver -> /devices/somedev/controls/sw/meta/order: [1] (QoS 1, retained)",
