@@ -77,6 +77,7 @@ type CellModelDeviceBase struct {
 	wbgo.DeviceBase
 	model     *CellModel
 	cells     map[string]*Cell
+	cellsMtx  sync.RWMutex
 	self      CellModelDevice
 	onSetCell func(*Cell)
 }
@@ -304,6 +305,19 @@ func (model *CellModel) WhenReady(thunk func()) {
 	model.Observer.WhenReady(thunk)
 }
 
+func (dev *CellModelDeviceBase) setCellInMap(name string, cell *Cell) {
+	dev.cellsMtx.Lock()
+	defer dev.cellsMtx.Unlock()
+	dev.cells[name] = cell
+}
+
+func (dev *CellModelDeviceBase) getCellInMap(name string) (cell *Cell, found bool) {
+	dev.cellsMtx.RLock()
+	defer dev.cellsMtx.RUnlock()
+	cell, found = dev.cells[name]
+	return
+}
+
 func (dev *CellModelDeviceBase) SetTitle(title string) {
 	dev.DevTitle = title
 	go dev.model.notify(nil)
@@ -321,7 +335,9 @@ func (dev *CellModelDeviceBase) setCell(name, controlType string, value interfac
 		readonly:    readonly,
 	}
 	cell.maybeSetValueQuiet(value, true)
-	dev.cells[name] = cell
+
+	dev.setCellInMap(name, cell)
+
 	if dev.onSetCell != nil {
 		dev.onSetCell(cell)
 	}
@@ -341,7 +357,7 @@ func (dev *CellModelDeviceBase) SetButtonCell(name string) (cell *Cell) {
 }
 
 func (dev *CellModelDeviceBase) MustGetCell(name string) (cell *Cell) {
-	cell, found := dev.cells[name]
+	cell, found := dev.getCellInMap(name)
 	if !found {
 		log.Panicf("cell not found: %s/%s", dev.DevName, name)
 	}
@@ -349,7 +365,7 @@ func (dev *CellModelDeviceBase) MustGetCell(name string) (cell *Cell) {
 }
 
 func (dev *CellModelDeviceBase) EnsureCell(name string) (cell *Cell) {
-	cell, found := dev.cells[name]
+	cell, found := dev.getCellInMap(name)
 	if !found {
 		wbgo.Debug.Printf("adding cell %s", name)
 		cell = dev.setCell(name, "text", "", false, -1, false)
@@ -402,6 +418,9 @@ func (dev *CellModelLocalDevice) AcceptOnValue(name, value string) bool {
 }
 
 func (dev *CellModelLocalDevice) queryParams() {
+	dev.cellsMtx.RLock()
+	defer dev.cellsMtx.RUnlock()
+
 	names := make([]string, 0, len(dev.cells))
 	for name := range dev.cells {
 		names = append(names, name)
