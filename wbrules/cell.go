@@ -57,10 +57,11 @@ type CellSpec struct {
 
 type CellModel struct {
 	wbgo.ModelBase
-	devices            map[string]CellModelDevice
-	cellChangeChannels []chan *CellSpec
-	started            bool
-	publishDoneCh      chan struct{}
+	devices               map[string]CellModelDevice
+	cellChangeChannels    []chan *CellSpec
+	cellChangeChannelsMtx sync.RWMutex
+	started               bool
+	publishDoneCh         chan struct{}
 }
 
 type CellModelDevice interface {
@@ -144,7 +145,10 @@ func (model *CellModel) Stop() {
 	}
 	model.started = false
 	chs := model.cellChangeChannels
+
+	model.cellChangeChannelsMtx.Lock()
 	model.cellChangeChannels = make([]chan *CellSpec, 0, CELL_CHANGE_SLICE_CAPACITY)
+	model.cellChangeChannelsMtx.Unlock()
 
 	var wg sync.WaitGroup
 	wg.Add(len(chs))
@@ -284,6 +288,8 @@ func (model *CellModel) closeCellChangeChannel(ch chan *CellSpec) {
 }
 
 func (model *CellModel) notify(cellSpec *CellSpec) {
+	model.cellChangeChannelsMtx.RLock()
+	defer model.cellChangeChannelsMtx.RUnlock()
 	for _, ch := range model.cellChangeChannels {
 		ch <- cellSpec
 	}
