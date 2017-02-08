@@ -95,6 +95,7 @@ type Cell struct {
 	controlType string
 	max         float64
 	value       string
+	valueMtx    sync.Mutex
 	gotType     bool
 	gotValue    bool
 	readonly    bool
@@ -179,7 +180,10 @@ func (model *CellModel) makeLocalDevice(name string, title string) (dev *CellMod
 	dev.self = dev
 	dev.onSetCell = func(cell *Cell) {
 		if model.started {
-			cell.value = dev.publishCell(cell)
+			val := dev.publishCell(cell)
+			cell.valueMtx.Lock()
+			cell.value = val
+			cell.valueMtx.Unlock()
 		}
 	}
 	model.devices[name] = dev
@@ -353,8 +357,12 @@ func (dev *CellModelDeviceBase) AcceptValue(name, value string) {
 	}
 
 	cell := dev.EnsureCell(name)
+
+	cell.valueMtx.Lock()
 	cell.value = value
 	cell.gotValue = true
+	cell.valueMtx.Unlock()
+
 	go dev.model.notify(&CellSpec{dev.DevName, name})
 }
 
@@ -377,8 +385,12 @@ func (dev *CellModelLocalDevice) AcceptOnValue(name, value string) bool {
 		wbgo.Debug.Printf("cell %s <- %v [.../on]", name, value)
 	}
 	cell := dev.EnsureCell(name)
+
+	cell.valueMtx.Lock()
 	cell.value = value
 	cell.gotValue = true
+	cell.valueMtx.Unlock()
+
 	go dev.model.notify(&CellSpec{dev.DevName, name})
 	return true
 }
@@ -396,6 +408,7 @@ func (dev *CellModelLocalDevice) queryParams() {
 }
 
 func (dev *CellModelLocalDevice) publishCell(cell *Cell) string {
+	cell.valueMtx.Lock()
 	control := wbgo.Control{
 		Name:   cell.name,
 		Type:   cell.controlType,
@@ -407,6 +420,7 @@ func (dev *CellModelLocalDevice) publishCell(cell *Cell) string {
 	if cell.readonly {
 		control.Writability = wbgo.ForceReadOnly
 	}
+	cell.valueMtx.Unlock()
 
 	return dev.Observer.OnNewControl(dev, control)
 }
@@ -449,6 +463,8 @@ func (dev *CellModelExternalDevice) shouldSetValueImmediately() bool {
 }
 
 func (cell *Cell) RawValue() string {
+	cell.valueMtx.Lock()
+	defer cell.valueMtx.Unlock()
 	return cell.value
 }
 
@@ -457,6 +473,9 @@ func (cell *Cell) Max() float64 {
 }
 
 func (cell *Cell) Value() interface{} {
+	cell.valueMtx.Lock()
+	defer cell.valueMtx.Unlock()
+
 	if wbgo.DebuggingEnabled() {
 		wbgo.Debug.Printf("cell %s internal value = %v", cell.name, cell.value)
 	}
