@@ -74,6 +74,7 @@ func (s *CellSuiteBase) publish(topic, value string, expectedCellNames ...string
 
 func (s *CellSuiteBase) TearDownTest() {
 	s.driver.Stop()
+	s.client.Stop()
 	cellSpec, ok := <-s.cellChange
 	if ok {
 		log.Printf("WARNING! unexpected cell change at the end of the test: %v", cellSpec)
