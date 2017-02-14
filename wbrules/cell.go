@@ -258,12 +258,18 @@ func (model *CellModel) AddExternalDevice(name string) (wbgo.ExternalDeviceModel
 }
 
 func (model *CellModel) AcquireCellChangeChannel() chan *CellSpec {
+	model.cellChangeChannelsMtx.Lock()
+	defer model.cellChangeChannelsMtx.Unlock()
+
 	ch := make(chan *CellSpec)
 	model.cellChangeChannels = append(model.cellChangeChannels, ch)
 	return ch
 }
 
 func (model *CellModel) ReleaseCellChangeChannel(ch chan *CellSpec) {
+	model.cellChangeChannelsMtx.Lock()
+	defer model.cellChangeChannelsMtx.Unlock()
+
 	oldChannels := model.cellChangeChannels
 	model.cellChangeChannels = make([]chan *CellSpec, 0, len(model.cellChangeChannels))
 	for _, curCh := range oldChannels {
