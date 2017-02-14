@@ -274,7 +274,8 @@ type callbackHolder struct {
 }
 
 func callbackFinalizer(holder *callbackHolder) {
-	go holder.ctx.removeCallbackSync(holder.callback)
+	// go holder.ctx.removeCallbackSync(holder.callback)
+	holder.ctx.removeCallbackSync(holder.callback)
 }
 
 func (ctx *ESContext) WrapCallback(callbackStackIndex int) ESCallbackFunc {
@@ -292,7 +293,8 @@ func (ctx *ESContext) removeCallbackSync(key ESCallback) {
 	if ctx.syncFunc == nil {
 		ctx.RemoveCallback(key)
 	} else {
-		go ctx.syncFunc(func() {
+		// go ctx.syncFunc(func() {
+		ctx.syncFunc(func() {
 			ctx.RemoveCallback(key)
 		})
 	}
