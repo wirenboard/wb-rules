@@ -186,8 +186,10 @@ type RuleEngine struct {
 	cron                Cron
 	statusMtx           sync.Mutex
 	debugMtx            sync.Mutex
+	getTimerMtx         sync.Mutex
 	debugEnabled        bool
 	readyCh             chan struct{}
+	readyQueue          *wbgo.DeferredList
 	virtualCellsStorage *bolt.DB
 }
 
@@ -217,6 +219,7 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *RuleEn
 		cron:                nil,
 		debugEnabled:        wbgo.DebuggingEnabled(),
 		readyCh:             nil,
+		readyQueue:          wbgo.NewDeferredList(nil),
 		virtualCellsStorage: nil,
 	}
 
@@ -236,6 +239,10 @@ func (engine *RuleEngine) ReadyCh() <-chan struct{} {
 		panic("cannot engine's readyCh before the engine is started")
 	}
 	return engine.readyCh
+}
+
+func (engine *RuleEngine) WhenEngineReady(thunk func()) {
+	engine.readyQueue.MaybeDefer(thunk)
 }
 
 // Create or open virtual cells DB file
@@ -635,7 +642,14 @@ func (engine *RuleEngine) Start() {
 		engine.model.CallSync(func() {
 			engine.RunRules(nil, NO_TIMER_NAME)
 		})
-		close(engine.readyCh)
+
+		go func() {
+			engine.readyQueue.Ready()
+			close(engine.readyCh)
+		}()
+
+		<-engine.readyCh
+
 		wbgo.Debug.Printf("the engine is ready")
 		// wbgo.Info.Printf("******** READY ********")
 		for {
@@ -701,7 +715,7 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 		wbgo.Warn.Printf("warning: ignoring callback func for a named timer")
 	}
 
-	engine.model.WhenReady(func() {
+	engine.WhenEngineReady(func() {
 		entry.Lock()
 		defer entry.Unlock()
 		if !entry.active {
@@ -710,7 +724,11 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 		}
 		entry.quit = make(chan struct{}, 2) // FIXME: is 2 necessary here?
 		entry.quitted = make(chan struct{})
+
+		engine.getTimerMtx.Lock()
 		entry.timer = engine.timerFunc(n, interval, periodic)
+		engine.getTimerMtx.Unlock()
+
 		tickCh := entry.timer.GetChannel()
 		go func() {
 			for {
@@ -735,6 +753,7 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 			}
 		}()
 	})
+
 	return n
 }
 
