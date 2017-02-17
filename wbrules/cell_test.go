@@ -38,7 +38,7 @@ func (s *CellSuiteBase) SetupTest(waitForRetained bool) {
 	s.client = s.Broker.MakeClient("tst")
 	s.client.Start()
 	s.driverClient = s.Broker.MakeClient("driver")
-	s.driver = wbgo.NewDriver(s.model, s.driverClient)
+	s.driver = wbgo.NewDriverNoQueues(s.model, s.driverClient)
 	s.driver.SetAutoPoll(false)
 	s.driver.SetAcceptsExternalDevices(true)
 	s.cellChange = s.model.AcquireCellChangeChannel()
