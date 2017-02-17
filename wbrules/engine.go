@@ -643,12 +643,8 @@ func (engine *RuleEngine) Start() {
 			engine.RunRules(nil, NO_TIMER_NAME)
 		})
 
-		go func() {
-			engine.readyQueue.Ready()
-			close(engine.readyCh)
-		}()
-
-		<-engine.readyCh
+		engine.readyQueue.Ready()
+		close(engine.readyCh)
 
 		wbgo.Debug.Printf("the engine is ready")
 		// wbgo.Info.Printf("******** READY ********")
