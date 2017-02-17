@@ -16,7 +16,7 @@ func (s *RuleLocalButtonSuite) SetupTest() {
 }
 
 func (s *RuleLocalButtonSuite) TestLocalButtons() {
-	s.Verify(
+	s.VerifyUnordered(
 		"driver -> /devices/buttons/meta/name: [Button Test] (QoS 1, retained)",
 		"driver -> /devices/wbrules/meta/name: [Rule Engine Settings] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/+/meta/name",
