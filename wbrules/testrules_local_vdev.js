@@ -1,5 +1,9 @@
 defineVirtualDevice("test", {
     cells: {
+        getid: {
+            type: "pushbutton",
+            value: false
+        },
         local: {
             type: "pushbutton",
             value: false
@@ -30,5 +34,12 @@ defineRule("localTestSub", {
     whenChanged: module.virtualDeviceName("test") + "/myCell",
     then: function() {
         log("triggered local device");
+    }
+});
+
+defineRule("getid", {
+    whenChanged: "test/getid",
+    then: function() {
+        log("device id: '" + module.virtualDeviceName("test") + "'")
     }
 });
