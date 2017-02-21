@@ -172,7 +172,7 @@ func (engine *ESEngine) initModulePrototype() {
 
 	engine.ctx.DefineFunctions(map[string]func() int{
 		"defineVirtualDevice": engine.esDefineVirtualDevice,
-		"virtualDeviceName":   engine.esVirtualDeviceName,
+		"virtualDeviceId":     engine.esVirtualDeviceId,
 		"_wbPersistentName":   engine.esPersistentName,
 	})
 
@@ -537,12 +537,12 @@ func (engine *ESEngine) wrapRuleCondFunc(defIndex int, defProp string) func() bo
 	}
 }
 
-func localVirtualDeviceName(filename, devname string) string {
+func localVirtualDeviceId(filename, devname string) string {
 	return "local_" + strings.Replace(filename, "/", "_", -1) + "_" + devname
 }
 
 // change virtual device name if it is local
-func (engine *ESEngine) maybeExpandVirtualDeviceName(name string) string {
+func (engine *ESEngine) maybeExpandVirtualDeviceId(name string) string {
 	engine.ctx.PushThis()
 	if engine.ctx.IsObject(-1) && engine.ctx.HasPropString(-1, "filename") {
 		// this means we are in some local scope
@@ -550,7 +550,7 @@ func (engine *ESEngine) maybeExpandVirtualDeviceName(name string) string {
 		engine.ctx.GetPropString(-1, "filename")
 
 		if engine.ctx.IsString(-1) {
-			name = localVirtualDeviceName(engine.ctx.GetString(-1), name)
+			name = localVirtualDeviceId(engine.ctx.GetString(-1), name)
 		}
 		engine.ctx.Pop()
 	}
@@ -559,7 +559,7 @@ func (engine *ESEngine) maybeExpandVirtualDeviceName(name string) string {
 	return name
 }
 
-func (engine *ESEngine) esVirtualDeviceName() int {
+func (engine *ESEngine) esVirtualDeviceId() int {
 	// arguments:
 	// 1 -> deviceName
 	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(-1) {
@@ -567,7 +567,7 @@ func (engine *ESEngine) esVirtualDeviceName() int {
 	}
 
 	name := engine.ctx.GetString(-1)
-	name = engine.maybeExpandVirtualDeviceName(name)
+	name = engine.maybeExpandVirtualDeviceId(name)
 
 	// push result
 	engine.ctx.PushString(name)
@@ -582,7 +582,7 @@ func (engine *ESEngine) esDefineVirtualDevice() int {
 	name := engine.ctx.GetString(-2)
 	obj := engine.ctx.GetJSObject(-1).(objx.Map)
 
-	name = engine.maybeExpandVirtualDeviceName(name)
+	name = engine.maybeExpandVirtualDeviceId(name)
 
 	if err := engine.DefineVirtualDevice(name, obj); err != nil {
 		wbgo.Error.Printf("device definition error: %s", err)
