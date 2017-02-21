@@ -26,12 +26,12 @@ defineRule("localTest", {
     whenChanged: "test/local",
     then: function() {
         log("triggered global device");
-        publish("/devices/" + module.virtualDeviceName("test") + "/controls/myCell/on", "1");
+        publish("/devices/" + module.virtualDeviceId("test") + "/controls/myCell/on", "1");
     }
 });
 
 defineRule("localTestSub", {
-    whenChanged: module.virtualDeviceName("test") + "/myCell",
+    whenChanged: module.virtualDeviceId("test") + "/myCell",
     then: function() {
         log("triggered local device");
     }
@@ -40,6 +40,6 @@ defineRule("localTestSub", {
 defineRule("getid", {
     whenChanged: "test/getid",
     then: function() {
-        log("device id: '" + module.virtualDeviceName("test") + "'")
+        log("device id: '" + module.virtualDeviceId("test") + "'")
     }
 });
