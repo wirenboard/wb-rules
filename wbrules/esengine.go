@@ -1081,7 +1081,6 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 
 		if err == nil {
 			wbgo.Debug.Printf("[modsearch] file found!")
-			wbgo.Debug.Printf("[modsearch] script file: %s", string(src))
 
 			// set module properties
 			// put module.filename
@@ -1095,7 +1094,7 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 		}
 	}
 
-	wbgo.Warn.Printf("error requiring module %s, not found", id)
+	wbgo.Debug.Printf("error requiring module %s, not found", id)
 
 	return duktape.DUK_RET_ERROR
 }
