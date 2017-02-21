@@ -1,6 +1,8 @@
 package wbrules
 
 import (
+	"crypto/md5"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"github.com/DisposaBoy/JsonConfigReader"
@@ -33,6 +35,9 @@ const (
 
 var noLibJs = errors.New("unable to locate lib.js")
 var searchDirs = []string{LIB_SYS_PATH}
+
+// cache for quicker filename hashing
+var filenameMd5s = make(map[string]string)
 
 type sourceMap map[string]*LocFileEntry
 
@@ -537,8 +542,28 @@ func (engine *ESEngine) wrapRuleCondFunc(defIndex int, defProp string) func() bo
 	}
 }
 
+func getFilenameHash(filename string) string {
+	if result, ok := filenameMd5s[filename]; ok {
+		return result
+	} else {
+		// TODO: TBD: detect collisions on current configuration?
+		hash := md5.Sum([]byte(filename))
+
+		// reduce hash length to 32
+		for i := 0; i < md5.Size/4; i++ {
+			hash[i] = hash[i] ^ hash[md5.Size/4+i] ^ hash[md5.Size/2+i] ^ hash[md5.Size*3/4+i]
+		}
+
+		result = base64.RawURLEncoding.EncodeToString(hash[:md5.Size/4])
+		filenameMd5s[filename] = result
+
+		return result
+	}
+}
+
 func localVirtualDeviceId(filename, devname string) string {
-	return "local_" + strings.Replace(filename, "/", "_", -1) + "_" + devname
+	hash := getFilenameHash(filename)
+	return hash + "_" + devname
 }
 
 // change virtual device name if it is local
