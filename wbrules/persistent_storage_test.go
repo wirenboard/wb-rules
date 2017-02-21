@@ -15,6 +15,9 @@ type PersistentStorageSuite struct {
 
 func (s *PersistentStorageSuite) SetupFixture() {
 	var err error
+
+	// we need to create separated temp directory because persistent DB file
+	// should be keeped between tests
 	s.tmpDir, err = ioutil.TempDir(os.TempDir(), "wbrulestest")
 	if err != nil {
 		s.FailNow("can't create temp directory")
