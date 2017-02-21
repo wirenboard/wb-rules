@@ -115,7 +115,7 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 	s.loadAlarms()
 	for i := 0; i < 3; i++ {
 		s.publishCellValue("somedev", "importantDevicePower", "0",
-			"sampleAlarms/importantDeviceIsOff", "sampleAlarms/log")
+			"sampleAlarms/alarm_importantDeviceIsOff", "sampleAlarms/log")
 		s.verifyAlarmCellChange("importantDeviceIsOff", true)
 		s.verifyNotificationMsgs("Important device is off")
 		var timerId int
@@ -135,12 +135,12 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 			ts := s.AdvanceTime(200 * time.Second)
 			s.FireTimer(uint64(timerId), ts)
 			s.Verify(fmt.Sprintf("timer.fire(): %d", timerId))
-			s.expectCellChange("sampleAlarms/importantDeviceIsOff")
+			s.expectCellChange("sampleAlarms/log")
 			s.verifyNotificationMsgs("Important device is off")
 		}
 
 		s.publishCellValue("somedev", "importantDevicePower", "1",
-			"sampleAlarms/importantDeviceIsOff", "sampleAlarms/log")
+			"sampleAlarms/alarm_importantDeviceIsOff", "sampleAlarms/log")
 		s.verifyAlarmCellChange("importantDeviceIsOff", false)
 		s.Verify(fmt.Sprintf("timer.Stop(): %d", timerId))
 		s.verifyNotificationMsgs("Important device is back on")
@@ -155,7 +155,7 @@ func (s *AlarmSuite) TestNonRepeatedExpectedValueAlarm() {
 	s.loadAlarms()
 	for i := 0; i < 3; i++ {
 		s.publishCellValue("somedev", "unnecessaryDevicePower", "1",
-			"sampleAlarms/unnecessaryDeviceIsOn", "sampleAlarms/log")
+			"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
 		s.verifyAlarmCellChange("unnecessaryDeviceIsOn", true)
 		s.verifyNotificationMsgs("Unnecessary device is on")
 
@@ -164,7 +164,7 @@ func (s *AlarmSuite) TestNonRepeatedExpectedValueAlarm() {
 		s.VerifyEmpty()
 
 		s.publishCellValue("somedev", "unnecessaryDevicePower", "0",
-			"sampleAlarms/unnecessaryDeviceIsOn", "sampleAlarms/log")
+			"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
 		s.verifyAlarmCellChange("unnecessaryDeviceIsOn", false)
 		s.verifyNotificationMsgs("somedev/unnecessaryDevicePower is back to normal, value = false")
 		s.VerifyEmpty()
@@ -176,7 +176,7 @@ func (s *AlarmSuite) TestNonRepeatedExpectedValueAlarm() {
 
 func (s *AlarmSuite) setOutOfRangeTemp(temp int) {
 	s.publishCellValue("somedev", "devTemp", strconv.Itoa(temp),
-		"sampleAlarms/temperatureOutOfBounds", "sampleAlarms/log")
+		"sampleAlarms/alarm_temperatureOutOfBounds", "sampleAlarms/log")
 	s.verifyAlarmCellChange("temperatureOutOfBounds", true)
 	s.verifyNotificationMsgs(fmt.Sprintf("Temperature out of bounds, value = %d", temp))
 	s.Verify(regexp.MustCompile(`^new fake ticker: \d+, 10000$`))
@@ -184,7 +184,7 @@ func (s *AlarmSuite) setOutOfRangeTemp(temp int) {
 
 func (s *AlarmSuite) setOkTemp(temp int, stopTimer bool) {
 	s.publishCellValue("somedev", "devTemp", strconv.Itoa(temp),
-		"sampleAlarms/temperatureOutOfBounds", "sampleAlarms/log")
+		"sampleAlarms/alarm_temperatureOutOfBounds", "sampleAlarms/log")
 	s.verifyAlarmCellChange("temperatureOutOfBounds", false)
 	if stopTimer {
 		s.Verify(regexp.MustCompile(`^timer\.Stop\(\): \d+`))
@@ -206,7 +206,7 @@ func (s *AlarmSuite) TestRepeatedMinMaxAlarmWithMaxCount() {
 		ts := s.AdvanceTime(10 * time.Millisecond)
 		s.FireTimer(1, ts)
 		s.Verify("timer.fire(): 1")
-		s.expectCellChange("sampleAlarms/importantDeviceIsOff")
+		s.expectCellChange("sampleAlarms/log")
 		s.verifyNotificationMsgs("Temperature out of bounds, value = 8")
 	}
 	s.Verify("timer.Stop(): 1")
