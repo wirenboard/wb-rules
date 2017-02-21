@@ -38,7 +38,7 @@ func (s *TestModulesSuite) TestNotFound() {
 }
 
 func (s *TestModulesSuite) TestMultipleRequire() {
-	s.publish("/devices/test/controls/multifile/on", "1", "test/error")
+	s.publish("/devices/test/controls/multifile/on", "1", "test/multifile")
 
 	s.VerifyUnordered(
 		"tst -> /devices/test/controls/multifile/on: [1] (QoS 1)",
@@ -50,7 +50,7 @@ func (s *TestModulesSuite) TestMultipleRequire() {
 }
 
 func (s *TestModulesSuite) TestCrossDependency() {
-	s.publish("/devices/test/controls/cross/on", "1", "test/error")
+	s.publish("/devices/test/controls/cross/on", "1", "test/cross")
 
 	s.Verify(
 		"tst -> /devices/test/controls/cross/on: [1] (QoS 1)",

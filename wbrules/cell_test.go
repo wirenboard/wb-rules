@@ -45,6 +45,11 @@ func (s *CellSuiteBase) SetupTest(waitForRetained bool) {
 }
 
 func (s *CellSuiteBase) expectCellChange(expectedCellNames ...string) {
+	// need to compare lists correctly
+	if expectedCellNames == nil {
+		expectedCellNames = make([]string, 0)
+	}
+
 	// Notifications happen asynchronously and aren't guaranteed to be
 	// keep original order. Perhaps this needs to be fixed.
 	actualCellNames := make([]string, len(expectedCellNames))
@@ -58,6 +63,10 @@ func (s *CellSuiteBase) expectCellChange(expectedCellNames ...string) {
 	}
 	sort.Strings(expectedCellNames)
 	sort.Strings(actualCellNames)
+
+	// compare
+	s.Equal(expectedCellNames, actualCellNames)
+
 	timer := time.NewTimer(EXTRA_CELL_CHANGE_WAIT_TIME_MS * time.Millisecond)
 	select {
 	case <-timer.C:
