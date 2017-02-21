@@ -124,7 +124,6 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 
 	engine.ctx.PushGlobalObject()
 	engine.ctx.DefineFunctions(map[string]func() int{
-		"defineVirtualDevice":  engine.esDefineVirtualDevice,
 		"format":               engine.esFormat,
 		"log":                  engine.makeLogFunc(ENGINE_LOG_INFO),
 		"debug":                engine.makeLogFunc(ENGINE_LOG_DEBUG),
@@ -173,6 +172,7 @@ func (engine *ESEngine) initModulePrototype() {
 
 	engine.ctx.DefineFunctions(map[string]func() int{
 		"defineVirtualDevice": engine.esDefineVirtualDevice,
+		"virtualDeviceName":   engine.esVirtualDeviceName,
 		"_wbPersistentName":   engine.esPersistentName,
 	})
 
@@ -537,12 +537,53 @@ func (engine *ESEngine) wrapRuleCondFunc(defIndex int, defProp string) func() bo
 	}
 }
 
+func localVirtualDeviceName(filename, devname string) string {
+	return "local_" + strings.Replace(filename, "/", "_", -1) + "_" + devname
+}
+
+// change virtual device name if it is local
+func (engine *ESEngine) maybeExpandVirtualDeviceName(name string) string {
+	engine.ctx.PushThis()
+	if engine.ctx.IsObject(-1) && engine.ctx.HasPropString(-1, "filename") {
+		// this means we are in some local scope
+		// so, replace virtual device name
+		engine.ctx.GetPropString(-1, "filename")
+
+		if engine.ctx.IsString(-1) {
+			name = localVirtualDeviceName(engine.ctx.GetString(-1), name)
+		}
+		engine.ctx.Pop()
+	}
+	engine.ctx.Pop()
+
+	return name
+}
+
+func (engine *ESEngine) esVirtualDeviceName() int {
+	// arguments:
+	// 1 -> deviceName
+	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(-1) {
+		return duktape.DUK_RET_ERROR
+	}
+
+	name := engine.ctx.GetString(-1)
+	name = engine.maybeExpandVirtualDeviceName(name)
+
+	// push result
+	engine.ctx.PushString(name)
+
+	return 1
+}
+
 func (engine *ESEngine) esDefineVirtualDevice() int {
 	if engine.ctx.GetTop() != 2 || !engine.ctx.IsString(-2) || !engine.ctx.IsObject(-1) {
 		return duktape.DUK_RET_ERROR
 	}
 	name := engine.ctx.GetString(-2)
 	obj := engine.ctx.GetJSObject(-1).(objx.Map)
+
+	name = engine.maybeExpandVirtualDeviceName(name)
+
 	if err := engine.DefineVirtualDevice(name, obj); err != nil {
 		wbgo.Error.Printf("device definition error: %s", err)
 		engine.ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
