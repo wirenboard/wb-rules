@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 )
@@ -62,6 +63,7 @@ type RuleSuiteBase struct {
 
 	PersistentDBFile        string
 	VirtualCellsStorageFile string
+	ModulesPath             string /* ':'-separated list */
 	CleanUp                 func()
 }
 
@@ -129,6 +131,7 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	engineOptions := NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(s.PersistentDBFile)
 	engineOptions.SetVirtualCellsStorageFile(s.VirtualCellsStorageFile)
+	engineOptions.SetModulesDirs(strings.Split(s.ModulesPath, ":"))
 
 	s.engine = NewESEngine(s.model, s.driverClient, engineOptions)
 	s.engine.SetTimerFunc(s.newFakeTimer)
