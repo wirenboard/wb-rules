@@ -1224,6 +1224,8 @@ func (engine *ESEngine) esPersistentSet() int {
 		return nil
 	})
 
+	wbgo.Debug.Printf("write value to persistent storage %s: '%s' <= '%s'", bucket, key, value)
+
 	return 0
 }
 
@@ -1256,17 +1258,21 @@ func (engine *ESEngine) esPersistentGet() int {
 	}
 	key = engine.ctx.GetString(1)
 
+	wbgo.Debug.Printf("trying to get value from persistent storage %s: %s", bucket, key)
+
 	// try to get these from cache
 	var ok bool
 	// read value
 	engine.persistentDB.View(func(tx *bolt.Tx) error {
+		ok = false
 		b := tx.Bucket([]byte(bucket))
 		if b == nil { // no such bucket -> undefined
-			ok = false
 			return nil
 		}
-		ok = true
-		value = string(b.Get([]byte(key)))
+		if v := b.Get([]byte(key)); v != nil {
+			value = string(v)
+			ok = true
+		}
 		return nil
 	})
 
