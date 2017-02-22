@@ -589,13 +589,20 @@ func getFilenameHash(filename string) string {
 	}
 }
 
-func localVirtualDeviceId(filename, devname string) string {
+// localObjectId generates global-unique object ID
+// for local one according to module file name.
+// Used in defineVirtualDevice and PersistentStorage
+func localObjectId(filename, objname string) string {
 	hash := getFilenameHash(filename)
-	return hash + "_" + devname
+	return "_" + hash + objname
 }
 
-// change virtual device name if it is local
-func (engine *ESEngine) maybeExpandVirtualDeviceId(name string) string {
+// maybeExpandLocalObjectId converts local object ID to global.
+// Local object is an object created in 'module' scope
+// (e.g. by module.defineVirtualDevice()).
+// This method should be called only from exported functions
+// in __wbModulePrototype child context
+func (engine *ESEngine) maybeExpandLocalObjectId(name string) string {
 	engine.ctx.PushThis()
 	if engine.ctx.IsObject(-1) && engine.ctx.HasPropString(-1, "filename") {
 		// this means we are in some local scope
@@ -603,7 +610,7 @@ func (engine *ESEngine) maybeExpandVirtualDeviceId(name string) string {
 		engine.ctx.GetPropString(-1, "filename")
 
 		if engine.ctx.IsString(-1) {
-			name = localVirtualDeviceId(engine.ctx.GetString(-1), name)
+			name = localObjectId(engine.ctx.GetString(-1), name)
 		}
 		engine.ctx.Pop()
 	}
@@ -612,7 +619,7 @@ func (engine *ESEngine) maybeExpandVirtualDeviceId(name string) string {
 	return name
 }
 
-// gets string property value from object
+// getStringPropFromObject gets string property value from object
 func (engine *ESEngine) getStringPropFromObject(objIndex int, propName string) (id string, err error) {
 	// [ ... obj ... ]
 
@@ -635,6 +642,8 @@ func (engine *ESEngine) getStringPropFromObject(objIndex int, propName string) (
 	return
 }
 
+// esVirtualDeviceId exported as module.virtualDeviceId(name)
+// and allows user to get global ID for local device
 func (engine *ESEngine) esVirtualDeviceId() int {
 	// arguments:
 	// 1 -> deviceName
@@ -643,7 +652,7 @@ func (engine *ESEngine) esVirtualDeviceId() int {
 	}
 
 	name := engine.ctx.GetString(-1)
-	name = engine.maybeExpandVirtualDeviceId(name)
+	name = engine.maybeExpandLocalObjectId(name)
 
 	// push result
 	engine.ctx.PushString(name)
@@ -660,7 +669,7 @@ func (engine *ESEngine) esDefineVirtualDevice() int {
 	name := engine.ctx.GetString(-2)
 	obj := engine.ctx.GetJSObject(-1).(objx.Map)
 
-	name = engine.maybeExpandVirtualDeviceId(name)
+	name = engine.maybeExpandLocalObjectId(name)
 
 	if err := engine.DefineVirtualDevice(name, obj); err != nil {
 		wbgo.Error.Printf("device definition error: %s", err)
@@ -670,6 +679,7 @@ func (engine *ESEngine) esDefineVirtualDevice() int {
 	engine.maybeRegisterSourceItem(SOURCE_ITEM_DEVICE, name)
 
 	// [ args | ]
+
 	// create virtual device object
 	engine.ctx.PushObject()
 	// [ args | vDevObject ]
@@ -1112,9 +1122,8 @@ func (engine *ESEngine) esPersistentName() int {
 		return duktape.DUK_RET_ERROR
 	}
 
-	// arguments: (name string[, options = { global bool }])
+	// arguments: (name [, options = { global bool }])
 	var name string
-	global := false
 
 	numArgs := engine.ctx.GetTop()
 
@@ -1136,42 +1145,10 @@ func (engine *ESEngine) esPersistentName() int {
 			engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage options must be object"))
 			return duktape.DUK_RET_ERROR
 		}
-
-		if engine.ctx.HasPropString(1, "global") {
-			ctx := engine.ctx
-			ctx.GetPropString(1, "global")
-
-			if !ctx.IsBoolean(-1) {
-				ctx.Pop()
-				engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage 'global' option must be bool"))
-				return duktape.DUK_RET_ERROR
-			}
-
-			global = ctx.GetBoolean(-1)
-			ctx.Pop()
-		}
 	}
 
-	// non-global storages are not supported yet
-	// TODO: true files isolation and fileName params for areas
-	if !global {
-		// get pointer to 'this'
-		engine.ctx.PushThis()
-
-		filename := "unknown"
-		// try to get filename
-		if engine.ctx.GetPropString(-1, "filename") {
-			filename = engine.ctx.GetString(-1)
-		} else {
-			engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("no filename property in parent object"))
-
-		}
-		engine.ctx.Pop()
-
-		name = fmt.Sprintf("local-%s-%s", filename, name)
-	} else {
-		name = "global-" + name
-	}
+	// get global ID for bucket if this is local storage
+	name = engine.maybeExpandLocalObjectId(name)
 
 	// push name as return value
 	engine.ctx.PushString(name)
