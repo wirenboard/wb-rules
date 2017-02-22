@@ -31,7 +31,15 @@ const (
 	PERSISTENT_DB_CHMOD = 0640
 	SOURCE_ITEM_DEVICE  = itemType(iota)
 	SOURCE_ITEM_RULE
+
+	MODULE_OBJ_PROTO_NAME = "__wbModulePrototype"
+
+	VDEV_OBJ_PROP_DEVID = "__deviceId"
+	VDEV_OBJ_PROTO_NAME = "__wbVdevPrototype"
 )
+
+var noSuchPropError = errors.New("no such property")
+var wrongPropTypeError = errors.New("wrong property type")
 
 var noLibJs = errors.New("unable to locate lib.js")
 var searchDirs = []string{LIB_SYS_PATH}
@@ -127,6 +135,9 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 	// init __wbModulePrototype
 	engine.initModulePrototype()
 
+	// init virtual device prototype
+	engine.initVdevPrototype()
+
 	engine.ctx.PushGlobalObject()
 	engine.ctx.DefineFunctions(map[string]func() int{
 		"format":               engine.esFormat,
@@ -155,7 +166,7 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 	engine.ctx.Pop()
 
 	// set global prototype to __wbModulePrototype
-	engine.ctx.GetPropString(-1, "__wbModulePrototype")
+	engine.ctx.GetPropString(-1, MODULE_OBJ_PROTO_NAME)
 	engine.ctx.SetPrototype(-2)
 
 	engine.ctx.Pop()
@@ -181,7 +192,24 @@ func (engine *ESEngine) initModulePrototype() {
 		"_wbPersistentName":   engine.esPersistentName,
 	})
 
-	engine.ctx.PutPropString(-2, "__wbModulePrototype")
+	engine.ctx.PutPropString(-2, MODULE_OBJ_PROTO_NAME)
+}
+
+// initVdevPrototype inits __wbVdevPrototype object - prototype
+// for virtual device controllers
+func (engine *ESEngine) initVdevPrototype() {
+	engine.ctx.PushGlobalObject()
+	defer engine.ctx.Pop()
+
+	engine.ctx.PushObject()
+	// [ global __wbVdevPrototype ]
+	engine.ctx.DefineFunctions(map[string]func() int{
+		"getDeviceId": engine.esVdevGetDeviceId,
+		"getCellId":   engine.esVdevGetCellId,
+		// getCellValue and setCellValue are defined in lib.js
+	})
+
+	engine.ctx.PutPropString(-2, "__wbVdevPrototype")
 }
 
 func (engine *ESEngine) ScriptDir() string {
@@ -584,6 +612,29 @@ func (engine *ESEngine) maybeExpandVirtualDeviceId(name string) string {
 	return name
 }
 
+// gets string property value from object
+func (engine *ESEngine) getStringPropFromObject(objIndex int, propName string) (id string, err error) {
+	// [ ... obj ... ]
+
+	if !engine.ctx.HasPropString(objIndex, propName) {
+		err = noSuchPropError
+		return
+	}
+
+	engine.ctx.GetPropString(objIndex, propName)
+	defer engine.ctx.Pop()
+	// [ ... obj ... prop ]
+
+	id = engine.ctx.GetString(-1)
+
+	if id == "" {
+		err = wrongPropTypeError
+		return
+	}
+
+	return
+}
+
 func (engine *ESEngine) esVirtualDeviceId() int {
 	// arguments:
 	// 1 -> deviceName
@@ -600,6 +651,8 @@ func (engine *ESEngine) esVirtualDeviceId() int {
 	return 1
 }
 
+// defineVirtualDevice creates virtual device object in MQTT
+// and returns JS object to control it
 func (engine *ESEngine) esDefineVirtualDevice() int {
 	if engine.ctx.GetTop() != 2 || !engine.ctx.IsString(-2) || !engine.ctx.IsObject(-1) {
 		return duktape.DUK_RET_ERROR
@@ -615,7 +668,112 @@ func (engine *ESEngine) esDefineVirtualDevice() int {
 		return duktape.DUK_RET_INSTACK_ERROR
 	}
 	engine.maybeRegisterSourceItem(SOURCE_ITEM_DEVICE, name)
-	return 0
+
+	// [ args | ]
+	// create virtual device object
+	engine.ctx.PushObject()
+	// [ args | vDevObject ]
+
+	// get prototype
+
+	// get global object first
+	engine.ctx.PushGlobalObject()
+	// [ args | vDevObject global ]
+
+	// get prototype object
+	engine.ctx.GetPropString(-1, VDEV_OBJ_PROTO_NAME)
+	// [ args | vDevObject global __wbVdevPrototype ]
+
+	// apply prototype
+	engine.ctx.SetPrototype(-3)
+	// [ args | vDevObject global ]
+
+	engine.ctx.Pop()
+	// [ args | vDevObject ]
+
+	// push device ID property
+
+	engine.ctx.PushString(name)
+	// [ args | vDevObject devId ]
+
+	engine.ctx.PutPropString(-2, VDEV_OBJ_PROP_DEVID)
+	// [ args | vDevObject ]
+
+	return 1
+}
+
+// esVdevGetDeviceId returns virtual device ID string (for MQTT)
+// from virtual device object
+// Exported to JS as method of virtual device object
+func (engine *ESEngine) esVdevGetDeviceId() int {
+	// this -> virtual device object
+	// no arguments
+	if engine.ctx.GetTop() != 0 {
+		return duktape.DUK_RET_ERROR
+	}
+
+	engine.ctx.PushThis()
+	// [ this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(-1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		engine.ctx.Pop()
+		// []
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	engine.ctx.Pop()
+	// []
+
+	// return id
+	engine.ctx.PushString(devId)
+	// [ id ]
+
+	return 1
+}
+
+// esVdevGetCellId returns virtual device cell ID string
+// in 'dev/cell' form from virtual device object
+// Exported to JS as method of virtual device object
+// Arguments:
+// * cell -> cell name
+func (engine *ESEngine) esVdevGetCellId() int {
+	// this -> virtual device object
+	// arguments:
+	// 1 -> cell
+	//
+	// [ cell | ]
+
+	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(-1) {
+		return duktape.DUK_RET_ERROR
+	}
+
+	cellId := engine.ctx.GetString(-1)
+
+	// push this
+	engine.ctx.PushThis()
+	// [ cell | this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(-1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		engine.ctx.Pop()
+		// [ cell | ]
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	engine.ctx.Pop()
+	// [ cell | ]
+
+	cellId = devId + "/" + cellId
+
+	engine.ctx.PushString(cellId)
+	// [ cell | cellId ]
+
+	return 1
 }
 
 func (engine *ESEngine) esFormat() int {

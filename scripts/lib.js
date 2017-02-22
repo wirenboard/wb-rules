@@ -612,3 +612,15 @@ __wbModulePrototype.PersistentStorage = function(name, options) {
         }
     });
 }
+
+__wbVdevPrototype.getCellValue = function(cell) {
+    return dev[this.getCellId(cell)];
+}
+
+__wbVdevPrototype.setCellValue = function(cell, value) {
+    dev[this.getCellId(cell)] = value;
+}
+
+__wbVdevPrototype.publish = function(topic, message) {
+    publish("/devices/" + this.getDeviceId() + "/" + topic, message);
+}
