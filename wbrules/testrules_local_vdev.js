@@ -13,7 +13,7 @@ defineVirtualDevice("test", {
 
 
 // define local device
-module.defineVirtualDevice("test", {
+var localDev = module.defineVirtualDevice("test", {
     cells: {
         myCell: {
             type: "pushbutton",
@@ -26,12 +26,12 @@ defineRule("localTest", {
     whenChanged: "test/local",
     then: function() {
         log("triggered global device");
-        publish("/devices/" + module.virtualDeviceId("test") + "/controls/myCell/on", "1");
+        localDev.publish("controls/myCell/on", "1");
     }
 });
 
 defineRule("localTestSub", {
-    whenChanged: module.virtualDeviceId("test") + "/myCell",
+    whenChanged: localDev.getCellId("myCell"),
     then: function() {
         log("triggered local device");
     }
@@ -40,6 +40,6 @@ defineRule("localTestSub", {
 defineRule("getid", {
     whenChanged: "test/getid",
     then: function() {
-        log("device id: '" + module.virtualDeviceId("test") + "'")
+        log("device id: '" + localDev.getDeviceId() + "'")
     }
 });
