@@ -15,6 +15,10 @@ import (
 	"github.com/stretchr/objx"
 )
 
+const (
+	ESCALLBACKS_OBJ_NAME = "_esCallbacks"
+)
+
 type ESLocation struct {
 	filename string
 	line     int
@@ -31,9 +35,9 @@ type ESSyncFunc func(thunk func())
 
 type ESContext struct {
 	*duktape.Context
-	callbackIndex        ESCallback
 	syncFunc             ESSyncFunc
 	callbackErrorHandler ESCallbackErrorHandler
+	factory              *ESContextFactory
 }
 
 type ESError struct {
@@ -41,25 +45,50 @@ type ESError struct {
 	Traceback ESTraceback
 }
 
+// ESContextFactory creates ESContexts and  stores properties which are
+// common for related ESContexts (in one application).
+// ESContextFactory is logically binded to Duktape heap.
+type ESContextFactory struct {
+	duktapeToESContextMap map[duktape.Context]*ESContext
+	callbackIndex         ESCallback
+}
+
+func newESContextFactory() *ESContextFactory {
+	return &ESContextFactory{
+		duktapeToESContextMap: make(map[duktape.Context]*ESContext),
+		callbackIndex:         1,
+	}
+}
+
 func (err ESError) Error() string {
 	return err.Message
 }
 
-func newESContext(syncFunc ESSyncFunc) *ESContext {
+func (f *ESContextFactory) newESContext(syncFunc ESSyncFunc) *ESContext {
+	return f.newESContextFromDuktape(syncFunc, duktape.NewContext())
+}
+
+func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, dctx *duktape.Context) *ESContext {
 	ctx := &ESContext{
-		duktape.NewContext(),
-		1,
-		syncFunc,
-		nil,
+		dctx,     // *duktape.Context
+		syncFunc, // syncFunc
+		nil,      // callbackErrorHandler
+		f,        // factory
 	}
 	ctx.callbackErrorHandler = ctx.DefaultCallbackErrorHandler
 	ctx.initGlobalObject()
-	ctx.initGlobalProperty("_esCallbacks")
+	ctx.initHeapPropertyObjectIfNotExist(ESCALLBACKS_OBJ_NAME)
+
+	wbgo.Debug.Printf("create context %p\n", ctx)
+
+	// save context for conversions
+	f.duktapeToESContextMap[*dctx] = ctx
+
 	return ctx
 }
 
 func (ctx *ESContext) DefaultCallbackErrorHandler(err ESError) {
-	wbgo.Error.Printf("failed to invoke callback: %s", err)
+	wbgo.Error.Printf("failed to invoke callback in context %p: %s", ctx, err)
 }
 
 func (ctx *ESContext) SetCallbackErrorHandler(handler ESCallbackErrorHandler) {
@@ -211,12 +240,16 @@ func (ctx *ESContext) initGlobalObject() {
 	ctx.Pop()
 }
 
-func (ctx *ESContext) initGlobalProperty(propName string) {
+func (ctx *ESContext) initHeapPropertyObjectIfNotExist(propName string) {
 	// callback list stash property holds callback functions referenced by ids
-	ctx.PushGlobalStash()
-	ctx.PushObject()
-	ctx.PutPropString(-2, propName)
-	ctx.Pop()
+	ctx.PushHeapStash()
+	defer ctx.Pop()
+
+	// check if property exists
+	if !ctx.HasPropString(-1, propName) {
+		ctx.PushObject()
+		ctx.PutPropString(-2, propName)
+	}
 }
 
 func (ctx *ESContext) callbackKey(key ESCallback) string {
@@ -224,8 +257,12 @@ func (ctx *ESContext) callbackKey(key ESCallback) string {
 }
 
 func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} {
-	ctx.PushGlobalStash()
-	ctx.GetPropString(-1, "_esCallbacks")
+
+	wbgo.Debug.Printf("trying to invoke callback %d in context %p\n", key, ctx)
+
+	ctx.PushHeapStash()
+
+	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
 	ctx.PushString(ctx.callbackKey(key))
 	argCount := 0
 	if args != nil {
@@ -253,11 +290,15 @@ func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} 
 // as uint64. In this case the returned value is guaranteed to be
 // greater than zero.
 func (ctx *ESContext) storeCallback(callbackStackIndex int) ESCallback {
-	key := ctx.callbackIndex
-	ctx.callbackIndex++
 
-	ctx.PushGlobalStash()
-	ctx.GetPropString(-1, "_esCallbacks")
+	// get previous callback index
+	key := ctx.factory.callbackIndex
+	ctx.factory.callbackIndex++
+
+	wbgo.Debug.Printf("store callback %d at context %p\n", key, ctx)
+
+	ctx.PushHeapStash()
+	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
 	if callbackStackIndex < 0 {
 		ctx.Dup(callbackStackIndex - 2)
 	} else {
@@ -301,8 +342,8 @@ func (ctx *ESContext) removeCallbackSync(key ESCallback) {
 }
 
 func (ctx *ESContext) RemoveCallback(key ESCallback) {
-	ctx.PushGlobalStash()
-	ctx.GetPropString(-1, "_esCallbacks")
+	ctx.PushHeapStash()
+	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
 	ctx.DelPropString(-1, ctx.callbackKey(key))
 	ctx.Pop()
 }
@@ -393,11 +434,17 @@ func (ctx *ESContext) loadScriptFromStringFlags(filename, content string, flags 
 	return nil
 }
 
-func (ctx *ESContext) DefineFunctions(fns map[string]func() int) {
+func (ctx *ESContext) DefineFunctions(fns map[string]func(*ESContext) int) {
 	for name, fn := range fns {
 		f := fn
-		ctx.PushGoFunc(func(*duktape.Context) int {
-			return f()
+		factory := ctx.factory
+		ctx.PushGoFunc(func(dctx *duktape.Context) int {
+			if ctx, ok := factory.duktapeToESContextMap[*dctx]; ok {
+				return f(ctx)
+			} else {
+				wbgo.Error.Panicf("No known conversion for duktape context to ESContext from %v", dctx)
+				panic("")
+			}
 		})
 		ctx.PutPropString(-2, name)
 	}

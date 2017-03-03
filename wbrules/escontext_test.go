@@ -18,7 +18,8 @@ var objTests = []string{
 }
 
 func TestJSToObjxAndBack(t *testing.T) {
-	ctx := newESContext(nil)
+	f := newESContextFactory()
+	ctx := f.newESContext(nil)
 	for _, jsonStr := range objTests {
 		if r := ctx.PevalString("(" + jsonStr + ")"); r != 0 {
 			t.Fatal("failed to evaluate the script")
@@ -42,7 +43,8 @@ func TestJSToObjxAndBack(t *testing.T) {
 }
 
 func TestNumConversions(t *testing.T) {
-	ctx := newESContext(nil)
+	f := newESContextFactory()
+	ctx := f.newESContext(nil)
 	ctx.PushJSObject(objx.Map{
 		"v_uint8":   uint8(0xf0),
 		"v_uint16":  uint16(0xf001),
@@ -117,11 +119,12 @@ var locTests = []struct {
 }
 
 func TestCallLocation(t *testing.T) {
-	ctx := newESContext(nil)
+	f := newESContextFactory()
+	ctx := f.newESContext(nil)
 	var storedTracebacks []ESTraceback
 	ctx.PushGlobalObject()
-	ctx.DefineFunctions(map[string]func() int{
-		"storeLoc": func() int {
+	ctx.DefineFunctions(map[string]func(*ESContext) int{
+		"storeLoc": func(ctx *ESContext) int {
 			storedTracebacks = append(storedTracebacks, ctx.GetTraceback())
 			return 0
 		},
