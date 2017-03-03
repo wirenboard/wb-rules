@@ -32,10 +32,13 @@ const (
 	SOURCE_ITEM_DEVICE  = itemType(iota)
 	SOURCE_ITEM_RULE
 
+	GLOBAL_OBJ_PROTO_NAME = "__wbGlobalPrototype"
 	MODULE_OBJ_PROTO_NAME = "__wbModulePrototype"
 
 	VDEV_OBJ_PROP_DEVID = "__deviceId"
 	VDEV_OBJ_PROTO_NAME = "__wbVdevPrototype"
+
+	THREAD_STORAGE_OBJ_NAME = "_esThreads"
 )
 
 var noSuchPropError = errors.New("no such property")
@@ -77,7 +80,9 @@ func (o *ESEngineOptions) SetModulesDirs(dirs []string) {
 
 type ESEngine struct {
 	*RuleEngine
-	ctx               *ESContext
+	ctxFactory        *ESContextFactory     // ESContext factory
+	globalCtx         *ESContext            // global context - prototype for local contexts in threads
+	localCtxs         map[string]*ESContext // local scripts' contexts, mapped from script paths
 	sourceRoot        string
 	sources           sourceMap
 	currentSource     *LocFileEntry
@@ -105,13 +110,15 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 
 	engine = &ESEngine{
 		RuleEngine:        NewRuleEngine(model, mqttClient, options.RuleEngineOptions),
-		ctx:               newESContext(model.CallSync),
+		ctxFactory:        newESContextFactory(),
+		localCtxs:         make(map[string]*ESContext),
 		sources:           make(sourceMap),
 		tracker:           wbgo.NewContentTracker(),
 		persistentDBCache: make(map[string]string),
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
 	}
+	engine.globalCtx = engine.ctxFactory.newESContext(model.CallSync)
 
 	if options.PersistentDBFile != "" {
 		if err := engine.SetPersistentDBMode(options.PersistentDBFile,
@@ -120,26 +127,30 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 		}
 	}
 
-	engine.ctx.SetCallbackErrorHandler(func(err ESError) {
+	engine.globalCtx.SetCallbackErrorHandler(func(err ESError) {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("ECMAScript error: %s", err))
 	})
 
 	// export modSearch
-	engine.ctx.GetGlobalString("Duktape")
-	engine.ctx.PushGoFunc(func(c *duktape.Context) int {
+	engine.globalCtx.GetGlobalString("Duktape")
+	engine.globalCtx.PushGoFunc(func(c *duktape.Context) int {
 		return engine.ModSearch(c)
 	})
-	engine.ctx.PutPropString(-2, "modSearch")
-	engine.ctx.Pop()
+	engine.globalCtx.PutPropString(-2, "modSearch")
+	engine.globalCtx.Pop()
 
 	// init __wbModulePrototype
-	engine.initModulePrototype()
+	engine.initModulePrototype(engine.globalCtx)
 
 	// init virtual device prototype
-	engine.initVdevPrototype()
+	engine.initVdevPrototype(engine.globalCtx)
 
-	engine.ctx.PushGlobalObject()
-	engine.ctx.DefineFunctions(map[string]func() int{
+	// init threads storage
+	engine.initGlobalThreadList(engine.globalCtx)
+
+	engine.globalCtx.PushGlobalObject()
+
+	engine.globalCtx.DefineFunctions(map[string]func(*ESContext) int{
 		"format":               engine.esFormat,
 		"log":                  engine.makeLogFunc(ENGINE_LOG_INFO),
 		"debug":                engine.makeLogFunc(ENGINE_LOG_DEBUG),
@@ -156,60 +167,103 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 		"_wbPersistentSet":     engine.esPersistentSet,
 		"_wbPersistentGet":     engine.esPersistentGet,
 	})
-	engine.ctx.GetPropString(-1, "log")
-	engine.ctx.DefineFunctions(map[string]func() int{
+	engine.globalCtx.GetPropString(-1, "log")
+	engine.globalCtx.DefineFunctions(map[string]func(*ESContext) int{
 		"debug":   engine.makeLogFunc(ENGINE_LOG_DEBUG),
 		"info":    engine.makeLogFunc(ENGINE_LOG_INFO),
 		"warning": engine.makeLogFunc(ENGINE_LOG_WARNING),
 		"error":   engine.makeLogFunc(ENGINE_LOG_ERROR),
 	})
-	engine.ctx.Pop()
+	engine.globalCtx.Pop()
 
 	// set global prototype to __wbModulePrototype
-	engine.ctx.GetPropString(-1, MODULE_OBJ_PROTO_NAME)
-	engine.ctx.SetPrototype(-2)
-
-	engine.ctx.Pop()
+	engine.globalCtx.GetPropString(-1, MODULE_OBJ_PROTO_NAME)
+	engine.globalCtx.SetPrototype(-2)
+	// [ global ]
 
 	if err := engine.loadLib(); err != nil {
 		wbgo.Error.Panicf("failed to load runtime library: %s", err)
 	}
+
+	engine.globalCtx.Pop()
+	// []
+
+	// save global object in heap stash as __wbGlobalPrototype
+	engine.globalCtx.PushHeapStash()
+	engine.globalCtx.PushGlobalObject()
+	// [ heap global ]
+
+	engine.globalCtx.PutPropString(-2, GLOBAL_OBJ_PROTO_NAME)
+	// [ heap ]
+
+	engine.globalCtx.Pop()
+	// []
+
 	return
+}
+
+// initGlobalThreadList creates an object in heap stash to
+// store thread objects
+func (engine *ESEngine) initGlobalThreadList(ctx *ESContext) {
+	ctx.PushHeapStash()
+	defer ctx.Pop()
+	// [ stash ]
+
+	ctx.PushObject()
+	// [ stash object ]
+	ctx.PutPropString(-2, THREAD_STORAGE_OBJ_NAME)
+}
+
+// removeThreadS
+func (engine *ESEngine) removeThreadFromStorage(ctx *ESContext, path string) {
+	ctx.PushHeapStash()
+	// [ stash ]
+
+	ctx.GetPropString(-1, THREAD_STORAGE_OBJ_NAME)
+	// [ stash threads ]
+	defer ctx.Pop2()
+
+	// try to get thread by name
+	if ctx.HasPropString(-1, path) {
+		ctx.DelPropString(-1, path)
+	} else {
+		wbgo.Error.Printf("trying to remove thread %s, but it doesn't exist", path)
+	}
 }
 
 // initModulePrototype inits __wbModulePrototype object
 // with methodes such as defineVirtualDevice etc.
-func (engine *ESEngine) initModulePrototype() {
-	engine.ctx.PushGlobalObject()
-	defer engine.ctx.Pop()
+func (engine *ESEngine) initModulePrototype(ctx *ESContext) {
+	ctx.PushGlobalObject()
+	defer ctx.Pop()
 
-	engine.ctx.PushObject()
+	ctx.PushObject()
 	// [ global __wbModulePrototype ]
 
-	engine.ctx.DefineFunctions(map[string]func() int{
+	ctx.DefineFunctions(map[string]func(*ESContext) int{
 		"defineVirtualDevice": engine.esDefineVirtualDevice,
 		"virtualDeviceId":     engine.esVirtualDeviceId,
 		"_wbPersistentName":   engine.esPersistentName,
 	})
 
-	engine.ctx.PutPropString(-2, MODULE_OBJ_PROTO_NAME)
+	ctx.PutPropString(-2, MODULE_OBJ_PROTO_NAME)
 }
 
 // initVdevPrototype inits __wbVdevPrototype object - prototype
 // for virtual device controllers
-func (engine *ESEngine) initVdevPrototype() {
-	engine.ctx.PushGlobalObject()
-	defer engine.ctx.Pop()
+func (engine *ESEngine) initVdevPrototype(ctx *ESContext) {
+	ctx.PushGlobalObject()
+	defer ctx.Pop()
 
-	engine.ctx.PushObject()
+	ctx.PushObject()
 	// [ global __wbVdevPrototype ]
-	engine.ctx.DefineFunctions(map[string]func() int{
+	ctx.DefineFunctions(map[string]func(*ESContext) int{
 		"getDeviceId": engine.esVdevGetDeviceId,
 		"getCellId":   engine.esVdevGetCellId,
 		// getCellValue and setCellValue are defined in lib.js
 	})
 
-	engine.ctx.PutPropString(-2, "__wbVdevPrototype")
+	ctx.PutPropString(-2, "__wbVdevPrototype")
 }
 
 func (engine *ESEngine) ScriptDir() string {
@@ -226,36 +280,35 @@ func (engine *ESEngine) SetSourceRoot(sourceRoot string) (err error) {
 	return
 }
 
-func (engine *ESEngine) buildSingleWhenChangedRuleCondition(defIndex int) (RuleCondition, error) {
-	if engine.ctx.IsString(defIndex) {
-		cellFullName := engine.ctx.SafeToString(defIndex)
+func (engine *ESEngine) buildSingleWhenChangedRuleCondition(ctx *ESContext, defIndex int) (RuleCondition, error) {
+	if ctx.IsString(defIndex) {
+		cellFullName := ctx.SafeToString(defIndex)
 		parts := strings.SplitN(cellFullName, "/", 2)
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("invalid whenChanged spec: '%s'", cellFullName)
 		}
 		return NewCellChangedRuleCondition(CellSpec{parts[0], parts[1]})
 	}
-	if engine.ctx.IsFunction(defIndex) {
-		f := engine.ctx.WrapCallback(defIndex)
+	if ctx.IsFunction(defIndex) {
+		f := ctx.WrapCallback(defIndex)
 		return NewFuncValueChangedRuleCondition(func() interface{} { return f(nil) }), nil
 	}
 	return nil, errors.New("whenChanged: array expected")
 }
 
-func (engine *ESEngine) buildWhenChangedRuleCondition(defIndex int) (RuleCondition, error) {
-	ctx := engine.ctx
+func (engine *ESEngine) buildWhenChangedRuleCondition(ctx *ESContext, defIndex int) (RuleCondition, error) {
 	ctx.GetPropString(defIndex, "whenChanged")
 	defer ctx.Pop()
 
 	if !ctx.IsArray(-1) {
-		return engine.buildSingleWhenChangedRuleCondition(-1)
+		return engine.buildSingleWhenChangedRuleCondition(ctx, -1)
 	}
 
 	conds := make([]RuleCondition, ctx.GetLength(-1))
 
 	for i := range conds {
 		ctx.GetPropIndex(-1, uint(i))
-		cond, err := engine.buildSingleWhenChangedRuleCondition(-1)
+		cond, err := engine.buildSingleWhenChangedRuleCondition(ctx, -1)
 		ctx.Pop()
 		if err != nil {
 			return nil, err
@@ -267,8 +320,7 @@ func (engine *ESEngine) buildWhenChangedRuleCondition(defIndex int) (RuleConditi
 	return NewOrRuleCondition(conds), nil
 }
 
-func (engine *ESEngine) buildRuleCond(defIndex int) (RuleCondition, error) {
-	ctx := engine.ctx
+func (engine *ESEngine) buildRuleCond(ctx *ESContext, defIndex int) (RuleCondition, error) {
 	hasWhen := ctx.HasPropString(defIndex, "when")
 	hasAsSoonAs := ctx.HasPropString(defIndex, "asSoonAs")
 	hasWhenChanged := ctx.HasPropString(defIndex, "whenChanged")
@@ -282,7 +334,7 @@ func (engine *ESEngine) buildRuleCond(defIndex int) (RuleCondition, error) {
 			"invalid rule -- cannot combine 'when' with 'asSoonAs', 'whenChanged' or 'cron'")
 
 	case hasWhen:
-		return NewLevelTriggeredRuleCondition(engine.wrapRuleCondFunc(defIndex, "when")), nil
+		return NewLevelTriggeredRuleCondition(engine.wrapRuleCondFunc(ctx, defIndex, "when")), nil
 
 	case hasAsSoonAs && (hasWhenChanged || hasCron):
 		return nil, errors.New(
@@ -290,18 +342,18 @@ func (engine *ESEngine) buildRuleCond(defIndex int) (RuleCondition, error) {
 
 	case hasAsSoonAs:
 		return NewEdgeTriggeredRuleCondition(
-			engine.wrapRuleCondFunc(defIndex, "asSoonAs")), nil
+			engine.wrapRuleCondFunc(ctx, defIndex, "asSoonAs")), nil
 
 	case hasWhenChanged && hasCron:
 		return nil, errors.New("invalid rule -- cannot combine 'whenChanged' with cron spec")
 
 	case hasWhenChanged:
-		return engine.buildWhenChangedRuleCondition(defIndex)
+		return engine.buildWhenChangedRuleCondition(ctx, defIndex)
 
 	case hasCron:
-		engine.ctx.GetPropString(defIndex, "_cron")
-		defer engine.ctx.Pop()
-		return NewCronRuleCondition(engine.ctx.SafeToString(-1)), nil
+		ctx.GetPropString(defIndex, "_cron")
+		defer ctx.Pop()
+		return NewCronRuleCondition(ctx.SafeToString(-1)), nil
 
 	default:
 		return nil, errors.New(
@@ -309,13 +361,13 @@ func (engine *ESEngine) buildRuleCond(defIndex int) (RuleCondition, error) {
 	}
 }
 
-func (engine *ESEngine) buildRule(name string, defIndex int) (*Rule, error) {
-	if !engine.ctx.HasPropString(defIndex, "then") {
+func (engine *ESEngine) buildRule(ctx *ESContext, name string, defIndex int) (*Rule, error) {
+	if !ctx.HasPropString(defIndex, "then") {
 		// this should be handled by lib.js
 		return nil, errors.New("invalid rule -- no then")
 	}
-	then := engine.wrapRuleCallback(defIndex, "then")
-	if cond, err := engine.buildRuleCond(defIndex); err != nil {
+	then := engine.wrapRuleCallback(ctx, defIndex, "then")
+	if cond, err := engine.buildRuleCond(ctx, defIndex); err != nil {
 		return nil, err
 	} else {
 		return NewRule(engine, name, cond, then), nil
@@ -326,13 +378,13 @@ func (engine *ESEngine) loadLib() error {
 	for _, dir := range searchDirs {
 		path := filepath.Join(dir, LIB_FILE)
 		if _, err := os.Stat(path); err == nil {
-			return engine.ctx.LoadScript(path)
+			return engine.globalCtx.LoadScript(path)
 		}
 	}
 	return noLibJs
 }
 
-func (engine *ESEngine) maybeRegisterSourceItem(typ itemType, name string) {
+func (engine *ESEngine) maybeRegisterSourceItem(ctx *ESContext, typ itemType, name string) {
 	if engine.currentSource == nil {
 		return
 	}
@@ -348,7 +400,7 @@ func (engine *ESEngine) maybeRegisterSourceItem(typ itemType, name string) {
 	}
 
 	line := -1
-	for _, loc := range engine.ctx.GetTraceback() {
+	for _, loc := range ctx.GetTraceback() {
 		// Here we depend upon the fact that duktape displays
 		// unmodified source paths in the backtrace
 		if loc.filename == engine.currentSource.PhysicalPath {
@@ -410,6 +462,33 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 		return false, err
 	}
 
+	// prepare threads storage
+	engine.globalCtx.PushHeapStash()
+	// [ stash ]
+
+	engine.globalCtx.GetPropString(-1, THREAD_STORAGE_OBJ_NAME)
+	// [ stash threads ]
+
+	// create new thread and context
+	engine.globalCtx.PushThreadNewGlobalenv()
+	// [ stash threads thread ]
+	newLocalCtx := engine.ctxFactory.newESContextFromDuktape(engine.globalCtx.syncFunc, engine.globalCtx.GetContext(-1))
+	// [ stash threads thread ]
+
+	// try to get local context for this script
+	if _, ok := engine.localCtxs[path]; ok {
+		wbgo.Debug.Printf("local context for script %s exists; removing it", path)
+		// TODO: launch internal cleanups
+		engine.removeThreadFromStorage(engine.globalCtx, path)
+	}
+	engine.localCtxs[path] = newLocalCtx
+
+	// save new thread into storage
+	engine.globalCtx.PutPropString(-2, path)
+	// [ stash threads ]
+	engine.globalCtx.Pop2()
+	// []
+
 	if engine.currentSource != nil {
 		// must use a stack of sources to support recursive LoadScript()
 		panic("recursive loadScript() calls not supported")
@@ -450,7 +529,19 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 		}()
 	}
 
-	return true, engine.trackESError(path, engine.ctx.LoadScenario(path))
+	// setup prototype for global object
+	newLocalCtx.PushHeapStash()
+	// [ stash ]
+	newLocalCtx.PushGlobalObject()
+	// [ stash global ]
+	newLocalCtx.GetPropString(-2, GLOBAL_OBJ_PROTO_NAME)
+	// [ stash global __wbGlobalProto ]
+	newLocalCtx.SetPrototype(-2)
+	// [ stash global ]
+	newLocalCtx.Pop2()
+	// []
+
+	return true, engine.trackESError(path, newLocalCtx.LoadScenario(path))
 }
 
 func (engine *ESEngine) trackESError(path string, err error) error {
@@ -556,14 +647,14 @@ func (engine *ESEngine) LiveRemoveFile(path string) error {
 	return nil
 }
 
-func (engine *ESEngine) wrapRuleCallback(defIndex int, propName string) ESCallbackFunc {
-	engine.ctx.GetPropString(defIndex, propName)
-	defer engine.ctx.Pop()
-	return engine.ctx.WrapCallback(-1)
+func (engine *ESEngine) wrapRuleCallback(ctx *ESContext, defIndex int, propName string) ESCallbackFunc {
+	ctx.GetPropString(defIndex, propName)
+	defer ctx.Pop()
+	return ctx.WrapCallback(-1)
 }
 
-func (engine *ESEngine) wrapRuleCondFunc(defIndex int, defProp string) func() bool {
-	f := engine.wrapRuleCallback(defIndex, defProp)
+func (engine *ESEngine) wrapRuleCondFunc(ctx *ESContext, defIndex int, defProp string) func() bool {
+	f := engine.wrapRuleCallback(ctx, defIndex, defProp)
 	return func() bool {
 		r, ok := f(nil).(bool)
 		return ok && r
@@ -602,37 +693,37 @@ func localObjectId(filename, objname string) string {
 // (e.g. by module.defineVirtualDevice()).
 // This method should be called only from exported functions
 // in __wbModulePrototype child context
-func (engine *ESEngine) maybeExpandLocalObjectId(name string) string {
-	engine.ctx.PushThis()
-	if engine.ctx.IsObject(-1) && engine.ctx.HasPropString(-1, "filename") {
+func (engine *ESEngine) maybeExpandLocalObjectId(ctx *ESContext, name string) string {
+	ctx.PushThis()
+	if ctx.IsObject(-1) && ctx.HasPropString(-1, "filename") {
 		// this means we are in some local scope
 		// so, replace virtual device name
-		engine.ctx.GetPropString(-1, "filename")
+		ctx.GetPropString(-1, "filename")
 
-		if engine.ctx.IsString(-1) {
-			name = localObjectId(engine.ctx.GetString(-1), name)
+		if ctx.IsString(-1) {
+			name = localObjectId(ctx.GetString(-1), name)
 		}
-		engine.ctx.Pop()
+		ctx.Pop()
 	}
-	engine.ctx.Pop()
+	ctx.Pop()
 
 	return name
 }
 
 // getStringPropFromObject gets string property value from object
-func (engine *ESEngine) getStringPropFromObject(objIndex int, propName string) (id string, err error) {
+func (engine *ESEngine) getStringPropFromObject(ctx *ESContext, objIndex int, propName string) (id string, err error) {
 	// [ ... obj ... ]
 
-	if !engine.ctx.HasPropString(objIndex, propName) {
+	if !ctx.HasPropString(objIndex, propName) {
 		err = noSuchPropError
 		return
 	}
 
-	engine.ctx.GetPropString(objIndex, propName)
-	defer engine.ctx.Pop()
+	ctx.GetPropString(objIndex, propName)
+	defer ctx.Pop()
 	// [ ... obj ... prop ]
 
-	id = engine.ctx.GetString(-1)
+	id = ctx.GetString(-1)
 
 	if id == "" {
 		err = wrongPropTypeError
@@ -644,69 +735,69 @@ func (engine *ESEngine) getStringPropFromObject(objIndex int, propName string) (
 
 // esVirtualDeviceId exported as module.virtualDeviceId(name)
 // and allows user to get global ID for local device
-func (engine *ESEngine) esVirtualDeviceId() int {
+func (engine *ESEngine) esVirtualDeviceId(ctx *ESContext) int {
 	// arguments:
 	// 1 -> deviceName
-	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(-1) {
+	if ctx.GetTop() != 1 || !ctx.IsString(-1) {
 		return duktape.DUK_RET_ERROR
 	}
 
-	name := engine.ctx.GetString(-1)
-	name = engine.maybeExpandLocalObjectId(name)
+	name := ctx.GetString(-1)
+	name = engine.maybeExpandLocalObjectId(ctx, name) // TODO: ctx
 
 	// push result
-	engine.ctx.PushString(name)
+	ctx.PushString(name)
 
 	return 1
 }
 
 // defineVirtualDevice creates virtual device object in MQTT
 // and returns JS object to control it
-func (engine *ESEngine) esDefineVirtualDevice() int {
-	if engine.ctx.GetTop() != 2 || !engine.ctx.IsString(-2) || !engine.ctx.IsObject(-1) {
+func (engine *ESEngine) esDefineVirtualDevice(ctx *ESContext) int {
+	if ctx.GetTop() != 2 || !ctx.IsString(-2) || !ctx.IsObject(-1) {
 		return duktape.DUK_RET_ERROR
 	}
-	name := engine.ctx.GetString(-2)
-	obj := engine.ctx.GetJSObject(-1).(objx.Map)
+	name := ctx.GetString(-2)
+	obj := ctx.GetJSObject(-1).(objx.Map)
 
-	name = engine.maybeExpandLocalObjectId(name)
+	name = engine.maybeExpandLocalObjectId(ctx, name)
 
 	if err := engine.DefineVirtualDevice(name, obj); err != nil {
 		wbgo.Error.Printf("device definition error: %s", err)
-		engine.ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
+		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
 		return duktape.DUK_RET_INSTACK_ERROR
 	}
-	engine.maybeRegisterSourceItem(SOURCE_ITEM_DEVICE, name)
+	engine.maybeRegisterSourceItem(ctx, SOURCE_ITEM_DEVICE, name)
 
 	// [ args | ]
 
 	// create virtual device object
-	engine.ctx.PushObject()
+	ctx.PushObject()
 	// [ args | vDevObject ]
 
 	// get prototype
 
 	// get global object first
-	engine.ctx.PushGlobalObject()
+	ctx.PushGlobalObject()
 	// [ args | vDevObject global ]
 
 	// get prototype object
-	engine.ctx.GetPropString(-1, VDEV_OBJ_PROTO_NAME)
+	ctx.GetPropString(-1, VDEV_OBJ_PROTO_NAME)
 	// [ args | vDevObject global __wbVdevPrototype ]
 
 	// apply prototype
-	engine.ctx.SetPrototype(-3)
+	ctx.SetPrototype(-3)
 	// [ args | vDevObject global ]
 
-	engine.ctx.Pop()
+	ctx.Pop()
 	// [ args | vDevObject ]
 
 	// push device ID property
 
-	engine.ctx.PushString(name)
+	ctx.PushString(name)
 	// [ args | vDevObject devId ]
 
-	engine.ctx.PutPropString(-2, VDEV_OBJ_PROP_DEVID)
+	ctx.PutPropString(-2, VDEV_OBJ_PROP_DEVID)
 	// [ args | vDevObject ]
 
 	return 1
@@ -715,30 +806,30 @@ func (engine *ESEngine) esDefineVirtualDevice() int {
 // esVdevGetDeviceId returns virtual device ID string (for MQTT)
 // from virtual device object
 // Exported to JS as method of virtual device object
-func (engine *ESEngine) esVdevGetDeviceId() int {
+func (engine *ESEngine) esVdevGetDeviceId(ctx *ESContext) int {
 	// this -> virtual device object
 	// no arguments
-	if engine.ctx.GetTop() != 0 {
+	if ctx.GetTop() != 0 {
 		return duktape.DUK_RET_ERROR
 	}
 
-	engine.ctx.PushThis()
+	ctx.PushThis()
 	// [ this ]
 
 	// get virtual device id
-	devId, err := engine.getStringPropFromObject(-1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
-		engine.ctx.Pop()
+		ctx.Pop()
 		// []
 
 		return duktape.DUK_RET_TYPE_ERROR
 	}
 
-	engine.ctx.Pop()
+	ctx.Pop()
 	// []
 
 	// return id
-	engine.ctx.PushString(devId)
+	ctx.PushString(devId)
 	// [ id ]
 
 	return 1
@@ -749,119 +840,119 @@ func (engine *ESEngine) esVdevGetDeviceId() int {
 // Exported to JS as method of virtual device object
 // Arguments:
 // * cell -> cell name
-func (engine *ESEngine) esVdevGetCellId() int {
+func (engine *ESEngine) esVdevGetCellId(ctx *ESContext) int {
 	// this -> virtual device object
 	// arguments:
 	// 1 -> cell
 	//
 	// [ cell | ]
 
-	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(-1) {
+	if ctx.GetTop() != 1 || !ctx.IsString(-1) {
 		return duktape.DUK_RET_ERROR
 	}
 
-	cellId := engine.ctx.GetString(-1)
+	cellId := ctx.GetString(-1)
 
 	// push this
-	engine.ctx.PushThis()
+	ctx.PushThis()
 	// [ cell | this ]
 
 	// get virtual device id
-	devId, err := engine.getStringPropFromObject(-1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
-		engine.ctx.Pop()
+		ctx.Pop()
 		// [ cell | ]
 
 		return duktape.DUK_RET_TYPE_ERROR
 	}
 
-	engine.ctx.Pop()
+	ctx.Pop()
 	// [ cell | ]
 
 	cellId = devId + "/" + cellId
 
-	engine.ctx.PushString(cellId)
+	ctx.PushString(cellId)
 	// [ cell | cellId ]
 
 	return 1
 }
 
-func (engine *ESEngine) esFormat() int {
-	engine.ctx.PushString(engine.ctx.Format())
+func (engine *ESEngine) esFormat(ctx *ESContext) int {
+	ctx.PushString(ctx.Format())
 	return 1
 }
 
-func (engine *ESEngine) makeLogFunc(level EngineLogLevel) func() int {
-	return func() int {
-		engine.Log(level, engine.ctx.Format())
+func (engine *ESEngine) makeLogFunc(level EngineLogLevel) func(ctx *ESContext) int {
+	return func(ctx *ESContext) int {
+		engine.Log(level, ctx.Format())
 		return 0
 	}
 }
 
-func (engine *ESEngine) esPublish() int {
+func (engine *ESEngine) esPublish(ctx *ESContext) int {
 	retain := false
 	qos := 0
-	if engine.ctx.GetTop() == 4 {
-		retain = engine.ctx.ToBoolean(-1)
-		engine.ctx.Pop()
+	if ctx.GetTop() == 4 {
+		retain = ctx.ToBoolean(-1)
+		ctx.Pop()
 	}
-	if engine.ctx.GetTop() == 3 {
-		qos = int(engine.ctx.ToNumber(-1))
-		engine.ctx.Pop()
+	if ctx.GetTop() == 3 {
+		qos = int(ctx.ToNumber(-1))
+		ctx.Pop()
 		if qos < 0 || qos > 2 {
 			return duktape.DUK_RET_ERROR
 		}
 	}
-	if engine.ctx.GetTop() != 2 {
+	if ctx.GetTop() != 2 {
 		return duktape.DUK_RET_ERROR
 	}
-	if !engine.ctx.IsString(-2) {
+	if !ctx.IsString(-2) {
 		return duktape.DUK_RET_TYPE_ERROR
 	}
-	topic := engine.ctx.GetString(-2)
-	payload := engine.ctx.SafeToString(-1)
+	topic := ctx.GetString(-2)
+	payload := ctx.SafeToString(-1)
 	engine.Publish(topic, payload, byte(qos), retain)
 	return 0
 }
 
-func (engine *ESEngine) esWbDevObject() int {
-	wbgo.Debug.Printf("esWbDevObject(): top=%d isString=%v", engine.ctx.GetTop(), engine.ctx.IsString(-1))
-	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(-1) {
+func (engine *ESEngine) esWbDevObject(ctx *ESContext) int {
+	wbgo.Debug.Printf("esWbDevObject(): top=%d isString=%v", ctx.GetTop(), ctx.IsString(-1))
+	if ctx.GetTop() != 1 || !ctx.IsString(-1) {
 		return duktape.DUK_RET_ERROR
 	}
-	devProxy := engine.GetDeviceProxy(engine.ctx.GetString(-1))
-	engine.ctx.PushGoObject(devProxy)
+	devProxy := engine.GetDeviceProxy(ctx.GetString(-1))
+	ctx.PushGoObject(devProxy)
 	return 1
 }
 
-func (engine *ESEngine) esWbCellObject() int {
-	if engine.ctx.GetTop() != 2 || !engine.ctx.IsString(-1) || !engine.ctx.IsObject(-2) {
+func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
+	if ctx.GetTop() != 2 || !ctx.IsString(-1) || !ctx.IsObject(-2) {
 		return duktape.DUK_RET_ERROR
 	}
-	devProxy, ok := engine.ctx.GetGoObject(-2).(*DeviceProxy)
+	devProxy, ok := ctx.GetGoObject(-2).(*DeviceProxy)
 	if !ok {
 		wbgo.Error.Printf("invalid _wbCellObject call")
 		return duktape.DUK_RET_TYPE_ERROR
 	}
-	cellProxy := devProxy.EnsureCell(engine.ctx.GetString(-1))
-	engine.ctx.PushGoObject(cellProxy)
-	engine.ctx.DefineFunctions(map[string]func() int{
-		"rawValue": func() int {
-			engine.ctx.PushString(cellProxy.RawValue())
+	cellProxy := devProxy.EnsureCell(ctx.GetString(-1))
+	ctx.PushGoObject(cellProxy)
+	ctx.DefineFunctions(map[string]func(*ESContext) int{
+		"rawValue": func(ctx *ESContext) int {
+			ctx.PushString(cellProxy.RawValue())
 			return 1
 		},
-		"value": func() int {
+		"value": func(ctx *ESContext) int {
 			m := objx.New(map[string]interface{}{
 				"v": cellProxy.Value(),
 			})
-			engine.ctx.PushJSObject(m)
+			ctx.PushJSObject(m)
 			return 1
 		},
-		"setValue": func() int {
-			if engine.ctx.GetTop() != 1 || !engine.ctx.IsObject(-1) {
+		"setValue": func(ctx *ESContext) int {
+			if ctx.GetTop() != 1 || !ctx.IsObject(-1) {
 				return duktape.DUK_RET_ERROR
 			}
-			m, ok := engine.ctx.GetJSObject(-1).(objx.Map)
+			m, ok := ctx.GetJSObject(-1).(objx.Map)
 			if !ok || !m.Has("v") {
 				wbgo.Error.Printf("invalid cell definition")
 				return duktape.DUK_RET_TYPE_ERROR
@@ -869,109 +960,109 @@ func (engine *ESEngine) esWbCellObject() int {
 			cellProxy.SetValue(m["v"])
 			return 1
 		},
-		"isComplete": func() int {
-			engine.ctx.PushBoolean(cellProxy.IsComplete())
+		"isComplete": func(ctx *ESContext) int {
+			ctx.PushBoolean(cellProxy.IsComplete())
 			return 1
 		},
 	})
 	return 1
 }
 
-func (engine *ESEngine) esWbStartTimer() int {
-	if engine.ctx.GetTop() != 3 || !engine.ctx.IsNumber(1) {
+func (engine *ESEngine) esWbStartTimer(ctx *ESContext) int {
+	if ctx.GetTop() != 3 || !ctx.IsNumber(1) {
 		// FIXME: need to throw proper exception here
 		wbgo.Error.Println("bad _wbStartTimer call")
 		return duktape.DUK_RET_ERROR
 	}
 
 	name := NO_TIMER_NAME
-	if engine.ctx.IsString(0) {
-		name = engine.ctx.ToString(0)
+	if ctx.IsString(0) {
+		name = ctx.ToString(0)
 		if name == "" {
 			wbgo.Error.Println("empty timer name")
 			return duktape.DUK_RET_ERROR
 		}
 		engine.StopTimerByName(name)
-	} else if !engine.ctx.IsFunction(0) {
+	} else if !ctx.IsFunction(0) {
 		wbgo.Error.Println("invalid timer spec")
 		return duktape.DUK_RET_ERROR
 	}
 
-	ms := engine.ctx.GetNumber(1)
+	ms := ctx.GetNumber(1)
 	if ms < MIN_INTERVAL_MS {
 		ms = MIN_INTERVAL_MS
 	}
-	periodic := engine.ctx.ToBoolean(2)
+	periodic := ctx.ToBoolean(2)
 
 	var callback func()
 	if name == NO_TIMER_NAME {
-		f := engine.ctx.WrapCallback(0)
+		f := ctx.WrapCallback(0)
 		callback = func() { f(nil) }
 	}
 
 	interval := time.Duration(ms * float64(time.Millisecond))
-	engine.ctx.PushNumber(
+	ctx.PushNumber(
 		float64(engine.StartTimer(name, callback, interval, periodic)))
 	return 1
 }
 
-func (engine *ESEngine) esWbStopTimer() int {
-	if engine.ctx.GetTop() != 1 {
+func (engine *ESEngine) esWbStopTimer(ctx *ESContext) int {
+	if ctx.GetTop() != 1 {
 		return duktape.DUK_RET_ERROR
 	}
-	if engine.ctx.IsNumber(0) {
-		n := uint64(engine.ctx.GetNumber(-1))
+	if ctx.IsNumber(0) {
+		n := uint64(ctx.GetNumber(-1))
 		if n == 0 {
 			wbgo.Error.Printf("timer id cannot be zero")
 			return 0
 		}
 		engine.StopTimerByIndex(n)
-	} else if engine.ctx.IsString(0) {
-		engine.StopTimerByName(engine.ctx.ToString(0))
+	} else if ctx.IsString(0) {
+		engine.StopTimerByName(ctx.ToString(0))
 	} else {
 		return duktape.DUK_RET_ERROR
 	}
 	return 0
 }
 
-func (engine *ESEngine) esWbCheckCurrentTimer() int {
-	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(0) {
+func (engine *ESEngine) esWbCheckCurrentTimer(ctx *ESContext) int {
+	if ctx.GetTop() != 1 || !ctx.IsString(0) {
 		return duktape.DUK_RET_ERROR
 	}
-	timerName := engine.ctx.ToString(0)
-	engine.ctx.PushBoolean(engine.CheckTimer(timerName))
+	timerName := ctx.ToString(0)
+	ctx.PushBoolean(engine.CheckTimer(timerName))
 	return 1
 }
 
-func (engine *ESEngine) esWbSpawn() int {
-	if engine.ctx.GetTop() != 5 || !engine.ctx.IsArray(0) || !engine.ctx.IsBoolean(2) ||
-		!engine.ctx.IsBoolean(3) {
+func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
+	if ctx.GetTop() != 5 || !ctx.IsArray(0) || !ctx.IsBoolean(2) ||
+		!ctx.IsBoolean(3) {
 		return duktape.DUK_RET_ERROR
 	}
 
-	args := engine.ctx.StringArrayToGo(0)
+	args := ctx.StringArrayToGo(0)
 	if len(args) == 0 {
 		return duktape.DUK_RET_ERROR
 	}
 
 	callbackFn := ESCallbackFunc(nil)
 
-	if engine.ctx.IsFunction(1) {
-		callbackFn = engine.ctx.WrapCallback(1)
-	} else if !engine.ctx.IsNullOrUndefined(1) {
+	if ctx.IsFunction(1) {
+		callbackFn = ctx.WrapCallback(1)
+	} else if !ctx.IsNullOrUndefined(1) {
 		return duktape.DUK_RET_ERROR
 	}
 
 	var input *string
-	if engine.ctx.IsString(4) {
-		instr := engine.ctx.GetString(4)
+	if ctx.IsString(4) {
+		instr := ctx.GetString(4)
 		input = &instr
-	} else if !engine.ctx.IsNullOrUndefined(4) {
+	} else if !ctx.IsNullOrUndefined(4) {
 		return duktape.DUK_RET_ERROR
 	}
 
-	captureOutput := engine.ctx.GetBoolean(2)
-	captureErrorOutput := engine.ctx.GetBoolean(3)
+	captureOutput := ctx.GetBoolean(2)
+	captureErrorOutput := ctx.GetBoolean(3)
 	go func() {
 		r, err := Spawn(args[0], args[1:], captureOutput, captureErrorOutput, input)
 		if err != nil {
@@ -997,35 +1088,35 @@ func (engine *ESEngine) esWbSpawn() int {
 	return 0
 }
 
-func (engine *ESEngine) esWbDefineRule() int {
-	if engine.ctx.GetTop() != 2 || !engine.ctx.IsString(0) || !engine.ctx.IsObject(1) {
+func (engine *ESEngine) esWbDefineRule(ctx *ESContext) int {
+	if ctx.GetTop() != 2 || !ctx.IsString(0) || !ctx.IsObject(1) {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad rule definition"))
 		return duktape.DUK_RET_ERROR
 	}
-	shortName := engine.ctx.GetString(0)
+	shortName := ctx.GetString(0)
 	name := shortName
 	if engine.currentSource != nil {
 		name = engine.currentSource.VirtualPath + "/" + shortName
 	}
-	if rule, err := engine.buildRule(name, 1); err != nil {
+	if rule, err := engine.buildRule(ctx, name, 1); err != nil {
 		// FIXME: proper error handling
 		engine.Log(ENGINE_LOG_ERROR,
 			fmt.Sprintf("bad definition of rule '%s': %s", name, err))
 		return duktape.DUK_RET_ERROR
 	} else {
 		engine.DefineRule(rule)
-		engine.maybeRegisterSourceItem(SOURCE_ITEM_RULE, shortName)
+		engine.maybeRegisterSourceItem(ctx, SOURCE_ITEM_RULE, shortName)
 	}
 	return 0
 }
 
-func (engine *ESEngine) esWbRunRules() int {
-	switch engine.ctx.GetTop() {
+func (engine *ESEngine) esWbRunRules(ctx *ESContext) int {
+	switch ctx.GetTop() {
 	case 0:
 		engine.RunRules(nil, NO_TIMER_NAME)
 	case 2:
-		devName := engine.ctx.SafeToString(0)
-		cellName := engine.ctx.SafeToString(1)
+		devName := ctx.SafeToString(0)
+		cellName := ctx.SafeToString(1)
 		engine.RunRules(&CellSpec{devName, cellName}, NO_TIMER_NAME)
 	default:
 		return duktape.DUK_RET_ERROR
@@ -1033,12 +1124,12 @@ func (engine *ESEngine) esWbRunRules() int {
 	return 0
 }
 
-func (engine *ESEngine) esReadConfig() int {
-	if engine.ctx.GetTop() != 1 || !engine.ctx.IsString(0) {
+func (engine *ESEngine) esReadConfig(ctx *ESContext) int {
+	if ctx.GetTop() != 1 || !ctx.IsString(0) {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("invalid readConfig call"))
 		return duktape.DUK_RET_ERROR
 	}
-	path := engine.ctx.GetString(0)
+	path := ctx.GetString(0)
 	in, err := os.Open(path)
 	if err != nil {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("failed to open config file: %s", path))
@@ -1060,14 +1151,14 @@ func (engine *ESEngine) esReadConfig() int {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("failed to parse json: %s", path))
 		return duktape.DUK_RET_ERROR
 	}
-	engine.ctx.PushJSObject(parsedJSON)
+	ctx.PushJSObject(parsedJSON)
 	return 1
 }
 
 func (engine *ESEngine) EvalScript(code string) error {
 	ch := make(chan error)
 	engine.model.CallSync(func() {
-		err := engine.ctx.EvalScript(code)
+		err := engine.globalCtx.EvalScript(code)
 		if err != nil {
 			engine.Logf(ENGINE_LOG_ERROR, "eval error: %s", err)
 		}
@@ -1116,7 +1207,10 @@ func (engine *ESEngine) ClosePersistentDB() (err error) {
 
 // Creates a name for persistent storage bucket.
 // Used in 'module.PersistentStorage(name, options)'
-func (engine *ESEngine) esPersistentName() int {
+func (engine *ESEngine) esPersistentName(ctx *ESContext) int {
+
+	// panic(fmt.Sprintf("run esPersistentName at context %p", ctx))
+
 	if engine.persistentDB == nil {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
 		return duktape.DUK_RET_ERROR
@@ -1125,7 +1219,7 @@ func (engine *ESEngine) esPersistentName() int {
 	// arguments: (name [, options = { global bool }])
 	var name string
 
-	numArgs := engine.ctx.GetTop()
+	numArgs := ctx.GetTop()
 
 	if numArgs < 1 || numArgs > 2 {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad persistent storage definition"))
@@ -1133,31 +1227,32 @@ func (engine *ESEngine) esPersistentName() int {
 	}
 
 	// parse name
-	if !engine.ctx.IsString(0) {
+	if !ctx.IsString(0) {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage name must be string"))
 		return duktape.DUK_RET_ERROR
 	}
-	name = engine.ctx.GetString(0)
+	name = ctx.GetString(0)
 
 	// parse options object
-	if numArgs == 2 && !engine.ctx.IsUndefined(1) {
-		if !engine.ctx.IsObject(1) {
+	if numArgs == 2 && !ctx.IsUndefined(1) {
+		if !ctx.IsObject(1) {
 			engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage options must be object"))
 			return duktape.DUK_RET_ERROR
 		}
 	}
 
 	// get global ID for bucket if this is local storage
-	name = engine.maybeExpandLocalObjectId(name)
+	name = engine.maybeExpandLocalObjectId(ctx, name)
+	engine.Log(ENGINE_LOG_DEBUG, fmt.Sprintf("create local storage name: %s", name))
 
 	// push name as return value
-	engine.ctx.PushString(name)
+	ctx.PushString(name)
 
 	return 1
 }
 
 // Writes new value down to persistent DB
-func (engine *ESEngine) esPersistentSet() int {
+func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 	if engine.persistentDB == nil {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
 		return duktape.DUK_RET_ERROR
@@ -1166,27 +1261,27 @@ func (engine *ESEngine) esPersistentSet() int {
 	// arguments: (bucket string, key string, value)
 	var bucket, key, value string
 
-	if engine.ctx.GetTop() != 3 {
+	if ctx.GetTop() != 3 {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad persistentSet request, arg number mismatch"))
 		return duktape.DUK_RET_ERROR
 	}
 
 	// parse bucket name
-	if !engine.ctx.IsString(0) {
+	if !ctx.IsString(0) {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage bucket name must be string"))
 		return duktape.DUK_RET_ERROR
 	}
-	bucket = engine.ctx.GetString(0)
+	bucket = ctx.GetString(0)
 
 	// parse key
-	if !engine.ctx.IsString(1) {
+	if !ctx.IsString(1) {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage key must be string"))
 		return duktape.DUK_RET_ERROR
 	}
-	key = engine.ctx.GetString(1)
+	key = ctx.GetString(1)
 
 	// parse value
-	value = engine.ctx.JsonEncode(2)
+	value = ctx.JsonEncode(2)
 
 	// perform a transaction
 	engine.persistentDB.Update(func(tx *bolt.Tx) error {
@@ -1207,7 +1302,7 @@ func (engine *ESEngine) esPersistentSet() int {
 }
 
 // Gets a value from persitent DB
-func (engine *ESEngine) esPersistentGet() int {
+func (engine *ESEngine) esPersistentGet(ctx *ESContext) int {
 	if engine.persistentDB == nil {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
 		return duktape.DUK_RET_ERROR
@@ -1216,24 +1311,24 @@ func (engine *ESEngine) esPersistentGet() int {
 	// arguments: (bucket string, key string)
 	var bucket, key, value string
 
-	if engine.ctx.GetTop() != 2 {
+	if ctx.GetTop() != 2 {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad persistentGet request, arg number mismatch"))
 		return duktape.DUK_RET_ERROR
 	}
 
 	// parse bucket name
-	if !engine.ctx.IsString(0) {
+	if !ctx.IsString(0) {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage bucket name must be string"))
 		return duktape.DUK_RET_ERROR
 	}
-	bucket = engine.ctx.GetString(0)
+	bucket = ctx.GetString(0)
 
 	// parse key
-	if !engine.ctx.IsString(1) {
+	if !ctx.IsString(1) {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage key must be string"))
 		return duktape.DUK_RET_ERROR
 	}
-	key = engine.ctx.GetString(1)
+	key = ctx.GetString(1)
 
 	wbgo.Debug.Printf("trying to get value from persistent storage %s: %s", bucket, key)
 
@@ -1255,11 +1350,11 @@ func (engine *ESEngine) esPersistentGet() int {
 
 	if !ok {
 		// push 'undefined'
-		engine.ctx.PushUndefined()
+		ctx.PushUndefined()
 	} else {
 		// push value into stack and decode JSON
-		engine.ctx.PushString(value)
-		engine.ctx.JsonDecode(-1)
+		ctx.PushString(value)
+		ctx.JsonDecode(-1)
 	}
 
 	return 1
