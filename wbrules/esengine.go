@@ -538,37 +538,6 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 		return false, err
 	}
 
-	// prepare threads storage
-	engine.globalCtx.PushHeapStash()
-	// [ stash ]
-
-	engine.globalCtx.GetPropString(-1, THREAD_STORAGE_OBJ_NAME)
-	// [ stash threads ]
-
-	// create new thread and context
-	engine.globalCtx.PushThreadNewGlobalenv()
-	// [ stash threads thread ]
-	newLocalCtx := engine.ctxFactory.newESContextFromDuktape(engine.globalCtx.syncFunc, engine.globalCtx.GetContext(-1))
-	// [ stash threads thread ]
-
-	// try to get local context for this script
-	if _, ok := engine.localCtxs[path]; ok {
-		wbgo.Debug.Printf("local context for script %s exists; removing it", path)
-
-		// cleanup timers of this context
-		engine.runTimerCleanups(engine.localCtxs[path])
-
-		// TODO: launch internal cleanups
-		engine.removeThreadFromStorage(engine.globalCtx, path)
-	}
-	engine.localCtxs[path] = newLocalCtx
-
-	// save new thread into storage
-	engine.globalCtx.PutPropString(-2, path)
-	// [ stash threads ]
-	engine.globalCtx.Pop2()
-	// []
-
 	if engine.currentSource != nil {
 		// must use a stack of sources to support recursive LoadScript()
 		panic("recursive loadScript() calls not supported")
@@ -583,9 +552,29 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 		return false, nil
 	}
 
-	// remove rules and devices defined in the previous
-	// version of this script
-	engine.cleanup.RunCleanups(path)
+	// cleanup if old script exists
+	engine.runCleanups(path)
+
+	// prepare threads storage
+	engine.globalCtx.PushHeapStash()
+	// [ stash ]
+
+	engine.globalCtx.GetPropString(-1, THREAD_STORAGE_OBJ_NAME)
+	// [ stash threads ]
+
+	// create new thread and context
+	engine.globalCtx.PushThreadNewGlobalenv()
+	// [ stash threads thread ]
+	newLocalCtx := engine.ctxFactory.newESContextFromDuktape(engine.globalCtx.syncFunc, engine.globalCtx.GetContext(-1))
+	// [ stash threads thread ]
+
+	engine.localCtxs[path] = newLocalCtx
+
+	// save new thread into storage
+	engine.globalCtx.PutPropString(-2, path)
+	// [ stash threads ]
+	engine.globalCtx.Pop2()
+	// []
 
 	engine.cleanup.PushCleanupScope(path)
 	defer engine.cleanup.PopCleanupScope(path)
@@ -683,6 +672,23 @@ func (engine *ESEngine) maybePublishUpdate(subtopic, physicalPath string) {
 	}
 }
 
+func (engine *ESEngine) runCleanups(path string) {
+	// run context cleanups
+	// try to get local context for this script
+	if _, ok := engine.localCtxs[path]; ok {
+		wbgo.Debug.Printf("local context for script %s exists; removing it", path)
+
+		// cleanup timers of this context
+		engine.runTimerCleanups(engine.localCtxs[path])
+
+		// TODO: launch internal cleanups
+		engine.removeThreadFromStorage(engine.globalCtx, path)
+	}
+
+	// run rules cleanups
+	engine.cleanup.RunCleanups(path)
+}
+
 func (engine *ESEngine) loadScriptAndRefresh(path string, loadIfUnchanged bool) (err error) {
 	loaded, err := engine.loadScript(path, loadIfUnchanged)
 	if loaded {
@@ -743,7 +749,7 @@ func (engine *ESEngine) LiveLoadFile(path string) error {
 
 func (engine *ESEngine) LiveRemoveFile(path string) error {
 	engine.model.WhenReady(func() {
-		engine.cleanup.RunCleanups(path)
+		engine.runCleanups(path)
 		engine.Refresh()
 		engine.maybePublishUpdate("removed", path)
 	})
