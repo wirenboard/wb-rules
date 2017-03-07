@@ -1,4 +1,34 @@
 // rule engine runtime
+
+// this function runs once the context is created
+// for each script
+function __esInitEnv(glob) {
+    glob.String.prototype.format = function () {
+      var args = [ this ];
+      for (var i = 0; i < arguments.length; ++i)
+        args.push(arguments[i]);
+      return format.apply(null, args);
+    };
+
+    glob.String.prototype.xformat = function () {
+      var parts = this.split(/\\\{/g), i = 0,
+          args = Array.prototype.slice.apply(arguments);
+      return parts.map(function (part) {
+        return part.replace(/\{\{(.*?)\}\}/g, function (all, expr) {
+          try {
+            return eval(expr);
+          } catch (e) {
+            return "<eval failed: " + expr + ": " + e + ">";
+          }
+        }).replace(/\{\}/g, function () {
+          return i < args.length ? args[i++] : "";
+        });
+      }).join("{");
+    };
+}
+
+__esInitEnv(global);
+
 var _WbRules = {
   requireCompleteCells: 0,
   timers: {},
@@ -270,29 +300,6 @@ function runShellCommand(cmd, options) {
 }
 
 var defineAlias = _WbRules.defineAlias;
-
-String.prototype.format = function () {
-  var args = [ this ];
-  for (var i = 0; i < arguments.length; ++i)
-    args.push(arguments[i]);
-  return format.apply(null, args);
-};
-
-String.prototype.xformat = function () {
-  var parts = this.split(/\\\{/g), i = 0,
-      args = Array.prototype.slice.apply(arguments);
-  return parts.map(function (part) {
-    return part.replace(/\{\{(.*?)\}\}/g, function (all, expr) {
-      try {
-        return eval(expr);
-      } catch (e) {
-        return "<eval failed: " + expr + ": " + e + ">";
-      }
-    }).replace(/\{\}/g, function () {
-      return i < args.length ? args[i++] : "";
-    });
-  }).join("{");
-};
 
 function cron(spec) {
   return new _WbRules.CronEntry(spec);
