@@ -83,11 +83,23 @@ func (o *ESEngineOptions) SetModulesDirs(dirs []string) {
 	o.ModulesDirs = dirs
 }
 
+type TimerSet struct {
+	sync.Mutex
+	timers map[TimerId]bool
+}
+
+func newTimerSet() *TimerSet {
+	return &TimerSet{
+		timers: make(map[TimerId]bool),
+	}
+}
+
 type ESEngine struct {
 	*RuleEngine
 	ctxFactory        *ESContextFactory     // ESContext factory
 	globalCtx         *ESContext            // global context - prototype for local contexts in threads
 	localCtxs         map[string]*ESContext // local scripts' contexts, mapped from script paths
+	ctxTimers         map[*ESContext]*TimerSet
 	sourceRoot        string
 	sources           sourceMap
 	currentSource     *LocFileEntry
@@ -117,6 +129,7 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 		RuleEngine:        NewRuleEngine(model, mqttClient, options.RuleEngineOptions),
 		ctxFactory:        newESContextFactory(),
 		localCtxs:         make(map[string]*ESContext),
+		ctxTimers:         make(map[*ESContext]*TimerSet),
 		sources:           make(sourceMap),
 		tracker:           wbgo.NewContentTracker(),
 		persistentDBCache: make(map[string]string),
@@ -300,6 +313,40 @@ func (engine *ESEngine) SetSourceRoot(sourceRoot string) (err error) {
 	}
 	engine.sourceRoot = filepath.Clean(sourceRoot)
 	return
+}
+
+func (engine *ESEngine) handleTimerCleanup(ctx *ESContext, timer TimerId) {
+	var s *TimerSet
+	var found = false
+
+	// find timers set for current context
+	if s, found = engine.ctxTimers[ctx]; !found {
+		s = newTimerSet()
+		engine.ctxTimers[ctx] = s
+	}
+
+	// register timer id
+	s.timers[timer] = true
+
+	// register cleanup handler
+	engine.OnTimerRemoveByIndex(timer, func() {
+		s.Lock()
+		defer s.Unlock()
+		delete(s.timers, timer)
+	})
+}
+
+func (engine *ESEngine) runTimerCleanups(ctx *ESContext) {
+	if s, found := engine.ctxTimers[ctx]; found {
+		s.Lock()
+		defer s.Unlock()
+
+		for id, active := range s.timers {
+			if active {
+				engine.StopTimerByIndex(id)
+			}
+		}
+	}
 }
 
 func (engine *ESEngine) buildSingleWhenChangedRuleCondition(ctx *ESContext, defIndex int) (RuleCondition, error) {
@@ -500,6 +547,10 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 	// try to get local context for this script
 	if _, ok := engine.localCtxs[path]; ok {
 		wbgo.Debug.Printf("local context for script %s exists; removing it", path)
+
+		// cleanup timers of this context
+		engine.runTimerCleanups(engine.localCtxs[path])
+
 		// TODO: launch internal cleanups
 		engine.removeThreadFromStorage(engine.globalCtx, path)
 	}
@@ -1046,8 +1097,14 @@ func (engine *ESEngine) esWbStartTimer(ctx *ESContext) int {
 	}
 
 	interval := time.Duration(ms * float64(time.Millisecond))
-	ctx.PushNumber(
-		float64(engine.StartTimer(name, callback, interval, periodic)))
+
+	// get timer id
+	timerId := engine.StartTimer(name, callback, interval, periodic)
+
+	// add timer to script cleanup
+	engine.handleTimerCleanup(ctx, timerId)
+
+	ctx.PushNumber(float64(timerId))
 	return 1
 }
 
@@ -1056,7 +1113,7 @@ func (engine *ESEngine) esWbStopTimer(ctx *ESContext) int {
 		return duktape.DUK_RET_ERROR
 	}
 	if ctx.IsNumber(0) {
-		n := uint64(ctx.GetNumber(-1))
+		n := TimerId(ctx.GetNumber(-1))
 		if n == 0 {
 			wbgo.Error.Printf("timer id cannot be zero")
 			return 0

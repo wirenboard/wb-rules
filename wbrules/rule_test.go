@@ -183,8 +183,8 @@ func (s *RuleSuiteBase) SetupSkippingDefs(ruleFiles ...string) {
 	return
 }
 
-func (s *RuleSuiteBase) newFakeTimer(id uint64, d time.Duration, periodic bool) wbgo.Timer {
-	return s.NewFakeTimerOrTicker(id, d, periodic)
+func (s *RuleSuiteBase) newFakeTimer(id TimerId, d time.Duration, periodic bool) wbgo.Timer {
+	return s.NewFakeTimerOrTicker(testutils.TimerId(id), d, periodic)
 }
 
 func (s *RuleSuiteBase) publishSomedev() {
