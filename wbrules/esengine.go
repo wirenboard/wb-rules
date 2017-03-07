@@ -38,7 +38,8 @@ const (
 	VDEV_OBJ_PROP_DEVID = "__deviceId"
 	VDEV_OBJ_PROTO_NAME = "__wbVdevPrototype"
 
-	THREAD_STORAGE_OBJ_NAME = "_esThreads"
+	THREAD_STORAGE_OBJ_NAME   = "_esThreads"
+	GLOBAL_INIT_ENV_FUNC_NAME = "__esInitEnv"
 )
 
 var noSuchPropError = errors.New("no such property")
@@ -536,8 +537,25 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 	// [ stash global ]
 	newLocalCtx.GetPropString(-2, GLOBAL_OBJ_PROTO_NAME)
 	// [ stash global __wbGlobalProto ]
+
+	// run initEnv function from prototype
+	if newLocalCtx.HasPropString(-1, GLOBAL_INIT_ENV_FUNC_NAME) {
+		newLocalCtx.GetPropString(-1, GLOBAL_INIT_ENV_FUNC_NAME)
+		// [ ... initEnv ]
+		newLocalCtx.PushGlobalObject()
+		// [ ... initEnv global ]
+		if newLocalCtx.Pcall(1) != 0 {
+			wbgo.Error.Println("Failed to call __esInitEnv")
+		}
+		// [ ... ret ]
+		newLocalCtx.Pop()
+		// [ ... ]
+	}
+
 	newLocalCtx.SetPrototype(-2)
+
 	// [ stash global ]
+
 	newLocalCtx.Pop2()
 	// []
 
