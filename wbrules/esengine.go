@@ -132,9 +132,7 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 		}
 	}
 
-	engine.globalCtx.SetCallbackErrorHandler(func(err ESError) {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("ECMAScript error: %s", err))
-	})
+	engine.globalCtx.SetCallbackErrorHandler(engine.CallbackErrorHandler)
 
 	// init modSearch for global
 	engine.exportModSearch(engine.globalCtx)
@@ -283,6 +281,11 @@ func (engine *ESEngine) initVdevPrototype(ctx *ESContext) {
 	})
 
 	ctx.PutPropString(-2, "__wbVdevPrototype")
+}
+
+// Engine callback error handler
+func (engine *ESEngine) CallbackErrorHandler(err ESError) {
+	engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("ECMAScript error: %s", err))
 }
 
 func (engine *ESEngine) ScriptDir() string {
@@ -547,6 +550,9 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 			engine.currentSource = nil
 		}()
 	}
+
+	// set error handler
+	newLocalCtx.SetCallbackErrorHandler(engine.CallbackErrorHandler)
 
 	// setup prototype for global object
 	newLocalCtx.PushHeapStash()
