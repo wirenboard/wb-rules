@@ -5,7 +5,7 @@
 // the definition, even if some helper functions are used to define
 // rules or devices.
 
-global.defineSomeRule = function defineSomeRule(name) {
+global.__proto__.defineSomeRule = function defineSomeRule(name) {
   var ruleName = name + "Rule";
   defineRule(ruleName, {
     asSoonAs: function () {
@@ -17,7 +17,7 @@ global.defineSomeRule = function defineSomeRule(name) {
   });
 }
 
-global.defineSomeDevice = function defineSomeDevice(name) {
+global.__proto__.defineSomeDevice = function defineSomeDevice(name) {
   defineVirtualDevice(name, {
     title: name,
     cells: {
