@@ -132,13 +132,8 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("ECMAScript error: %s", err))
 	})
 
-	// export modSearch
-	engine.globalCtx.GetGlobalString("Duktape")
-	engine.globalCtx.PushGoFunc(func(c *duktape.Context) int {
-		return engine.ModSearch(c)
-	})
-	engine.globalCtx.PutPropString(-2, "modSearch")
-	engine.globalCtx.Pop()
+	// init modSearch for global
+	engine.exportModSearch(engine.globalCtx)
 
 	// init __wbModulePrototype
 	engine.initModulePrototype(engine.globalCtx)
@@ -201,6 +196,15 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 	// []
 
 	return
+}
+
+func (engine *ESEngine) exportModSearch(ctx *ESContext) {
+	ctx.GetGlobalString("Duktape")
+	ctx.PushGoFunc(func(c *duktape.Context) int {
+		return engine.ModSearch(c)
+	})
+	ctx.PutPropString(-2, "modSearch")
+	ctx.Pop()
 }
 
 // initGlobalThreadList creates an object in heap stash to
@@ -558,6 +562,9 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 
 	newLocalCtx.Pop2()
 	// []
+
+	// export modSearch
+	engine.exportModSearch(newLocalCtx)
 
 	return true, engine.trackESError(path, newLocalCtx.LoadScenario(path))
 }
