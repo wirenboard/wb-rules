@@ -133,7 +133,7 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 
 		for j := 0; j < 3; j++ {
 			ts := s.AdvanceTime(200 * time.Second)
-			s.FireTimer(uint64(timerId), ts)
+			s.FireTimer(testutils.TimerId(timerId), ts)
 			s.Verify(fmt.Sprintf("timer.fire(): %d", timerId))
 			s.expectCellChange("sampleAlarms/log")
 			s.verifyNotificationMsgs("Important device is off")

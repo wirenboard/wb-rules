@@ -15,6 +15,7 @@ import (
 )
 
 type EngineLogLevel int
+type TimerId uint64
 
 const (
 	NO_TIMER_NAME                 = ""
@@ -33,9 +34,9 @@ const (
 	ENGINE_LOG_ERROR
 )
 
-type TimerFunc func(id uint64, d time.Duration, periodic bool) wbgo.Timer
+type TimerFunc func(id TimerId, d time.Duration, periodic bool) wbgo.Timer
 
-func newTimer(id uint64, d time.Duration, periodic bool) wbgo.Timer {
+func newTimer(id TimerId, d time.Duration, periodic bool) wbgo.Timer {
 	if periodic {
 		return wbgo.NewRealTicker(d)
 	} else {
@@ -45,12 +46,13 @@ func newTimer(id uint64, d time.Duration, periodic bool) wbgo.Timer {
 
 type TimerEntry struct {
 	sync.Mutex
-	timer         wbgo.Timer
-	periodic      bool
-	quit, quitted chan struct{}
-	name          string
-	thunk         func()
-	active        bool
+	timer          wbgo.Timer
+	periodic       bool
+	quit, quitted  chan struct{}
+	name           string
+	thunk          func()
+	active         bool
+	onRemoveHndlrs []func()
 }
 
 func (entry *TimerEntry) stop() {
@@ -62,6 +64,16 @@ func (entry *TimerEntry) stop() {
 		<-entry.quitted
 	}
 	entry.active = false
+}
+
+func (entry *TimerEntry) onRemove(thunk func()) {
+	entry.onRemoveHndlrs = append(entry.onRemoveHndlrs, thunk)
+}
+
+func (entry *TimerEntry) handleRemove() {
+	for i := range entry.onRemoveHndlrs {
+		entry.onRemoveHndlrs[i]()
+	}
 }
 
 type proxyOwner interface {
@@ -171,8 +183,8 @@ type RuleEngine struct {
 	mqttClient          wbgo.MQTTClient
 	cellChange          chan *CellSpec
 	timerFunc           TimerFunc
-	nextTimerId         uint64
-	timers              map[uint64]*TimerEntry
+	nextTimerId         TimerId
+	timers              map[TimerId]*TimerEntry
 	callbackIndex       ESCallback
 	ruleMap             map[string]*Rule
 	ruleList            []string
@@ -205,7 +217,7 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *RuleEn
 		mqttClient:          mqttClient,
 		timerFunc:           newTimer,
 		nextTimerId:         1,
-		timers:              make(map[uint64]*TimerEntry),
+		timers:              make(map[TimerId]*TimerEntry),
 		callbackIndex:       1,
 		ruleMap:             make(map[string]*Rule),
 		ruleList:            make([]string, 0, RULES_CAPACITY),
@@ -474,7 +486,7 @@ func (engine *RuleEngine) CheckTimer(timerName string) bool {
 	return engine.currentTimer != NO_TIMER_NAME && engine.currentTimer == timerName
 }
 
-func (engine *RuleEngine) fireTimer(n uint64) {
+func (engine *RuleEngine) fireTimer(n TimerId) {
 	entry, found := engine.timers[n]
 	if !found {
 		wbgo.Error.Printf("firing unknown timer %d", n)
@@ -491,7 +503,8 @@ func (engine *RuleEngine) fireTimer(n uint64) {
 	}
 }
 
-func (engine *RuleEngine) removeTimer(n uint64) {
+func (engine *RuleEngine) removeTimer(n TimerId) {
+	engine.timers[n].handleRemove()
 	delete(engine.timers, n)
 }
 
@@ -505,15 +518,28 @@ func (engine *RuleEngine) StopTimerByName(name string) {
 	}
 }
 
-func (engine *RuleEngine) StopTimerByIndex(n uint64) {
-	if n == 0 {
-		return
-	}
-	if entry, found := engine.timers[n]; found {
+func (engine *RuleEngine) StopTimerByIndex(n TimerId) {
+	if entry, found := engine.FindTimerByIndex(n); found {
 		engine.removeTimer(n)
 		entry.stop()
 	} else {
 		wbgo.Error.Printf("trying to stop unknown timer: %d", n)
+	}
+}
+
+func (engine *RuleEngine) FindTimerByIndex(n TimerId) (entry *TimerEntry, found bool) {
+	if n == 0 {
+		return
+	}
+	entry, found = engine.timers[n]
+	return
+}
+
+func (engine *RuleEngine) OnTimerRemoveByIndex(n TimerId, thunk func()) {
+	if entry, found := engine.FindTimerByIndex(n); found {
+		entry.onRemove(thunk)
+	} else {
+		wbgo.Error.Printf("trying to handle remove of unknown timer: %d", n)
 	}
 }
 
@@ -576,7 +602,7 @@ func (engine *RuleEngine) handleStop() {
 	for _, entry := range engine.timers {
 		entry.stop()
 	}
-	engine.timers = make(map[uint64]*TimerEntry)
+	engine.timers = make(map[TimerId]*TimerEntry)
 	engine.model.ReleaseCellChangeChannel(engine.cellChange)
 	engine.statusMtx.Lock()
 	engine.cellChange = nil
@@ -692,7 +718,7 @@ func (engine *RuleEngine) IsActive() bool {
 	return engine.cellChange != nil
 }
 
-func (engine *RuleEngine) StartTimer(name string, callback func(), interval time.Duration, periodic bool) uint64 {
+func (engine *RuleEngine) StartTimer(name string, callback func(), interval time.Duration, periodic bool) TimerId {
 	entry := &TimerEntry{
 		periodic: periodic,
 		quit:     nil,
