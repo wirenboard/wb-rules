@@ -32,14 +32,18 @@ const (
 	SOURCE_ITEM_DEVICE  = itemType(iota)
 	SOURCE_ITEM_RULE
 
+	MODULE_FILENAME_PROP = "filename"
+	MODULE_STORAGE_PROP  = "storage"
+
 	GLOBAL_OBJ_PROTO_NAME = "__wbGlobalPrototype"
 	MODULE_OBJ_PROTO_NAME = "__wbModulePrototype"
 
 	VDEV_OBJ_PROP_DEVID = "__deviceId"
 	VDEV_OBJ_PROTO_NAME = "__wbVdevPrototype"
 
-	THREAD_STORAGE_OBJ_NAME   = "_esThreads"
-	GLOBAL_INIT_ENV_FUNC_NAME = "__esInitEnv"
+	THREAD_STORAGE_OBJ_NAME       = "_esThreads"
+	MODULES_USER_STORAGE_OBJ_NAME = "_esModules"
+	GLOBAL_INIT_ENV_FUNC_NAME     = "__esInitEnv"
 )
 
 var noSuchPropError = errors.New("no such property")
@@ -144,6 +148,9 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 	// init threads storage
 	engine.initGlobalThreadList(engine.globalCtx)
 
+	// init modules storage
+	engine.initModulesStorage(engine.globalCtx)
+
 	engine.globalCtx.PushGlobalObject()
 
 	engine.globalCtx.DefineFunctions(map[string]func(*ESContext) int{
@@ -207,19 +214,26 @@ func (engine *ESEngine) exportModSearch(ctx *ESContext) {
 	ctx.Pop()
 }
 
-// initGlobalThreadList creates an object in heap stash to
-// store thread objects
-func (engine *ESEngine) initGlobalThreadList(ctx *ESContext) {
+func (engine *ESEngine) initHeapStashObject(name string, ctx *ESContext) {
 	ctx.PushHeapStash()
 	defer ctx.Pop()
 	// [ stash ]
 
 	ctx.PushObject()
 	// [ stash object ]
-	ctx.PutPropString(-2, THREAD_STORAGE_OBJ_NAME)
+	ctx.PutPropString(-2, name)
 }
 
-// removeThreadS
+// initGlobalThreadList creates an object in heap stash to
+// store thread objects
+func (engine *ESEngine) initGlobalThreadList(ctx *ESContext) {
+	engine.initHeapStashObject(THREAD_STORAGE_OBJ_NAME, ctx)
+}
+
+func (engine *ESEngine) initModulesStorage(ctx *ESContext) {
+	engine.initHeapStashObject(MODULES_USER_STORAGE_OBJ_NAME, ctx)
+}
+
 func (engine *ESEngine) removeThreadFromStorage(ctx *ESContext, path string) {
 	ctx.PushHeapStash()
 	// [ stash ]
@@ -1402,7 +1416,7 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 		path := dir + "/" + id + ".js"
 		wbgo.Debug.Printf("[modsearch] trying to read file %s", path)
 
-		// TODO: something external to load scripts properly
+		// TBD: something external to load scripts properly
 		// now just try to read file
 		src, err := ioutil.ReadFile(path)
 
@@ -1412,7 +1426,31 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 			// set module properties
 			// put module.filename
 			ctx.PushString(path)
-			ctx.PutPropString(3, "filename")
+			// [ args | path ]
+			ctx.PutPropString(3, MODULE_FILENAME_PROP)
+			// [ args | ]
+
+			// put module.storage
+			ctx.PushHeapStash()
+			// [ args | heapStash ]
+			ctx.GetPropString(-1, MODULES_USER_STORAGE_OBJ_NAME)
+			// [ args | heapStash _esModules ]
+
+			// check if storage for this module is allocated
+			if !ctx.HasPropString(-1, path) {
+				// create storage
+				ctx.PushObject()
+				// [ args | heapStash _esModules newStorage ]
+				ctx.PutPropString(-2, path)
+				// [ args | heapStash _esModules ]
+			}
+			// add this storage to module
+			ctx.GetPropString(-1, path)
+			// [ args | heapStash _esModules storage ]
+			ctx.PutPropString(3, MODULE_STORAGE_PROP)
+			// [ args | heapStash _esModules ]
+			ctx.Pop2()
+			// [ args | ]
 
 			// return module sources
 			ctx.PushString(string(src))
