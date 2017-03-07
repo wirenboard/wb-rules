@@ -338,13 +338,20 @@ func (engine *ESEngine) handleTimerCleanup(ctx *ESContext, timer TimerId) {
 
 func (engine *ESEngine) runTimerCleanups(ctx *ESContext) {
 	if s, found := engine.ctxTimers[ctx]; found {
-		s.Lock()
-		defer s.Unlock()
+		var ids = make([]TimerId, 0)
 
+		// form timers list
+		s.Lock()
 		for id, active := range s.timers {
 			if active {
-				engine.StopTimerByIndex(id)
+				ids = append(ids, id)
 			}
+		}
+		s.Unlock()
+
+		// run cleanups
+		for _, id := range ids {
+			engine.StopTimerByIndex(id)
 		}
 	}
 }
