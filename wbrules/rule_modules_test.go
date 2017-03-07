@@ -44,6 +44,7 @@ func (s *TestModulesSuite) TestMultipleRequire() {
 		"tst -> /devices/test/controls/multifile/on: [1] (QoS 1)",
 		"driver -> /devices/test/controls/multifile: [1] (QoS 1, retained)",
 		"[info] Module multi_init init",
+		"[info] Module multi_init init",
 		"[info] [1] My value of multi_init: 42",
 		"[info] [2] My value of multi_init: 42",
 	)
