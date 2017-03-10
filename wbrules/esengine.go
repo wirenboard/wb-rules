@@ -33,7 +33,7 @@ const (
 	SOURCE_ITEM_RULE
 
 	MODULE_FILENAME_PROP = "filename"
-	MODULE_STORAGE_PROP  = "storage"
+	MODULE_STATIC_PROP   = "static"
 
 	GLOBAL_OBJ_PROTO_NAME = "__wbGlobalPrototype"
 	MODULE_OBJ_PROTO_NAME = "__wbModulePrototype"
@@ -1557,7 +1557,7 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 			// add this storage to module
 			ctx.GetPropString(-1, path)
 			// [ args | heapStash _esModules storage ]
-			ctx.PutPropString(3, MODULE_STORAGE_PROP)
+			ctx.PutPropString(3, MODULE_STATIC_PROP)
 			// [ args | heapStash _esModules ]
 			ctx.Pop2()
 			// [ args | ]
