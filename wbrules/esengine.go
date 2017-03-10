@@ -1317,6 +1317,20 @@ func (engine *ESEngine) esWbCtrlRule(ctx *ESContext, state bool) int {
 
 // esWbRunRule force runs rule 'then' function from JS
 func (engine *ESEngine) esWbRunRule(ctx *ESContext) int {
+	if ctx.GetTop() != 1 || !ctx.IsNumber(0) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("invalid runRule call"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	ruleId := RuleId(ctx.GetInt(0))
+
+	if rule, found := engine.ruleMap[ruleId]; found {
+		rule.then(nil)
+	} else {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("trying to call runRule for undefined rule: %d", ruleId))
+		return duktape.DUK_RET_ERROR
+	}
+
 	return 0
 }
 
