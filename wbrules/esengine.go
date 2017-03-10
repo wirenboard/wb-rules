@@ -180,6 +180,9 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 		"readConfig":           engine.esReadConfig,
 		"_wbPersistentSet":     engine.esPersistentSet,
 		"_wbPersistentGet":     engine.esPersistentGet,
+		"disableRule":          engine.esWbDisableRule,
+		"enableRule":           engine.esWbEnableRule,
+		"runRule":              engine.esWbRunRule,
 	})
 	engine.globalCtx.GetPropString(-1, "log")
 	engine.globalCtx.DefineFunctions(map[string]func(*ESContext) int{
@@ -1270,6 +1273,50 @@ func (engine *ESEngine) esWbRunRules(ctx *ESContext) int {
 	default:
 		return duktape.DUK_RET_ERROR
 	}
+	return 0
+}
+
+// esWbDisableRule prevents rule from runnning (from JS)
+//
+// Arguments:
+// 1 - ruleId
+func (engine *ESEngine) esWbDisableRule(ctx *ESContext) int {
+	return engine.esWbCtrlRule(ctx, false)
+}
+
+// esWbEnableRule enables rule (from JS)
+//
+// Arguments:
+// 1 - ruleId
+func (engine *ESEngine) esWbEnableRule(ctx *ESContext) int {
+	return engine.esWbCtrlRule(ctx, true)
+}
+
+func (engine *ESEngine) esWbCtrlRule(ctx *ESContext, state bool) int {
+	act := "disable"
+	if state {
+		act = "enable"
+	}
+
+	if ctx.GetTop() != 1 || !ctx.IsNumber(0) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("invalid %sRule call", act))
+		return duktape.DUK_RET_ERROR
+	}
+
+	ruleId := RuleId(ctx.GetInt(0))
+
+	if rule, found := engine.ruleMap[ruleId]; found {
+		rule.enabled = state
+	} else {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("trying to %s undefined rule: %d", act, ruleId))
+		return duktape.DUK_RET_ERROR
+	}
+
+	return 0
+}
+
+// esWbRunRule force runs rule 'then' function from JS
+func (engine *ESEngine) esWbRunRule(ctx *ESContext) int {
 	return 0
 }
 
