@@ -626,8 +626,8 @@ var Alarms = (function () {
 })();
 
 
-__wbModulePrototype.PersistentStorage = function(name, options) {
-    return new Proxy({name: this._wbPersistentName(name, options)}, {
+global.PersistentStorage = function(name, options) {
+    return new Proxy({name: _wbPersistentName(name, options)}, {
         get: function (o, key) {
             return _wbPersistentGet(o.name, key);
         },
@@ -646,5 +646,5 @@ __wbVdevPrototype.setCellValue = function(cell, value) {
 }
 
 __wbVdevPrototype.publish = function(topic, message) {
-    publish("/devices/" + this.getDeviceId() + "/" + topic, message);
+    publish("/devices/" + this.__deviceId + "/" + topic, message);
 }
