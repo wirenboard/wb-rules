@@ -135,8 +135,20 @@ var _WbRules = {
       });
   },
 
-  defineRule: function (name, def) {
-    debug("defineRule: " + name);
+  defineRule: function (arg1, arg2) {
+
+    var name, def;
+
+    // anonymous rule handling
+    if (arg2 == undefined) {
+        name = "";
+        def = arg1;
+    } else {
+        name = arg1;
+        def = arg2;
+    }
+
+    debug("defineRule: " + name == "" ? "(anon)" : name);
     if (typeof name != "string" || typeof def != "object")
       throw new Error("invalid rule definition");
 
@@ -208,7 +220,12 @@ var _WbRules = {
         };
       }
     });
-    _wbDefineRule(name, d);
+
+    if (name == "") {
+        return _wbDefineRule(d);
+    } else {
+        return _wbDefineRule(name, d);
+    }
   },
 
   startTimer: function startTimer(name, ms, periodic) {
