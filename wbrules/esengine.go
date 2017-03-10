@@ -136,7 +136,7 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
 	}
-	engine.globalCtx = engine.ctxFactory.newESContext(model.CallSync)
+	engine.globalCtx = engine.ctxFactory.newESContext(model.CallSync, "")
 
 	if options.PersistentDBFile != "" {
 		if err := engine.SetPersistentDBMode(options.PersistentDBFile,
@@ -565,7 +565,7 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 	// create new thread and context
 	engine.globalCtx.PushThreadNewGlobalenv()
 	// [ stash threads thread ]
-	newLocalCtx := engine.ctxFactory.newESContextFromDuktape(engine.globalCtx.syncFunc, engine.globalCtx.GetContext(-1))
+	newLocalCtx := engine.ctxFactory.newESContextFromDuktape(engine.globalCtx.syncFunc, virtualPath, engine.globalCtx.GetContext(-1))
 	// [ stash threads thread ]
 
 	engine.localCtxs[path] = newLocalCtx

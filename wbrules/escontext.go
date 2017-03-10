@@ -17,6 +17,7 @@ import (
 
 const (
 	ESCALLBACKS_OBJ_NAME = "_esCallbacks"
+	FILENAME_PROP_NAME   = "__filename"
 )
 
 type ESLocation struct {
@@ -64,11 +65,11 @@ func (err ESError) Error() string {
 	return err.Message
 }
 
-func (f *ESContextFactory) newESContext(syncFunc ESSyncFunc) *ESContext {
-	return f.newESContextFromDuktape(syncFunc, duktape.NewContext())
+func (f *ESContextFactory) newESContext(syncFunc ESSyncFunc, filename string) *ESContext {
+	return f.newESContextFromDuktape(syncFunc, filename, duktape.NewContext())
 }
 
-func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, dctx *duktape.Context) *ESContext {
+func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, filename string, dctx *duktape.Context) *ESContext {
 	ctx := &ESContext{
 		dctx,     // *duktape.Context
 		syncFunc, // syncFunc
@@ -77,6 +78,7 @@ func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, dctx *du
 	}
 	ctx.callbackErrorHandler = ctx.DefaultCallbackErrorHandler
 	ctx.initGlobalObject()
+	ctx.initFilename(filename)
 	ctx.initHeapPropertyObjectIfNotExist(ESCALLBACKS_OBJ_NAME)
 
 	wbgo.Debug.Printf("create context %p\n", ctx)
@@ -238,6 +240,11 @@ func (ctx *ESContext) initGlobalObject() {
 	ctx.PushGlobalObject()
 	ctx.PutPropString(-2, "global")
 	ctx.Pop()
+}
+
+func (ctx *ESContext) initFilename(filename string) {
+	ctx.PushString(filename)
+	ctx.PutGlobalString(FILENAME_PROP_NAME)
 }
 
 func (ctx *ESContext) initHeapPropertyObjectIfNotExist(propName string) {
@@ -540,6 +547,14 @@ func (ctx *ESContext) GetTraceback() ESTraceback {
 	ctx.PushErrorObject(duktape.DUK_ERR_ERROR, "fake")
 	defer ctx.Pop()
 	return ctx.GetESError().Traceback
+}
+
+// get current filename from globals
+func (ctx *ESContext) GetCurrentFilename() string {
+	ctx.GetGlobalString(FILENAME_PROP_NAME)
+	defer ctx.Pop()
+
+	return ctx.GetString(-1)
 }
 
 // TBD: handle loops in object graphs in PushJSObject
