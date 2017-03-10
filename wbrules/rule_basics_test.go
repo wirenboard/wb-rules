@@ -211,6 +211,22 @@ func (s *RuleBasicsSuite) TestFuncValueChange() {
 	)
 }
 
+func (s *RuleBasicsSuite) TestAnonymousRule() {
+	s.publish("/devices/somedev/controls/anon/meta/type", "pushbutton", "somedev/anon")
+	s.publish("/devices/somedev/controls/anon", "1", "somedev/anon")
+
+	s.Verify(
+		"tst -> /devices/somedev/controls/anon/meta/type: [pushbutton] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/anon: [1] (QoS 1, retained)",
+		"driver -> /wbrules/log/info: [anonymous rule run] (QoS 1)",
+	)
+}
+
+func (s *RuleBasicsSuite) TestRuleRedefinition() {
+	s.LiveLoadScript("testrules_rule_redefinition.js")
+	s.EnsureGotErrors()
+}
+
 func TestRuleBasicsSuite(t *testing.T) {
 	testutils.RunSuites(t,
 		new(RuleBasicsSuite),

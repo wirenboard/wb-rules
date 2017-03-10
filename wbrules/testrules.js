@@ -140,3 +140,11 @@ defineRule("funcValueChange2", {
         newValue, typeof(newValue));
   }
 });
+
+// test anonymous rule
+defineRule({
+    whenChanged: "somedev/anon",
+    then: function() {
+        log("anonymous rule run");
+    }
+});
