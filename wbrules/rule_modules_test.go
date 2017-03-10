@@ -3,6 +3,7 @@ package wbrules
 import (
 	"github.com/contactless/wbgo/testutils"
 	"os"
+	"regexp"
 	"testing"
 )
 
@@ -59,6 +60,17 @@ func (s *TestModulesSuite) TestCrossDependency() {
 		"[info] Module submodule init",
 		"[info] Module with_require init",
 		"[info] Module loaded",
+	)
+}
+
+func (s *TestModulesSuite) TestModuleParams() {
+	s.publish("/devices/test/controls/params/on", "1", "test/params")
+
+	s.Verify(
+		"tst -> /devices/test/controls/params/on: [1] (QoS 1)",
+		"driver -> /devices/test/controls/params: [1] (QoS 1, retained)",
+		"[info] Module params init",
+		regexp.MustCompile("\\[__filename: testrules_modules\\.js, module\\.filename: .*/test/params\\.js\\]"),
 	)
 }
 

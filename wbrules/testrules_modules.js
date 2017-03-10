@@ -15,6 +15,10 @@ defineVirtualDevice("test", {
         cross: {
             type: "switch",
             value: false
+        },
+        params: {
+            type: "switch",
+            value: false
         }
     }
 });
@@ -54,5 +58,13 @@ defineRule("cross-dep", {
     then: function() {
         require("test/with_require");
         log("Module loaded");
+    }
+});
+
+defineRule("params", {
+    whenChanged: "test/params",
+    then: function() {
+        var m = require("test/params");
+        log(m.params());
     }
 });
