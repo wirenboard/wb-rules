@@ -4,3 +4,5 @@ exports.hello = 42;
 exports.adder = function(a, b) {
     return (a + b) / 2;
 }
+
+log("Module helloworld init");

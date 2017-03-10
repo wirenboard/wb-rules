@@ -23,6 +23,10 @@ defineVirtualDevice("test", {
         static: {
             type: "switch",
             value: false
+        },
+        cache: {
+            type: "switch",
+            value: false
         }
     }
 });
@@ -78,5 +82,21 @@ defineRule("static", {
     then: function() {
         var m = require("test/static");
         m.count();
+    }
+});
+
+defineRule("cache1", {
+    whenChanged: "test/cache",
+    then: function() {
+        var m = require("test/helloworld");
+        log("Value: {}", m.hello);
+    }
+});
+
+defineRule("cache2", {
+    whenChanged: "test/cache",
+    then: function() {
+        var m = require("test/helloworld");
+        log("Value: {}", m.hello);
     }
 });

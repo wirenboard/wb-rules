@@ -23,6 +23,7 @@ func (s *TestModulesSuite) TestHelloWorld() {
 	s.VerifyUnordered(
 		"tst -> /devices/test/controls/helloworld/on: [1] (QoS 1)",
 		"driver -> /devices/test/controls/helloworld: [1] (QoS 1, retained)",
+		"[info] Module helloworld init",
 		"[info] Required module value: 42",
 		"[info] Function test: 15",
 	)
@@ -87,6 +88,19 @@ func (s *TestModulesSuite) TestStaticStorage() {
 		"[info] Module static init",
 		"[info] Value: 2",
 	)
+}
+
+func (s *TestModulesSuite) TestModulesCache() {
+	s.publish("/devices/test/controls/cache/on", "1", "test/cache")
+
+	s.Verify(
+		"tst -> /devices/test/controls/cache/on: [1] (QoS 1)",
+		"driver -> /devices/test/controls/cache: [1] (QoS 1, retained)",
+		"[info] Module helloworld init",
+		"[info] Value: 42",
+		"[info] Value: 42",
+	)
+
 }
 
 func TestModules(t *testing.T) {
