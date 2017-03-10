@@ -36,6 +36,8 @@ func (s *TestModulesSuite) TestNotFound() {
 		"driver -> /devices/test/controls/error: [1] (QoS 1, retained)",
 		"[info] Module not found",
 	)
+
+	s.EnsureGotErrors()
 }
 
 func (s *TestModulesSuite) TestMultipleRequire() {
