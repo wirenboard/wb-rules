@@ -1,36 +1,12 @@
-wb-rules (1.7~alpha3) stable; urgency=medium
+wb-rules (2.0~beta1) stable; urgency=medium
 
-  * wbgo: use separated Publish and Subscribe MQTT connection to avoid hang
-  * wbgo: move Ready() call to goroutine in driver main loop
-  * wbgo: run subscriptions to external devices after main loop start
+  * Modules - initial version
+  * True rules isolation
+  * Save virtual devices cells to persistent storage and restore them on bootup
+  * PersistentStorage support
+  * Fix: detect errors in virtual device name
 
- -- Nikita Maslov <n.maslov@contactless.ru>  Thu, 02 Feb 2017 14:32:46 +0300
-
-wb-rules (1.7~alpha2) stable; urgency=medium
-
-  * modules - initial version
-  * detect errors in virtual device name
-  * switch to contactless/go-duktape
-
- -- Nikita Maslov <n.maslov@contactless.ru>  Thu, 26 Jan 2017 20:28:32 +0300
-
-wb-rules (1.7~alpha1) stable; urgency=medium
-
-  * Rules isolation
-
- -- Nikita Maslov <n.maslov@contactless.ru>  Mon, 23 Jan 2017 17:28:04 +0300
-
-wb-rules (1.6.9~beta2) stable; urgency=medium
-
-  * Save virtual devices cells to persistent storage and restore 'em on bootup
-
- -- Nikita Maslov <n.maslov@contactless.ru>  Thu, 12 Jan 2017 11:50:42 +0300
-
-wb-rules (1.6.9~beta1) stable; urgency=medium
-
-  * PersistentStorage support (global only right now)
-
- -- Nikita Maslov <n.maslov@contactless.ru>  Fri, 30 Dec 2016 12:40:41 +0300
+ -- Nikita Maslov <n.maslov@contactless.ru>  Fri, 10 Mar 2017 19:01:46 +0300
 
 wb-rules (1.6.8) stable; urgency=medium
 
