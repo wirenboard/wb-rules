@@ -1569,7 +1569,7 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 		}
 	}
 
-	wbgo.Debug.Printf("error requiring module %s, not found", id)
+	wbgo.Error.Printf("error requiring module %s, not found", id)
 
 	return duktape.DUK_RET_ERROR
 }
