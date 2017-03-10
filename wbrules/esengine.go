@@ -183,6 +183,8 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 		"disableRule":          engine.esWbDisableRule,
 		"enableRule":           engine.esWbEnableRule,
 		"runRule":              engine.esWbRunRule,
+		"defineVirtualDevice":  engine.esDefineVirtualDevice,
+		"_wbPersistentName":    engine.esPersistentName,
 	})
 	engine.globalCtx.GetPropString(-1, "log")
 	engine.globalCtx.DefineFunctions(map[string]func(*ESContext) int{
@@ -265,20 +267,12 @@ func (engine *ESEngine) removeThreadFromStorage(ctx *ESContext, path string) {
 }
 
 // initModulePrototype inits __wbModulePrototype object
-// with methodes such as defineVirtualDevice etc.
 func (engine *ESEngine) initModulePrototype(ctx *ESContext) {
 	ctx.PushGlobalObject()
 	defer ctx.Pop()
 
 	ctx.PushObject()
 	// [ global __wbModulePrototype ]
-
-	ctx.DefineFunctions(map[string]func(*ESContext) int{
-		"defineVirtualDevice": engine.esDefineVirtualDevice,
-		"virtualDeviceId":     engine.esVirtualDeviceId,
-		"_wbPersistentName":   engine.esPersistentName,
-	})
-
 	ctx.PutPropString(-2, MODULE_OBJ_PROTO_NAME)
 }
 
@@ -803,24 +797,13 @@ func localObjectId(filename, objname string) string {
 	return "_" + hash + objname
 }
 
-// maybeExpandLocalObjectId converts local object ID to global.
-// Local object is an object created in 'module' scope
-// (e.g. by module.defineVirtualDevice()).
-// This method should be called only from exported functions
-// in __wbModulePrototype child context
-func (engine *ESEngine) maybeExpandLocalObjectId(ctx *ESContext, name string) string {
-	ctx.PushThis()
-	if ctx.IsObject(-1) && ctx.HasPropString(-1, "filename") {
-		// this means we are in some local scope
-		// so, replace virtual device name
-		ctx.GetPropString(-1, "filename")
+// expandLocalObjectId converts local object ID to global.
+func (engine *ESEngine) expandLocalObjectId(ctx *ESContext, name string) string {
+	filename := ctx.GetCurrentFilename()
 
-		if ctx.IsString(-1) {
-			name = localObjectId(ctx.GetString(-1), name)
-		}
-		ctx.Pop()
+	if filename != "" {
+		name = localObjectId(filename, name)
 	}
-	ctx.Pop()
 
 	return name
 }
@@ -848,34 +831,14 @@ func (engine *ESEngine) getStringPropFromObject(ctx *ESContext, objIndex int, pr
 	return
 }
 
-// esVirtualDeviceId exported as module.virtualDeviceId(name)
-// and allows user to get global ID for local device
-func (engine *ESEngine) esVirtualDeviceId(ctx *ESContext) int {
-	// arguments:
-	// 1 -> deviceName
-	if ctx.GetTop() != 1 || !ctx.IsString(-1) {
-		return duktape.DUK_RET_ERROR
-	}
-
-	name := ctx.GetString(-1)
-	name = engine.maybeExpandLocalObjectId(ctx, name) // TODO: ctx
-
-	// push result
-	ctx.PushString(name)
-
-	return 1
-}
-
 // defineVirtualDevice creates virtual device object in MQTT
 // and returns JS object to control it
 func (engine *ESEngine) esDefineVirtualDevice(ctx *ESContext) int {
-	if ctx.GetTop() != 2 || !ctx.IsString(-2) || !ctx.IsObject(-1) {
+	if ctx.GetTop() != 2 || !ctx.IsString(0) || !ctx.IsObject(1) {
 		return duktape.DUK_RET_ERROR
 	}
-	name := ctx.GetString(-2)
-	obj := ctx.GetJSObject(-1).(objx.Map)
-
-	name = engine.maybeExpandLocalObjectId(ctx, name)
+	name := ctx.GetString(0)
+	obj := ctx.GetJSObject(1).(objx.Map)
 
 	if err := engine.DefineVirtualDevice(name, obj); err != nil {
 		wbgo.Error.Printf("device definition error: %s", err)
@@ -1416,10 +1379,8 @@ func (engine *ESEngine) ClosePersistentDB() (err error) {
 }
 
 // Creates a name for persistent storage bucket.
-// Used in 'module.PersistentStorage(name, options)'
+// Used in 'PersistentStorage(name, options)'
 func (engine *ESEngine) esPersistentName(ctx *ESContext) int {
-
-	// panic(fmt.Sprintf("run esPersistentName at context %p", ctx))
 
 	if engine.persistentDB == nil {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
@@ -1428,6 +1389,7 @@ func (engine *ESEngine) esPersistentName(ctx *ESContext) int {
 
 	// arguments: (name [, options = { global bool }])
 	var name string
+	var global bool
 
 	numArgs := ctx.GetTop()
 
@@ -1449,11 +1411,19 @@ func (engine *ESEngine) esPersistentName(ctx *ESContext) int {
 			engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage options must be object"))
 			return duktape.DUK_RET_ERROR
 		}
+
+		ctx.GetPropString(1, "global")
+		global = ctx.GetBoolean(-1)
+		ctx.Pop()
 	}
 
-	// get global ID for bucket if this is local storage
-	name = engine.maybeExpandLocalObjectId(ctx, name)
-	engine.Log(ENGINE_LOG_DEBUG, fmt.Sprintf("create local storage name: %s", name))
+	if global {
+
+	} else {
+		// get global ID for bucket if this is local storage
+		name = engine.expandLocalObjectId(ctx, name)
+		engine.Log(ENGINE_LOG_DEBUG, fmt.Sprintf("create local storage name: %s", name))
+	}
 
 	// push name as return value
 	ctx.PushString(name)
