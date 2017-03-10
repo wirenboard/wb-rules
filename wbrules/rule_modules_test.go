@@ -76,6 +76,19 @@ func (s *TestModulesSuite) TestModuleParams() {
 	)
 }
 
+func (s *TestModulesSuite) TestStaticStorage() {
+	s.publish("/devices/test/controls/static/on", "1", "test/static")
+
+	s.Verify(
+		"tst -> /devices/test/controls/static/on: [1] (QoS 1)",
+		"driver -> /devices/test/controls/static: [1] (QoS 1, retained)",
+		"[info] Module static init",
+		"[info] Value: 1",
+		"[info] Module static init",
+		"[info] Value: 2",
+	)
+}
+
 func TestModules(t *testing.T) {
 	testutils.RunSuites(t,
 		new(TestModulesSuite),
