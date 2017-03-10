@@ -57,6 +57,17 @@ func (s *RuleControlsSuite) TestDisable() {
 	)
 }
 
+func (s *RuleControlsSuite) TestRunRule() {
+	s.publish("/devices/ctrltest/controls/run/on", "1", "ctrltest/run")
+
+	s.Verify(
+		"tst -> /devices/ctrltest/controls/run/on: [1] (QoS 1)",
+		"driver -> /devices/ctrltest/controls/run: [1] (QoS 1)",
+		"[info] run",
+		"[info] controllable rule fired",
+	)
+}
+
 func TestRuleControls(t *testing.T) {
 	testutils.RunSuites(t, new(RuleControlsSuite))
 }

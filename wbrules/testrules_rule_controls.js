@@ -39,7 +39,7 @@ defineRule({
 });
 
 defineRule({
-    whenChanged: "crtltest/run",
+    whenChanged: "ctrltest/run",
     then: function() {
         log("run");
         runRule(m);
