@@ -207,6 +207,7 @@ type Rule struct {
 	then        ESCallbackFunc
 	shouldCheck bool
 	nonCellRule bool
+	enabled     bool
 }
 
 func NewRule(tracker DepTracker, id RuleId, name string, cond RuleCondition, then ESCallbackFunc) *Rule {
@@ -218,6 +219,7 @@ func NewRule(tracker DepTracker, id RuleId, name string, cond RuleCondition, the
 		then:        then,
 		shouldCheck: false,
 		nonCellRule: false,
+		enabled:     true,
 	}
 	rule.StoreInitiallyKnownDeps()
 	return rule
@@ -247,21 +249,23 @@ func (rule *Rule) Check(cell *Cell) {
 	rule.tracker.StoreRuleDeps(rule)
 	rule.shouldCheck = false
 
-	switch {
-	case !shouldFire:
-		return
-	case newValue != nil:
-		args = objx.New(map[string]interface{}{
-			"newValue": newValue,
-		})
-	case cell != nil:
-		args = objx.New(map[string]interface{}{
-			"device":   cell.DevName(),
-			"cell":     cell.Name(),
-			"newValue": cell.Value(),
-		})
+	if rule.enabled {
+		switch {
+		case !shouldFire:
+			return
+		case newValue != nil:
+			args = objx.New(map[string]interface{}{
+				"newValue": newValue,
+			})
+		case cell != nil:
+			args = objx.New(map[string]interface{}{
+				"device":   cell.DevName(),
+				"cell":     cell.Name(),
+				"newValue": cell.Value(),
+			})
+		}
+		rule.then(args)
 	}
-	rule.then(args)
 }
 
 func (rule *Rule) MaybeAddToCron(cron Cron) {
