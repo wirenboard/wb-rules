@@ -19,6 +19,10 @@ defineVirtualDevice("test", {
         params: {
             type: "switch",
             value: false
+        },
+        static: {
+            type: "switch",
+            value: false
         }
     }
 });
@@ -66,5 +70,13 @@ defineRule("params", {
     then: function() {
         var m = require("test/params");
         log(m.params());
+    }
+});
+
+defineRule("static", {
+    whenChanged: "test/static",
+    then: function() {
+        var m = require("test/static");
+        m.count();
     }
 });
