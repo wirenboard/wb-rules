@@ -446,7 +446,10 @@ func (engine *ESEngine) buildRule(ctx *ESContext, name string, defIndex int) (*R
 	if cond, err := engine.buildRuleCond(ctx, defIndex); err != nil {
 		return nil, err
 	} else {
-		return NewRule(engine, name, cond, then), nil
+		ruleId := engine.nextRuleId
+		engine.nextRuleId++
+
+		return NewRule(engine, ruleId, name, cond, then), nil
 	}
 }
 
@@ -1204,25 +1207,56 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esWbDefineRule(ctx *ESContext) int {
-	if ctx.GetTop() != 2 || !ctx.IsString(0) || !ctx.IsObject(1) {
+	var ok = false
+	var shortName, name string
+	var objIndex int
+
+	switch ctx.GetTop() {
+	case 1:
+		if ctx.IsObject(0) {
+			objIndex = 0
+			ok = true
+		}
+	case 2:
+		if ctx.IsString(0) && ctx.IsObject(1) {
+			objIndex = 1
+
+			shortName = ctx.GetString(0)
+			name = ctx.GetCurrentFilename() + "/" + shortName
+			// if engine.currentSource != nil {
+			// name = engine.currentSource.VirtualPath + "/" + shortName
+			// }
+
+			ok = true
+		}
+	}
+	if !ok {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad rule definition"))
 		return duktape.DUK_RET_ERROR
 	}
-	shortName := ctx.GetString(0)
-	name := shortName
-	if engine.currentSource != nil {
-		name = engine.currentSource.VirtualPath + "/" + shortName
-	}
-	if rule, err := engine.buildRule(ctx, name, 1); err != nil {
+
+	var rule *Rule
+	var err error
+	var ruleId RuleId
+
+	if rule, err = engine.buildRule(ctx, name, objIndex); err != nil {
 		// FIXME: proper error handling
 		engine.Log(ENGINE_LOG_ERROR,
 			fmt.Sprintf("bad definition of rule '%s': %s", name, err))
 		return duktape.DUK_RET_ERROR
-	} else {
-		engine.DefineRule(rule)
-		engine.maybeRegisterSourceItem(ctx, SOURCE_ITEM_RULE, shortName)
 	}
-	return 0
+
+	if ruleId, err = engine.DefineRule(rule); err != nil {
+		engine.Log(ENGINE_LOG_ERROR,
+			fmt.Sprintf("defineRule error: %s", err))
+		return duktape.DUK_RET_ERROR
+	}
+
+	engine.maybeRegisterSourceItem(ctx, SOURCE_ITEM_RULE, shortName)
+
+	// return rule ID
+	ctx.PushNumber(float64(ruleId))
+	return 1
 }
 
 func (engine *ESEngine) esWbRunRules(ctx *ESContext) int {

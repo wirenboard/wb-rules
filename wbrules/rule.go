@@ -196,18 +196,23 @@ func (ruleCond *CronRuleCondition) MaybeAddToCron(cron Cron, thunk func()) (adde
 	return
 }
 
+// RuleId is returned from defineRule to control rule
+type RuleId uint32
+
 type Rule struct {
 	tracker     DepTracker
-	name        string
+	id          RuleId
+	name        string // FIXME: deprecated
 	cond        RuleCondition
 	then        ESCallbackFunc
 	shouldCheck bool
 	nonCellRule bool
 }
 
-func NewRule(tracker DepTracker, name string, cond RuleCondition, then ESCallbackFunc) *Rule {
+func NewRule(tracker DepTracker, id RuleId, name string, cond RuleCondition, then ESCallbackFunc) *Rule {
 	rule := &Rule{
 		tracker:     tracker,
+		id:          id,
 		name:        name,
 		cond:        cond,
 		then:        then,

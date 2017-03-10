@@ -186,8 +186,10 @@ type RuleEngine struct {
 	nextTimerId         TimerId
 	timers              map[TimerId]*TimerEntry
 	callbackIndex       ESCallback
-	ruleMap             map[string]*Rule
-	ruleList            []string
+	nextRuleId          RuleId
+	ruleMap             map[RuleId]*Rule
+	ruleNameMap         map[string]*Rule
+	ruleList            []RuleId
 	notedCells          map[*Cell]bool
 	notedTimers         map[string]bool
 	cellToRuleMap       map[*Cell][]*Rule
@@ -219,8 +221,10 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *RuleEn
 		nextTimerId:         1,
 		timers:              make(map[TimerId]*TimerEntry),
 		callbackIndex:       1,
-		ruleMap:             make(map[string]*Rule),
-		ruleList:            make([]string, 0, RULES_CAPACITY),
+		nextRuleId:          1,
+		ruleMap:             make(map[RuleId]*Rule),
+		ruleNameMap:         make(map[string]*Rule),
+		ruleList:            make([]RuleId, 0, RULES_CAPACITY),
 		notedCells:          nil,
 		notedTimers:         nil,
 		cellToRuleMap:       make(map[*Cell][]*Rule),
@@ -576,8 +580,8 @@ func (engine *RuleEngine) RunRules(cellSpec *CellSpec, timerName string) {
 		}
 	}
 
-	for _, name := range engine.ruleList {
-		engine.ruleMap[name].Check(cell)
+	for _, ruleId := range engine.ruleList {
+		engine.ruleMap[ruleId].Check(cell)
 	}
 	engine.currentTimer = NO_TIMER_NAME
 }
@@ -590,8 +594,8 @@ func (engine *RuleEngine) setupCron() {
 	engine.cron = newCronProxy(engine.cronMaker(), engine.model.CallSync)
 	// note for rule reloading: will need to restart cron
 	// to reload rules properly
-	for _, name := range engine.ruleList {
-		rule := engine.ruleMap[name]
+	for _, ruleId := range engine.ruleList {
+		rule := engine.ruleMap[ruleId]
 		rule.MaybeAddToCron(engine.cron)
 	}
 	engine.cron.Start()
@@ -927,17 +931,27 @@ func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
 	return nil
 }
 
-func (engine *RuleEngine) DefineRule(rule *Rule) {
-	if oldRule, found := engine.ruleMap[rule.name]; found {
-		oldRule.Destroy()
-	} else {
-		engine.ruleList = append(engine.ruleList, rule.name)
+func (engine *RuleEngine) DefineRule(rule *Rule) (id RuleId, err error) {
+
+	// for named rule - check for redefinition
+	if rule.name != "" {
+		if _, found := engine.ruleNameMap[rule.name]; found {
+			err = fmt.Errorf("named rule redefinition: %s", rule.name)
+			return
+		} else {
+			engine.ruleNameMap[rule.name] = rule
+		}
 	}
-	engine.ruleMap[rule.name] = rule
+
+	engine.ruleList = append(engine.ruleList, rule.id)
+	engine.ruleMap[rule.id] = rule
 	engine.cleanup.AddCleanup(func() {
-		delete(engine.ruleMap, rule.name)
-		for i, name := range engine.ruleList {
-			if name == rule.name {
+		delete(engine.ruleMap, rule.id)
+		if rule.name != "" {
+			delete(engine.ruleNameMap, rule.name)
+		}
+		for i, id := range engine.ruleList {
+			if id == rule.id {
 				engine.ruleList = append(
 					engine.ruleList[0:i],
 					engine.ruleList[i+1:]...)
@@ -945,6 +959,9 @@ func (engine *RuleEngine) DefineRule(rule *Rule) {
 			}
 		}
 	})
+
+	id = rule.id
+	return
 }
 
 // Refresh() should be called after engine rules are altered
