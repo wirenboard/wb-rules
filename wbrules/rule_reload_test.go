@@ -19,7 +19,45 @@ func (s *RuleReloadSuite) SetupTest() {
 	)
 }
 
-func (s *RuleReloadSuite) TestReload() {
+func (s *RuleReloadSuite) VerifyVdevCleanup(file string) {
+	if file == "testrules_reload_2.js" {
+		s.Verify(
+			// devices are removed
+			"Unsubscribe -- driver: /devices/vdev/controls/anotherCell/on",
+			"Unsubscribe -- driver: /devices/vdev/controls/someCell/on",
+			"driver -> /devices/vdev/meta/name: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/anotherCell/meta/type: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/anotherCell/meta/units: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/anotherCell/meta/name: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/anotherCell/meta/readonly: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/anotherCell/meta/writable: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/anotherCell/meta/order: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/anotherCell/meta/max: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/anotherCell: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/someCell/meta/type: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/someCell/meta/units: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/someCell/meta/name: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/someCell/meta/readonly: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/someCell/meta/writable: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/someCell/meta/order: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/someCell/meta/max: [] (QoS 1, retained)",
+			"driver -> /devices/vdev/controls/someCell: [] (QoS 1, retained)",
+
+			"Unsubscribe -- driver: /devices/vdev1/controls/qqq/on",
+			"driver -> /devices/vdev1/meta/name: [] (QoS 1, retained)",
+			"driver -> /devices/vdev1/controls/qqq/meta/type: [] (QoS 1, retained)",
+			"driver -> /devices/vdev1/controls/qqq/meta/units: [] (QoS 1, retained)",
+			"driver -> /devices/vdev1/controls/qqq/meta/name: [] (QoS 1, retained)",
+			"driver -> /devices/vdev1/controls/qqq/meta/readonly: [] (QoS 1, retained)",
+			"driver -> /devices/vdev1/controls/qqq/meta/writable: [] (QoS 1, retained)",
+			"driver -> /devices/vdev1/controls/qqq/meta/order: [] (QoS 1, retained)",
+			"driver -> /devices/vdev1/controls/qqq/meta/max: [] (QoS 1, retained)",
+			"driver -> /devices/vdev1/controls/qqq: [] (QoS 1, retained)",
+		)
+	}
+}
+
+func (s *RuleReloadSuite) VerifyRules() {
 	s.publish("/devices/vdev/controls/someCell/on", "1", "vdev/someCell")
 	s.Verify(
 		"tst -> /devices/vdev/controls/someCell/on: [1] (QoS 1)",
@@ -40,44 +78,15 @@ func (s *RuleReloadSuite) TestReload() {
 		"[info] detectRun1: vdev/anotherCell (s=true, a=17)",
 		"[info] rule3: vdev/anotherCell=17",
 	)
+}
+
+func (s *RuleReloadSuite) TestReload() {
+
+	s.VerifyRules()
 
 	s.ReplaceScript("testrules_reload_2.js", "testrules_reload_2_changed.js")
+	s.VerifyVdevCleanup("testrules_reload_2.js")
 	s.Verify(
-		// devices are removed when the older version if the
-		// script is unloaded
-		"Unsubscribe -- driver: /devices/vdev/controls/anotherCell/on",
-		"Unsubscribe -- driver: /devices/vdev/controls/someCell/on",
-		"driver -> /devices/vdev/meta/name: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/type: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/units: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/name: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/readonly: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/writable: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/order: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/max: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/type: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/units: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/name: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/readonly: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/writable: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/order: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/max: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell: [] (QoS 1, retained)",
-
-		// vdev1 is not redefined after reload, but must be still
-		// removed
-		"Unsubscribe -- driver: /devices/vdev1/controls/qqq/on",
-		"driver -> /devices/vdev1/meta/name: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/type: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/units: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/name: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/readonly: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/writable: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/order: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/max: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq: [] (QoS 1, retained)",
-
 		// device redefinition begins
 		"driver -> /devices/vdev/meta/name: [VDev] (QoS 1, retained)",
 		"driver -> /devices/vdev/controls/someCell/meta/type: [switch] (QoS 1, retained)",
@@ -123,39 +132,8 @@ func (s *RuleReloadSuite) TestReload() {
 
 func (s *RuleReloadSuite) TestRemoveScript() {
 	s.RemoveScript("testrules_reload_2.js")
+	s.VerifyVdevCleanup("testrules_reload_2.js")
 	s.Verify(
-		// devices are removed
-		"Unsubscribe -- driver: /devices/vdev/controls/anotherCell/on",
-		"Unsubscribe -- driver: /devices/vdev/controls/someCell/on",
-		"driver -> /devices/vdev/meta/name: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/type: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/units: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/name: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/readonly: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/writable: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/order: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell/meta/max: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/anotherCell: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/type: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/units: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/name: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/readonly: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/writable: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/order: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell/meta/max: [] (QoS 1, retained)",
-		"driver -> /devices/vdev/controls/someCell: [] (QoS 1, retained)",
-
-		"Unsubscribe -- driver: /devices/vdev1/controls/qqq/on",
-		"driver -> /devices/vdev1/meta/name: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/type: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/units: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/name: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/readonly: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/writable: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/order: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq/meta/max: [] (QoS 1, retained)",
-		"driver -> /devices/vdev1/controls/qqq: [] (QoS 1, retained)",
-
 		// rules are run after removal
 		"[info] detRun",
 		// removal notification for the client-side script editor
@@ -178,6 +156,24 @@ func (s *RuleReloadSuite) TestRemoveScript() {
 		"driver -> /devices/vdev0/controls/someCell: [1] (QoS 1, retained)",
 		"[info] detRun",
 	)
+}
+
+func (s *RuleReloadSuite) TestRemoveRestore() {
+	s.RemoveScript("testrules_reload_2.js")
+	s.VerifyVdevCleanup("testrules_reload_2.js")
+	s.Verify(
+		// rules are run after removal
+		"[info] detRun",
+		// removal notification for the client-side script editor
+		"driver -> /wbrules/updates/removed: [testrules_reload_2.js] (QoS 1)",
+	)
+
+	// load script and expect vdev definition at least
+	s.LiveLoadScript("testrules_reload_2.js")
+	// s.ReplaceScript("testrules_reload_2.js", "testrules_reload_2_changed.js")
+	s.SkipTill("driver -> /wbrules/updates/changed: [testrules_reload_2.js] (QoS 1)")
+
+	s.VerifyRules()
 }
 
 func (s *RuleReloadSuite) TestNoReloading() {
