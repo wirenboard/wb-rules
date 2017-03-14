@@ -750,7 +750,14 @@ func (engine *ESEngine) LiveLoadFile(path string) error {
 }
 
 func (engine *ESEngine) LiveRemoveFile(path string) error {
+	path, virtualPath, _, err := engine.checkSourcePath(path)
+
+	if err != nil {
+		return err
+	}
+
 	engine.model.WhenReady(func() {
+		engine.tracker.Untrack(virtualPath)
 		engine.runCleanups(path)
 		engine.Refresh()
 		engine.maybePublishUpdate("removed", path)
