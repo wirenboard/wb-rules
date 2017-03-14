@@ -15,7 +15,7 @@ const (
 	PERSISTENT_DB_FILE    = "/var/lib/wirenboard/wbrules-persistent.db"
 	VIRTUAL_CELLS_DB_FILE = "/var/lib/wirenboard/wbrules-vcells.db"
 
-	WBRULES_MODULES_ENV = "WBRULES_MODULES"
+	WBRULES_MODULES_ENV = "WB_RULES_MODULES"
 )
 
 func main() {
