@@ -683,6 +683,8 @@ func (engine *ESEngine) runCleanups(path string) {
 
 		// TODO: launch internal cleanups
 		engine.removeThreadFromStorage(engine.globalCtx, path)
+
+		delete(engine.localCtxs, path)
 	}
 
 	// run rules cleanups
