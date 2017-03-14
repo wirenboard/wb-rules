@@ -206,12 +206,14 @@ func (s *RuleReloadSuite) TestWriteScript() {
 	// let's load script from a new directory
 	s.Ck("OverwriteScript()",
 		s.OverwriteScript("subdir/testrules_reload_42.js", "testrules_reload_2_changed.js"))
+	s.EnsureGotWarnings() // got warning for vdev redefinition
 	s.verifyReloadCount(3)
 
 	// the following ReplaceScript() which calls LiveLoadFile()
 	// has now effect because the new content is already registered
 	s.ReplaceScript("testrules_reload_2.js", "testrules_reload_2_changed.js")
 	s.verifyReloadCount(3)
+
 }
 
 func TestRuleReloadSuite(t *testing.T) {
