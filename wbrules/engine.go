@@ -268,7 +268,7 @@ func (engine *RuleEngine) SetVirtualCellsDB(filename string) (err error) {
 
 func (engine *RuleEngine) SetVirtualCellsDBMode(filename string, mode os.FileMode) (err error) {
 	if engine.virtualCellsStorage != nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("virtual cells DB is already opened"))
+		wbgo.Error.Printf("virtual cells DB is already opened")
 		err = fmt.Errorf("virtual cells DB is aleready opened")
 		return
 	}
@@ -277,7 +277,7 @@ func (engine *RuleEngine) SetVirtualCellsDBMode(filename string, mode os.FileMod
 		&bolt.Options{Timeout: 1 * time.Second})
 
 	if err != nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("can't open virtual cells DB file: %s", err))
+		wbgo.Error.Printf("can't open virtual cells DB file: %s", err)
 	}
 
 	return
@@ -286,7 +286,7 @@ func (engine *RuleEngine) SetVirtualCellsDBMode(filename string, mode os.FileMod
 // Force close virtual cells DB
 func (engine *RuleEngine) CloseVirtualCellsDB() (err error) {
 	if engine.virtualCellsStorage == nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("virtual cells DB is not opened, nothing to close"))
+		wbgo.Error.Printf("virtual cells DB is not opened, nothing to close")
 		err = fmt.Errorf("nothing to close")
 		return
 	}
@@ -332,7 +332,11 @@ func (engine *RuleEngine) getVirtualCellValueFromDB(device string, control strin
 
 	if !ok {
 		err = &CellNotFoundError{}
+		return
 	}
+
+	wbgo.Debug.Printf("%s/%s: restore virtual cell value from DB: \"%s\"",
+		device, control, value)
 
 	return
 }
