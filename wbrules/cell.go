@@ -220,6 +220,11 @@ func (model *CellModel) EnsureCell(cellSpec *CellSpec) *Cell {
 	return model.EnsureDevice(cellSpec.DevName).EnsureCell(cellSpec.CellName)
 }
 
+func (model *CellModel) DeviceExists(name string) (found bool) {
+	_, found = model.devices[name]
+	return
+}
+
 func (model *CellModel) RemoveLocalDevice(name string) {
 	dev, found := model.devices[name]
 	if !found {

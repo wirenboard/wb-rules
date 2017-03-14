@@ -816,7 +816,10 @@ func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
 
 	// if the device was for some reason defined in another script,
 	// we must remove it
-	engine.model.RemoveLocalDevice(name)
+	if engine.model.DeviceExists(name) {
+		engine.Log(ENGINE_LOG_WARNING, fmt.Sprintf("redefinition of virtual device %s", name))
+		engine.model.RemoveLocalDevice(name)
+	}
 
 	dev := engine.model.EnsureLocalDevice(name, title)
 	engine.cleanup.AddCleanup(func() {
