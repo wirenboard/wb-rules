@@ -1,3 +1,9 @@
+wb-rules (2.0~beta3) stable; urgency=medium
+
+  * Fix: hang on boot on high load 
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Wed, 15 Mar 2017 19:00:07 +0300
+
 wb-rules (2.0~beta2) stable; urgency=medium
 
   * Fix: rule remove and creation bug (file missing)
