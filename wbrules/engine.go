@@ -1,6 +1,7 @@
 package wbrules
 
 import (
+	"errors"
 	"fmt"
 	"github.com/boltdb/bolt"
 	wbgo "github.com/contactless/wbgo"
@@ -9,7 +10,6 @@ import (
 	"log"
 	"os"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 )
@@ -19,20 +19,37 @@ type TimerId uint64
 
 const (
 	NO_TIMER_NAME                 = ""
-	DEFAULT_CELL_MAX              = 255.0
 	RULES_CAPACITY                = 256
-	CELL_RULES_CAPACITY           = 8
 	NO_CALLBACK                   = ESCallback(0)
 	RULE_ENGINE_SETTINGS_DEV_NAME = "wbrules"
 	RULE_DEBUG_CELL_NAME          = "Rule debugging"
 
 	VIRTUAL_CELLS_DB_CHMOD = 0640
 
+	SYNC_QUEUE_LEN = 1
+
 	ENGINE_LOG_DEBUG = EngineLogLevel(iota)
 	ENGINE_LOG_INFO
 	ENGINE_LOG_WARNING
 	ENGINE_LOG_ERROR
+
+	ENGINE_CONTROL_CHANGE_QUEUE_LEN = 16
+	ENGINE_CONTROL_RULES_CAPACITY   = 8
 )
+
+// errors
+var (
+	ControlNotFoundError = errors.New("Control is not found")
+)
+
+type ControlSpec struct {
+	DeviceId  string
+	ControlId string
+}
+
+func (c *ControlSpec) String() string {
+	return c.DeviceId + "/" + c.ControlId
+}
 
 type TimerFunc func(id TimerId, d time.Duration, periodic bool) wbgo.Timer
 
@@ -77,67 +94,103 @@ func (entry *TimerEntry) handleRemove() {
 }
 
 type proxyOwner interface {
-	CellModel() *CellModel
+	Driver() wbgo.Driver
 	getRev() uint64
-	trackCell(*Cell)
+	trackControlSpec(ControlSpec)
 }
 
 type DeviceProxy struct {
 	owner proxyOwner
 	name  string
-	dev   CellModelDevice
+	dev   wbgo.Device
 	rev   uint64
 }
 
-// CellProxy tracks cell access with the engine
+// ControlProxy tracks control access with the engine
 // and makes sure that always the actual current device
-// cell object is accessed while avoiding excess
+// control object is accessed while avoiding excess
 // name lookups.
-type CellProxy struct {
+type ControlProxy struct {
 	devProxy *DeviceProxy
 	name     string
-	cell     *Cell
+	control  wbgo.Control
 }
 
-func makeDeviceProxy(owner proxyOwner, name string) *DeviceProxy {
-	return &DeviceProxy{owner, name, owner.CellModel().EnsureDevice(name), owner.getRev()}
+func makeDeviceProxy(owner proxyOwner, devId string) *DeviceProxy {
+	return &DeviceProxy{owner, devId, owner.Driver().GetDeviceSync(devId), owner.getRev()}
 }
 
-func (devProxy *DeviceProxy) getDev() (CellModelDevice, bool) {
+func (devProxy *DeviceProxy) getDev() (wbgo.Device, bool) {
 	if devProxy.rev != devProxy.owner.getRev() {
-		devProxy.dev = devProxy.owner.CellModel().EnsureDevice(devProxy.name)
+		devProxy.dev = devProxy.owner.Driver().GetDeviceSync(devProxy.name)
 		return devProxy.dev, true
 	}
 	return devProxy.dev, false
 }
 
-func (devProxy *DeviceProxy) EnsureCell(name string) *CellProxy {
+func (devProxy *DeviceProxy) EnsureControlProxy(ctrlId string) *ControlProxy {
+	return &ControlProxy{devProxy, ctrlId, devProxy.getControl(ctrlId)}
+}
+
+func (devProxy *DeviceProxy) getControl(ctrlId string) wbgo.Control {
 	dev, _ := devProxy.getDev()
-	return &CellProxy{devProxy, name, dev.EnsureCell(name)}
+	c, _ := devProxy.owner.Driver().GetSync(func(drv wbgo.Driver) (interface{}, error) {
+		return dev.GetControl(ctrlId), nil
+	})()
+
+	return c.(wbgo.Control)
 }
 
-func (cellProxy *CellProxy) getCell() *Cell {
-	if dev, updated := cellProxy.devProxy.getDev(); updated {
-		cellProxy.cell = dev.EnsureCell(cellProxy.name)
+func (ctrlProxy *ControlProxy) getSync(f func(drv wbgo.Driver) (interface{}, error)) (interface{}, error) {
+	return ctrlProxy.devProxy.owner.Driver().GetSync(f)()
+}
+
+func (ctrlProxy *ControlProxy) getControl() wbgo.Control {
+	if dev, updated := ctrlProxy.devProxy.getDev(); updated {
+		ctrlProxy.control = ctrlProxy.devProxy.getControl(ctrlProxy.name)
 	}
-	cellProxy.devProxy.owner.trackCell(cellProxy.cell)
-	return cellProxy.cell
+
+	ctrlProxy.devProxy.owner.trackControlSpec(ControlSpec{ctrlProxy.devProxy.name, ctrlProxy.name})
+	return ctrlProxy.control
 }
 
-func (cellProxy *CellProxy) RawValue() string {
-	return cellProxy.getCell().RawValue()
+func (ctrlProxy *ControlProxy) RawValue() string {
+	ctrl := ctrlProxy.getControl()
+	v, _ := ctrlProxy.getSync(func(drv wbgo.Driver) (interface{}, error) {
+		return ctrl.GetRawValue(), nil
+	})
+	return v.(string)
 }
 
-func (cellProxy *CellProxy) Value() interface{} {
-	return cellProxy.getCell().Value()
+// TODO: error handling
+func (ctrlProxy *ControlProxy) Value() interface{} {
+	ctrl := ctrlProxy.getControl()
+	v, err := ctrlProxy.getSync(func(drv wbgo.Driver) (interface{}, error) {
+		return ctrl.GetValue()
+	})
+	if err != nil {
+		return nil
+	} else {
+		return v
+	}
 }
 
-func (cellProxy *CellProxy) SetValue(value interface{}) {
-	cellProxy.getCell().SetValue(value)
+func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
+	ctrl := ctrlProxy.getControl()
+	_, err := ctrlProxy.getSync(func(drv wbgo.Driver) (interface{}, error) {
+		return nil, ctrl.SetValue(value)()
+	})
+	if err != nil {
+		wbgo.Error.Printf("control %s/%s SetValue() error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, err)
+	}
 }
 
-func (cellProxy *CellProxy) IsComplete() bool {
-	return cellProxy.getCell().IsComplete()
+func (ctrlProxy *ControlProxy) IsComplete() bool {
+	ctrl := ctrlProxy.getControl()
+	v, _ := ctrlProxy.getSync(func(drv wbgo.Driver) (interface{}, error) {
+		return ctrl.IsComplete(), nil
+	})
+	return v.(bool)
 }
 
 // cronProxy helps to avoid race conditions when
@@ -155,6 +208,14 @@ func (cp cronProxy) AddFunc(spec string, cmd func()) error {
 	return cp.Cron.AddFunc(spec, func() {
 		cp.exec(cmd)
 	})
+}
+
+// ControlChangeEvent
+type ControlChangeEvent struct {
+	Spec       ControlSpec
+	IsComplete bool
+	IsRetained bool
+	Value      interface{}
 }
 
 type RuleEngineOptions struct {
@@ -177,72 +238,78 @@ func (o *RuleEngineOptions) SetVirtualCellsStorageFile(file string) {
 }
 
 type RuleEngine struct {
-	cleanup             *ScopedCleanup
-	rev                 uint64
-	model               *CellModel
-	mqttClient          wbgo.MQTTClient
-	cellChange          chan *CellSpec
-	timerFunc           TimerFunc
-	nextTimerId         TimerId
-	timers              map[TimerId]*TimerEntry
-	callbackIndex       ESCallback
-	nextRuleId          RuleId
-	ruleMap             map[RuleId]*Rule
-	ruleNameMap         map[string]*Rule
-	ruleList            []RuleId
-	notedCells          map[*Cell]bool
-	notedTimers         map[string]bool
-	cellToRuleMap       map[*Cell][]*Rule
-	rulesWithoutCells   map[*Rule]bool
-	timerRules          map[string][]*Rule
-	currentTimer        string
-	cronMaker           func() Cron
-	cron                Cron
-	statusMtx           sync.Mutex
-	debugMtx            sync.Mutex
-	getTimerMtx         sync.Mutex
-	debugEnabled        bool
-	readyCh             chan struct{}
-	readyQueue          *wbgo.DeferredList
-	virtualCellsStorage *bolt.DB
+	cleanup              *ScopedCleanup
+	rev                  uint64
+	syncQueue            chan func()
+	syncQuitCh           chan chan struct{}
+	mqttClient           wbgo.MQTTClient // for service
+	driver               wbgo.Driver
+	driverReadyCh        chan struct{}
+	controlChangeCh      chan ControlChangeEvent
+	timerFunc            TimerFunc
+	nextTimerId          TimerId
+	timers               map[TimerId]*TimerEntry
+	callbackIndex        ESCallback
+	nextRuleId           RuleId
+	ruleMap              map[RuleId]*Rule
+	ruleNameMap          map[string]*Rule
+	ruleList             []RuleId
+	notedControls        map[ControlSpec]bool
+	notedTimers          map[string]bool
+	controlToRuleMap     map[ControlSpec][]*Rule
+	rulesWithoutControls map[*Rule]bool
+	timerRules           map[string][]*Rule
+	currentTimer         string
+	cronMaker            func() Cron
+	cron                 Cron
+	statusMtx            sync.Mutex
+	debugMtx             sync.Mutex
+	getTimerMtx          sync.Mutex
+	debugEnabled         bool
+	readyCh              chan struct{}
+	readyQueue           *wbgo.DeferredList
+	virtualCellsStorage  *bolt.DB
 }
 
-func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *RuleEngineOptions) (engine *RuleEngine) {
+func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngineOptions) (engine *RuleEngine) {
 	if options == nil {
 		panic("no options given to NewRuleEngine")
 	}
 
 	engine = &RuleEngine{
-		cleanup:             MakeScopedCleanup(),
-		rev:                 0,
-		model:               model,
-		mqttClient:          mqttClient,
-		timerFunc:           newTimer,
-		nextTimerId:         1,
-		timers:              make(map[TimerId]*TimerEntry),
-		callbackIndex:       1,
-		nextRuleId:          1,
-		ruleMap:             make(map[RuleId]*Rule),
-		ruleNameMap:         make(map[string]*Rule),
-		ruleList:            make([]RuleId, 0, RULES_CAPACITY),
-		notedCells:          nil,
-		notedTimers:         nil,
-		cellToRuleMap:       make(map[*Cell][]*Rule),
-		rulesWithoutCells:   make(map[*Rule]bool),
-		timerRules:          make(map[string][]*Rule),
-		currentTimer:        NO_TIMER_NAME,
-		cronMaker:           func() Cron { return cron.New() },
-		cron:                nil,
-		debugEnabled:        wbgo.DebuggingEnabled(),
-		readyCh:             nil,
-		readyQueue:          wbgo.NewDeferredList(nil),
-		virtualCellsStorage: nil,
+		cleanup:              MakeScopedCleanup(),
+		rev:                  0,
+		syncQueue:            make(chan func(), SYNC_QUEUE_LEN),
+		syncQuitCh:           make(chan chan struct{}, 1),
+		mqttClient:           mqtt,
+		driver:               driver,
+		driverReadyCh:        nil,
+		timerFunc:            newTimer,
+		nextTimerId:          1,
+		timers:               make(map[TimerId]*TimerEntry),
+		callbackIndex:        1,
+		nextRuleId:           1,
+		ruleMap:              make(map[RuleId]*Rule),
+		ruleNameMap:          make(map[string]*Rule),
+		ruleList:             make([]RuleId, 0, RULES_CAPACITY),
+		notedControls:        nil,
+		notedTimers:          nil,
+		controlToRuleMap:     make(map[ControlSpec][]*Rule),
+		rulesWithoutControls: make(map[*Rule]bool),
+		timerRules:           make(map[string][]*Rule),
+		currentTimer:         NO_TIMER_NAME,
+		cronMaker:            func() Cron { return cron.New() },
+		cron:                 nil,
+		debugEnabled:         wbgo.DebuggingEnabled(),
+		readyCh:              nil,
+		readyQueue:           wbgo.NewDeferredList(nil),
+		virtualCellsStorage:  nil,
 	}
 
 	if options.VirtualCellsStorageFile != "" {
 		if err := engine.SetVirtualCellsDBMode(options.VirtualCellsStorageFile,
 			options.VirtualCellsStorageFileMode); err != nil {
-			panic("error opening virtual cells storage: " + err.Error())
+			panic("error opening virtual controls storage: " + err.Error())
 		}
 	}
 
@@ -255,6 +322,102 @@ func (engine *RuleEngine) ReadyCh() <-chan struct{} {
 		panic("cannot engine's readyCh before the engine is started")
 	}
 	return engine.readyCh
+}
+
+func (engine *RuleEngine) syncLoop() {
+	wbgo.Debug.Println("[engine] Starting sync loop")
+	for {
+		select {
+		case f := <-engine.syncQueue:
+			f()
+		case q := <-engine.syncQuitCh:
+			wbgo.Debug.Println("[engine] Stopping sync loop")
+			close(q)
+			return
+		}
+	}
+}
+
+func (engine *RuleEngine) mainLoop() {
+	// control changes are ignored until the engine is ready
+	// FIXME: some very small probability of race condition is
+	// present here
+ReadyWaitLoop:
+	for {
+		select {
+		case <-engine.driverReadyCh:
+			break ReadyWaitLoop
+		case event, ok := <-engine.controlChangeCh:
+			if ok {
+				wbgo.Debug.Printf("control change (not ready yet): %s", event.Spec)
+				if engine.isDebugControl(event.Spec) {
+					engine.updateDebugEnabled()
+				}
+			} else {
+				wbgo.Debug.Printf("stoping the engine (not ready yet)")
+				engine.handleStop()
+				return
+			}
+		}
+	}
+	wbgo.Debug.Printf("setting up cron")
+	engine.CallSync(engine.setupCron)
+	wbgo.Debug.Printf("doing the first rule run")
+	engine.CallSync(func() {
+		engine.RunRules(nil, NO_TIMER_NAME)
+	})
+
+	engine.readyQueue.Ready()
+	close(engine.readyCh)
+
+	wbgo.Debug.Printf("the engine is ready")
+	// wbgo.Info.Printf("******** READY ********")
+	for {
+		select {
+		case event, ok := <-engine.controlChangeCh:
+			if ok {
+				if wbgo.DebuggingEnabled() {
+					wbgo.Debug.Printf("control change: %s", event.Spec)
+					wbgo.Debug.Printf("rule engine: running rules after control change: %s", event.Spec)
+				}
+				if engine.isDebugControl(event.Spec) {
+					engine.updateDebugEnabled()
+				}
+
+				if err := engine.storeVirtualCellValueToDB(event.Spec); err != nil {
+					wbgo.Warn.Printf("%s/%s: can't set virtual control value: %s",
+						event.Spec.DeviceId, event.Spec.ControlId, err)
+				}
+
+				engine.CallSync(func() {
+					engine.RunRules(&event, NO_TIMER_NAME)
+				})
+			} else {
+				engine.handleStop()
+				return
+			}
+		}
+	}
+}
+
+func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
+	switch e := event.(type) {
+	case wbgo.ReadyEvent:
+		engine.driverReadyCh <- struct{}{}
+	case wbgo.ControlValueEvent:
+		// collect control data and push event
+		ctrl := e.Control
+		engine.controlChangeCh <- ControlChangeEvent{
+			Spec:       ControlSpec{ctrl.GetDevice().GetId(), ctrl.GetId()},
+			IsComplete: ctrl.IsComplete(),
+			IsRetained: ctrl.IsRetained(),
+			Value:      e.RawValue,
+		}
+	}
+}
+
+func (engine *RuleEngine) CallSync(thunk func()) {
+	engine.syncQueue <- thunk
 }
 
 func (engine *RuleEngine) WhenEngineReady(thunk func()) {
@@ -376,8 +539,8 @@ func (engine *RuleEngine) storeVirtualCellValueToDBRaw(device string, control st
 	return
 }
 
-func (engine *RuleEngine) storeVirtualCellValueToDB(cellSpec *CellSpec) (err error) {
-	if cellSpec == nil {
+func (engine *RuleEngine) storeVirtualCellValueToDB(cellSpec ControlSpec) (err error) {
+	/*if cellSpec == nil {
 		return fmt.Errorf("cellSpec is nil")
 	}
 
@@ -389,7 +552,8 @@ func (engine *RuleEngine) storeVirtualCellValueToDB(cellSpec *CellSpec) (err err
 		return nil
 	}
 
-	return engine.storeVirtualCellValueToDBRaw(cellSpec.DevName, cellSpec.CellName, cell.value)
+	return engine.storeVirtualCellValueToDBRaw(cellSpec.DeviceId, cellSpec.ControlId, cell.value)*/
+	return nil
 }
 
 func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
@@ -416,18 +580,14 @@ func (engine *RuleEngine) SetCronMaker(cronMaker func() Cron) {
 }
 
 func (engine *RuleEngine) StartTrackingDeps() {
-	engine.notedCells = make(map[*Cell]bool)
+	engine.notedControls = make(map[ControlSpec]bool)
 	engine.notedTimers = make(map[string]bool)
 }
 
-func (engine *RuleEngine) StoreRuleCellSpec(rule *Rule, cellSpec *CellSpec) {
-	engine.storeRuleCell(rule, engine.model.EnsureCell(cellSpec))
-}
-
-func (engine *RuleEngine) storeRuleCell(rule *Rule, cell *Cell) {
-	list, found := engine.cellToRuleMap[cell]
+func (engine *RuleEngine) StoreRuleControlSpec(rule *Rule, spec ControlSpec) {
+	list, found := engine.controlToRuleMap[spec]
 	if !found {
-		list = make([]*Rule, 0, CELL_RULES_CAPACITY)
+		list = make([]*Rule, 0, ENGINE_CONTROL_RULES_CAPACITY)
 	} else {
 		for _, item := range list {
 			if item == rule {
@@ -435,51 +595,51 @@ func (engine *RuleEngine) storeRuleCell(rule *Rule, cell *Cell) {
 			}
 		}
 	}
-	wbgo.Debug.Printf("adding cell %s for rule %s", cell.Name(), rule.name)
-	engine.cellToRuleMap[cell] = append(list, rule)
-	engine.rulesWithoutCells[rule] = false
+	// wbgo.Debug.Printf("adding cell %s for rule %s", cell.Name(), rule.name)
+	engine.controlToRuleMap[spec] = append(list, rule)
+	engine.rulesWithoutControls[rule] = false
 }
 
 func (engine *RuleEngine) storeRuleTimer(rule *Rule, timerName string) {
 	list, found := engine.timerRules[timerName]
 	if !found {
-		list = make([]*Rule, 0, CELL_RULES_CAPACITY)
+		list = make([]*Rule, 0, ENGINE_CONTROL_RULES_CAPACITY)
 	}
 	engine.timerRules[timerName] = append(list, rule)
 }
 
 func (engine *RuleEngine) StoreRuleDeps(rule *Rule) {
-	if len(engine.notedCells) > 0 {
-		for cell, _ := range engine.notedCells {
-			engine.storeRuleCell(rule, cell)
+	if len(engine.notedControls) > 0 {
+		for spec, _ := range engine.notedControls {
+			engine.StoreRuleControlSpec(rule, spec)
 		}
 	} else if len(engine.notedTimers) > 0 {
 		for timerName, _ := range engine.notedTimers {
 			engine.storeRuleTimer(rule, timerName)
 		}
-	} else if !rule.IsNonCellRule() {
-		if _, found := engine.rulesWithoutCells[rule]; !found {
-			// Rules without cells in their conditions negatively affect
+	} else if !rule.IsIndependent() {
+		if _, found := engine.rulesWithoutControls[rule]; !found {
+			// Rules without controls in their conditions negatively affect
 			// the engine performance because they must be checked
 			// too often. Only mark a rule as such if it doesn't have
-			// any cells associated with it and it isn't a non-cell rule
+			// any controls associated with it and it isn't an control-independent rule
 			// (such as a cron rule)
 			if wbgo.DebuggingEnabled() {
 				// Here we use Warn output but only in case if debugging is enabled.
 				// This improves testability (due to EnsureNoErrorsOrWarnings()) but
 				// avoids polluting logs with endless warnings when debugging is off.
-				wbgo.Warn.Printf("rule %s doesn't use any cells inside condition functions", rule.name)
+				wbgo.Warn.Printf("rule %s doesn't use any controls inside condition functions", rule.name)
 			}
-			engine.rulesWithoutCells[rule] = true
+			engine.rulesWithoutControls[rule] = true
 		}
 	}
-	engine.notedCells = nil
+	engine.notedControls = nil
 	engine.notedTimers = nil
 }
 
-func (engine *RuleEngine) trackCell(cell *Cell) {
-	if engine.notedCells != nil {
-		engine.notedCells[cell] = true
+func (engine *RuleEngine) trackControlSpec(s ControlSpec) {
+	if engine.notedControls != nil {
+		engine.notedControls[s] = true
 	}
 }
 
@@ -551,25 +711,23 @@ func (engine *RuleEngine) OnTimerRemoveByIndex(n TimerId, thunk func()) {
 	}
 }
 
-func (engine *RuleEngine) RunRules(cellSpec *CellSpec, timerName string) {
-	var cell *Cell
-	if cellSpec != nil {
-		cell = engine.model.EnsureCell(cellSpec)
-		if cell.IsFreshButton() {
+func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName string) {
+	if ctrlEvent != nil {
+		/*if cell.IsFreshButton() {
 			// special case - a button that wasn't pressed yet
 			return
-		}
-		if cell.IsComplete() {
-			// cell-dependent rules aren't run when any of their
-			// condition cells are incomplete
-			if list, found := engine.cellToRuleMap[cell]; found {
+		}*/
+		if ctrlEvent.IsComplete {
+			// control-dependent rules aren't run when any of their
+			// condition controls are incomplete
+			if list, found := engine.controlToRuleMap[ctrlEvent.Spec]; found {
 				for _, rule := range list {
 					rule.ShouldCheck()
 				}
 			}
 		}
-		for rule, isWithoutCells := range engine.rulesWithoutCells {
-			if isWithoutCells {
+		for rule, isWithoutControls := range engine.rulesWithoutControls {
+			if isWithoutControls {
 				rule.ShouldCheck()
 			}
 		}
@@ -585,7 +743,7 @@ func (engine *RuleEngine) RunRules(cellSpec *CellSpec, timerName string) {
 	}
 
 	for _, ruleId := range engine.ruleList {
-		engine.ruleMap[ruleId].Check(cell)
+		engine.ruleMap[ruleId].Check(ctrlEvent)
 	}
 	engine.currentTimer = NO_TIMER_NAME
 }
@@ -595,7 +753,7 @@ func (engine *RuleEngine) setupCron() {
 		engine.cron.Stop()
 	}
 
-	engine.cron = newCronProxy(engine.cronMaker(), engine.model.CallSync)
+	engine.cron = newCronProxy(engine.cronMaker(), engine.CallSync)
 	// note for rule reloading: will need to restart cron
 	// to reload rules properly
 	for _, ruleId := range engine.ruleList {
@@ -611,119 +769,69 @@ func (engine *RuleEngine) handleStop() {
 		entry.stop()
 	}
 	engine.timers = make(map[TimerId]*TimerEntry)
-	engine.model.ReleaseCellChangeChannel(engine.cellChange)
 	engine.statusMtx.Lock()
-	engine.cellChange = nil
+	engine.controlChangeCh = nil
 	engine.readyCh = nil
+	engine.driverReadyCh = nil
 	engine.statusMtx.Unlock()
 }
 
-func (engine *RuleEngine) isDebugCell(cellSpec *CellSpec) bool {
-	return cellSpec.DevName == RULE_ENGINE_SETTINGS_DEV_NAME &&
-		cellSpec.CellName == RULE_DEBUG_CELL_NAME
+func (engine *RuleEngine) isDebugControl(ctrlSpec ControlSpec) bool {
+	return ctrlSpec.DeviceId == RULE_ENGINE_SETTINGS_DEV_NAME &&
+		ctrlSpec.ControlId == RULE_DEBUG_CELL_NAME
 }
 
 func (engine *RuleEngine) updateDebugEnabled() {
-	engine.model.CallSync(func() {
-		debugCell := engine.model.MustGetCell(
-			&CellSpec{
-				RULE_ENGINE_SETTINGS_DEV_NAME,
-				RULE_DEBUG_CELL_NAME,
-			})
+	engine.CallSync(func() {
+		val, err := engine.driver.GetSync(func(drv wbgo.Driver) (interface{}, error) {
+			dev := drv.GetDevice(RULE_ENGINE_SETTINGS_DEV_NAME)
+			if dev == nil {
+				return nil, ControlNotFoundError
+			}
+			ctrl := dev.GetControl(RULE_DEBUG_CELL_NAME)
+			if ctrl == nil {
+				return nil, ControlNotFoundError
+			}
+
+			return ctrl.GetValue()
+		})()
+
+		if err != nil {
+			panic("No debug control in rule engine service device")
+		}
+
 		engine.debugMtx.Lock()
-		engine.debugEnabled = debugCell.Value().(bool)
+		engine.debugEnabled = val.(bool)
 		engine.debugMtx.Unlock()
 	})
 }
 
 func (engine *RuleEngine) Start() {
-	if engine.cellChange != nil {
+	if engine.controlChangeCh != nil {
 		return
 	}
 	engine.readyCh = make(chan struct{})
-	engine.statusMtx.Lock()
-	engine.cellChange = engine.model.AcquireCellChangeChannel()
-	engine.statusMtx.Unlock()
-	ready := make(chan struct{})
-	engine.model.WhenReady(func() {
-		close(ready)
-	})
-	go func() {
-		// cell changes are ignored until the engine is ready
-		// FIXME: some very small probability of race condition is
-		// present here
-	ReadyWaitLoop:
-		for {
-			select {
-			case <-ready:
-				break ReadyWaitLoop
-			case cellSpec, ok := <-engine.cellChange:
-				if ok {
-					wbgo.Debug.Printf("cell change (not ready yet): %s", cellSpec)
-					if cellSpec == nil || engine.isDebugCell(cellSpec) {
-						engine.updateDebugEnabled()
-					}
-				} else {
-					wbgo.Debug.Printf("stoping the engine (not ready yet)")
-					engine.handleStop()
-					return
-				}
-			}
-		}
-		wbgo.Debug.Printf("setting up cron")
-		engine.model.CallSync(engine.setupCron)
-		wbgo.Debug.Printf("doing the first rule run")
-		engine.model.CallSync(func() {
-			engine.RunRules(nil, NO_TIMER_NAME)
-		})
+	engine.driverReadyCh = make(chan struct{}, 1)
+	engine.controlChangeCh = make(chan ControlChangeEvent, ENGINE_CONTROL_CHANGE_QUEUE_LEN)
 
-		engine.readyQueue.Ready()
-		close(engine.readyCh)
+	go engine.mainLoop()
+	go engine.syncLoop()
+}
 
-		wbgo.Debug.Printf("the engine is ready")
-		// wbgo.Info.Printf("******** READY ********")
-		for {
-			select {
-			case cellSpec, ok := <-engine.cellChange:
-				if ok {
-					if wbgo.DebuggingEnabled() {
-						wbgo.Debug.Printf("cell change: %v", cellSpec)
-						if cellSpec != nil {
-							wbgo.Debug.Printf(
-								"rule engine: running rules after cell change: %s/%s",
-								cellSpec.DevName, cellSpec.CellName)
-						} else {
-							wbgo.Debug.Printf(
-								"rule engine: running rules")
-						}
-					}
-					if cellSpec == nil || engine.isDebugCell(cellSpec) {
-						engine.updateDebugEnabled()
-					}
+func (engine *RuleEngine) Stop() {
+	// stop sync loop
+	q := make(chan struct{})
+	engine.syncQuitCh <- q
+	<-q
 
-					if cellSpec != nil {
-						if err := engine.storeVirtualCellValueToDB(cellSpec); err != nil {
-							wbgo.Warn.Printf("%s/%s: can't set virtual cell value: %s",
-								cellSpec.DevName, cellSpec.CellName, err)
-						}
-					}
-
-					engine.model.CallSync(func() {
-						engine.RunRules(cellSpec, NO_TIMER_NAME)
-					})
-				} else {
-					engine.handleStop()
-					return
-				}
-			}
-		}
-	}()
+	// stop main loop
+	// TODO
 }
 
 func (engine *RuleEngine) IsActive() bool {
 	engine.statusMtx.Lock()
 	defer engine.statusMtx.Unlock()
-	return engine.cellChange != nil
+	return engine.controlChangeCh != nil
 }
 
 func (engine *RuleEngine) StartTimer(name string, callback func(), interval time.Duration, periodic bool) TimerId {
@@ -764,7 +872,7 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 			for {
 				select {
 				case <-tickCh:
-					engine.model.CallSync(func() {
+					engine.CallSync(func() {
 						entry.Lock()
 						wasActive := entry.active
 						entry.Unlock()
@@ -797,41 +905,43 @@ func (engine *RuleEngine) Publish(topic, payload string, qos byte, retain bool) 
 	})
 }
 
-func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
-
-	// check device name (non-zero length, no wildcard symbols)
-	if len(name) == 0 {
-		return fmt.Errorf("invalid virtual device name: empty string")
-	}
-
-	if strings.ContainsAny(name, "#+") {
-		return fmt.Errorf("invalid virtual device name '%s': "+
-			"device name must not contain wildcard characters ('#' and '+')", name)
-	}
-
-	title := name
-	if obj.Has("title") {
-		title = obj.Get("title").Str(name)
-	}
-
-	// if the device was for some reason defined in another script,
-	// we must remove it
-	if engine.model.DeviceExists(name) {
-		engine.Log(ENGINE_LOG_WARNING, fmt.Sprintf("redefinition of virtual device %s", name))
-		engine.model.RemoveLocalDevice(name)
-	}
-
-	dev := engine.model.EnsureLocalDevice(name, title)
-	engine.cleanup.AddCleanup(func() {
-		// runs when the rule file is reloaded
-		engine.model.RemoveLocalDevice(name)
-	})
-
-	if !obj.Has("cells") {
+func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error {
+	// if device description has no controls (cells), skip this
+	if !obj.Has(VDEV_DESCR_PROP_CELLS) && !obj.Has(VDEV_DESCR_PROP_CONTROLS) {
 		return nil
 	}
 
-	v := obj.Get("cells")
+	// determine cells/control property name
+	controlsProp := VDEV_DESCR_PROP_CONTROLS
+	if obj.Has(VDEV_DESCR_PROP_CELLS) {
+		controlsProp = VDEV_DESCR_PROP_CELLS
+	}
+
+	// prepare whole description for this device
+	devArgs := wbgo.NewLocalDeviceArgs().SetId(devId).SetVirtual(true)
+
+	// try to get title
+	if obj.Has(VDEV_DESCR_PROP_TITLE) {
+		devArgs.SetTitle(obj.Get(VDEV_DESCR_PROP_TITLE).Str(devId))
+	}
+
+	/*
+		// if the device was for some reason defined in another script,
+		// we must remove it
+		if engine.model.DeviceExists(name) {
+			engine.Log(ENGINE_LOG_WARNING, fmt.Sprintf("redefinition of virtual device %s", name))
+			engine.model.RemoveLocalDevice(name)
+		}
+
+		dev := engine.model.EnsureLocalDevice(name, title)
+		engine.cleanup.AddCleanup(func() {
+			// runs when the rule file is reloaded
+			engine.model.RemoveLocalDevice(name)
+		})
+	*/
+
+	// get controls list
+	v := obj.Get(controlsProp)
 	var m objx.Map
 	switch {
 	case v.IsObjxMap():
@@ -839,103 +949,156 @@ func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
 	case v.IsMSI():
 		m = objx.Map(v.MSI())
 	default:
-		return fmt.Errorf("device %s doesn't have proper 'cells' property", name)
+		return fmt.Errorf("device %s doesn't have proper 'controls' or 'cells' property", devId)
 	}
 
-	// Sorting cells by their names is not important when defining device
+	// Sorting controls by their names is not important when defining device
 	// while the engine is not active because all the cells will be published
 	// all at once when the engine starts.
 	// On the other hand, when defining the device for the active engine
 	// the newly added cells are published immediately and if their order
 	// changes (map key order is random) the tests may break.
-	cellNames := make([]string, 0, len(m))
-	for cellName, _ := range m {
-		cellNames = append(cellNames, cellName)
+	controlIds := make([]string, 0, len(m))
+	for ctrlId, _ := range m {
+		controlIds = append(controlIds, ctrlId)
 	}
-	sort.Strings(cellNames)
+	sort.Strings(controlIds)
 
-	for _, cellName := range cellNames {
-		maybeCellDef := m[cellName]
-		cellDef, ok := maybeCellDef.(objx.Map)
+	controlsArgs := make([]*wbgo.ControlArgs, 0, len(m))
+
+	for _, ctrlId := range controlIds {
+		// check if this object is a correct control definition (is an object, at least)
+		maybeCtrlDef := m[ctrlId]
+		ctrlDef, ok := maybeCtrlDef.(objx.Map)
 		if !ok {
-			cd, ok := maybeCellDef.(map[string]interface{})
+			cd, ok := maybeCtrlDef.(map[string]interface{})
 			if !ok {
-				return fmt.Errorf("%s/%s: bad cell definition", name, cellName)
+				return fmt.Errorf("%s/%s: bad control definition", devId, ctrlId)
 			}
-			cellDef = objx.Map(cd)
+			ctrlDef = objx.Map(cd)
 		}
-		cellType, ok := cellDef["type"]
+
+		// create control args
+		args := wbgo.NewControlArgs().SetId(ctrlId)
+
+		// append args to controls args list
+		controlsArgs = append(controlsArgs, args)
+
+		// fill in control args
+		//
+		// try to get type
+		ctrlType, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_TYPE]
 		if !ok {
-			return fmt.Errorf("%s/%s: no cell type", name, cellName)
+			return fmt.Errorf("%s/%s: no control type", devId, ctrlId)
 		}
-		// FIXME: too much spaghetti for my taste
-		if cellType == "pushbutton" {
-			dev.SetButtonCell(cellName)
-			continue
-		}
+		args.SetType(ctrlType.(string))
 
+		/*
+			// FIXME: too much spaghetti for my taste
+			if cellType == "pushbutton" {
+				dev.SetButtonCell(cellName)
+				continue
+			}
+		*/
+
+		// get 'forceDefault' metaproperty
+		// (it doesn't go to MQTT, just to get default value source)
 		forceDefault := false
-		forceDefaultRaw, hasForceDefault := cellDef["forceDefault"]
-
+		forceDefaultRaw, hasForceDefault := ctrlDef[VDEV_CONTROL_DESCR_PROP_FORCEDEFAULT]
 		if hasForceDefault {
 			ok := false
 			forceDefault, ok = forceDefaultRaw.(bool)
 			if !ok {
 				return fmt.Errorf("%s/%s: non-boolean value of forceDefault propery",
-					name, cellName)
+					devId, ctrlId)
 			}
 		}
 
-		cellValue, ok := cellDef["value"]
+		ctrlValue, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_VALUE]
 		if !ok {
-			return fmt.Errorf("%s/%s: cell value required for cell type %s",
-				name, cellName, cellType)
+			return fmt.Errorf("%s/%s: cell value required for control type %s",
+				devId, ctrlId, ctrlType)
 		}
 
-		// try to get last stored value of virtual cell
+		// try to get last stored value of virtual control
 		if !forceDefault {
-			if v, err := engine.getVirtualCellValueFromDB(name, cellName); err == nil {
-				cellValue = v
-				wbgo.Debug.Printf("%s/%s: set previous virtual cell value \"%s\"",
-					name, cellName, cellValue)
-			} else if _, ok = err.(*CellNotFoundError); ok {
-				// cell not found, do nothing
-				wbgo.Debug.Printf("%s/%s: previous cell value not found", name, cellName)
+			if v, err := engine.getVirtualCellValueFromDB(devId, ctrlId); err == nil {
+				ctrlValue = v
+				wbgo.Debug.Printf("%s/%s: set previous virtual control value \"%s\"",
+					devId, ctrlId, ctrlValue)
+			} else if err == ControlNotFoundError {
+				// control not found, do nothing
+				wbgo.Debug.Printf("%s/%s: previous control value not found", devId, ctrlId)
 			} else {
-				wbgo.Warn.Printf("%s/%s: can't get previous virtual cell value: %s",
-					name, cellName, err)
+				wbgo.Warn.Printf("%s/%s: can't get previous virtual control value: %s",
+					devId, ctrlId, err)
 			}
 		}
 
-		cellReadonly := false
-		cellReadonlyRaw, hasReadonly := cellDef["readonly"]
+		// set control value itself
+		args.SetValue(ctrlValue)
 
+		// get readonly/writeable flag
+		ctrlReadonly := VDEV_CONTROL_READONLY_DEFAULT
+
+		ctrlReadonlyRaw, hasReadonly := ctrlDef[VDEV_CONTROL_DESCR_PROP_READONLY]
+		ctrlWriteableRaw, hasWriteable := ctrlDef[VDEV_CONTROL_DESCR_PROP_WRITEABLE]
 		if hasReadonly {
-			cellReadonly, ok = cellReadonlyRaw.(bool)
+			ctrlReadonly, ok = ctrlReadonlyRaw.(bool)
 			if !ok {
-				return fmt.Errorf("%s/%s: non-boolean value of readonly property",
-					name, cellName)
+				return fmt.Errorf("%s/%s: non-boolean value of 'readonly' property",
+					devId, ctrlId)
 			}
+		} else if hasWriteable {
+			w, ok := ctrlWriteableRaw.(bool)
+			if !ok {
+				return fmt.Errorf("%s/%s: non-boolean value of 'writeable' property",
+					devId, ctrlId)
+			}
+			ctrlReadonly = !w
 		}
 
-		if cellType == "range" {
-			fmax := DEFAULT_CELL_MAX
-			max, ok := cellDef["max"]
+		// set readonly/writeable flag
+		args.SetReadonly(ctrlReadonly)
+
+		// get properties for 'range' type
+		// FIXME: deprecated
+		if ctrlType == wbgo.CONV_TYPE_RANGE {
+			fmax := VDEV_CONTROL_RANGE_MAX_DEFAULT
+			max, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_MAX]
 			if ok {
 				fmax, ok = max.(float64)
 				if !ok {
 					return fmt.Errorf("%s/%s: non-numeric value of max property",
-						name, cellName)
+						devId, ctrlId)
 				}
 			}
-			// FIXME: can be float
-			dev.SetRangeCell(cellName, cellValue, fmax, cellReadonly)
-		} else {
-			dev.SetCell(cellName, cellType.(string), cellValue, cellReadonly)
+
+			// set argument
+			args.SetMax(int(fmax))
 		}
 	}
 
-	return nil
+	// create virtual device using collected descriptions
+	_, err := engine.driver.GetSync(func(drv wbgo.Driver) (interface{}, error) {
+		// create device by device description
+		d, err := drv.CreateDevice(devArgs)()
+		if err != nil {
+			return nil, err
+		}
+
+		// create controls
+		for _, ctrlArgs := range controlsArgs {
+			_, err := d.CreateControl(ctrlArgs)()
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		return nil, nil
+	})()
+
+	return err
 }
 
 func (engine *RuleEngine) DefineRule(rule *Rule) (id RuleId, err error) {
@@ -974,21 +1137,22 @@ func (engine *RuleEngine) DefineRule(rule *Rule) (id RuleId, err error) {
 // Refresh() should be called after engine rules are altered
 // while the engine is running.
 func (engine *RuleEngine) Refresh() {
-	engine.rev++ // invalidate cell proxies
+	engine.rev++ // invalidate device/control proxies
 	engine.setupCron()
 
 	// Some cell pointers are now probably invalid
-	engine.cellToRuleMap = make(map[*Cell][]*Rule)
+	// FIXME: maybe this problem is gone now
+	engine.controlToRuleMap = make(map[ControlSpec][]*Rule)
 	for _, rule := range engine.ruleMap {
 		rule.StoreInitiallyKnownDeps()
 	}
-	engine.rulesWithoutCells = make(map[*Rule]bool)
+	engine.rulesWithoutControls = make(map[*Rule]bool)
 	engine.timerRules = make(map[string][]*Rule)
 	engine.RunRules(nil, NO_TIMER_NAME)
 }
 
-func (engine *RuleEngine) CellModel() *CellModel {
-	return engine.model
+func (engine *RuleEngine) Driver() wbgo.Driver {
+	return engine.driver
 }
 
 func (engine *RuleEngine) getRev() uint64 {

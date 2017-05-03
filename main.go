@@ -11,7 +11,10 @@ import (
 )
 
 const (
-	DRIVER_CLIENT_ID      = "rules"
+	DRIVER_CLIENT_ID = "rules"
+	DRIVER_CONV_ID   = "wb-rules"
+	ENGINE_CLIENT_ID = "wb-rules-engine"
+
 	PERSISTENT_DB_FILE    = "/var/lib/wirenboard/wbrules-persistent.db"
 	VIRTUAL_CELLS_DB_FILE = "/var/lib/wirenboard/wbrules-vcells.db"
 
@@ -37,17 +40,21 @@ func main() {
 	if *mqttDebug {
 		wbgo.EnableMQTTDebugLog(*useSyslog)
 	}
-	model := wbrules.NewCellModel()
-	mqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID, true)
-	driver := wbgo.NewDriver(model, mqttClient)
-	driver.SetAutoPoll(false)
-	driver.SetAcceptsExternalDevices(true)
+	wbgo.MaybeInitProfiling(nil)
+
+	// model := wbrules.NewCellModel()
+	driverMqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID)
+	// driver := wbgo.NewDriver(model, mqttClient)
+	driver := wbgo.NewDriverBase(wbgo.NewDriverArgs().SetId(DRIVER_CONV_ID).SetMqtt(driverMqttClient))
+	driver.SetFilter(&wbgo.AllDevicesFilter{})
+	// driver.SetAcceptsExternalDevices(true)
 
 	engineOptions := wbrules.NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(PERSISTENT_DB_FILE)
 	engineOptions.SetVirtualCellsStorageFile(VIRTUAL_CELLS_DB_FILE)
 	engineOptions.SetModulesDirs(strings.Split(os.Getenv(WBRULES_MODULES_ENV), ":"))
 
+	engineMqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, ENGINE_CLIENT_ID)
 	engine := wbrules.NewESEngine(model, mqttClient, engineOptions)
 
 	gotSome := false
@@ -76,6 +83,11 @@ func main() {
 	}
 
 	engine.Start()
+
+	c := make(chan struct{}, 1)
+	engine.WhenEngineReady(func() {
+		c <- struct{}{}
+	})
 
 	for {
 		time.Sleep(1 * time.Second)
