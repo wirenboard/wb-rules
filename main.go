@@ -47,7 +47,7 @@ func main() {
 	// driver := wbgo.NewDriver(model, mqttClient)
 	driver, err := wbgo.NewDriverBase(wbgo.NewDriverArgs().SetId(DRIVER_CONV_ID).SetMqtt(driverMqttClient).SetStoragePath(VIRTUAL_DEVICES_DB_FILE))
 	if err != nil {
-
+		wbgo.Error.Fatalf("error creating driver: %s", err)
 	}
 	driver.SetFilter(&wbgo.AllDevicesFilter{})
 	// driver.SetAcceptsExternalDevices(true)
