@@ -15,8 +15,8 @@ const (
 	DRIVER_CONV_ID   = "wb-rules"
 	ENGINE_CLIENT_ID = "wb-rules-engine"
 
-	PERSISTENT_DB_FILE    = "/var/lib/wirenboard/wbrules-persistent.db"
-	VIRTUAL_CELLS_DB_FILE = "/var/lib/wirenboard/wbrules-vcells.db"
+	PERSISTENT_DB_FILE      = "/var/lib/wirenboard/wbrules-persistent.db"
+	VIRTUAL_DEVICES_DB_FILE = "/var/lib/wirenboard/wbrules-vdev.db"
 
 	WBRULES_MODULES_ENV = "WB_RULES_MODULES"
 )
@@ -45,17 +45,19 @@ func main() {
 	// model := wbrules.NewCellModel()
 	driverMqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID)
 	// driver := wbgo.NewDriver(model, mqttClient)
-	driver := wbgo.NewDriverBase(wbgo.NewDriverArgs().SetId(DRIVER_CONV_ID).SetMqtt(driverMqttClient))
+	driver, err := wbgo.NewDriverBase(wbgo.NewDriverArgs().SetId(DRIVER_CONV_ID).SetMqtt(driverMqttClient).SetStoragePath(VIRTUAL_DEVICES_DB_FILE))
+	if err != nil {
+
+	}
 	driver.SetFilter(&wbgo.AllDevicesFilter{})
 	// driver.SetAcceptsExternalDevices(true)
 
 	engineOptions := wbrules.NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(PERSISTENT_DB_FILE)
-	engineOptions.SetVirtualCellsStorageFile(VIRTUAL_CELLS_DB_FILE)
 	engineOptions.SetModulesDirs(strings.Split(os.Getenv(WBRULES_MODULES_ENV), ":"))
 
 	engineMqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, ENGINE_CLIENT_ID)
-	engine := wbrules.NewESEngine(model, mqttClient, engineOptions)
+	engine := wbrules.NewESEngine(driver, engineMqttClient, engineOptions)
 
 	gotSome := false
 	watcher := wbgo.NewDirWatcher("\\.js$", engine)
@@ -72,12 +74,13 @@ func main() {
 	if !gotSome {
 		wbgo.Error.Fatalf("no valid scripts found")
 	}
-	if err := driver.Start(); err != nil {
+
+	if err := driver.StartLoop(); err != nil {
 		wbgo.Error.Fatalf("error starting the driver: %s", err)
 	}
 
 	if *editDir != "" {
-		rpc := wbgo.NewMQTTRPCServer("wbrules", mqttClient)
+		rpc := wbgo.NewMQTTRPCServer("wbrules", engineMqttClient)
 		rpc.Register(wbrules.NewEditor(engine))
 		rpc.Start()
 	}
