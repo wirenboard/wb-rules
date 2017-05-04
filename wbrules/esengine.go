@@ -120,13 +120,13 @@ func init() {
 	}
 }
 
-func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngineOptions) (engine *ESEngine) {
+func NewESEngine(driver wbgo.Driver, mqttClient wbgo.MQTTClient, options *ESEngineOptions) (engine *ESEngine) {
 	if options == nil {
 		panic("no options given to NewESEngine")
 	}
 
 	engine = &ESEngine{
-		RuleEngine:        NewRuleEngine(model, mqttClient, options.RuleEngineOptions),
+		RuleEngine:        NewRuleEngine(driver, mqttClient, options.RuleEngineOptions),
 		ctxFactory:        newESContextFactory(),
 		localCtxs:         make(map[string]*ESContext),
 		ctxTimers:         make(map[*ESContext]*TimerSet),
@@ -136,7 +136,7 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngine
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
 	}
-	engine.globalCtx = engine.ctxFactory.newESContext(model.CallSync, "")
+	engine.globalCtx = engine.ctxFactory.newESContext(engine.CallSync, "")
 
 	if options.PersistentDBFile != "" {
 		if err := engine.SetPersistentDBMode(options.PersistentDBFile,
@@ -355,12 +355,12 @@ func (engine *ESEngine) runTimerCleanups(ctx *ESContext) {
 
 func (engine *ESEngine) buildSingleWhenChangedRuleCondition(ctx *ESContext, defIndex int) (RuleCondition, error) {
 	if ctx.IsString(defIndex) {
-		cellFullName := ctx.SafeToString(defIndex)
-		parts := strings.SplitN(cellFullName, "/", 2)
+		controlFullId := ctx.SafeToString(defIndex)
+		parts := strings.SplitN(controlFullId, "/", 2)
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid whenChanged spec: '%s'", cellFullName)
+			return nil, fmt.Errorf("invalid whenChanged spec: '%s'", controlFullId)
 		}
-		return NewCellChangedRuleCondition(CellSpec{parts[0], parts[1]})
+		return NewCellChangedRuleCondition(ControlSpec{parts[0], parts[1]})
 	}
 	if ctx.IsFunction(defIndex) {
 		f := ctx.WrapCallback(defIndex)
@@ -704,7 +704,7 @@ func (engine *ESEngine) loadScriptAndRefresh(path string, loadIfUnchanged bool) 
 
 func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 	r := make(chan error)
-	engine.model.WhenReady(func() {
+	engine.WhenEngineReady(func() {
 		wbgo.Debug.Printf("OverwriteScript(%s)", virtualPath)
 		cleanPath, virtualPath, err := engine.checkVirtualPath(virtualPath)
 		wbgo.Debug.Printf("OverwriteScript: %s %s %v", cleanPath, virtualPath, err)
@@ -742,7 +742,7 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 // the script isn't loaded.
 func (engine *ESEngine) LiveLoadFile(path string) error {
 	r := make(chan error)
-	engine.model.WhenReady(func() {
+	engine.WhenEngineReady(func() {
 		r <- engine.loadScriptAndRefresh(path, false)
 	})
 
@@ -756,7 +756,7 @@ func (engine *ESEngine) LiveRemoveFile(path string) error {
 		return err
 	}
 
-	engine.model.WhenReady(func() {
+	engine.WhenEngineReady(func() {
 		engine.tracker.Untrack(virtualPath)
 		engine.runCleanups(path)
 		engine.Refresh()
@@ -1021,34 +1021,34 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 		wbgo.Error.Printf("invalid _wbCellObject call")
 		return duktape.DUK_RET_TYPE_ERROR
 	}
-	cellProxy := devProxy.EnsureCell(ctx.GetString(-1))
-	ctx.PushGoObject(cellProxy)
+	controlProxy := devProxy.EnsureControlProxy(ctx.GetString(-1))
+	ctx.PushGoObject(controlProxy)
 	ctx.DefineFunctions(map[string]func(*ESContext) int{
-		"rawValue": func(ctx *ESContext) int {
-			ctx.PushString(cellProxy.RawValue())
+		JS_DEVPROXY_FUNC_RAWVALUE: func(ctx *ESContext) int {
+			ctx.PushString(controlProxy.RawValue())
 			return 1
 		},
-		"value": func(ctx *ESContext) int {
+		JS_DEVPROXY_FUNC_VALUE: func(ctx *ESContext) int {
 			m := objx.New(map[string]interface{}{
-				"v": cellProxy.Value(),
+				JS_DEVPROXY_FUNC_VALUE_RET: controlProxy.Value(),
 			})
 			ctx.PushJSObject(m)
 			return 1
 		},
-		"setValue": func(ctx *ESContext) int {
+		JS_DEVPROXY_FUNC_SETVALUE: func(ctx *ESContext) int {
 			if ctx.GetTop() != 1 || !ctx.IsObject(-1) {
 				return duktape.DUK_RET_ERROR
 			}
 			m, ok := ctx.GetJSObject(-1).(objx.Map)
-			if !ok || !m.Has("v") {
-				wbgo.Error.Printf("invalid cell definition")
+			if !ok || !m.Has(JS_DEVPROXY_FUNC_SETVALUE_ARG) {
+				wbgo.Error.Printf("invalid control definition")
 				return duktape.DUK_RET_TYPE_ERROR
 			}
-			cellProxy.SetValue(m["v"])
+			controlProxy.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG])
 			return 1
 		},
-		"isComplete": func(ctx *ESContext) int {
-			ctx.PushBoolean(cellProxy.IsComplete())
+		JS_DEVPROXY_FUNC_ISCOMPLETE: func(ctx *ESContext) int {
+			ctx.PushBoolean(controlProxy.IsComplete())
 			return 1
 		},
 	})
@@ -1163,7 +1163,7 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 			return
 		}
 		if callbackFn != nil {
-			engine.model.CallSync(func() {
+			engine.CallSync(func() {
 				args := objx.New(map[string]interface{}{
 					"exitStatus": r.ExitStatus,
 				})
@@ -1239,9 +1239,12 @@ func (engine *ESEngine) esWbRunRules(ctx *ESContext) int {
 	case 0:
 		engine.RunRules(nil, NO_TIMER_NAME)
 	case 2:
-		devName := ctx.SafeToString(0)
-		cellName := ctx.SafeToString(1)
-		engine.RunRules(&CellSpec{devName, cellName}, NO_TIMER_NAME)
+		devId := ctx.SafeToString(0)
+		ctrlId := ctx.SafeToString(1)
+		e := &ControlChangeEvent{
+			Spec: ControlSpec{devId, ctrlId},
+		}
+		engine.RunRules(e, NO_TIMER_NAME)
 	default:
 		return duktape.DUK_RET_ERROR
 	}
@@ -1339,7 +1342,7 @@ func (engine *ESEngine) esReadConfig(ctx *ESContext) int {
 
 func (engine *ESEngine) EvalScript(code string) error {
 	ch := make(chan error)
-	engine.model.CallSync(func() {
+	engine.CallSync(func() {
 		err := engine.globalCtx.EvalScript(code)
 		if err != nil {
 			engine.Logf(ENGINE_LOG_ERROR, "eval error: %s", err)
