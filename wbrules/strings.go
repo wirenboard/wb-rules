@@ -22,4 +22,11 @@ const (
 	// default 'max' value for 'range' type
 	// FIXME: deprecated
 	VDEV_CONTROL_RANGE_MAX_DEFAULT = 255.0
+
+	JS_DEVPROXY_FUNC_SETVALUE     = "setValue"
+	JS_DEVPROXY_FUNC_SETVALUE_ARG = "v"
+	JS_DEVPROXY_FUNC_RAWVALUE     = "rawValue"
+	JS_DEVPROXY_FUNC_VALUE        = "value"
+	JS_DEVPROXY_FUNC_VALUE_RET    = "v"
+	JS_DEVPROXY_FUNC_ISCOMPLETE   = "isComplete"
 )
