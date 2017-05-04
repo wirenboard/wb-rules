@@ -1,5 +1,5 @@
 hash: bde87cff8ad93e3b4b66c0d0c25fcb4fd8120a51b88a03ba09ac522fbae898a4
-updated: 2017-05-03T20:05:03.881920977+03:00
+updated: 2017-05-04T16:35:37.504227284+03:00
 imports:
 - name: github.com/boltdb/bolt
   version: 2e25e3bb4285d41d223bb80b12658a2c9b9bf3e3
@@ -10,7 +10,7 @@ imports:
   subpackages:
   - packets
 - name: github.com/contactless/wbgo
-  version: d58b50a97a85b588f572f3d177e58be5be444788
+  version: f2029190c670f4128181d23d50a7521f373e6513
   subpackages:
   - testutils
 - name: github.com/davecgh/go-spew

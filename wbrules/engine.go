@@ -3,12 +3,10 @@ package wbrules
 import (
 	"errors"
 	"fmt"
-	"github.com/boltdb/bolt"
 	wbgo "github.com/contactless/wbgo"
 	"github.com/robfig/cron"
 	"github.com/stretchr/objx"
 	"log"
-	"os"
 	"sort"
 	"sync"
 	"time"
@@ -23,8 +21,6 @@ const (
 	NO_CALLBACK                   = ESCallback(0)
 	RULE_ENGINE_SETTINGS_DEV_NAME = "wbrules"
 	RULE_DEBUG_CELL_NAME          = "Rule debugging"
-
-	VIRTUAL_CELLS_DB_CHMOD = 0640
 
 	SYNC_QUEUE_LEN = 1
 
@@ -146,7 +142,7 @@ func (ctrlProxy *ControlProxy) getSync(f func(drv wbgo.Driver) (interface{}, err
 }
 
 func (ctrlProxy *ControlProxy) getControl() wbgo.Control {
-	if dev, updated := ctrlProxy.devProxy.getDev(); updated {
+	if _, updated := ctrlProxy.devProxy.getDev(); updated {
 		ctrlProxy.control = ctrlProxy.devProxy.getControl(ctrlProxy.name)
 	}
 
@@ -178,7 +174,7 @@ func (ctrlProxy *ControlProxy) Value() interface{} {
 func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
 	ctrl := ctrlProxy.getControl()
 	_, err := ctrlProxy.getSync(func(drv wbgo.Driver) (interface{}, error) {
-		return nil, ctrl.SetValue(value)()
+		return nil, ctrl.UpdateValue(value)()
 	})
 	if err != nil {
 		wbgo.Error.Printf("control %s/%s SetValue() error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, err)
@@ -219,22 +215,10 @@ type ControlChangeEvent struct {
 }
 
 type RuleEngineOptions struct {
-	VirtualCellsStorageFile     string
-	VirtualCellsStorageFileMode os.FileMode
 }
 
 func NewRuleEngineOptions() *RuleEngineOptions {
-	return &RuleEngineOptions{
-		VirtualCellsStorageFileMode: VIRTUAL_CELLS_DB_CHMOD,
-	}
-}
-
-func (o *RuleEngineOptions) SetVirtualCellsStorageFileMode(mode os.FileMode) {
-	o.VirtualCellsStorageFileMode = mode
-}
-
-func (o *RuleEngineOptions) SetVirtualCellsStorageFile(file string) {
-	o.VirtualCellsStorageFile = file
+	return &RuleEngineOptions{}
 }
 
 type RuleEngine struct {
@@ -268,7 +252,6 @@ type RuleEngine struct {
 	debugEnabled         bool
 	readyCh              chan struct{}
 	readyQueue           *wbgo.DeferredList
-	virtualCellsStorage  *bolt.DB
 }
 
 func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngineOptions) (engine *RuleEngine) {
@@ -302,16 +285,8 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 		cron:                 nil,
 		debugEnabled:         wbgo.DebuggingEnabled(),
 		readyCh:              nil,
-		readyQueue:           wbgo.NewDeferredList(nil),
-		virtualCellsStorage:  nil,
 	}
-
-	if options.VirtualCellsStorageFile != "" {
-		if err := engine.SetVirtualCellsDBMode(options.VirtualCellsStorageFile,
-			options.VirtualCellsStorageFileMode); err != nil {
-			panic("error opening virtual controls storage: " + err.Error())
-		}
-	}
+	engine.readyQueue = wbgo.NewDeferredList(engine.CallSync)
 
 	engine.setupRuleEngineSettingsDevice()
 	return
@@ -367,7 +342,7 @@ ReadyWaitLoop:
 		engine.RunRules(nil, NO_TIMER_NAME)
 	})
 
-	engine.readyQueue.Ready()
+	engine.CallSync(engine.readyQueue.Ready)
 	close(engine.readyCh)
 
 	wbgo.Debug.Printf("the engine is ready")
@@ -382,11 +357,6 @@ ReadyWaitLoop:
 				}
 				if engine.isDebugControl(event.Spec) {
 					engine.updateDebugEnabled()
-				}
-
-				if err := engine.storeVirtualCellValueToDB(event.Spec); err != nil {
-					wbgo.Warn.Printf("%s/%s: can't set virtual control value: %s",
-						event.Spec.DeviceId, event.Spec.ControlId, err)
 				}
 
 				engine.CallSync(func() {
@@ -422,138 +392,6 @@ func (engine *RuleEngine) CallSync(thunk func()) {
 
 func (engine *RuleEngine) WhenEngineReady(thunk func()) {
 	engine.readyQueue.MaybeDefer(thunk)
-}
-
-// Create or open virtual cells DB file
-func (engine *RuleEngine) SetVirtualCellsDB(filename string) (err error) {
-	return engine.SetVirtualCellsDBMode(filename, VIRTUAL_CELLS_DB_CHMOD)
-}
-
-func (engine *RuleEngine) SetVirtualCellsDBMode(filename string, mode os.FileMode) (err error) {
-	if engine.virtualCellsStorage != nil {
-		wbgo.Error.Printf("virtual cells DB is already opened")
-		err = fmt.Errorf("virtual cells DB is aleready opened")
-		return
-	}
-
-	engine.virtualCellsStorage, err = bolt.Open(filename, mode,
-		&bolt.Options{Timeout: 1 * time.Second})
-
-	if err != nil {
-		wbgo.Error.Printf("can't open virtual cells DB file: %s", err)
-	}
-
-	return
-}
-
-// Force close virtual cells DB
-func (engine *RuleEngine) CloseVirtualCellsDB() (err error) {
-	if engine.virtualCellsStorage == nil {
-		wbgo.Error.Printf("virtual cells DB is not opened, nothing to close")
-		err = fmt.Errorf("nothing to close")
-		return
-	}
-
-	err = engine.virtualCellsStorage.Close()
-
-	return
-}
-
-// "Cell not found" error
-type CellNotFoundError struct{}
-
-func (e *CellNotFoundError) Error() string {
-	return ""
-}
-
-// Get cell value by name from virtual cells DB
-func (engine *RuleEngine) getVirtualCellValueFromDB(device string, control string) (value string, err error) {
-	var ok bool
-
-	if engine.virtualCellsStorage == nil {
-		err = fmt.Errorf("DB is not initialized")
-		return
-	}
-
-	err = engine.virtualCellsStorage.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(device))
-		if b == nil { // no bucket for this device
-			ok = false
-			return nil
-		}
-		ok = true
-
-		rval := b.Get([]byte(control))
-		if rval == nil {
-			ok = false
-			return nil
-		}
-
-		value = string(rval)
-		return nil
-	})
-
-	if !ok {
-		err = &CellNotFoundError{}
-		return
-	}
-
-	wbgo.Debug.Printf("%s/%s: restore virtual cell value from DB: \"%s\"",
-		device, control, value)
-
-	return
-}
-
-// Set cell value in virtual cells DB
-func (engine *RuleEngine) storeVirtualCellValueToDBRaw(device string, control string, value string) (err error) {
-	ok := true
-
-	if engine.virtualCellsStorage == nil {
-		err = fmt.Errorf("DB is not initialized")
-		return
-	}
-
-	err = engine.virtualCellsStorage.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte(device))
-		if err != nil {
-			ok = false
-			return err
-		}
-
-		if err := b.Put([]byte(control), []byte(value)); err != nil {
-			ok = false
-			return err
-		}
-
-		return nil
-	})
-
-	if !ok {
-		err = fmt.Errorf("error writing cell value to DB: %s", err)
-		return
-	}
-
-	wbgo.Debug.Printf("%s/%s: store virtual cell value to DB: \"%s\"",
-		device, control, value)
-
-	return
-}
-
-func (engine *RuleEngine) storeVirtualCellValueToDB(cellSpec ControlSpec) (err error) {
-	/*if cellSpec == nil {
-		return fmt.Errorf("cellSpec is nil")
-	}
-
-	cell := engine.model.EnsureCell(cellSpec)
-
-	// check that this cell belongs to virtual device
-	// FIXME: this is awful
-	if _, ok := cell.device.(*CellModelLocalDevice); !ok {
-		return nil
-	}
-
-	return engine.storeVirtualCellValueToDBRaw(cellSpec.DeviceId, cellSpec.ControlId, cell.value)*/
-	return nil
 }
 
 func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
@@ -925,21 +763,6 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		devArgs.SetTitle(obj.Get(VDEV_DESCR_PROP_TITLE).Str(devId))
 	}
 
-	/*
-		// if the device was for some reason defined in another script,
-		// we must remove it
-		if engine.model.DeviceExists(name) {
-			engine.Log(ENGINE_LOG_WARNING, fmt.Sprintf("redefinition of virtual device %s", name))
-			engine.model.RemoveLocalDevice(name)
-		}
-
-		dev := engine.model.EnsureLocalDevice(name, title)
-		engine.cleanup.AddCleanup(func() {
-			// runs when the rule file is reloaded
-			engine.model.RemoveLocalDevice(name)
-		})
-	*/
-
 	// get controls list
 	v := obj.Get(controlsProp)
 	var m objx.Map
@@ -1002,7 +825,6 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		*/
 
 		// get 'forceDefault' metaproperty
-		// (it doesn't go to MQTT, just to get default value source)
 		forceDefault := false
 		forceDefaultRaw, hasForceDefault := ctrlDef[VDEV_CONTROL_DESCR_PROP_FORCEDEFAULT]
 		if hasForceDefault {
@@ -1013,26 +835,12 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 					devId, ctrlId)
 			}
 		}
+		args.SetDoLoadPrevious(!forceDefault)
 
 		ctrlValue, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_VALUE]
 		if !ok {
 			return fmt.Errorf("%s/%s: cell value required for control type %s",
 				devId, ctrlId, ctrlType)
-		}
-
-		// try to get last stored value of virtual control
-		if !forceDefault {
-			if v, err := engine.getVirtualCellValueFromDB(devId, ctrlId); err == nil {
-				ctrlValue = v
-				wbgo.Debug.Printf("%s/%s: set previous virtual control value \"%s\"",
-					devId, ctrlId, ctrlValue)
-			} else if err == ControlNotFoundError {
-				// control not found, do nothing
-				wbgo.Debug.Printf("%s/%s: previous control value not found", devId, ctrlId)
-			} else {
-				wbgo.Warn.Printf("%s/%s: can't get previous virtual control value: %s",
-					devId, ctrlId, err)
-			}
 		}
 
 		// set control value itself
@@ -1080,7 +888,7 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	}
 
 	// create virtual device using collected descriptions
-	_, err := engine.driver.GetSync(func(drv wbgo.Driver) (interface{}, error) {
+	d, err := engine.driver.GetSync(func(drv wbgo.Driver) (interface{}, error) {
 		// create device by device description
 		d, err := drv.CreateDevice(devArgs)()
 		if err != nil {
@@ -1095,8 +903,22 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 			}
 		}
 
-		return nil, nil
+		return d, nil
 	})()
+
+	if err != nil {
+		return err
+	}
+
+	dev := d.(wbgo.LocalDevice)
+
+	// defer cleanup
+	engine.cleanup.AddCleanup(func() {
+		err := engine.driver.RemoveDeviceSync(dev)()
+		if err != nil {
+			wbgo.Warn.Printf("failed to remove device %s in cleanup: %s", devId, err)
+		}
+	})
 
 	return err
 }
