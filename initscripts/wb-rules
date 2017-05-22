@@ -45,7 +45,7 @@ WB_RULES_QUEUES_LEN=2048
 # and status_of_proc is working.
 . /lib/lsb/init-functions
 
-DAEMON_ARGS="$WB_RULES_OPTIONS -syslog -queues-len $WB_RULES_QUEUES_LEN -editdir '$RULE_DIR' '$SYSTEM_RULE_DIR' '$RULE_DIR' '$PRIVATE_RULE_DIR'"
+DAEMON_ARGS="$WB_RULES_OPTIONS -syslog -queue-len $WB_RULES_QUEUES_LEN -editdir '$RULE_DIR' '$SYSTEM_RULE_DIR' '$RULE_DIR' '$PRIVATE_RULE_DIR'"
 
 #
 # Function that starts the daemon/service
