@@ -1,3 +1,9 @@
+wb-rules (1.7~nmu2) stable; urgency=medium
+
+  * variable MQTT queues length 
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Mon, 22 May 2017 15:26:32 +0300
+
 wb-rules (1.7~nmu1) stable; urgency=medium
 
   * modules - initial version
