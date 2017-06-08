@@ -1,3 +1,9 @@
+wb-rules (1.7~nmu3) stable; urgency=medium
+
+  * push warnings about MQTT token queue overflow 
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Thu, 08 Jun 2017 17:53:39 +0300
+
 wb-rules (1.7~nmu2) stable; urgency=medium
 
   * variable MQTT queues length 
