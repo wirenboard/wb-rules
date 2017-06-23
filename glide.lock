@@ -8,7 +8,7 @@ imports:
   subpackages:
   - packets
 - name: github.com/contactless/wbgo
-  version: 9bc7a646208f022bdc7209f0b53cc2f7c661cd25
+  version: 365e6fbcf00f9ced8e6389376862affdc747f106
   subpackages:
   - testutils
 - name: github.com/davecgh/go-spew
