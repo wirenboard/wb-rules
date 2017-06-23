@@ -43,7 +43,7 @@ func main() {
 	}
 	model := wbrules.NewCellModel()
 	mqttClient := wbgo.NewPahoMQTTClientQueues(*brokerAddress, DRIVER_CLIENT_ID, true, *queueLens, *queueLens)
-	driver := wbgo.NewDriver(model, mqttClient)
+	driver := wbgo.NewDriverQueueLens(model, mqttClient, *queueLens, *queueLens)
 	driver.SetAutoPoll(false)
 	driver.SetAcceptsExternalDevices(true)
 

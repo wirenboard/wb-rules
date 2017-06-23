@@ -1,3 +1,10 @@
+wb-rules (1.7~nmu4) stable; urgency=medium
+
+  * push warnings about Driver queues overflow
+  * add variable queues to Driver
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Fri, 23 Jun 2017 12:24:04 +0300
+
 wb-rules (1.7~nmu3) stable; urgency=medium
 
   * push warnings about MQTT token queue overflow 
