@@ -244,36 +244,36 @@ func NewRuleEngineOptions() *RuleEngineOptions {
 }
 
 type RuleEngine struct {
-	cleanup              *ScopedCleanup
-	rev                  uint64
-	syncQueue            chan func()
-	syncQuitCh           chan chan struct{}
-	mqttClient           wbgo.MQTTClient // for service
-	driver               wbgo.Driver
-	driverReadyCh        chan struct{}
-	controlChangeCh      chan ControlChangeEvent
-	timerFunc            TimerFunc
-	nextTimerId          TimerId
-	timers               map[TimerId]*TimerEntry
-	callbackIndex        ESCallback
-	nextRuleId           RuleId
-	ruleMap              map[RuleId]*Rule
-	ruleNameMap          map[string]*Rule
-	ruleList             []RuleId
-	notedControls        map[ControlSpec]bool
-	notedTimers          map[string]bool
-	controlToRuleMap     map[ControlSpec][]*Rule
-	rulesWithoutControls map[*Rule]bool
-	timerRules           map[string][]*Rule
-	currentTimer         string
-	cronMaker            func() Cron
-	cron                 Cron
-	statusMtx            sync.Mutex
-	debugMtx             sync.Mutex
-	getTimerMtx          sync.Mutex
-	debugEnabled         bool
-	readyCh              chan struct{}
-	readyQueue           *wbgo.DeferredList
+	cleanup               *ScopedCleanup
+	rev                   uint64
+	syncQueue             chan func()
+	syncQuitCh            chan chan struct{}
+	mqttClient            wbgo.MQTTClient // for service
+	driver                wbgo.Driver
+	driverReadyCh         chan struct{}
+	controlChangeCh       chan ControlChangeEvent
+	timerFunc             TimerFunc
+	nextTimerId           TimerId
+	timers                map[TimerId]*TimerEntry
+	callbackIndex         ESCallback
+	nextRuleId            RuleId
+	ruleMap               map[RuleId]*Rule
+	ruleNameMap           map[string]*Rule
+	ruleList              []RuleId
+	notedControls         map[ControlSpec]bool
+	notedTimers           map[string]bool
+	controlToRulesListMap map[ControlSpec][]*Rule
+	rulesWithoutControls  map[*Rule]bool
+	timerRules            map[string][]*Rule
+	currentTimer          string
+	cronMaker             func() Cron
+	cron                  Cron
+	statusMtx             sync.Mutex
+	debugMtx              sync.Mutex
+	getTimerMtx           sync.Mutex
+	debugEnabled          bool
+	readyCh               chan struct{}
+	readyQueue            *wbgo.DeferredList
 }
 
 func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngineOptions) (engine *RuleEngine) {
@@ -282,31 +282,31 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 	}
 
 	engine = &RuleEngine{
-		cleanup:              MakeScopedCleanup(),
-		rev:                  0,
-		syncQueue:            make(chan func(), SYNC_QUEUE_LEN),
-		syncQuitCh:           make(chan chan struct{}, 1),
-		mqttClient:           mqtt,
-		driver:               driver,
-		driverReadyCh:        nil,
-		timerFunc:            newTimer,
-		nextTimerId:          1,
-		timers:               make(map[TimerId]*TimerEntry),
-		callbackIndex:        1,
-		nextRuleId:           1,
-		ruleMap:              make(map[RuleId]*Rule),
-		ruleNameMap:          make(map[string]*Rule),
-		ruleList:             make([]RuleId, 0, RULES_CAPACITY),
-		notedControls:        nil,
-		notedTimers:          nil,
-		controlToRuleMap:     make(map[ControlSpec][]*Rule),
-		rulesWithoutControls: make(map[*Rule]bool),
-		timerRules:           make(map[string][]*Rule),
-		currentTimer:         NO_TIMER_NAME,
-		cronMaker:            func() Cron { return cron.New() },
-		cron:                 nil,
-		debugEnabled:         wbgo.DebuggingEnabled(),
-		readyCh:              nil,
+		cleanup:               MakeScopedCleanup(),
+		rev:                   0,
+		syncQueue:             make(chan func(), SYNC_QUEUE_LEN),
+		syncQuitCh:            make(chan chan struct{}, 1),
+		mqttClient:            mqtt,
+		driver:                driver,
+		driverReadyCh:         nil,
+		timerFunc:             newTimer,
+		nextTimerId:           1,
+		timers:                make(map[TimerId]*TimerEntry),
+		callbackIndex:         1,
+		nextRuleId:            1,
+		ruleMap:               make(map[RuleId]*Rule),
+		ruleNameMap:           make(map[string]*Rule),
+		ruleList:              make([]RuleId, 0, RULES_CAPACITY),
+		notedControls:         nil,
+		notedTimers:           nil,
+		controlToRulesListMap: make(map[ControlSpec][]*Rule),
+		rulesWithoutControls:  make(map[*Rule]bool),
+		timerRules:            make(map[string][]*Rule),
+		currentTimer:          NO_TIMER_NAME,
+		cronMaker:             func() Cron { return cron.New() },
+		cron:                  nil,
+		debugEnabled:          wbgo.DebuggingEnabled(),
+		readyCh:               nil,
 	}
 	engine.readyQueue = wbgo.NewDeferredList(engine.CallSync)
 
@@ -445,7 +445,7 @@ func (engine *RuleEngine) StartTrackingDeps() {
 }
 
 func (engine *RuleEngine) StoreRuleControlSpec(rule *Rule, spec ControlSpec) {
-	list, found := engine.controlToRuleMap[spec]
+	list, found := engine.controlToRulesListMap[spec]
 	if !found {
 		list = make([]*Rule, 0, ENGINE_CONTROL_RULES_CAPACITY)
 	} else {
@@ -456,7 +456,7 @@ func (engine *RuleEngine) StoreRuleControlSpec(rule *Rule, spec ControlSpec) {
 		}
 	}
 	// wbgo.Debug.Printf("adding cell %s for rule %s", cell.Name(), rule.name)
-	engine.controlToRuleMap[spec] = append(list, rule)
+	engine.controlToRulesListMap[spec] = append(list, rule)
 	engine.rulesWithoutControls[rule] = false
 }
 
@@ -580,7 +580,7 @@ func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName stri
 		if ctrlEvent.IsComplete {
 			// control-dependent rules aren't run when any of their
 			// condition controls are incomplete
-			if list, found := engine.controlToRuleMap[ctrlEvent.Spec]; found {
+			if list, found := engine.controlToRulesListMap[ctrlEvent.Spec]; found {
 				for _, rule := range list {
 					rule.ShouldCheck()
 				}
@@ -992,7 +992,7 @@ func (engine *RuleEngine) Refresh() {
 
 	// Some cell pointers are now probably invalid
 	// FIXME: maybe this problem is gone now
-	engine.controlToRuleMap = make(map[ControlSpec][]*Rule)
+	engine.controlToRulesListMap = make(map[ControlSpec][]*Rule)
 	for _, rule := range engine.ruleMap {
 		rule.StoreInitiallyKnownDeps()
 	}
