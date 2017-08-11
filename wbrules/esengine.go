@@ -1021,21 +1021,34 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 		wbgo.Error.Printf("invalid _wbCellObject call")
 		return duktape.DUK_RET_TYPE_ERROR
 	}
+
 	controlProxy := devProxy.EnsureControlProxy(ctx.GetString(-1))
 	ctx.PushGoObject(controlProxy)
 	ctx.DefineFunctions(map[string]func(*ESContext) int{
 		JS_DEVPROXY_FUNC_RAWVALUE: func(ctx *ESContext) int {
-			ctx.PushString(controlProxy.RawValue())
+			ctx.PushThis()
+			c := ctx.GetGoObject(-1).(*ControlProxy)
+			ctx.Pop()
+
+			ctx.PushString(c.RawValue())
 			return 1
 		},
 		JS_DEVPROXY_FUNC_VALUE: func(ctx *ESContext) int {
+			ctx.PushThis()
+			c := ctx.GetGoObject(-1).(*ControlProxy)
+			ctx.Pop()
+
 			m := objx.New(map[string]interface{}{
-				JS_DEVPROXY_FUNC_VALUE_RET: controlProxy.Value(),
+				JS_DEVPROXY_FUNC_VALUE_RET: c.Value(),
 			})
 			ctx.PushJSObject(m)
 			return 1
 		},
 		JS_DEVPROXY_FUNC_SETVALUE: func(ctx *ESContext) int {
+			ctx.PushThis()
+			c := ctx.GetGoObject(-1).(*ControlProxy)
+			ctx.Pop()
+
 			if ctx.GetTop() != 1 || !ctx.IsObject(-1) {
 				return duktape.DUK_RET_ERROR
 			}
@@ -1044,11 +1057,15 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 				wbgo.Error.Printf("invalid control definition")
 				return duktape.DUK_RET_TYPE_ERROR
 			}
-			controlProxy.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG])
+			c.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG])
 			return 1
 		},
 		JS_DEVPROXY_FUNC_ISCOMPLETE: func(ctx *ESContext) int {
-			ctx.PushBoolean(controlProxy.IsComplete())
+			ctx.PushThis()
+			c := ctx.GetGoObject(-1).(*ControlProxy)
+			ctx.Pop()
+
+			ctx.PushBoolean(c.IsComplete())
 			return 1
 		},
 	})
