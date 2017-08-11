@@ -112,16 +112,24 @@ type ControlProxy struct {
 	control  wbgo.Control
 }
 
-func makeDeviceProxy(owner proxyOwner, devId string) *DeviceProxy {
-	return &DeviceProxy{owner, devId, owner.Driver().GetDeviceSync(devId), owner.getRev()}
+func getDeviceRefFromDriver(devId string, drv wbgo.Driver) (dev wbgo.Device, err error) {
+	err = drv.Access(func(tx wbgo.DriverTx) error {
+		dev = tx.GetDevice(devId)
+		return nil
+	})
+	return
 }
 
-func (devProxy *DeviceProxy) getDev() (wbgo.Device, bool) {
-	if devProxy.rev != devProxy.owner.getRev() {
-		devProxy.dev = devProxy.owner.Driver().GetDeviceSync(devProxy.name)
-		return devProxy.dev, true
+func makeDeviceProxy(owner proxyOwner, devId string) (*DeviceProxy, error) {
+	dev, err := getDeviceRefFromDriver(devId, owner.Driver())
+	if err != nil {
+		return nil, err
 	}
-	return devProxy.dev, false
+	return &DeviceProxy{owner, devId, dev, owner.getRev()}, nil
+}
+
+func (devProxy *DeviceProxy) updated() bool {
+	return (devProxy.rev != devProxy.owner.getRev())
 }
 
 func (devProxy *DeviceProxy) EnsureControlProxy(ctrlId string) *ControlProxy {
@@ -129,20 +137,25 @@ func (devProxy *DeviceProxy) EnsureControlProxy(ctrlId string) *ControlProxy {
 }
 
 func (devProxy *DeviceProxy) getControl(ctrlId string) wbgo.Control {
-	dev, _ := devProxy.getDev()
-	c, _ := devProxy.owner.Driver().GetSync(func(drv wbgo.Driver) (interface{}, error) {
-		return dev.GetControl(ctrlId), nil
-	})()
+	devId := devProxy.name
+
+	var c wbgo.Control
+	devProxy.owner.Driver().Access(func(tx wbgo.DriverTx) error {
+		dev := tx.GetDevice(devId)
+		c = dev.GetControl(ctrlId)
+		return nil
+	})
 
 	return c.(wbgo.Control)
 }
 
-func (ctrlProxy *ControlProxy) getSync(f func(drv wbgo.Driver) (interface{}, error)) (interface{}, error) {
-	return ctrlProxy.devProxy.owner.Driver().GetSync(f)()
+// just a syntax sugar
+func (ctrlProxy *ControlProxy) accessDriver(f func(tx wbgo.DriverTx) error) error {
+	return ctrlProxy.devProxy.owner.Driver().Access(f)
 }
 
 func (ctrlProxy *ControlProxy) getControl() wbgo.Control {
-	if _, updated := ctrlProxy.devProxy.getDev(); updated {
+	if ctrlProxy.devProxy.updated() {
 		ctrlProxy.control = ctrlProxy.devProxy.getControl(ctrlProxy.name)
 	}
 
@@ -150,19 +163,24 @@ func (ctrlProxy *ControlProxy) getControl() wbgo.Control {
 	return ctrlProxy.control
 }
 
-func (ctrlProxy *ControlProxy) RawValue() string {
+// TODO: return error on non-existing/incomplete control
+func (ctrlProxy *ControlProxy) RawValue() (v string) {
 	ctrl := ctrlProxy.getControl()
-	v, _ := ctrlProxy.getSync(func(drv wbgo.Driver) (interface{}, error) {
-		return ctrl.GetRawValue(), nil
+	ctrlProxy.accessDriver(func(tx wbgo.DriverTx) error {
+		ctrl.SetTx(tx)
+		v = ctrl.GetRawValue()
+		return nil
 	})
-	return v.(string)
+	return
 }
 
-// TODO: error handling
-func (ctrlProxy *ControlProxy) Value() interface{} {
+// TODO: return error on non-existing/incomplete control
+func (ctrlProxy *ControlProxy) Value() (v interface{}) {
 	ctrl := ctrlProxy.getControl()
-	v, err := ctrlProxy.getSync(func(drv wbgo.Driver) (interface{}, error) {
-		return ctrl.GetValue()
+	err := ctrlProxy.accessDriver(func(tx wbgo.DriverTx) (err error) {
+		ctrl.SetTx(tx)
+		v, err = ctrl.GetValue()
+		return
 	})
 	if err != nil {
 		return nil
@@ -173,20 +191,24 @@ func (ctrlProxy *ControlProxy) Value() interface{} {
 
 func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
 	ctrl := ctrlProxy.getControl()
-	_, err := ctrlProxy.getSync(func(drv wbgo.Driver) (interface{}, error) {
-		return nil, ctrl.UpdateValue(value)()
+	err := ctrlProxy.accessDriver(func(tx wbgo.DriverTx) error {
+		ctrl.SetTx(tx)
+		return ctrl.UpdateValue(value)()
 	})
 	if err != nil {
 		wbgo.Error.Printf("control %s/%s SetValue() error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, err)
 	}
 }
 
-func (ctrlProxy *ControlProxy) IsComplete() bool {
+// FIXME: error handling here
+func (ctrlProxy *ControlProxy) IsComplete() (v bool) {
 	ctrl := ctrlProxy.getControl()
-	v, _ := ctrlProxy.getSync(func(drv wbgo.Driver) (interface{}, error) {
-		return ctrl.IsComplete(), nil
+	_ = ctrlProxy.accessDriver(func(tx wbgo.DriverTx) error {
+		ctrl.SetTx(tx)
+		v = ctrl.IsComplete()
+		return nil
 	})
-	return v.(bool)
+	return v
 }
 
 // cronProxy helps to avoid race conditions when
@@ -621,25 +643,28 @@ func (engine *RuleEngine) isDebugControl(ctrlSpec ControlSpec) bool {
 
 func (engine *RuleEngine) updateDebugEnabled() {
 	engine.CallSync(func() {
-		val, err := engine.driver.GetSync(func(drv wbgo.Driver) (interface{}, error) {
-			dev := drv.GetDevice(RULE_ENGINE_SETTINGS_DEV_NAME)
+		var val bool
+		err := engine.driver.Access(func(tx wbgo.DriverTx) error {
+			dev := tx.GetDevice(RULE_ENGINE_SETTINGS_DEV_NAME)
 			if dev == nil {
-				return nil, ControlNotFoundError
+				return ControlNotFoundError
 			}
 			ctrl := dev.GetControl(RULE_DEBUG_CELL_NAME)
 			if ctrl == nil {
-				return nil, ControlNotFoundError
+				return ControlNotFoundError
 			}
 
-			return ctrl.GetValue()
-		})()
+			i, err := ctrl.GetValue()
+			val = i.(bool)
+			return err
+		})
 
 		if err != nil {
 			panic("No debug control in rule engine service device")
 		}
 
 		engine.debugMtx.Lock()
-		engine.debugEnabled = val.(bool)
+		engine.debugEnabled = val
 		engine.debugMtx.Unlock()
 	})
 }
@@ -888,33 +913,36 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	}
 
 	// create virtual device using collected descriptions
-	d, err := engine.driver.GetSync(func(drv wbgo.Driver) (interface{}, error) {
+	var dev wbgo.LocalDevice
+	err := engine.driver.Access(func(tx wbgo.DriverTx) (err error) {
 		// create device by device description
-		d, err := drv.CreateDevice(devArgs)()
+		dev, err = tx.CreateDevice(devArgs)()
 		if err != nil {
-			return nil, err
+			return
 		}
 
 		// create controls
 		for _, ctrlArgs := range controlsArgs {
-			_, err := d.CreateControl(ctrlArgs)()
+			_, err = dev.CreateControl(ctrlArgs)()
 			if err != nil {
-				return nil, err
+				// cleanup
+				tx.RemoveDevice(dev)()
+				return
 			}
 		}
 
-		return d, nil
-	})()
+		return
+	})
 
 	if err != nil {
 		return err
 	}
 
-	dev := d.(wbgo.LocalDevice)
-
 	// defer cleanup
 	engine.cleanup.AddCleanup(func() {
-		err := engine.driver.RemoveDeviceSync(dev)()
+		err := engine.driver.Access(func(tx wbgo.DriverTx) error {
+			return tx.RemoveDevice(dev)()
+		})
 		if err != nil {
 			wbgo.Warn.Printf("failed to remove device %s in cleanup: %s", devId, err)
 		}
@@ -981,7 +1009,7 @@ func (engine *RuleEngine) getRev() uint64 {
 	return engine.rev
 }
 
-func (engine *RuleEngine) GetDeviceProxy(name string) *DeviceProxy {
+func (engine *RuleEngine) GetDeviceProxy(name string) (*DeviceProxy, error) {
 	return makeDeviceProxy(engine, name)
 }
 
