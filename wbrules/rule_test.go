@@ -7,9 +7,15 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 	"time"
+)
+
+const (
+	WBRULES_DRIVER_ID              = "wbrules"
+	EXTRA_CTRL_CHANGE_WAIT_TIME_MS = 50
 )
 
 type fakeCron struct {
@@ -54,17 +60,25 @@ func (cron *fakeCron) invokeEntries(spec string) {
 }
 
 type RuleSuiteBase struct {
-	CellSuiteBase
-	ruleFile string
+	testutils.Suite
+	*testutils.FakeMQTTFixture
+
 	*testutils.DataFileFixture
 	*testutils.FakeTimerFixture
-	engine *ESEngine
-	cron   *fakeCron
 
-	PersistentDBFile        string
-	VirtualCellsStorageFile string
-	ModulesPath             string /* ':'-separated list */
-	CleanUp                 func()
+	driver                          wbgo.Driver
+	client, driverClient, logClient wbgo.MQTTClient
+
+	engine *ESEngine
+
+	controlChange <-chan *ControlChangeEvent
+
+	ruleFile string
+	cron     *fakeCron
+
+	PersistentDBFile string
+	ModulesPath      string /* ':'-separated list */
+	CleanUp          func()
 }
 
 var logVerifyRx = regexp.MustCompile(`^\[(info|debug|warning|error)\] (.*)`)
@@ -79,9 +93,6 @@ func (s *RuleSuiteBase) createTempFiles() {
 
 	if s.PersistentDBFile == "" {
 		s.PersistentDBFile = tmpDir + "/test-persistent.db"
-	}
-	if s.VirtualCellsStorageFile == "" {
-		s.VirtualCellsStorageFile = tmpDir + "/test-vcells.db"
 	}
 
 	s.CleanUp = func() {
@@ -105,42 +116,115 @@ func (s *RuleSuiteBase) preprocessItemsForVerify(items []interface{}) (newItems 
 			continue
 		}
 		logLevelStr, message := groups[1], groups[2]
-		newItems[n] = fmt.Sprintf("driver -> /wbrules/log/%s: [%s] (QoS 1)", logLevelStr, message)
+		newItems[n] = fmt.Sprintf("wbrules-log -> /wbrules/log/%s: [%s] (QoS 1)", logLevelStr, message)
 	}
 	return
 }
 
 func (s *RuleSuiteBase) Verify(items ...interface{}) {
-	s.CellSuiteBase.Verify(s.preprocessItemsForVerify(items)...)
+	s.FakeMQTTFixture.Verify(s.preprocessItemsForVerify(items)...)
 }
 
 func (s *RuleSuiteBase) VerifyUnordered(items ...interface{}) {
-	s.CellSuiteBase.VerifyUnordered(s.preprocessItemsForVerify(items)...)
+	s.VerifyUnordered(s.preprocessItemsForVerify(items)...)
+}
+
+func (s *RuleSuiteBase) expectControlChange(expectedControlNames ...string) {
+	// need to compare lists correctly
+	if expectedControlNames == nil {
+		expectedControlNames = make([]string, 0)
+	}
+
+	// Notifications happen asynchronously and aren't guaranteed to be
+	// keep original order. Perhaps this needs to be fixed.
+	actualControlNames := make([]string, len(expectedControlNames))
+
+	for i := range actualControlNames {
+		var e *ControlChangeEvent
+
+		wbgo.Debug.Printf("TEST: controlChange channel is %v", s.controlChange)
+
+		t := time.After(5 * time.Second)
+		select {
+		case e = <-s.controlChange:
+			wbgo.Debug.Printf("received ControlChangeEvent %v", e)
+		case <-t:
+			s.FailNow(fmt.Sprintf("timeout waiting for control change event: '%s'", expectedControlNames[i]))
+		}
+
+		t = nil
+
+		ctrlSpec := e.Spec
+		fullName := fmt.Sprintf("%s/%s", ctrlSpec.DeviceId, ctrlSpec.ControlId)
+		actualControlNames[i] = fullName
+	}
+	sort.Strings(expectedControlNames)
+	sort.Strings(actualControlNames)
+
+	// compare
+	s.Equal(expectedControlNames, actualControlNames)
+
+	timer := time.After(EXTRA_CTRL_CHANGE_WAIT_TIME_MS * time.Millisecond)
+	select {
+	case <-timer:
+	case e := <-s.controlChange:
+		s.Require().Fail("unexpected control change", "control: %v", e.Spec)
+	}
+}
+
+func (s *RuleSuiteBase) T() *testing.T {
+	return s.Suite.T()
 }
 
 func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
-	s.CellSuiteBase.SetupTest(waitForRetained)
-	s.DataFileFixture = testutils.NewDataFileFixture(s.T())
-	s.FakeTimerFixture = testutils.NewFakeTimerFixture(s.T(), s.Recorder)
+	var err error
+
+	s.Suite.SetupTest()
+	s.FakeMQTTFixture = testutils.NewFakeMQTTFixture(s.T())
+
+	s.Broker.SetWaitForRetained(waitForRetained)
+
+	s.client = s.Broker.MakeClient("tst")
+	s.client.Start()
+
+	s.driverClient = s.Broker.MakeClient("driver")
+	s.driver, err = wbgo.NewDriverBase(wbgo.NewDriverArgs().
+		SetId(WBRULES_DRIVER_ID).
+		SetMqtt(s.driverClient).
+		SetUseStorage(false).
+		SetTesting())
+	s.Ck("can't create driver", err)
+
+	err = s.driver.StartLoop()
+	s.Ck("StartLoop()", err)
+
 	s.cron = nil
 
-	if s.VirtualCellsStorageFile == "" || s.PersistentDBFile == "" {
+	if s.PersistentDBFile == "" {
 		s.createTempFiles()
 	}
 
 	engineOptions := NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(s.PersistentDBFile)
-	engineOptions.SetVirtualCellsStorageFile(s.VirtualCellsStorageFile)
 	engineOptions.SetModulesDirs(strings.Split(s.ModulesPath, ":"))
+	s.logClient = s.Broker.MakeClient("wbrules-log")
 
-	s.engine = NewESEngine(s.model, s.driverClient, engineOptions)
+	s.engine = NewESEngine(s.driver, s.logClient, engineOptions)
 	s.engine.SetTimerFunc(s.newFakeTimer)
 	s.engine.SetCronMaker(func() Cron {
 		s.cron = newFakeCron(s.T())
 		return s.cron
 	})
+
+	s.controlChange = s.engine.SubscribeControlChange()
+	s.DataFileFixture = testutils.NewDataFileFixture(s.T())
+	s.FakeTimerFixture = testutils.NewFakeTimerFixture(s.T(), s.Recorder)
+
+	s.engine.Start()
+	s.driver.SetFilter(&wbgo.AllDevicesFilter{})
+
 	s.loadScripts(ruleFiles)
-	s.driver.Start()
+
 	if !waitForRetained {
 		s.publishSomedev()
 	}
@@ -178,48 +262,66 @@ func (s *RuleSuiteBase) RemoveScript(oldName string) {
 func (s *RuleSuiteBase) SetupSkippingDefs(ruleFiles ...string) {
 	s.SetupTest(false, ruleFiles...)
 	s.SkipTill("tst -> /devices/somedev/controls/temp: [19] (QoS 1, retained)")
-	s.engine.Start()
-	<-s.engine.ReadyCh()
+
+	select {
+	case <-time.After(5 * time.Second):
+		s.FailNow("engine is not ready for such a long time")
+	case <-s.engine.ReadyCh():
+	}
 	return
 }
 
 func (s *RuleSuiteBase) newFakeTimer(id TimerId, d time.Duration, periodic bool) wbgo.Timer {
-	return s.NewFakeTimerOrTicker(testutils.TimerId(id), d, periodic)
+	return s.NewFakeTimerOrTicker(uint64(id), d, periodic)
+}
+
+func (s *RuleSuiteBase) publish(topic, value string, expectedCellNames ...string) {
+	retained := !strings.HasSuffix(topic, "/on")
+	wbgo.Debug.Printf("publishing %s to %s, expecting change of %v", value, topic, expectedCellNames)
+	s.client.Publish(wbgo.MQTTMessage{topic, value, 1, retained})
+	s.expectControlChange(expectedCellNames...)
 }
 
 func (s *RuleSuiteBase) publishSomedev() {
-	<-s.model.publishDoneCh
-	s.publish("/devices/somedev/meta/name", "SomeDev", "")
+	s.publish("/devices/somedev/meta/name", "SomeDev")
 	s.publish("/devices/somedev/controls/sw/meta/type", "switch", "somedev/sw")
 	s.publish("/devices/somedev/controls/sw", "0", "somedev/sw")
 	s.publish("/devices/somedev/controls/temp/meta/type", "temperature", "somedev/temp")
 	s.publish("/devices/somedev/controls/temp", "19", "somedev/temp")
 }
 
-func (s *RuleSuiteBase) SetCellValue(device, cellName string, value interface{}) {
-	s.driver.CallSync(func() {
-		s.model.EnsureDevice(device).EnsureCell(cellName).SetValue(value)
+func (s *RuleSuiteBase) SetCellValue(devId, ctrlId string, value interface{}) {
+	err := s.driver.Access(func(tx wbgo.DriverTx) (err error) {
+		dev := tx.GetDevice(devId)
+		ctrl := dev.GetControl(ctrlId)
+		err = ctrl.UpdateValue(value)()
+
+		return err
 	})
-	actualCellSpec := <-s.cellChange
-	s.Equal(device+"/"+cellName,
-		actualCellSpec.DevName+"/"+actualCellSpec.CellName)
+	s.Ck("Access()", err)
+	event := <-s.controlChange
+	ctrlSpec := event.Spec
+
+	s.Equal(devId+"/"+ctrlId, ctrlSpec.String())
 }
 
 func (s *RuleSuiteBase) TearDownTest() {
 	s.TearDownDataFiles()
-	s.CellSuiteBase.TearDownTest()
+
+	s.engine.Stop()
 	s.WaitFor(func() bool {
 		return !s.engine.IsActive()
 	})
 
 	s.engine.ClosePersistentDB()
-	s.engine.CloseVirtualCellsDB()
 	s.PersistentDBFile = ""
-	s.VirtualCellsStorageFile = ""
 
 	if s.CleanUp != nil {
 		s.CleanUp()
 	}
+
+	err := s.driver.StopLoop()
+	s.Ck("StopLoop()", err)
 }
 
 // TBD: metadata (like, meta["devname"]["controlName"])

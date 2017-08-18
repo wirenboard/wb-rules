@@ -120,13 +120,13 @@ func init() {
 	}
 }
 
-func NewESEngine(driver wbgo.Driver, mqttClient wbgo.MQTTClient, options *ESEngineOptions) (engine *ESEngine) {
+func NewESEngine(driver wbgo.Driver, logMqttClient wbgo.MQTTClient, options *ESEngineOptions) (engine *ESEngine) {
 	if options == nil {
 		panic("no options given to NewESEngine")
 	}
 
 	engine = &ESEngine{
-		RuleEngine:        NewRuleEngine(driver, mqttClient, options.RuleEngineOptions),
+		RuleEngine:        NewRuleEngine(driver, logMqttClient, options.RuleEngineOptions),
 		ctxFactory:        newESContextFactory(),
 		localCtxs:         make(map[string]*ESContext),
 		ctxTimers:         make(map[*ESContext]*TimerSet),
@@ -1310,6 +1310,8 @@ func (engine *ESEngine) esWbCtrlRule(ctx *ESContext, state bool) int {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("trying to %s undefined rule: %d", act, ruleId))
 		return duktape.DUK_RET_ERROR
 	}
+
+	wbgo.Debug.Printf("[ruleengine] %sRule(ruleId=%d)", act, ruleId)
 
 	return 0
 }

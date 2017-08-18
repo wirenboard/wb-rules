@@ -128,7 +128,7 @@ func (ruleCond *CellChangedRuleCondition) Check(e *ControlChangeEvent) (bool, in
 	}
 
 	v := e.Value
-	if ruleCond.oldValue == v && !e.IsRetained {
+	if e.IsRetained && ruleCond.oldValue == v {
 		return false, nil
 	}
 
@@ -267,6 +267,7 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 				"newValue": e.Value,
 			})
 		}
+		wbgo.Debug.Printf("[rule] firing Rule ruleId=%d", rule.id)
 		rule.then(args)
 	}
 }
