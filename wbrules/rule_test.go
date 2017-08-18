@@ -126,7 +126,7 @@ func (s *RuleSuiteBase) Verify(items ...interface{}) {
 }
 
 func (s *RuleSuiteBase) VerifyUnordered(items ...interface{}) {
-	s.VerifyUnordered(s.preprocessItemsForVerify(items)...)
+	s.FakeMQTTFixture.VerifyUnordered(s.preprocessItemsForVerify(items)...)
 }
 
 func (s *RuleSuiteBase) expectControlChange(expectedControlNames ...string) {
