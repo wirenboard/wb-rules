@@ -64,3 +64,9 @@ func (sc *ScopedCleanup) RunCleanups(scope string) {
 		cleanupFn()
 	}
 }
+
+func (sc *ScopedCleanup) RunAllCleanups() {
+	for scope := range sc.cleanupLists {
+		sc.RunCleanups(scope)
+	}
+}

@@ -148,7 +148,7 @@ var _WbRules = {
         def = arg2;
     }
 
-    debug("defineRule: " + name == "" ? "(anon)" : name);
+    debug("defineRule: {}".format(name == "" ? "(anon)" : name));
     if (typeof name != "string" || typeof def != "object")
       throw new Error("invalid rule definition");
 
