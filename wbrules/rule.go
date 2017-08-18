@@ -239,7 +239,7 @@ func (rule *Rule) ShouldCheck() {
 }
 
 func (rule *Rule) Check(e *ControlChangeEvent) {
-	if !rule.shouldCheck {
+	if e != nil && !rule.shouldCheck {
 		// Don't invoke js if no cells mentioned in the
 		// condition callback changed. If rules are run
 		// not due to a cell being changed, still need

@@ -136,13 +136,14 @@ func NewESEngine(driver wbgo.Driver, logMqttClient wbgo.MQTTClient, options *ESE
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
 	}
-	engine.globalCtx = engine.ctxFactory.newESContext(engine.CallSync, "")
+	engine.globalCtx = engine.ctxFactory.newESContext(engine.MaybeCallSync, "")
 
 	if options.PersistentDBFile != "" {
 		if err := engine.SetPersistentDBMode(options.PersistentDBFile,
 			options.PersistentDBFileMode); err != nil {
 			panic("error opening persistent DB file: " + err.Error())
 		}
+		engine.Log(ENGINE_LOG_INFO, fmt.Sprintf("using file %s for persistent DB", options.PersistentDBFile))
 	}
 
 	engine.globalCtx.SetCallbackErrorHandler(engine.CallbackErrorHandler)
@@ -1460,7 +1461,7 @@ func (engine *ESEngine) esPersistentName(ctx *ESContext) int {
 	} else {
 		// get global ID for bucket if this is local storage
 		name = engine.expandLocalObjectId(ctx, name)
-		engine.Log(ENGINE_LOG_DEBUG, fmt.Sprintf("create local storage name: %s", name))
+		engine.Log(ENGINE_LOG_INFO, fmt.Sprintf("create local storage name: %s", name))
 	}
 
 	// push name as return value

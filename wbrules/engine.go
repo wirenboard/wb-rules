@@ -247,6 +247,7 @@ func NewRuleEngineOptions() *RuleEngineOptions {
 type RuleEngine struct {
 	cleanup               *ScopedCleanup
 	rev                   uint64
+	syncQueueActive       bool
 	syncQueue             chan func()
 	syncQuitCh            chan chan struct{}
 	mqttClient            wbgo.MQTTClient // for service
@@ -275,6 +276,7 @@ type RuleEngine struct {
 	debugEnabled          bool
 	readyCh               chan struct{}
 	readyQueue            *wbgo.DeferredList
+	timerDeferQueue       *wbgo.DeferredList
 
 	// subscriptions to control change events
 	// suitable for testing
@@ -291,6 +293,7 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 		cleanup:               MakeScopedCleanup(),
 		rev:                   0,
 		syncQueue:             make(chan func(), SYNC_QUEUE_LEN),
+		syncQueueActive:       true,
 		syncQuitCh:            make(chan chan struct{}, 1),
 		mqttClient:            mqtt,
 		driver:                driver,
@@ -317,6 +320,7 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
 	engine.readyQueue = wbgo.NewDeferredList(engine.CallSync)
+	engine.timerDeferQueue = wbgo.NewDeferredList(engine.CallHere)
 
 	engine.setupRuleEngineSettingsDevice()
 	return
@@ -370,8 +374,10 @@ func (engine *RuleEngine) syncLoop() {
 	wbgo.Debug.Println("[engine] Starting sync loop")
 	for {
 		select {
-		case f := <-engine.syncQueue:
-			f()
+		case f, ok := <-engine.syncQueue:
+			if ok {
+				f()
+			}
 		case q := <-engine.syncQuitCh:
 			wbgo.Debug.Println("[engine] Stopping sync loop")
 			close(q)
@@ -412,6 +418,7 @@ ReadyWaitLoop:
 	})
 
 	engine.CallSync(engine.readyQueue.Ready)
+	engine.CallSync(engine.timerDeferQueue.Ready)
 	close(engine.readyCh)
 
 	wbgo.Debug.Printf("the engine is ready")
@@ -476,7 +483,23 @@ func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
 }
 
 func (engine *RuleEngine) CallSync(thunk func()) {
-	engine.syncQueue <- thunk
+	select {
+	case engine.syncQueue <- thunk:
+	case <-time.After(3 * time.Second):
+		panic("[engine] CallSync stuck!")
+	}
+}
+
+func (engine *RuleEngine) MaybeCallSync(thunk func()) {
+	if engine.syncQueueActive {
+		engine.CallSync(thunk)
+	} else {
+		thunk()
+	}
+}
+
+func (engine *RuleEngine) CallHere(thunk func()) {
+	thunk()
 }
 
 func (engine *RuleEngine) WhenEngineReady(thunk func()) {
@@ -701,6 +724,8 @@ func (engine *RuleEngine) handleStop() {
 	engine.controlChangeCh = nil
 	engine.readyCh = nil
 	engine.driverReadyCh = nil
+	engine.syncQueueActive = false
+	close(engine.syncQueue)
 	engine.statusMtx.Unlock()
 }
 
@@ -746,19 +771,26 @@ func (engine *RuleEngine) Start() {
 	engine.controlChangeCh = make(chan *ControlChangeEvent, ENGINE_CONTROL_CHANGE_QUEUE_LEN)
 
 	engine.driver.OnDriverEvent(engine.driverEventHandler)
+	engine.syncQueueActive = true
 
 	go engine.mainLoop()
 	go engine.syncLoop()
 }
 
 func (engine *RuleEngine) Stop() {
+	// run all necessary cleanups
+	engine.cleanup.RunAllCleanups()
+
+	// stop main loop
+	close(engine.controlChangeCh)
+
+	// wait for main loop to release sync queue
+	<-engine.syncQueue
+
 	// stop sync loop
 	q := make(chan struct{})
 	engine.syncQuitCh <- q
 	<-q
-
-	// stop main loop
-	close(engine.controlChangeCh)
 }
 
 func (engine *RuleEngine) IsActive() bool {
@@ -786,7 +818,7 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 		wbgo.Warn.Printf("warning: ignoring callback func for a named timer")
 	}
 
-	engine.WhenEngineReady(func() {
+	engine.timerDeferQueue.MaybeDefer(func() {
 		entry.Lock()
 		defer entry.Unlock()
 		if !entry.active {

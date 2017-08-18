@@ -69,6 +69,8 @@ func (s *PersistentStorageSuite) TestLocalPersistentStorage() {
 	s.VerifyUnordered(
 		"tst -> /devices/vdev/controls/localWrite/on: [1] (QoS 1)",
 		"driver -> /devices/vdev/controls/localWrite: [1] (QoS 1, retained)",
+		"[info] create local storage name: _FoHhVAtest_local", // hash here depends on script filename
+		"[info] create local storage name: _oonG1Qtest_local",
 		"[info] file1: write to local PS",
 		"[info] file2: write to local PS",
 	)
@@ -79,6 +81,8 @@ func (s *PersistentStorageSuite) TestLocalPersistentStorage() {
 	s.VerifyUnordered(
 		"tst -> /devices/vdev/controls/localRead/on: [1] (QoS 1)",
 		"driver -> /devices/vdev/controls/localRead: [1] (QoS 1, retained)",
+		"[info] create local storage name: _FoHhVAtest_local", // hash here depends on script filename
+		"[info] create local storage name: _oonG1Qtest_local",
 		"[info] file1: read objects \"hello_from_1\", undefined",
 		"[info] file2: read objects undefined, \"hello_from_2\"",
 	)
