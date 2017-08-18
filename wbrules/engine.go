@@ -29,8 +29,9 @@ const (
 	ENGINE_LOG_WARNING
 	ENGINE_LOG_ERROR
 
-	ENGINE_CONTROL_CHANGE_QUEUE_LEN = 16
-	ENGINE_CONTROL_RULES_CAPACITY   = 8
+	ENGINE_CONTROL_CHANGE_QUEUE_LEN     = 16
+	ENGINE_CONTROL_CHANGE_SUBS_CAPACITY = 2
+	ENGINE_CONTROL_RULES_CAPACITY       = 8
 )
 
 // errors
@@ -251,7 +252,7 @@ type RuleEngine struct {
 	mqttClient            wbgo.MQTTClient // for service
 	driver                wbgo.Driver
 	driverReadyCh         chan struct{}
-	controlChangeCh       chan ControlChangeEvent
+	controlChangeCh       chan *ControlChangeEvent
 	timerFunc             TimerFunc
 	nextTimerId           TimerId
 	timers                map[TimerId]*TimerEntry
@@ -274,6 +275,11 @@ type RuleEngine struct {
 	debugEnabled          bool
 	readyCh               chan struct{}
 	readyQueue            *wbgo.DeferredList
+
+	// subscriptions to control change events
+	// suitable for testing
+	controlChangeSubsMutex sync.Mutex
+	controlChangeSubs      []chan *ControlChangeEvent
 }
 
 func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngineOptions) (engine *RuleEngine) {
@@ -307,6 +313,8 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 		cron:                  nil,
 		debugEnabled:          wbgo.DebuggingEnabled(),
 		readyCh:               nil,
+
+		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
 	engine.readyQueue = wbgo.NewDeferredList(engine.CallSync)
 
@@ -319,6 +327,43 @@ func (engine *RuleEngine) ReadyCh() <-chan struct{} {
 		panic("cannot engine's readyCh before the engine is started")
 	}
 	return engine.readyCh
+}
+
+func (engine *RuleEngine) SubscribeControlChange() <-chan *ControlChangeEvent {
+	engine.controlChangeSubsMutex.Lock()
+	defer engine.controlChangeSubsMutex.Unlock()
+
+	ret := make(chan *ControlChangeEvent, 0) // ENGINE_CONTROL_CHANGE_QUEUE_LEN)
+	engine.controlChangeSubs = append(engine.controlChangeSubs, ret)
+	wbgo.Debug.Printf("[ruleengine] Add subscriber for ControlChangeEvent (channel %v)", ret)
+	return ret
+}
+
+func (engine *RuleEngine) UnsubscribeControlChange(sub <-chan *ControlChangeEvent) {
+	i := 0
+	found := false
+	for i = range engine.controlChangeSubs {
+		if engine.controlChangeSubs[i] == sub {
+			found = true
+			break
+		}
+	}
+
+	engine.controlChangeSubsMutex.Lock()
+	defer engine.controlChangeSubsMutex.Unlock()
+
+	if found {
+		engine.controlChangeSubs = append(engine.controlChangeSubs[:i], engine.controlChangeSubs[i+1:]...)
+	}
+}
+
+func (engine *RuleEngine) notifyControlChangeSubs(e *ControlChangeEvent) {
+	engine.controlChangeSubsMutex.Lock()
+	defer engine.controlChangeSubsMutex.Unlock()
+
+	for i := range engine.controlChangeSubs {
+		engine.controlChangeSubs[i] <- e
+	}
 }
 
 func (engine *RuleEngine) syncLoop() {
@@ -339,6 +384,7 @@ func (engine *RuleEngine) mainLoop() {
 	// control changes are ignored until the engine is ready
 	// FIXME: some very small probability of race condition is
 	// present here
+	wbgo.Debug.Println("[engine] Starting main loop")
 ReadyWaitLoop:
 	for {
 		select {
@@ -347,6 +393,7 @@ ReadyWaitLoop:
 		case event, ok := <-engine.controlChangeCh:
 			if ok {
 				wbgo.Debug.Printf("control change (not ready yet): %s", event.Spec)
+				engine.notifyControlChangeSubs(event)
 				if engine.isDebugControl(event.Spec) {
 					engine.updateDebugEnabled()
 				}
@@ -382,8 +429,10 @@ ReadyWaitLoop:
 				}
 
 				engine.CallSync(func() {
-					engine.RunRules(&event, NO_TIMER_NAME)
+					engine.RunRules(event, NO_TIMER_NAME)
 				})
+
+				engine.notifyControlChangeSubs(event)
 			} else {
 				engine.handleStop()
 				return
@@ -393,19 +442,37 @@ ReadyWaitLoop:
 }
 
 func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
+	wbgo.Debug.Printf("[engine] driverEventHandler(event %T(%v))", event, event)
+
+	rawValue := ""
+	var spec ControlSpec
+	isComplete := false
+	isRetained := false
+
 	switch e := event.(type) {
 	case wbgo.ReadyEvent:
 		engine.driverReadyCh <- struct{}{}
+		return
 	case wbgo.ControlValueEvent:
-		// collect control data and push event
-		ctrl := e.Control
-		engine.controlChangeCh <- ControlChangeEvent{
-			Spec:       ControlSpec{ctrl.GetDevice().GetId(), ctrl.GetId()},
-			IsComplete: ctrl.IsComplete(),
-			IsRetained: ctrl.IsRetained(),
-			Value:      e.RawValue,
-		}
+		rawValue = e.RawValue
+		spec = ControlSpec{e.Control.GetDevice().GetId(), e.Control.GetId()}
+		isComplete = e.Control.IsComplete()
+		isRetained = e.Control.IsRetained()
+	case wbgo.NewExternalDeviceControlMetaEvent:
+		spec = ControlSpec{e.Control.GetDevice().GetId(), e.Control.GetId()}
+		isComplete = e.Control.IsComplete()
+		isRetained = e.Control.IsRetained()
+	default:
+		return
 	}
+
+	cce := &ControlChangeEvent{
+		Spec:       spec,
+		IsComplete: isComplete,
+		IsRetained: isRetained,
+		Value:      rawValue,
+	}
+	engine.controlChangeCh <- cce
 }
 
 func (engine *RuleEngine) CallSync(thunk func()) {
@@ -572,6 +639,7 @@ func (engine *RuleEngine) OnTimerRemoveByIndex(n TimerId, thunk func()) {
 }
 
 func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName string) {
+	wbgo.Debug.Println("[ruleengine] RunRules, event ", ctrlEvent)
 	if ctrlEvent != nil {
 		/*if cell.IsFreshButton() {
 			// special case - a button that wasn't pressed yet
@@ -675,7 +743,9 @@ func (engine *RuleEngine) Start() {
 	}
 	engine.readyCh = make(chan struct{})
 	engine.driverReadyCh = make(chan struct{}, 1)
-	engine.controlChangeCh = make(chan ControlChangeEvent, ENGINE_CONTROL_CHANGE_QUEUE_LEN)
+	engine.controlChangeCh = make(chan *ControlChangeEvent, ENGINE_CONTROL_CHANGE_QUEUE_LEN)
+
+	engine.driver.OnDriverEvent(engine.driverEventHandler)
 
 	go engine.mainLoop()
 	go engine.syncLoop()
@@ -688,7 +758,7 @@ func (engine *RuleEngine) Stop() {
 	<-q
 
 	// stop main loop
-	// TODO
+	close(engine.controlChangeCh)
 }
 
 func (engine *RuleEngine) IsActive() bool {
@@ -863,8 +933,8 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		args.SetDoLoadPrevious(!forceDefault)
 
 		ctrlValue, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_VALUE]
-		if !ok {
-			return fmt.Errorf("%s/%s: cell value required for control type %s",
+		if !ok && ctrlType != "pushbutton" { // FIXME: awful, need some special checkers
+			return fmt.Errorf("%s/%s: control value required for control type %s",
 				devId, ctrlId, ctrlType)
 		}
 
@@ -892,7 +962,11 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		}
 
 		// set readonly/writeable flag
-		args.SetReadonly(ctrlReadonly)
+		if ctrlReadonly {
+			args.SetReadonly(ctrlReadonly)
+		} else {
+			args.SetWritable(true)
+		}
 
 		// get properties for 'range' type
 		// FIXME: deprecated
@@ -981,6 +1055,9 @@ func (engine *RuleEngine) DefineRule(rule *Rule) (id RuleId, err error) {
 	})
 
 	id = rule.id
+
+	wbgo.Debug.Printf("[ruleengine] defineRule(name='%s') ruleId=%d, cond %T(%v)", rule.name, id, rule.cond, rule.cond)
+
 	return
 }
 
