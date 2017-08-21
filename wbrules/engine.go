@@ -121,12 +121,11 @@ func getDeviceRefFromDriver(devId string, drv wbgo.Driver) (dev wbgo.Device, err
 	return
 }
 
-func makeDeviceProxy(owner proxyOwner, devId string) (*DeviceProxy, error) {
-	dev, err := getDeviceRefFromDriver(devId, owner.Driver())
-	if err != nil {
-		return nil, err
-	}
-	return &DeviceProxy{owner, devId, dev, owner.getRev()}, nil
+// You might wont to return error from here, but be careful,
+// some rules want control spec without actual control
+func makeDeviceProxy(owner proxyOwner, devId string) *DeviceProxy {
+	dev, _ := getDeviceRefFromDriver(devId, owner.Driver())
+	return &DeviceProxy{owner, devId, dev, owner.getRev()}
 }
 
 func (devProxy *DeviceProxy) updated() bool {
@@ -134,20 +133,25 @@ func (devProxy *DeviceProxy) updated() bool {
 }
 
 func (devProxy *DeviceProxy) EnsureControlProxy(ctrlId string) *ControlProxy {
+	wbgo.Debug.Printf("[devProxy] EnsureControlProxy for control %s/%s", devProxy.name, ctrlId)
 	return &ControlProxy{devProxy, ctrlId, devProxy.getControl(ctrlId)}
 }
 
 func (devProxy *DeviceProxy) getControl(ctrlId string) wbgo.Control {
 	devId := devProxy.name
+	wbgo.Debug.Printf("[devProxy] getControl for control %s/%s", devId, ctrlId)
 
 	var c wbgo.Control
 	devProxy.owner.Driver().Access(func(tx wbgo.DriverTx) error {
 		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return nil // TODO: careful with error here, some rules want control spec without control itself
+		}
 		c = dev.GetControl(ctrlId)
 		return nil
 	})
 
-	return c.(wbgo.Control)
+	return c
 }
 
 // just a syntax sugar
@@ -167,6 +171,10 @@ func (ctrlProxy *ControlProxy) getControl() wbgo.Control {
 // TODO: return error on non-existing/incomplete control
 func (ctrlProxy *ControlProxy) RawValue() (v string) {
 	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return ""
+	}
+
 	ctrlProxy.accessDriver(func(tx wbgo.DriverTx) error {
 		ctrl.SetTx(tx)
 		v = ctrl.GetRawValue()
@@ -177,7 +185,11 @@ func (ctrlProxy *ControlProxy) RawValue() (v string) {
 
 // TODO: return error on non-existing/incomplete control
 func (ctrlProxy *ControlProxy) Value() (v interface{}) {
+	wbgo.Debug.Printf("[ctrlProxy] getting value of control %s/%s", ctrlProxy.devProxy.name, ctrlProxy.name)
 	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return nil
+	}
 	err := ctrlProxy.accessDriver(func(tx wbgo.DriverTx) (err error) {
 		ctrl.SetTx(tx)
 		v, err = ctrl.GetValue()
@@ -192,9 +204,13 @@ func (ctrlProxy *ControlProxy) Value() (v interface{}) {
 
 func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
 	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		wbgo.Error.Printf("failed to SetValue for unexisting control")
+		return
+	}
 	err := ctrlProxy.accessDriver(func(tx wbgo.DriverTx) error {
 		ctrl.SetTx(tx)
-		return ctrl.UpdateValue(value)()
+		return ctrl.SetValue(value)()
 	})
 	if err != nil {
 		wbgo.Error.Printf("control %s/%s SetValue() error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, err)
@@ -204,6 +220,10 @@ func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
 // FIXME: error handling here
 func (ctrlProxy *ControlProxy) IsComplete() (v bool) {
 	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return false
+	}
+
 	_ = ctrlProxy.accessDriver(func(tx wbgo.DriverTx) error {
 		ctrl.SetTx(tx)
 		v = ctrl.IsComplete()
