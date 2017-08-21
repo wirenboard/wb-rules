@@ -6,7 +6,6 @@ import (
 	"log"
 	"reflect"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 
@@ -321,17 +320,11 @@ type callbackHolder struct {
 	callback ESCallback
 }
 
-func callbackFinalizer(holder *callbackHolder) {
-	// go holder.ctx.removeCallbackSync(holder.callback)
-	holder.ctx.removeCallbackSync(holder.callback)
-}
-
 func (ctx *ESContext) WrapCallback(callbackStackIndex int) ESCallbackFunc {
 	holder := &callbackHolder{
 		ctx,
 		ctx.storeCallback(callbackStackIndex),
 	}
-	runtime.SetFinalizer(holder, callbackFinalizer)
 	return func(args objx.Map) interface{} {
 		return ctx.invokeCallback(holder.callback, args)
 	}
