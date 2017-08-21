@@ -1008,15 +1008,8 @@ func (engine *ESEngine) esWbDevObject(ctx *ESContext) int {
 	if ctx.GetTop() != 1 || !ctx.IsString(-1) {
 		return duktape.DUK_RET_ERROR
 	}
-	// TODO: proper error handling here
-	devProxy, err := engine.GetDeviceProxy(ctx.GetString(-1))
-	if err != nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("esWbDevObject: error getting device proxy: %s", err))
-		engine.Log(ENGINE_LOG_ERROR, "FIXME: this must be an exception")
-		ctx.PushNull()
-	} else {
-		ctx.PushGoObject(devProxy)
-	}
+	devProxy := engine.GetDeviceProxy(ctx.GetString(-1))
+	ctx.PushGoObject(devProxy)
 	return 1
 }
 
