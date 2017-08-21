@@ -9,6 +9,7 @@ import (
 	"log"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -32,6 +33,8 @@ const (
 	ENGINE_CONTROL_CHANGE_QUEUE_LEN     = 16
 	ENGINE_CONTROL_CHANGE_SUBS_CAPACITY = 2
 	ENGINE_CONTROL_RULES_CAPACITY       = 8
+
+	ENGINE_UNINITIALIZED_RULES_CAPACITY = 16
 )
 
 // errors
@@ -92,7 +95,7 @@ func (entry *TimerEntry) handleRemove() {
 
 type proxyOwner interface {
 	Driver() wbgo.Driver
-	getRev() uint64
+	getRev() uint32
 	trackControlSpec(ControlSpec)
 }
 
@@ -100,7 +103,7 @@ type DeviceProxy struct {
 	owner proxyOwner
 	name  string
 	dev   wbgo.Device
-	rev   uint64
+	rev   uint32
 }
 
 // ControlProxy tracks control access with the engine
@@ -266,7 +269,7 @@ func NewRuleEngineOptions() *RuleEngineOptions {
 
 type RuleEngine struct {
 	cleanup               *ScopedCleanup
-	rev                   uint64
+	rev                   uint32 // atomic
 	syncQueueActive       bool
 	syncQueue             chan func()
 	syncQuitCh            chan chan struct{}
@@ -297,6 +300,7 @@ type RuleEngine struct {
 	readyCh               chan struct{}
 	readyQueue            *wbgo.DeferredList
 	timerDeferQueue       *wbgo.DeferredList
+	uninitializedRules    []*Rule
 
 	// subscriptions to control change events
 	// suitable for testing
@@ -336,6 +340,7 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 		cron:                  nil,
 		debugEnabled:          wbgo.DebuggingEnabled(),
 		readyCh:               nil,
+		uninitializedRules:    make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY),
 
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
@@ -489,6 +494,9 @@ func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
 		spec = ControlSpec{e.Control.GetDevice().GetId(), e.Control.GetId()}
 		isComplete = e.Control.IsComplete()
 		isRetained = e.Control.IsRetained()
+
+		// here we need to invalidate controls/devices proxy
+		atomic.AddUint32(&engine.rev, 1)
 	default:
 		return
 	}
@@ -547,6 +555,10 @@ func (engine *RuleEngine) SetTimerFunc(timerFunc TimerFunc) {
 
 func (engine *RuleEngine) SetCronMaker(cronMaker func() Cron) {
 	engine.cronMaker = cronMaker
+}
+
+func (engine *RuleEngine) SetUninitializedRule(rule *Rule) {
+	engine.uninitializedRules = append(engine.uninitializedRules, rule)
 }
 
 func (engine *RuleEngine) StartTrackingDeps() {
@@ -682,7 +694,16 @@ func (engine *RuleEngine) OnTimerRemoveByIndex(n TimerId, thunk func()) {
 }
 
 func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName string) {
-	wbgo.Debug.Println("[ruleengine] RunRules, event ", ctrlEvent)
+	wbgo.Debug.Println("[ruleengine] RunRules, event ", ctrlEvent, ", timer ", timerName)
+	wbgo.Debug.Printf("[ruleengine] RulesLists for all: %v", engine.controlToRulesListMap)
+
+	// select all uninitialized rules to run and clean list
+	for _, rule := range engine.uninitializedRules {
+		rule.ShouldCheck()
+	}
+	// clear uninitialized rules list
+	engine.uninitializedRules = make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY)
+
 	if ctrlEvent != nil {
 		/*if cell.IsFreshButton() {
 			// special case - a button that wasn't pressed yet
@@ -1116,7 +1137,7 @@ func (engine *RuleEngine) DefineRule(rule *Rule) (id RuleId, err error) {
 // Refresh() should be called after engine rules are altered
 // while the engine is running.
 func (engine *RuleEngine) Refresh() {
-	engine.rev++ // invalidate device/control proxies
+	atomic.AddUint32(&engine.rev, 1) // invalidate device/control proxies
 	engine.setupCron()
 
 	// Some cell pointers are now probably invalid
@@ -1134,11 +1155,11 @@ func (engine *RuleEngine) Driver() wbgo.Driver {
 	return engine.driver
 }
 
-func (engine *RuleEngine) getRev() uint64 {
-	return engine.rev
+func (engine *RuleEngine) getRev() uint32 {
+	return atomic.LoadUint32(&engine.rev)
 }
 
-func (engine *RuleEngine) GetDeviceProxy(name string) (*DeviceProxy, error) {
+func (engine *RuleEngine) GetDeviceProxy(name string) *DeviceProxy {
 	return makeDeviceProxy(engine, name)
 }
 

@@ -13,6 +13,7 @@ type DepTracker interface {
 	StartTrackingDeps()
 	StoreRuleControlSpec(rule *Rule, ctrlSpec ControlSpec)
 	StoreRuleDeps(rule *Rule)
+	SetUninitializedRule(rule *Rule)
 }
 
 type Cron interface {
@@ -28,12 +29,17 @@ type RuleCondition interface {
 	// to be passed as newValue to the rule. In
 	// case nil is returned as the optional value,
 	// the value of cell must be used.
+	RequireInitialization() bool
 	Check(e *ControlChangeEvent) (bool, interface{})
 	GetControlSpecs() []ControlSpec
 	MaybeAddToCron(cron Cron, thunk func()) (added bool, err error)
 }
 
 type RuleConditionBase struct{}
+
+func (ruleCond *RuleConditionBase) RequireInitialization() bool {
+	return true
+}
 
 func (ruleCond *RuleConditionBase) Check(e *ControlChangeEvent) (bool, interface{}) {
 	return false, nil
@@ -160,11 +166,25 @@ func (ruleCond *FuncValueChangedRuleCondition) Check(e *ControlChangeEvent) (boo
 
 type OrRuleCondition struct {
 	RuleConditionBase
-	conds []RuleCondition
+	initialized bool
+	conds       []RuleCondition
 }
 
 func NewOrRuleCondition(conds []RuleCondition) *OrRuleCondition {
-	return &OrRuleCondition{conds: conds}
+	ret := &OrRuleCondition{initialized: false, conds: conds}
+	if !ret.RequireInitialization() {
+		ret.initialized = true
+	}
+	return ret
+}
+
+func (ruleCond *OrRuleCondition) RequireInitialization() bool {
+	for i := range ruleCond.conds {
+		if ruleCond.conds[i].RequireInitialization() {
+			return true
+		}
+	}
+	return false
 }
 
 func (ruleCond *OrRuleCondition) GetControlSpecs() []ControlSpec {
@@ -176,12 +196,29 @@ func (ruleCond *OrRuleCondition) GetControlSpecs() []ControlSpec {
 }
 
 func (ruleCond *OrRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
+	// if condition is not initialized, we need to check all subconditions to collect deps
+	// 'Or' condition is initialized by default if no subconditions requires initialization
+	var res = false
+	var newValue interface{}
+	var gotValue = false
+
 	for _, cond := range ruleCond.conds {
-		if shouldFire, newValue := cond.Check(e); shouldFire {
-			return true, newValue
+		if shouldFire, newVal := cond.Check(e); shouldFire {
+			// this condition is to keep
+			if !ruleCond.initialized {
+				if !gotValue {
+					gotValue = true
+					newValue = newVal
+					res = true
+				}
+			} else {
+				return true, newVal
+			}
 		}
 	}
-	return false, nil
+
+	ruleCond.initialized = true
+	return res, newValue
 }
 
 type CronRuleCondition struct {
@@ -225,6 +262,9 @@ func NewRule(tracker DepTracker, id RuleId, name string, cond RuleCondition, the
 		enabled:       true,
 	}
 	rule.StoreInitiallyKnownDeps()
+	if cond.RequireInitialization() {
+		tracker.SetUninitializedRule(rule)
+	}
 	return rule
 }
 
