@@ -476,7 +476,7 @@ ReadyWaitLoop:
 func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
 	wbgo.Debug.Printf("[engine] driverEventHandler(event %T(%v))", event, event)
 
-	rawValue := ""
+	var value interface{}
 	var spec ControlSpec
 	isComplete := false
 	isRetained := false
@@ -486,11 +486,12 @@ func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
 		engine.driverReadyCh <- struct{}{}
 		return
 	case wbgo.ControlValueEvent:
-		rawValue = e.RawValue
+		value, _ = e.Control.GetValue()
 		spec = ControlSpec{e.Control.GetDevice().GetId(), e.Control.GetId()}
 		isComplete = e.Control.IsComplete()
 		isRetained = e.Control.IsRetained()
 	case wbgo.NewExternalDeviceControlMetaEvent:
+		value, _ = e.Control.GetValue()
 		spec = ControlSpec{e.Control.GetDevice().GetId(), e.Control.GetId()}
 		isComplete = e.Control.IsComplete()
 		isRetained = e.Control.IsRetained()
@@ -505,7 +506,7 @@ func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
 		Spec:       spec,
 		IsComplete: isComplete,
 		IsRetained: isRetained,
-		Value:      rawValue,
+		Value:      value,
 	}
 	engine.controlChangeCh <- cce
 }
