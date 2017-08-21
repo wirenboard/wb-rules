@@ -33,6 +33,7 @@ const (
 	ENGINE_CONTROL_CHANGE_QUEUE_LEN     = 16
 	ENGINE_CONTROL_CHANGE_SUBS_CAPACITY = 2
 	ENGINE_CONTROL_RULES_CAPACITY       = 8
+	ENGINE_NOTED_CONTROLS_CAPACITY      = 4
 
 	ENGINE_UNINITIALIZED_RULES_CAPACITY = 16
 )
@@ -285,7 +286,7 @@ type RuleEngine struct {
 	ruleMap               map[RuleId]*Rule
 	ruleNameMap           map[string]*Rule
 	ruleList              []RuleId
-	notedControls         map[ControlSpec]bool
+	notedControls         []ControlSpec
 	notedTimers           map[string]bool
 	controlToRulesListMap map[ControlSpec][]*Rule
 	rulesWithoutControls  map[*Rule]bool
@@ -563,7 +564,7 @@ func (engine *RuleEngine) SetUninitializedRule(rule *Rule) {
 }
 
 func (engine *RuleEngine) StartTrackingDeps() {
-	engine.notedControls = make(map[ControlSpec]bool)
+	engine.notedControls = make([]ControlSpec, 0, ENGINE_NOTED_CONTROLS_CAPACITY)
 	engine.notedTimers = make(map[string]bool)
 }
 
@@ -593,15 +594,15 @@ func (engine *RuleEngine) storeRuleTimer(rule *Rule, timerName string) {
 
 func (engine *RuleEngine) StoreRuleDeps(rule *Rule) {
 	if len(engine.notedControls) > 0 {
-		for spec, _ := range engine.notedControls {
+		for _, spec := range engine.notedControls {
 			engine.StoreRuleControlSpec(rule, spec)
 		}
 	} else if len(engine.notedTimers) > 0 {
 		for timerName, _ := range engine.notedTimers {
 			engine.storeRuleTimer(rule, timerName)
 		}
-	} else if !rule.IsIndependent() {
-		if _, found := engine.rulesWithoutControls[rule]; !found {
+	} else if !rule.HasDeps() {
+		if wo, found := engine.rulesWithoutControls[rule]; !found || wo {
 			// Rules without controls in their conditions negatively affect
 			// the engine performance because they must be checked
 			// too often. Only mark a rule as such if it doesn't have
@@ -613,7 +614,9 @@ func (engine *RuleEngine) StoreRuleDeps(rule *Rule) {
 				// avoids polluting logs with endless warnings when debugging is off.
 				wbgo.Warn.Printf("rule %s doesn't use any controls inside condition functions", rule.name)
 			}
-			engine.rulesWithoutControls[rule] = true
+			if !found {
+				engine.rulesWithoutControls[rule] = true
+			}
 		}
 	}
 	engine.notedControls = nil
@@ -622,7 +625,7 @@ func (engine *RuleEngine) StoreRuleDeps(rule *Rule) {
 
 func (engine *RuleEngine) trackControlSpec(s ControlSpec) {
 	if engine.notedControls != nil {
-		engine.notedControls[s] = true
+		engine.notedControls = append(engine.notedControls, s)
 	}
 }
 
