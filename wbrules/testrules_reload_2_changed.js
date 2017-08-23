@@ -7,10 +7,14 @@ var devCells = {
 
 defineAlias("smc", "vdev/someCell");
 
-defineVirtualDevice("vdev", {
-  title: "VDev",
-  cells: devCells
-});
+try {
+    defineVirtualDevice("vdev", {
+      title: "VDev",
+      cells: devCells
+    });
+} catch(e) {
+    log(e);
+}
 
 function cellSpec(devName, cellName) {
   return devName === undefined ? "(no cell)" : "{}/{}".format(devName, cellName);

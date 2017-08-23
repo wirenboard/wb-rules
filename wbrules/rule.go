@@ -119,6 +119,10 @@ func NewCellChangedRuleCondition(ctrlSpec ControlSpec) (*CellChangedRuleConditio
 	}, nil
 }
 
+func (ruleCond *CellChangedRuleCondition) RequireInitialization() bool {
+	return false
+}
+
 func (ruleCond *CellChangedRuleCondition) GetControlSpecs() []ControlSpec {
 	return []ControlSpec{ruleCond.ctrlSpec}
 }
@@ -247,6 +251,7 @@ type Rule struct {
 	then          ESCallbackFunc
 	shouldCheck   bool
 	isIndependent bool
+	hasDeps       bool
 	enabled       bool
 }
 
@@ -259,18 +264,20 @@ func NewRule(tracker DepTracker, id RuleId, name string, cond RuleCondition, the
 		then:          then,
 		shouldCheck:   false,
 		isIndependent: false,
+		hasDeps:       false,
 		enabled:       true,
 	}
 	rule.StoreInitiallyKnownDeps()
-	if cond.RequireInitialization() {
-		tracker.SetUninitializedRule(rule)
-	}
 	return rule
 }
 
 func (rule *Rule) StoreInitiallyKnownDeps() {
 	for _, ctrlSpec := range rule.cond.GetControlSpecs() {
 		rule.tracker.StoreRuleControlSpec(rule, ctrlSpec)
+		rule.hasDeps = true
+	}
+	if rule.cond.RequireInitialization() {
+		rule.tracker.SetUninitializedRule(rule)
 	}
 }
 
@@ -332,4 +339,9 @@ func (rule *Rule) Destroy() {
 // This is currently used for cron rules.
 func (rule *Rule) IsIndependent() bool {
 	return rule.isIndependent
+}
+
+// HasDeps checks whether the rule has dependencies
+func (rule *Rule) HasDeps() bool {
+	return rule.isIndependent || rule.hasDeps
 }

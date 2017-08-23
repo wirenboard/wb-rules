@@ -438,10 +438,8 @@ ReadyWaitLoop:
 	}
 	wbgo.Debug.Printf("setting up cron")
 	engine.CallSync(engine.setupCron)
-	wbgo.Debug.Printf("doing the first rule run")
-	engine.CallSync(func() {
-		engine.RunRules(nil, NO_TIMER_NAME)
-	})
+
+	// the first rule run is removed, now it's all done with the first real event
 
 	engine.CallSync(engine.readyQueue.Ready)
 	engine.CallSync(engine.timerDeferQueue.Ready)
@@ -483,9 +481,6 @@ func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
 	isRetained := false
 
 	switch e := event.(type) {
-	case wbgo.ReadyEvent:
-		engine.driverReadyCh <- struct{}{}
-		return
 	case wbgo.ControlValueEvent:
 		value, _ = e.Control.GetValue()
 		spec = ControlSpec{e.Control.GetDevice().GetId(), e.Control.GetId()}
@@ -542,7 +537,7 @@ func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
 		"cells": objx.Map{
 			RULE_DEBUG_CELL_NAME: objx.Map{
 				"type":  "switch",
-				"value": false,
+				"value": engine.debugEnabled,
 			},
 		},
 	})
@@ -579,7 +574,7 @@ func (engine *RuleEngine) StoreRuleControlSpec(rule *Rule, spec ControlSpec) {
 			}
 		}
 	}
-	// wbgo.Debug.Printf("adding cell %s for rule %s", cell.Name(), rule.name)
+	wbgo.Debug.Printf("adding control spec %s for rule %d", spec.String(), rule.id)
 	engine.controlToRulesListMap[spec] = append(list, rule)
 	engine.rulesWithoutControls[rule] = false
 }
@@ -816,6 +811,9 @@ func (engine *RuleEngine) Start() {
 	engine.controlChangeCh = make(chan *ControlChangeEvent, ENGINE_CONTROL_CHANGE_QUEUE_LEN)
 
 	engine.driver.OnDriverEvent(engine.driverEventHandler)
+	engine.driver.OnRetainReady(func(tx wbgo.DriverTx) {
+		engine.driverReadyCh <- struct{}{}
+	})
 	engine.syncQueueActive = true
 
 	go engine.mainLoop()
@@ -829,13 +827,13 @@ func (engine *RuleEngine) Stop() {
 	// stop main loop
 	close(engine.controlChangeCh)
 
-	// wait for main loop to release sync queue
-	<-engine.syncQueue
-
 	// stop sync loop
 	q := make(chan struct{})
 	engine.syncQuitCh <- q
 	<-q
+
+	// wait for main loop to release sync queue
+	<-engine.syncQueue
 }
 
 func (engine *RuleEngine) IsActive() bool {
@@ -1141,18 +1139,19 @@ func (engine *RuleEngine) DefineRule(rule *Rule) (id RuleId, err error) {
 // Refresh() should be called after engine rules are altered
 // while the engine is running.
 func (engine *RuleEngine) Refresh() {
+	wbgo.Debug.Println("[engine] Refresh()")
 	atomic.AddUint32(&engine.rev, 1) // invalidate device/control proxies
 	engine.setupCron()
 
 	// Some cell pointers are now probably invalid
 	// FIXME: maybe this problem is gone now
 	engine.controlToRulesListMap = make(map[ControlSpec][]*Rule)
+	engine.uninitializedRules = make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY)
 	for _, rule := range engine.ruleMap {
 		rule.StoreInitiallyKnownDeps()
 	}
 	engine.rulesWithoutControls = make(map[*Rule]bool)
 	engine.timerRules = make(map[string][]*Rule)
-	engine.RunRules(nil, NO_TIMER_NAME)
 }
 
 func (engine *RuleEngine) Driver() wbgo.Driver {

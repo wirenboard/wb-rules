@@ -17,6 +17,8 @@ type RuleReadConfigSuite struct {
 func (s *RuleReadConfigSuite) SetupTest() {
 	s.SetupSkippingDefs("testrules_read_config.js")
 	s.configDir, s.cleanup = testutils.SetupTempDir(s.T())
+	s.publish("/devices/somedev/controls/readSampleConfig/meta/type", "text", "somedev/readSampleConfig")
+	s.Verify("tst -> /devices/somedev/controls/readSampleConfig/meta/type: [text] (QoS 1, retained)")
 }
 
 func (s *RuleReadConfigSuite) TearDownTest() {
@@ -34,13 +36,11 @@ func (s *RuleReadConfigSuite) WriteConfig(filename, text string) (configPath str
 }
 
 func (s *RuleReadConfigSuite) TryReadingConfig(configPath string) {
-	s.publish("/devices/somedev/controls/readSampleConfig/meta/type", "text", "somedev/readSampleConfig")
 	s.publish("/devices/somedev/controls/readSampleConfig", configPath, "somedev/readSampleConfig")
 }
 
 func (s *RuleReadConfigSuite) verifyReadConfRuleLog(configPath string, msgs ...interface{}) {
 	msgs = append([]interface{}{
-		"tst -> /devices/somedev/controls/readSampleConfig/meta/type: [text] (QoS 1, retained)",
 		fmt.Sprintf(
 			"tst -> /devices/somedev/controls/readSampleConfig: [%s] (QoS 1, retained)",
 			configPath),

@@ -132,7 +132,7 @@ func (s *RuleTimersSuite) TestCleanupTimers() {
 		"timer.Stop(): 1",
 		"timer.Stop(): 2",
 		"timer.Stop(): 3",
-		"driver -> /wbrules/updates/removed: [testrules_timers.js] (QoS 1)",
+		"[removed] testrules_timers.js",
 	)
 
 	s.VerifyEmpty()
