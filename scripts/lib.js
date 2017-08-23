@@ -229,7 +229,6 @@ var _WbRules = {
   },
 
   startTimer: function startTimer(name, ms, periodic) {
-    debug("starting timer: " + name);
     _wbStartTimer(name, ms, !!periodic);
   }
 };

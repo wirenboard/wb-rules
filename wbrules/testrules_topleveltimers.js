@@ -1,5 +1,7 @@
 // -*- mode: js2-mode -*-
 
+log("topleveltimers");
+
 var timerId = setTimeout(function () {
   log("this one should never fire");
 }, 999);

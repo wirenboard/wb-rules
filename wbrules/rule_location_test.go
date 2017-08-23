@@ -20,7 +20,7 @@ func (s *RuleLocationSuite) SetupTest() {
 	// context of the tests.
 	ready := false
 	var mtx sync.Mutex
-	s.model.WhenReady(func() {
+	s.engine.WhenEngineReady(func() {
 		mtx.Lock()
 		ready = true
 		mtx.Unlock()
@@ -105,6 +105,7 @@ func (s *RuleLocationSuite) TestUpdatingLocations() {
 			},
 		},
 	}, s.listSourceFiles())
+	s.SkipTill("[changed] loc1/testrules_more.js")
 }
 
 func (s *RuleLocationSuite) TestRemoval() {
@@ -128,6 +129,7 @@ func (s *RuleLocationSuite) TestRemoval() {
 			Rules:        []LocItem{},
 		},
 	}, s.listSourceFiles())
+	s.SkipTill("[removed] testrules_locations.js")
 
 	s.RemoveScript("loc1/testrules_more.js")
 	s.WaitFor(func() bool {
@@ -141,6 +143,7 @@ func (s *RuleLocationSuite) TestRemoval() {
 			Rules:        []LocItem{},
 		},
 	}, s.listSourceFiles())
+	s.SkipTill("[removed] loc1/testrules_more.js")
 }
 
 func (s *RuleLocationSuite) TestFaultyScript() {
@@ -191,6 +194,8 @@ func (s *RuleLocationSuite) TestFaultyScript() {
 			Error: &scriptErr,
 		},
 	}, s.listSourceFiles())
+
+	s.SkipTill("[changed] testrules_locations_faulty.js")
 }
 
 func (s *RuleLocationSuite) TestSyntaxError() {
@@ -204,6 +209,8 @@ func (s *RuleLocationSuite) TestSyntaxError() {
 	s.Equal([]LocItem{
 		{4, "testrules_locations_syntax_error.js"},
 	}, scriptErr.Traceback)
+
+	s.SkipTill("[changed] testrules_locations_syntax_error.js")
 }
 
 func TestRuleLocationSuite(t *testing.T) {

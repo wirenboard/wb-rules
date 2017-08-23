@@ -77,11 +77,13 @@ type RuleSuiteBase struct {
 	cron     *fakeCron
 
 	PersistentDBFile string
+	VdevStorageFile  string
 	ModulesPath      string /* ':'-separated list */
 	CleanUp          func()
 }
 
 var logVerifyRx = regexp.MustCompile(`^\[(info|debug|warning|error)\] (.*)`)
+var updatesVerifyRx = regexp.MustCompile(`^\[(changed|removed)\] (.*)`)
 
 // creates necessary file paths if some are not defined already
 func (s *RuleSuiteBase) createTempFiles() {
@@ -110,13 +112,21 @@ func (s *RuleSuiteBase) preprocessItemsForVerify(items []interface{}) (newItems 
 			newItems[n] = item
 			continue
 		}
-		groups := logVerifyRx.FindStringSubmatch(itemStr)
-		if groups == nil {
-			newItems[n] = item
+		uGroups := updatesVerifyRx.FindStringSubmatch(itemStr)
+		if uGroups != nil {
+			action, message := uGroups[1], uGroups[2]
+			newItems[n] = fmt.Sprintf("wbrules-log -> /wbrules/updates/%s: [%s] (QoS 1)", action, message)
 			continue
 		}
-		logLevelStr, message := groups[1], groups[2]
-		newItems[n] = fmt.Sprintf("wbrules-log -> /wbrules/log/%s: [%s] (QoS 1)", logLevelStr, message)
+
+		groups := logVerifyRx.FindStringSubmatch(itemStr)
+		if groups != nil {
+			logLevelStr, message := groups[1], groups[2]
+			newItems[n] = fmt.Sprintf("wbrules-log -> /wbrules/log/%s: [%s] (QoS 1)", logLevelStr, message)
+			continue
+		}
+
+		newItems[n] = item
 	}
 	return
 }
@@ -127,6 +137,12 @@ func (s *RuleSuiteBase) Verify(items ...interface{}) {
 
 func (s *RuleSuiteBase) VerifyUnordered(items ...interface{}) {
 	s.FakeMQTTFixture.VerifyUnordered(s.preprocessItemsForVerify(items)...)
+}
+
+func (s *RuleSuiteBase) SkipTill(item interface{}) {
+	items := make([]interface{}, 1)
+	items[0] = item
+	s.FakeMQTTFixture.SkipTill(s.preprocessItemsForVerify(items)[0].(string))
 }
 
 func (s *RuleSuiteBase) expectControlChange(expectedControlNames ...string) {
@@ -179,6 +195,8 @@ func (s *RuleSuiteBase) T() *testing.T {
 func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	var err error
 
+	wbgo.SetDebuggingEnabled(true)
+
 	s.Suite.SetupTest()
 	s.FakeMQTTFixture = testutils.NewFakeMQTTFixture(s.T())
 
@@ -187,12 +205,23 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	s.client = s.Broker.MakeClient("tst")
 	s.client.Start()
 
+	if s.PersistentDBFile == "" {
+		s.createTempFiles()
+	}
+
 	s.driverClient = s.Broker.MakeClient("driver")
-	s.driver, err = wbgo.NewDriverBase(wbgo.NewDriverArgs().
+	dargs := wbgo.NewDriverArgs().
 		SetId(WBRULES_DRIVER_ID).
 		SetMqtt(s.driverClient).
-		SetUseStorage(false).
-		SetTesting())
+		SetTesting()
+
+	if s.VdevStorageFile == "" {
+		dargs.SetUseStorage(false)
+	} else {
+		dargs.SetStoragePath(s.VdevStorageFile)
+	}
+
+	s.driver, err = wbgo.NewDriverBase(dargs)
 	s.Ck("can't create driver", err)
 
 	err = s.driver.StartLoop()
@@ -200,16 +229,14 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 
 	s.cron = nil
 
-	if s.PersistentDBFile == "" {
-		s.createTempFiles()
-	}
-
 	engineOptions := NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(s.PersistentDBFile)
 	engineOptions.SetModulesDirs(strings.Split(s.ModulesPath, ":"))
 	s.logClient = s.Broker.MakeClient("wbrules-log")
 
-	s.engine = NewESEngine(s.driver, s.logClient, engineOptions)
+	s.engine, err = NewESEngine(s.driver, s.logClient, engineOptions)
+	s.Ck("NewESEngine()", err)
+
 	s.engine.SetTimerFunc(s.newFakeTimer)
 	s.engine.SetCronMaker(func() Cron {
 		s.cron = newFakeCron(s.T())
@@ -220,12 +247,12 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	s.DataFileFixture = testutils.NewDataFileFixture(s.T())
 	s.FakeTimerFixture = testutils.NewFakeTimerFixture(s.T(), s.Recorder)
 
-	s.engine.Start()
-	s.driver.SetFilter(&wbgo.AllDevicesFilter{})
-
 	s.loadScripts(ruleFiles)
 
+	s.driver.SetFilter(&wbgo.AllDevicesFilter{})
+
 	if !waitForRetained {
+		s.engine.Start()
 		s.publishSomedev()
 	}
 }
@@ -306,6 +333,8 @@ func (s *RuleSuiteBase) SetCellValue(devId, ctrlId string, value interface{}) {
 }
 
 func (s *RuleSuiteBase) TearDownTest() {
+	s.Broker.VerifyEmpty()
+
 	s.TearDownDataFiles()
 
 	s.engine.Stop()
@@ -315,6 +344,7 @@ func (s *RuleSuiteBase) TearDownTest() {
 
 	s.engine.ClosePersistentDB()
 	s.PersistentDBFile = ""
+	s.VdevStorageFile = ""
 
 	if s.CleanUp != nil {
 		s.CleanUp()
@@ -322,6 +352,9 @@ func (s *RuleSuiteBase) TearDownTest() {
 
 	err := s.driver.StopLoop()
 	s.Ck("StopLoop()", err)
+
+	s.client.Stop()
+	s.logClient.Stop()
 }
 
 // TBD: metadata (like, meta["devname"]["controlName"])

@@ -31,6 +31,7 @@ func (s *PersistentStorageSuite) TearDownFixture() {
 
 func (s *PersistentStorageSuite) SetupTest() {
 	s.PersistentDBFile = s.tmpDir + "/test_persistent.db"
+	s.VdevStorageFile = s.tmpDir + "/test-vdev.db"
 	s.SetupSkippingDefs("testrules_persistent.js", "testrules_persistent_2.js")
 }
 

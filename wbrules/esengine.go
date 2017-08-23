@@ -120,7 +120,7 @@ func init() {
 	}
 }
 
-func NewESEngine(driver wbgo.Driver, logMqttClient wbgo.MQTTClient, options *ESEngineOptions) (engine *ESEngine) {
+func NewESEngine(driver wbgo.Driver, logMqttClient wbgo.MQTTClient, options *ESEngineOptions) (engine *ESEngine, err error) {
 	if options == nil {
 		panic("no options given to NewESEngine")
 	}
@@ -139,9 +139,10 @@ func NewESEngine(driver wbgo.Driver, logMqttClient wbgo.MQTTClient, options *ESE
 	engine.globalCtx = engine.ctxFactory.newESContext(engine.MaybeCallSync, "")
 
 	if options.PersistentDBFile != "" {
-		if err := engine.SetPersistentDBMode(options.PersistentDBFile,
+		if err = engine.SetPersistentDBMode(options.PersistentDBFile,
 			options.PersistentDBFileMode); err != nil {
-			panic("error opening persistent DB file: " + err.Error())
+			return
+			// panic("error opening persistent DB file: " + err.Error())
 		}
 		engine.Log(ENGINE_LOG_INFO, fmt.Sprintf("using file %s for persistent DB", options.PersistentDBFile))
 	}

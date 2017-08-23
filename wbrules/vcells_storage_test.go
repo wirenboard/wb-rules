@@ -27,7 +27,7 @@ func (s *VirtualCellsStorageSuite) TearDownFixture() {
 }
 
 func (s *VirtualCellsStorageSuite) SetupTest() {
-	s.VirtualCellsStorageFile = s.tmpDir + "/test-vcells.db"
+	s.VdevStorageFile = s.tmpDir + "/test-vcells.db"
 	s.SetupSkippingDefs("testrules_vcells_storage.js")
 }
 
