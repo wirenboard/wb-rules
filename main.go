@@ -49,6 +49,11 @@ func main() {
 	if err != nil {
 		wbgo.Error.Fatalf("error creating driver: %s", err)
 	}
+
+	if err := driver.StartLoop(); err != nil {
+		wbgo.Error.Fatalf("error starting the driver: %s", err)
+	}
+
 	driver.SetFilter(&wbgo.AllDevicesFilter{})
 
 	engineOptions := wbrules.NewESEngineOptions()
@@ -75,10 +80,6 @@ func main() {
 	}
 	if !gotSome {
 		wbgo.Error.Fatalf("no valid scripts found")
-	}
-
-	if err := driver.StartLoop(); err != nil {
-		wbgo.Error.Fatalf("error starting the driver: %s", err)
 	}
 
 	if *editDir != "" {
