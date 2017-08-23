@@ -15,6 +15,8 @@ ifeq ($(DEB_TARGET_ARCH),i386)
 GO_ENV := GOARCH=386 CC=i586-linux-gnu-gcc
 endif
 
+GO_FLAGS=-ldflags "-w"
+
 all: clean wb-rules
 
 clean:

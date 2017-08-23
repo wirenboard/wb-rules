@@ -50,14 +50,16 @@ func main() {
 		wbgo.Error.Fatalf("error creating driver: %s", err)
 	}
 	driver.SetFilter(&wbgo.AllDevicesFilter{})
-	// driver.SetAcceptsExternalDevices(true)
 
 	engineOptions := wbrules.NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(PERSISTENT_DB_FILE)
 	engineOptions.SetModulesDirs(strings.Split(os.Getenv(WBRULES_MODULES_ENV), ":"))
 
 	engineMqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, ENGINE_CLIENT_ID)
-	engine := wbrules.NewESEngine(driver, engineMqttClient, engineOptions)
+	engine, err := wbrules.NewESEngine(driver, engineMqttClient, engineOptions)
+	if err != nil {
+		wbgo.Error.Fatalf("error creating engine: %s", err)
+	}
 
 	gotSome := false
 	watcher := wbgo.NewDirWatcher("\\.js$", engine)
@@ -86,11 +88,6 @@ func main() {
 	}
 
 	engine.Start()
-
-	c := make(chan struct{}, 1)
-	engine.WhenEngineReady(func() {
-		c <- struct{}{}
-	})
 
 	for {
 		time.Sleep(1 * time.Second)
