@@ -109,7 +109,7 @@ func (s *RuleReloadSuite) TestReload() {
 	// "[info] detRun",
 	// "[info] detectRun: (no cell) (s=true)",
 	// change notification for the client-side script editor
-	s.SkipTill("wbrules-log -> /wbrules/updates/changed: [testrules_reload_2.js] (QoS 1)")
+	s.SkipTill("[changed] testrules_reload_2.js")
 
 	// this one must be ignored because anotherCell is no longer there
 	// after the device is redefined
@@ -145,7 +145,7 @@ func (s *RuleReloadSuite) TestRemoveScript() {
 	s.VerifyVdevCleanup("testrules_reload_2.js")
 	s.Verify(
 		// removal notification for the client-side script editor
-		"wbrules-log -> /wbrules/updates/removed: [testrules_reload_2.js] (QoS 1)",
+		"[removed] testrules_reload_2.js",
 	)
 
 	// both ignored (cells are no longer there)
@@ -171,13 +171,13 @@ func (s *RuleReloadSuite) TestRemoveRestore() {
 	s.VerifyVdevCleanup("testrules_reload_2.js")
 	s.Verify(
 		// removal notification for the client-side script editor
-		"wbrules-log -> /wbrules/updates/removed: [testrules_reload_2.js] (QoS 1)",
+		"[removed] testrules_reload_2.js",
 	)
 
 	// load script and expect vdev definition at least
 	s.LiveLoadScript("testrules_reload_2.js")
 	// s.ReplaceScript("testrules_reload_2.js", "testrules_reload_2_changed.js")
-	s.SkipTill("wbrules-log -> /wbrules/updates/changed: [testrules_reload_2.js] (QoS 1)")
+	s.SkipTill("[changed] testrules_reload_2.js")
 
 	s.VerifyRules()
 }

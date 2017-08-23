@@ -263,7 +263,6 @@ func (ctx *ESContext) callbackKey(key ESCallback) string {
 }
 
 func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} {
-
 	wbgo.Debug.Printf("trying to invoke callback %d in context %p\n", key, ctx)
 
 	ctx.PushHeapStash()
@@ -296,7 +295,6 @@ func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} 
 // as uint64. In this case the returned value is guaranteed to be
 // greater than zero.
 func (ctx *ESContext) storeCallback(callbackStackIndex int) ESCallback {
-
 	// get previous callback index
 	key := ctx.factory.callbackIndex
 	ctx.factory.callbackIndex++

@@ -861,6 +861,8 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 		wbgo.Warn.Printf("warning: ignoring callback func for a named timer")
 	}
 
+	wbgo.Debug.Printf("[engine] Starting timer '%s' (id %d)", name, n)
+
 	engine.timerDeferQueue.MaybeDefer(func() {
 		entry.Lock()
 		defer entry.Unlock()
@@ -1101,7 +1103,6 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 }
 
 func (engine *RuleEngine) DefineRule(rule *Rule) (id RuleId, err error) {
-
 	// for named rule - check for redefinition
 	if rule.name != "" {
 		if _, found := engine.ruleNameMap[rule.name]; found {
