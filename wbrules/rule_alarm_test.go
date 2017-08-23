@@ -18,6 +18,7 @@ type AlarmSuite struct {
 func (s *AlarmSuite) SetupTest() {
 	s.SetupSkippingDefs("testrules_alarm.js")
 	s.publishTestDev()
+
 }
 
 func (s *AlarmSuite) loadAlarms() {
