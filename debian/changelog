@@ -1,3 +1,10 @@
+wb-rules (2.1~alpha2) stable; urgency=medium
+
+  * wbgo: device reowning
+  * minor fixes
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Thu, 31 Aug 2017 19:20:04 +0300
+
 wb-rules (2.1~alpha1) stable; urgency=medium
 
   * Initial commit for new wbgo build
