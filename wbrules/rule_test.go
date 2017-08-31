@@ -218,6 +218,7 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	if s.VdevStorageFile == "" {
 		dargs.SetUseStorage(false)
 	} else {
+		dargs.SetUseStorage(true)
 		dargs.SetStoragePath(s.VdevStorageFile)
 	}
 
