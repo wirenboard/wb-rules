@@ -27,6 +27,11 @@ func main() {
 	debug := flag.Bool("debug", false, "Enable debugging")
 	useSyslog := flag.Bool("syslog", false, "Use syslog for logging")
 	mqttDebug := flag.Bool("mqttdebug", false, "Enable MQTT debugging")
+	precise := flag.Bool("precise", false, "Don't reown devices without driver")
+
+	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
+	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
+
 	flag.Parse()
 	if flag.NArg() < 1 {
 		wbgo.Error.Fatal("must specify rule file/directory name(s)")
@@ -45,7 +50,12 @@ func main() {
 	// model := wbrules.NewCellModel()
 	driverMqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID)
 	// driver := wbgo.NewDriver(model, mqttClient)
-	driver, err := wbgo.NewDriverBase(wbgo.NewDriverArgs().SetId(DRIVER_CONV_ID).SetMqtt(driverMqttClient).SetUseStorage(true).SetStoragePath(VIRTUAL_DEVICES_DB_FILE))
+	driver, err := wbgo.NewDriverBase(wbgo.NewDriverArgs().
+		SetId(DRIVER_CONV_ID).
+		SetMqtt(driverMqttClient).
+		SetUseStorage(*vdevDbFile != "").
+		SetStoragePath(*vdevDbFile).
+		SetReownUnknownDevices(!*precise))
 	if err != nil {
 		wbgo.Error.Fatalf("error creating driver: %s", err)
 	}
@@ -57,7 +67,7 @@ func main() {
 	driver.SetFilter(&wbgo.AllDevicesFilter{})
 
 	engineOptions := wbrules.NewESEngineOptions()
-	engineOptions.SetPersistentDBFile(PERSISTENT_DB_FILE)
+	engineOptions.SetPersistentDBFile(*persistentDbFile)
 	engineOptions.SetModulesDirs(strings.Split(os.Getenv(WBRULES_MODULES_ENV), ":"))
 
 	engineMqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, ENGINE_CLIENT_ID)
