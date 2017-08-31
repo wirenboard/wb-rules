@@ -356,6 +356,8 @@ func (s *RuleSuiteBase) TearDownTest() {
 
 	s.client.Stop()
 	s.logClient.Stop()
+
+	s.driver.Close()
 }
 
 // TBD: metadata (like, meta["devname"]["controlName"])
