@@ -27,6 +27,7 @@ func (s *RuleToplevelTimersSuite) TestToplevelTimers() {
 		"(retain) -> /devices/wbrules/controls/Rule debugging/meta/type: [switch] (QoS 1, retained)",
 		"(retain) -> /devices/wbrules/controls/Rule debugging/meta/order: [1] (QoS 1, retained)",
 		"(retain) -> /devices/wbrules/controls/Rule debugging/meta/writable: [1] (QoS 1, retained)",
+		"(retain) -> /devices/wbrules/controls/Rule debugging/meta/readonly: [] (QoS 1, retained)",
 		"(retain) -> /devices/wbrules/controls/Rule debugging: [1] (QoS 1, retained)",
 	)
 	s.VerifyEmpty()
