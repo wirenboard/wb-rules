@@ -93,4 +93,8 @@ func main() {
 	for {
 		time.Sleep(1 * time.Second)
 	}
+
+	engine.Stop()
+	driver.StopLoop()
+	driver.Close()
 }
