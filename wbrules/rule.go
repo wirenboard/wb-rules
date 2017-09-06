@@ -314,7 +314,9 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 				"newValue": e.Value,
 			})
 		}
-		wbgo.Debug.Printf("[rule] firing Rule ruleId=%d", rule.id)
+		if wbgo.DebuggingEnabled() {
+			wbgo.Debug.Printf("[rule] firing Rule ruleId=%d", rule.id)
+		}
 		rule.then(args)
 	}
 }
