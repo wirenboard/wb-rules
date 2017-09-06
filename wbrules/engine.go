@@ -112,9 +112,14 @@ type DeviceProxy struct {
 // control object is accessed while avoiding excess
 // name lookups.
 type ControlProxy struct {
+	sync.Mutex
+
 	devProxy *DeviceProxy
 	name     string
 	control  wbgo.Control
+
+	cachedValue interface{}
+	cacheValid  bool
 }
 
 func getDeviceRefFromDriver(devId string, drv wbgo.Driver) (dev wbgo.Device, err error) {
@@ -137,13 +142,24 @@ func (devProxy *DeviceProxy) updated() bool {
 }
 
 func (devProxy *DeviceProxy) EnsureControlProxy(ctrlId string) *ControlProxy {
-	wbgo.Debug.Printf("[devProxy] EnsureControlProxy for control %s/%s", devProxy.name, ctrlId)
-	return &ControlProxy{devProxy, ctrlId, devProxy.getControl(ctrlId)}
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Printf("[devProxy] EnsureControlProxy for control %s/%s", devProxy.name, ctrlId)
+	}
+	return &ControlProxy{
+		devProxy:    devProxy,
+		name:        ctrlId,
+		control:     devProxy.getControl(ctrlId),
+		cachedValue: nil,
+		cacheValid:  false,
+	}
 }
 
 func (devProxy *DeviceProxy) getControl(ctrlId string) wbgo.Control {
 	devId := devProxy.name
-	wbgo.Debug.Printf("[devProxy] getControl for control %s/%s", devId, ctrlId)
+
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Printf("[devProxy] getControl for control %s/%s", devId, ctrlId)
+	}
 
 	var c wbgo.Control
 	devProxy.owner.Driver().Access(func(tx wbgo.DriverTx) error {
@@ -158,6 +174,16 @@ func (devProxy *DeviceProxy) getControl(ctrlId string) wbgo.Control {
 	return c
 }
 
+func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgo.Control, value interface{}, tx wbgo.DriverTx) error {
+	ctrlProxy.Lock()
+	defer ctrlProxy.Unlock()
+
+	ctrlProxy.cacheValid = true
+	ctrlProxy.cachedValue = value
+
+	return nil
+}
+
 // just a syntax sugar
 func (ctrlProxy *ControlProxy) accessDriver(f func(tx wbgo.DriverTx) error) error {
 	return ctrlProxy.devProxy.owner.Driver().Access(f)
@@ -165,6 +191,14 @@ func (ctrlProxy *ControlProxy) accessDriver(f func(tx wbgo.DriverTx) error) erro
 
 func (ctrlProxy *ControlProxy) getControl() wbgo.Control {
 	if ctrlProxy.devProxy.updated() {
+		if wbgo.DebuggingEnabled() {
+			wbgo.Debug.Printf("[controlProxy %s/%s] cache invalidate!", ctrlProxy.devProxy.name, ctrlProxy.name)
+		}
+		ctrlProxy.Lock()
+		ctrlProxy.cacheValid = false
+		// FIXME: reset value handler on the old control if any
+		ctrlProxy.Unlock()
+
 		ctrlProxy.control = ctrlProxy.devProxy.getControl(ctrlProxy.name)
 	}
 
@@ -189,33 +223,75 @@ func (ctrlProxy *ControlProxy) RawValue() (v string) {
 
 // TODO: return error on non-existing/incomplete control
 func (ctrlProxy *ControlProxy) Value() (v interface{}) {
-	wbgo.Debug.Printf("[ctrlProxy] getting value of control %s/%s", ctrlProxy.devProxy.name, ctrlProxy.name)
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Printf("[ctrlProxy] getting value of control %s/%s", ctrlProxy.devProxy.name, ctrlProxy.name)
+	}
+
 	ctrl := ctrlProxy.getControl()
 	if ctrl == nil {
 		return nil
 	}
-	err := ctrlProxy.accessDriver(func(tx wbgo.DriverTx) (err error) {
-		ctrl.SetTx(tx)
-		v, err = ctrl.GetValue()
-		return
-	})
-	if err != nil {
-		return nil
+
+	// check cached value first
+	ctrlProxy.Lock()
+	if ctrlProxy.cacheValid {
+		v = ctrlProxy.cachedValue
+		ctrlProxy.Unlock()
 	} else {
-		return v
+		// update cache value
+		ctrlProxy.Unlock()
+		err := ctrlProxy.accessDriver(func(tx wbgo.DriverTx) (err error) {
+			ctrl.SetTx(tx)
+			v, err = ctrl.GetValue()
+			if err != nil {
+				return
+			}
+
+			// set update value handler to keep cache clear and fresh
+			ctrl.SetValueUpdateHandler(ctrlProxy.updateValueHandler)
+			return
+		})
+
+		// update cache value and set validation flag
+		if err != nil {
+			v = nil
+		} else {
+			ctrlProxy.Lock()
+			ctrlProxy.cachedValue = v
+			ctrlProxy.cacheValid = true
+			ctrlProxy.Unlock()
+		}
 	}
+
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Printf("[ctrlProxy] getValue(%s/%s): %v", ctrlProxy.devProxy.name, ctrlProxy.name, v)
+	}
+	return
 }
 
 func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Printf("[ctrlProxy %s/%s] SetValue(%v)", ctrlProxy.devProxy.name, ctrlProxy.name, value)
+	}
+
 	ctrl := ctrlProxy.getControl()
 	if ctrl == nil {
 		wbgo.Error.Printf("failed to SetValue for unexisting control")
 		return
 	}
+
+	isLocal := false
 	err := ctrlProxy.accessDriver(func(tx wbgo.DriverTx) error {
 		ctrl.SetTx(tx)
+		_, isLocal = ctrl.GetDevice().(wbgo.LocalDevice)
 		return ctrl.SetValue(value)()
 	})
+
+	if isLocal {
+		// run update value handler immediately, don't wait for wbgo backend
+		ctrlProxy.updateValueHandler(nil, value, nil)
+	}
+
 	if err != nil {
 		wbgo.Error.Printf("control %s/%s SetValue() error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, err)
 	}
@@ -693,8 +769,10 @@ func (engine *RuleEngine) OnTimerRemoveByIndex(n TimerId, thunk func()) {
 }
 
 func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName string) {
-	wbgo.Debug.Println("[ruleengine] RunRules, event ", ctrlEvent, ", timer ", timerName)
-	wbgo.Debug.Printf("[ruleengine] RulesLists for all: %v", engine.controlToRulesListMap)
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Println("[ruleengine] RunRules, event ", ctrlEvent, ", timer ", timerName)
+		wbgo.Debug.Printf("[ruleengine] RulesLists for all: %v", engine.controlToRulesListMap)
+	}
 
 	// select all uninitialized rules to run and clean list
 	for _, rule := range engine.uninitializedRules {
@@ -1140,7 +1218,9 @@ func (engine *RuleEngine) DefineRule(rule *Rule) (id RuleId, err error) {
 // Refresh() should be called after engine rules are altered
 // while the engine is running.
 func (engine *RuleEngine) Refresh() {
-	wbgo.Debug.Println("[engine] Refresh()")
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Println("[engine] Refresh()")
+	}
 	atomic.AddUint32(&engine.rev, 1) // invalidate device/control proxies
 	engine.setupCron()
 

@@ -1005,7 +1005,9 @@ func (engine *ESEngine) esPublish(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esWbDevObject(ctx *ESContext) int {
-	wbgo.Debug.Printf("esWbDevObject(): top=%d isString=%v", ctx.GetTop(), ctx.IsString(-1))
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Printf("esWbDevObject(): top=%d isString=%v", ctx.GetTop(), ctx.IsString(-1))
+	}
 	if ctx.GetTop() != 1 || !ctx.IsString(-1) {
 		return duktape.DUK_RET_ERROR
 	}
@@ -1306,7 +1308,9 @@ func (engine *ESEngine) esWbCtrlRule(ctx *ESContext, state bool) int {
 		return duktape.DUK_RET_ERROR
 	}
 
-	wbgo.Debug.Printf("[ruleengine] %sRule(ruleId=%d)", act, ruleId)
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Printf("[ruleengine] %sRule(ruleId=%d)", act, ruleId)
+	}
 
 	return 0
 }
