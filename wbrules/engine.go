@@ -36,6 +36,9 @@ const (
 	ENGINE_NOTED_CONTROLS_CAPACITY      = 4
 
 	ENGINE_UNINITIALIZED_RULES_CAPACITY = 16
+
+	ENGINE_ACTIVE = 1
+	ENGINE_STOP   = 0
 )
 
 // errors
@@ -345,39 +348,46 @@ func NewRuleEngineOptions() *RuleEngineOptions {
 }
 
 type RuleEngine struct {
-	cleanup               *ScopedCleanup
-	rev                   uint32 // atomic
-	syncQueueActive       bool
-	syncQueue             chan func()
-	syncQuitCh            chan chan struct{}
-	mqttClient            wbgo.MQTTClient // for service
-	driver                wbgo.Driver
-	driverReadyCh         chan struct{}
-	controlChangeCh       chan *ControlChangeEvent
-	timerFunc             TimerFunc
-	nextTimerId           TimerId
-	timers                map[TimerId]*TimerEntry
-	callbackIndex         ESCallback
-	nextRuleId            RuleId
+	active          uint32 // atomic
+	cleanup         *ScopedCleanup
+	rev             uint32 // atomic
+	syncQueueActive bool
+	syncQueue       chan func()
+	syncQuitCh      chan chan struct{}
+	mqttClient      wbgo.MQTTClient // for service
+	driver          wbgo.Driver
+	driverReadyCh   chan struct{}
+	controlChangeCh chan *ControlChangeEvent
+	timerFunc       TimerFunc
+	nextTimerId     TimerId
+
+	timersMutex sync.Mutex
+	timers      map[TimerId]*TimerEntry
+
+	callbackIndex ESCallback
+	nextRuleId    RuleId
+
+	rulesMutex            sync.Mutex
 	ruleMap               map[RuleId]*Rule
 	ruleNameMap           map[string]*Rule
 	ruleList              []RuleId
-	notedControls         []ControlSpec
-	notedTimers           map[string]bool
 	controlToRulesListMap map[ControlSpec][]*Rule
 	rulesWithoutControls  map[*Rule]bool
 	timerRules            map[string][]*Rule
-	currentTimer          string
-	cronMaker             func() Cron
-	cron                  Cron
-	statusMtx             sync.Mutex
-	debugMtx              sync.Mutex
-	getTimerMtx           sync.Mutex
-	debugEnabled          bool
-	readyCh               chan struct{}
-	readyQueue            *wbgo.DeferredList
-	timerDeferQueue       *wbgo.DeferredList
 	uninitializedRules    []*Rule
+
+	notedControls   []ControlSpec
+	notedTimers     map[string]bool
+	currentTimer    string
+	cronMaker       func() Cron
+	cron            Cron
+	statusMtx       sync.Mutex
+	debugMtx        sync.Mutex
+	getTimerMtx     sync.Mutex
+	debugEnabled    bool
+	readyCh         chan struct{}
+	readyQueue      *wbgo.DeferredList
+	timerDeferQueue *wbgo.DeferredList
 
 	// subscriptions to control change events
 	// suitable for testing
@@ -391,6 +401,7 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 	}
 
 	engine = &RuleEngine{
+		active:                ENGINE_STOP,
 		cleanup:               MakeScopedCleanup(),
 		rev:                   0,
 		syncQueue:             make(chan func(), SYNC_QUEUE_LEN),
@@ -549,6 +560,10 @@ ReadyWaitLoop:
 }
 
 func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
+	if atomic.LoadUint32(&engine.active) == ENGINE_STOP {
+		return
+	}
+
 	wbgo.Debug.Printf("[engine] driverEventHandler(event %T(%v))", event, event)
 
 	var value interface{}
@@ -712,7 +727,10 @@ func (engine *RuleEngine) CheckTimer(timerName string) bool {
 }
 
 func (engine *RuleEngine) fireTimer(n TimerId) {
+	engine.timersMutex.Lock()
 	entry, found := engine.timers[n]
+	engine.timersMutex.Unlock()
+
 	if !found {
 		wbgo.Error.Printf("firing unknown timer %d", n)
 		return
@@ -724,7 +742,9 @@ func (engine *RuleEngine) fireTimer(n TimerId) {
 	}
 
 	if !entry.periodic {
+		engine.timersMutex.Lock()
 		engine.removeTimer(n)
+		engine.timersMutex.Unlock()
 	}
 }
 
@@ -734,18 +754,26 @@ func (engine *RuleEngine) removeTimer(n TimerId) {
 }
 
 func (engine *RuleEngine) StopTimerByName(name string) {
+	engine.timersMutex.Lock()
+
 	for n, entry := range engine.timers {
 		if entry != nil && name == entry.name {
 			engine.removeTimer(n)
+			engine.timersMutex.Unlock()
 			entry.stop()
-			break
+			return
 		}
 	}
+
+	engine.timersMutex.Unlock()
 }
 
 func (engine *RuleEngine) StopTimerByIndex(n TimerId) {
 	if entry, found := engine.FindTimerByIndex(n); found {
+		engine.timersMutex.Lock()
 		engine.removeTimer(n)
+		engine.timersMutex.Unlock()
+
 		entry.stop()
 	} else {
 		wbgo.Error.Printf("trying to stop unknown timer: %d", n)
@@ -756,6 +784,10 @@ func (engine *RuleEngine) FindTimerByIndex(n TimerId) (entry *TimerEntry, found 
 	if n == 0 {
 		return
 	}
+
+	engine.timersMutex.Lock()
+	defer engine.timersMutex.Unlock()
+
 	entry, found = engine.timers[n]
 	return
 }
@@ -773,6 +805,8 @@ func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName stri
 		wbgo.Debug.Println("[ruleengine] RunRules, event ", ctrlEvent, ", timer ", timerName)
 		wbgo.Debug.Printf("[ruleengine] RulesLists for all: %v", engine.controlToRulesListMap)
 	}
+	engine.rulesMutex.Lock()
+	defer engine.rulesMutex.Unlock()
 
 	// select all uninitialized rules to run and clean list
 	for _, rule := range engine.uninitializedRules {
@@ -825,19 +859,34 @@ func (engine *RuleEngine) setupCron() {
 	engine.cron = newCronProxy(engine.cronMaker(), engine.CallSync)
 	// note for rule reloading: will need to restart cron
 	// to reload rules properly
-	for _, ruleId := range engine.ruleList {
-		rule := engine.ruleMap[ruleId]
-		rule.MaybeAddToCron(engine.cron)
-	}
+	func() {
+		engine.rulesMutex.Lock()
+		defer engine.rulesMutex.Unlock()
+
+		for _, ruleId := range engine.ruleList {
+			rule := engine.ruleMap[ruleId]
+			rule.MaybeAddToCron(engine.cron)
+		}
+	}()
+
 	engine.cron.Start()
 }
 
 func (engine *RuleEngine) handleStop() {
 	wbgo.Debug.Printf("engine stopped")
+
+	engine.timersMutex.Lock()
+	timerEntries := make([]*TimerEntry, 0, len(engine.timers))
 	for _, entry := range engine.timers {
-		entry.stop()
+		timerEntries = append(timerEntries, entry)
 	}
 	engine.timers = make(map[TimerId]*TimerEntry)
+	engine.timersMutex.Unlock()
+
+	for _, entry := range timerEntries {
+		entry.stop()
+	}
+
 	engine.statusMtx.Lock()
 	engine.controlChangeCh = nil
 	engine.readyCh = nil
@@ -893,12 +942,15 @@ func (engine *RuleEngine) Start() {
 		engine.driverReadyCh <- struct{}{}
 	})
 	engine.syncQueueActive = true
+	atomic.StoreUint32(&engine.active, ENGINE_ACTIVE)
 
 	go engine.mainLoop()
 	go engine.syncLoop()
 }
 
 func (engine *RuleEngine) Stop() {
+	atomic.StoreUint32(&engine.active, ENGINE_STOP)
+
 	// run all necessary cleanups
 	engine.cleanup.RunAllCleanups()
 
@@ -929,9 +981,11 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 		active:   true,
 	}
 
+	engine.timersMutex.Lock()
 	n := engine.nextTimerId
 	engine.nextTimerId += 1
 	engine.timers[n] = entry
+	engine.timersMutex.Unlock()
 
 	if name == NO_TIMER_NAME {
 		entry.thunk = callback
@@ -1181,6 +1235,9 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 }
 
 func (engine *RuleEngine) DefineRule(rule *Rule) (id RuleId, err error) {
+	engine.rulesMutex.Lock()
+	defer engine.rulesMutex.Unlock()
+
 	// for named rule - check for redefinition
 	if rule.name != "" {
 		if _, found := engine.ruleNameMap[rule.name]; found {
@@ -1192,8 +1249,13 @@ func (engine *RuleEngine) DefineRule(rule *Rule) (id RuleId, err error) {
 	}
 
 	engine.ruleList = append(engine.ruleList, rule.id)
+
 	engine.ruleMap[rule.id] = rule
+
 	engine.cleanup.AddCleanup(func() {
+		engine.rulesMutex.Lock()
+		defer engine.rulesMutex.Unlock()
+
 		delete(engine.ruleMap, rule.id)
 		if rule.name != "" {
 			delete(engine.ruleNameMap, rule.name)
@@ -1223,6 +1285,9 @@ func (engine *RuleEngine) Refresh() {
 	}
 	atomic.AddUint32(&engine.rev, 1) // invalidate device/control proxies
 	engine.setupCron()
+
+	engine.rulesMutex.Lock()
+	defer engine.rulesMutex.Unlock()
 
 	// Some cell pointers are now probably invalid
 	// FIXME: maybe this problem is gone now
