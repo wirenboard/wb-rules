@@ -16,8 +16,8 @@ func (s *JSThreadingTestSuite) SetupTest() {
 
 func (s *JSThreadingTestSuite) TestRuntime() {
 	s.publish("/devices/test/controls/test/on", "1", "test/test")
-	s.Verify(
-		"tst -> /devices/test/controls/test/on: [1] (QoS 1)",
+	s.Verify("tst -> /devices/test/controls/test/on: [1] (QoS 1)")
+	s.VerifyUnordered(
 		"driver -> /devices/test/controls/test: [1] (QoS 1)",
 		"[info] it works!",
 	)
