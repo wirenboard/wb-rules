@@ -3,8 +3,9 @@ package main
 import (
 	"flag"
 	"os"
+	"os/signal"
 	"strings"
-	"time"
+	"syscall"
 
 	"github.com/contactless/wb-rules/wbrules"
 	"github.com/contactless/wbgo"
@@ -100,9 +101,10 @@ func main() {
 
 	engine.Start()
 
-	for {
-		time.Sleep(1 * time.Second)
-	}
+	// wait for quit signal
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+	<-c
 
 	engine.Stop()
 	driver.StopLoop()
