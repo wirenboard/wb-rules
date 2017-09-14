@@ -39,6 +39,8 @@ const (
 
 	ENGINE_ACTIVE = 1
 	ENGINE_STOP   = 0
+
+	ENGINE_CALLSYNC_TIMEOUT = 120 * time.Second
 )
 
 // errors
@@ -564,7 +566,9 @@ func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
 		return
 	}
 
-	wbgo.Debug.Printf("[engine] driverEventHandler(event %T(%v))", event, event)
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Printf("[engine] driverEventHandler(event %T(%v))", event, event)
+	}
 
 	var value interface{}
 	var spec ControlSpec
@@ -599,10 +603,14 @@ func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
 }
 
 func (engine *RuleEngine) CallSync(thunk func()) {
-	select {
-	case engine.syncQueue <- thunk:
-	case <-time.After(3 * time.Second):
-		panic("[engine] CallSync stuck!")
+	if engine.debugEnabled {
+		select {
+		case engine.syncQueue <- thunk:
+		case <-time.After(ENGINE_CALLSYNC_TIMEOUT):
+			panic("[engine] CallSync stuck!")
+		}
+	} else {
+		engine.syncQueue <- thunk
 	}
 }
 
@@ -1119,14 +1127,6 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 			return fmt.Errorf("%s/%s: no control type", devId, ctrlId)
 		}
 		args.SetType(ctrlType.(string))
-
-		/*
-			// FIXME: too much spaghetti for my taste
-			if cellType == "pushbutton" {
-				dev.SetButtonCell(cellName)
-				continue
-			}
-		*/
 
 		// get 'forceDefault' metaproperty
 		forceDefault := false
