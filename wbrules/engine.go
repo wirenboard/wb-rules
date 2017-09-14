@@ -40,6 +40,9 @@ const (
 	ENGINE_ACTIVE = 1
 	ENGINE_STOP   = 0
 
+	ATOMIC_TRUE  = 1
+	ATOMIC_FALSE = 0
+
 	ENGINE_CALLSYNC_TIMEOUT = 120 * time.Second
 )
 
@@ -343,10 +346,18 @@ type ControlChangeEvent struct {
 }
 
 type RuleEngineOptions struct {
+	debugQueues bool
 }
 
 func NewRuleEngineOptions() *RuleEngineOptions {
-	return &RuleEngineOptions{}
+	return &RuleEngineOptions{
+		debugQueues: false,
+	}
+}
+
+func (o *RuleEngineOptions) SetTesting(v bool) *RuleEngineOptions {
+	o.debugQueues = v
+	return o
 }
 
 type RuleEngine struct {
@@ -359,9 +370,14 @@ type RuleEngine struct {
 	mqttClient      wbgo.MQTTClient // for service
 	driver          wbgo.Driver
 	driverReadyCh   chan struct{}
-	controlChangeCh chan *ControlChangeEvent
-	timerFunc       TimerFunc
-	nextTimerId     TimerId
+
+	controlChangeChLen       int
+	controlChangeCh          chan *ControlChangeEvent
+	doListenControlChange    bool
+	listenControlChangeMutex sync.Mutex
+
+	timerFunc   TimerFunc
+	nextTimerId TimerId
 
 	timersMutex sync.Mutex
 	timers      map[TimerId]*TimerEntry
@@ -434,6 +450,13 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
+
+	if options.debugQueues {
+		engine.controlChangeChLen = 0
+	} else {
+		engine.controlChangeChLen = ENGINE_CONTROL_CHANGE_QUEUE_LEN
+	}
+
 	engine.readyQueue = wbgo.NewDeferredList(engine.CallSync)
 	engine.timerDeferQueue = wbgo.NewDeferredList(engine.CallHere)
 
@@ -485,8 +508,22 @@ func (engine *RuleEngine) notifyControlChangeSubs(e *ControlChangeEvent) {
 	}
 }
 
+func (engine *RuleEngine) startListenDriverEvents() {
+	engine.listenControlChangeMutex.Lock()
+	defer engine.listenControlChangeMutex.Unlock()
+
+	engine.doListenControlChange = true
+}
+
+func (engine *RuleEngine) stopListenDriverEvents() {
+	engine.listenControlChangeMutex.Lock()
+	defer engine.listenControlChangeMutex.Unlock()
+
+	engine.doListenControlChange = false
+}
+
 func (engine *RuleEngine) syncLoop() {
-	wbgo.Debug.Println("[engine] Starting sync loop")
+	wbgo.Info.Println("[engine] Starting sync loop")
 	for {
 		select {
 		case f, ok := <-engine.syncQueue:
@@ -494,7 +531,7 @@ func (engine *RuleEngine) syncLoop() {
 				f()
 			}
 		case q := <-engine.syncQuitCh:
-			wbgo.Debug.Println("[engine] Stopping sync loop")
+			wbgo.Info.Println("[engine] Stopping sync loop")
 			close(q)
 			return
 		}
@@ -505,7 +542,7 @@ func (engine *RuleEngine) mainLoop() {
 	// control changes are ignored until the engine is ready
 	// FIXME: some very small probability of race condition is
 	// present here
-	wbgo.Debug.Println("[engine] Starting main loop")
+	wbgo.Info.Println("[engine] Starting main loop")
 ReadyWaitLoop:
 	for {
 		select {
@@ -534,7 +571,7 @@ ReadyWaitLoop:
 	engine.CallSync(engine.timerDeferQueue.Ready)
 	close(engine.readyCh)
 
-	wbgo.Debug.Printf("the engine is ready")
+	wbgo.Info.Printf("the engine is ready")
 	// wbgo.Info.Printf("******** READY ********")
 	for {
 		select {
@@ -555,6 +592,7 @@ ReadyWaitLoop:
 				engine.notifyControlChangeSubs(event)
 			} else {
 				engine.handleStop()
+				wbgo.Info.Println("[engine] Stop main loop")
 				return
 			}
 		}
@@ -563,6 +601,14 @@ ReadyWaitLoop:
 
 func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
 	if atomic.LoadUint32(&engine.active) == ENGINE_STOP {
+		return
+	}
+
+	// skip event if engine doesn't listen to control changes
+	// (ex. on LiveFileLoad)
+	engine.listenControlChangeMutex.Lock()
+	defer engine.listenControlChangeMutex.Unlock()
+	if !engine.doListenControlChange {
 		return
 	}
 
@@ -943,7 +989,7 @@ func (engine *RuleEngine) Start() {
 	}
 	engine.readyCh = make(chan struct{})
 	engine.driverReadyCh = make(chan struct{}, 1)
-	engine.controlChangeCh = make(chan *ControlChangeEvent, ENGINE_CONTROL_CHANGE_QUEUE_LEN)
+	engine.controlChangeCh = make(chan *ControlChangeEvent, engine.controlChangeChLen)
 
 	engine.driver.OnDriverEvent(engine.driverEventHandler)
 	engine.driver.OnRetainReady(func(tx wbgo.DriverTx) {
