@@ -530,8 +530,6 @@ func (engine *ESEngine) checkVirtualPath(path string) (cleanPath string, virtual
 }
 
 func (engine *ESEngine) LoadFile(path string) (err error) {
-	engine.stopListenDriverEvents()
-	defer engine.startListenDriverEvents()
 	return engine.LiveLoadFile(path)
 
 	// _, err = engine.loadScript(path, true)
