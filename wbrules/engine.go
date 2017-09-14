@@ -371,10 +371,7 @@ type RuleEngine struct {
 	driver          wbgo.Driver
 	driverReadyCh   chan struct{}
 
-	controlChangeChLen       int
-	controlChangeCh          chan *ControlChangeEvent
-	doListenControlChange    bool
-	listenControlChangeMutex sync.Mutex
+	eventBuffer *EventBuffer
 
 	timerFunc   TimerFunc
 	nextTimerId TimerId
@@ -451,11 +448,11 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
 
-	if options.debugQueues {
-		engine.controlChangeChLen = 0
-	} else {
-		engine.controlChangeChLen = ENGINE_CONTROL_CHANGE_QUEUE_LEN
-	}
+	// if options.debugQueues {
+	// engine.controlChangeChLen = 0
+	// } else {
+	// engine.controlChangeChLen = ENGINE_CONTROL_CHANGE_QUEUE_LEN
+	// }
 
 	engine.readyQueue = wbgo.NewDeferredList(engine.CallSync)
 	engine.timerDeferQueue = wbgo.NewDeferredList(engine.CallHere)
@@ -508,20 +505,6 @@ func (engine *RuleEngine) notifyControlChangeSubs(e *ControlChangeEvent) {
 	}
 }
 
-func (engine *RuleEngine) startListenDriverEvents() {
-	engine.listenControlChangeMutex.Lock()
-	defer engine.listenControlChangeMutex.Unlock()
-
-	engine.doListenControlChange = true
-}
-
-func (engine *RuleEngine) stopListenDriverEvents() {
-	engine.listenControlChangeMutex.Lock()
-	defer engine.listenControlChangeMutex.Unlock()
-
-	engine.doListenControlChange = false
-}
-
 func (engine *RuleEngine) syncLoop() {
 	wbgo.Info.Println("[engine] Starting sync loop")
 	for {
@@ -538,6 +521,22 @@ func (engine *RuleEngine) syncLoop() {
 	}
 }
 
+func (engine *RuleEngine) processEvent(event *ControlChangeEvent) {
+	if wbgo.DebuggingEnabled() {
+		wbgo.Debug.Printf("control change: %s", event.Spec)
+		wbgo.Debug.Printf("rule engine: running rules after control change: %s", event.Spec)
+	}
+	if engine.isDebugControl(event.Spec) {
+		engine.updateDebugEnabled()
+	}
+
+	engine.CallSync(func() {
+		engine.RunRules(event, NO_TIMER_NAME)
+	})
+
+	engine.notifyControlChangeSubs(event)
+}
+
 func (engine *RuleEngine) mainLoop() {
 	// control changes are ignored until the engine is ready
 	// FIXME: some very small probability of race condition is
@@ -548,12 +547,16 @@ ReadyWaitLoop:
 		select {
 		case <-engine.driverReadyCh:
 			break ReadyWaitLoop
-		case event, ok := <-engine.controlChangeCh:
+		case _, ok := <-engine.eventBuffer.Observe():
 			if ok {
-				wbgo.Debug.Printf("control change (not ready yet): %s", event.Spec)
-				engine.notifyControlChangeSubs(event)
-				if engine.isDebugControl(event.Spec) {
-					engine.updateDebugEnabled()
+				events := engine.eventBuffer.Retrieve()
+
+				for _, event := range events {
+					wbgo.Debug.Printf("control change (not ready yet): %s", event.Spec)
+					engine.notifyControlChangeSubs(event)
+					if engine.isDebugControl(event.Spec) {
+						engine.updateDebugEnabled()
+					}
 				}
 			} else {
 				wbgo.Debug.Printf("stoping the engine (not ready yet)")
@@ -575,21 +578,12 @@ ReadyWaitLoop:
 	// wbgo.Info.Printf("******** READY ********")
 	for {
 		select {
-		case event, ok := <-engine.controlChangeCh:
+		case _, ok := <-engine.eventBuffer.Observe():
 			if ok {
-				if wbgo.DebuggingEnabled() {
-					wbgo.Debug.Printf("control change: %s", event.Spec)
-					wbgo.Debug.Printf("rule engine: running rules after control change: %s", event.Spec)
+				events := engine.eventBuffer.Retrieve()
+				for _, event := range events {
+					engine.processEvent(event)
 				}
-				if engine.isDebugControl(event.Spec) {
-					engine.updateDebugEnabled()
-				}
-
-				engine.CallSync(func() {
-					engine.RunRules(event, NO_TIMER_NAME)
-				})
-
-				engine.notifyControlChangeSubs(event)
 			} else {
 				engine.handleStop()
 				wbgo.Info.Println("[engine] Stop main loop")
@@ -601,14 +595,6 @@ ReadyWaitLoop:
 
 func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
 	if atomic.LoadUint32(&engine.active) == ENGINE_STOP {
-		return
-	}
-
-	// skip event if engine doesn't listen to control changes
-	// (ex. on LiveFileLoad)
-	engine.listenControlChangeMutex.Lock()
-	defer engine.listenControlChangeMutex.Unlock()
-	if !engine.doListenControlChange {
 		return
 	}
 
@@ -645,7 +631,8 @@ func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
 		IsRetained: isRetained,
 		Value:      value,
 	}
-	engine.controlChangeCh <- cce
+
+	engine.eventBuffer.PushEvent(cce)
 }
 
 func (engine *RuleEngine) CallSync(thunk func()) {
@@ -942,7 +929,7 @@ func (engine *RuleEngine) handleStop() {
 	}
 
 	engine.statusMtx.Lock()
-	engine.controlChangeCh = nil
+	engine.eventBuffer.Close()
 	engine.readyCh = nil
 	engine.driverReadyCh = nil
 	engine.syncQueueActive = false
@@ -984,12 +971,9 @@ func (engine *RuleEngine) updateDebugEnabled() {
 }
 
 func (engine *RuleEngine) Start() {
-	if engine.controlChangeCh != nil {
-		return
-	}
 	engine.readyCh = make(chan struct{})
 	engine.driverReadyCh = make(chan struct{}, 1)
-	engine.controlChangeCh = make(chan *ControlChangeEvent, engine.controlChangeChLen)
+	engine.eventBuffer = NewEventBuffer()
 
 	engine.driver.OnDriverEvent(engine.driverEventHandler)
 	engine.driver.OnRetainReady(func(tx wbgo.DriverTx) {
@@ -1008,8 +992,7 @@ func (engine *RuleEngine) Stop() {
 	// run all necessary cleanups
 	engine.cleanup.RunAllCleanups()
 
-	// stop main loop
-	close(engine.controlChangeCh)
+	engine.eventBuffer.Close()
 
 	// stop sync loop
 	q := make(chan struct{})
@@ -1021,9 +1004,7 @@ func (engine *RuleEngine) Stop() {
 }
 
 func (engine *RuleEngine) IsActive() bool {
-	engine.statusMtx.Lock()
-	defer engine.statusMtx.Unlock()
-	return engine.controlChangeCh != nil
+	return atomic.LoadUint32(&engine.active) == ENGINE_ACTIVE
 }
 
 func (engine *RuleEngine) StartTimer(name string, callback func(), interval time.Duration, periodic bool) TimerId {
