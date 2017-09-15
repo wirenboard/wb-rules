@@ -929,7 +929,6 @@ func (engine *RuleEngine) handleStop() {
 	}
 
 	engine.statusMtx.Lock()
-	engine.eventBuffer.Close()
 	engine.readyCh = nil
 	engine.driverReadyCh = nil
 	engine.syncQueueActive = false
