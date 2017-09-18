@@ -30,6 +30,7 @@ func main() {
 	useSyslog := flag.Bool("syslog", false, "Use syslog for logging")
 	mqttDebug := flag.Bool("mqttdebug", false, "Enable MQTT debugging")
 	precise := flag.Bool("precise", false, "Don't reown devices without driver")
+	cleanup := flag.Bool("cleanup", false, "Clean up MQTT data on unload")
 
 	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
@@ -86,6 +87,7 @@ func main() {
 	engineOptions := wbrules.NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(*persistentDbFile)
 	engineOptions.SetModulesDirs(strings.Split(os.Getenv(WBRULES_MODULES_ENV), ":"))
+	engineOptions.SetCleanupOnStop(*cleanup)
 
 	if *noQueues {
 		engineOptions.SetTesting(true)
@@ -113,6 +115,7 @@ func main() {
 	if !gotSome {
 		wbgo.Error.Fatalf("no valid scripts found")
 	}
+	wbgo.Info.Println("all rule files are loaded")
 
 	if *editDir != "" {
 		rpc := wbgo.NewMQTTRPCServer("wbrules", engineMqttClient)
