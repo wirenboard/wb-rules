@@ -50,6 +50,10 @@ func main() {
 	}
 	wbgo.MaybeInitProfiling(nil)
 
+	// prepare exit signal channel
+	exitCh := make(chan os.Signal, 1)
+	signal.Notify(exitCh, syscall.SIGINT, syscall.SIGTERM)
+
 	driverMqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID)
 	driverArgs := wbgo.NewDriverArgs().
 		SetId(DRIVER_CONV_ID).
@@ -124,9 +128,7 @@ func main() {
 	}
 
 	// wait for quit signal
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
-	<-c
+	<-exitCh
 
 	engine.Stop()
 	driver.StopLoop()
