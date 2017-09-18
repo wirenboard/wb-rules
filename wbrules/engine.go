@@ -346,17 +346,24 @@ type ControlChangeEvent struct {
 }
 
 type RuleEngineOptions struct {
-	debugQueues bool
+	debugQueues   bool
+	cleanupOnStop bool
 }
 
 func NewRuleEngineOptions() *RuleEngineOptions {
 	return &RuleEngineOptions{
-		debugQueues: false,
+		debugQueues:   false,
+		cleanupOnStop: false,
 	}
 }
 
 func (o *RuleEngineOptions) SetTesting(v bool) *RuleEngineOptions {
 	o.debugQueues = v
+	return o
+}
+
+func (o *RuleEngineOptions) SetCleanupOnStop(v bool) *RuleEngineOptions {
+	o.cleanupOnStop = v
 	return o
 }
 
@@ -404,6 +411,8 @@ type RuleEngine struct {
 	readyQueue      *wbgo.DeferredList
 	timerDeferQueue *wbgo.DeferredList
 
+	cleanupOnStop bool
+
 	// subscriptions to control change events
 	// suitable for testing
 	controlChangeSubsMutex sync.Mutex
@@ -444,6 +453,7 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 		debugEnabled:          wbgo.DebuggingEnabled(),
 		readyCh:               nil,
 		uninitializedRules:    make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY),
+		cleanupOnStop:         options.cleanupOnStop,
 
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
@@ -989,7 +999,10 @@ func (engine *RuleEngine) Stop() {
 	atomic.StoreUint32(&engine.active, ENGINE_STOP)
 
 	// run all necessary cleanups
-	engine.cleanup.RunAllCleanups()
+	if engine.cleanupOnStop {
+		wbgo.Info.Println("[engine] Performing MQTT cleanup on stop")
+		engine.cleanup.RunAllCleanups()
+	}
 
 	engine.eventBuffer.Close()
 
