@@ -228,6 +228,8 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	err = s.driver.StartLoop()
 	s.Ck("StartLoop()", err)
 
+	s.driver.SetFilter(&wbgo.AllDevicesFilter{})
+
 	s.cron = nil
 
 	engineOptions := NewESEngineOptions()
@@ -248,12 +250,11 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	s.DataFileFixture = testutils.NewDataFileFixture(s.T())
 	s.FakeTimerFixture = testutils.NewFakeTimerFixture(s.T(), s.Recorder)
 
+	s.engine.Start()
+
 	s.loadScripts(ruleFiles)
 
-	s.driver.SetFilter(&wbgo.AllDevicesFilter{})
-
 	if !waitForRetained {
-		s.engine.Start()
 		s.publishSomedev()
 	}
 }
