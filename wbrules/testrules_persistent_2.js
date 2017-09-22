@@ -2,6 +2,13 @@ defineRule("testPersistentGlobalRead", {
     whenChanged: ["vdev/read"],
     then: function() {
         var ps = new PersistentStorage("test_storage", { global: true });
+
+        log("read objects " + JSON.stringify(ps["key1"]) + ", " + JSON.stringify(ps["key2"]) + ", " + JSON.stringify(ps["obj"]));
+
+        // modify subobject from ps
+        var sub = ps.obj.sub;
+
+        sub["hello"] = "earth";
         log("read objects " + JSON.stringify(ps["key1"]) + ", " + JSON.stringify(ps["key2"]) + ", " + JSON.stringify(ps["obj"]));
     }
 });

@@ -625,25 +625,133 @@ var Alarms = (function () {
 })();
 
 
+global.StorableObject = function(obj, ps, pskey) {
+        if (pskey === undefined) {
+                pskey = "";
+                ps = null;
+        }
+
+        // check if this object already has a prototype
+        if (obj._ps !== undefined && ps !== null) {
+                // just append new listener to the list
+                obj._ps.push({
+                        s: ps,
+                        k: pskey
+                });
+                return obj;
+        }
+
+        // set new prototype for this object
+        var p = {
+                _ps: [],
+                _psself: null
+        };
+        p.__proto__ = obj.__proto__;
+
+        obj.__proto__ = p;
+
+        if (ps !== null) {
+                obj._ps.push({
+                        s: ps,
+                        k: pskey
+                })
+        }
+
+        var p = new Proxy(obj, {
+                get: function(obj, key) {
+                        var val = obj[key];
+                        if (typeof val === "object") {
+                                return new StorableObject(val, obj._psself, key);
+                        }
+                        return val;
+                },
+                set: function(o, key, value) {
+                        if (key === "_psself") {
+                                o._psself = value;
+                                return true;
+                        }
+
+                        // check if value is an object without StorableObject's prototype
+                        if (typeof value === "object" && value._ps === undefined) {
+                                throw new Error("don't write pure objects to PersistentStorage, use new StorableObject(obj) instead");
+                        }
+
+                        o[key] = value;
+
+                        // write updated object to all listeners
+                        var len = o._ps.length;
+                        for (var i = 0; i < len; i++) {
+                                ps = o._ps[i];
+
+                                // update is written here
+                                ps.s[ps.k] = o._psself;
+                        }
+                },
+                enumerate: function(o) {
+                        var keys = Object.keys(o);
+                        keys.splice(keys.indexOf("_psself"), 1);
+                        return keys;
+                }
+        });
+
+        p._psself = p;
+        return p;
+};
+
 global.PersistentStorage = function(name, options) {
-    return new Proxy({name: _wbPersistentName(name, options)}, {
+    var p = new Proxy({name: _wbPersistentName(name, options), _psself: null}, {
         get: function (o, key) {
-            return _wbPersistentGet(o.name, key);
+            var val = _wbPersistentGet(o.name, key);
+            if (typeof val === "object") {
+                val = new StorableObject(val, o._psself, key);
+            }
+            return val;
         },
         set: function (o, key, value) {
+            if (key === "_psself") {
+                    o._psself = value;
+                    return true;
+            }
+
+            // check if this value is an object without StorableObject's prototype
+            if (typeof value === "object" && value._ps === undefined) {
+                throw new Error("don't write pure objects to PersistentStorage, use new StorableObject(obj) instead");
+            } else if (typeof value === "object") {
+                    // check if this storage is not a listener for the object
+
+                    var len = value._ps.length;
+                    var found = false;
+                    for (var i = 0; i < len; i++) {
+                        if (value._ps[i].p == o._psself && value._ps[i].k == key) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        value._ps.push({
+                                s: o._psself,
+                                k: key
+                        });
+                    }
+            }
+
             return _wbPersistentSet(o.name, key, value);
         }
     });
-}
+
+    p._psself = p;
+
+    return p;
+};
 
 __wbVdevPrototype.getCellValue = function(cell) {
     return dev[this.getCellId(cell)];
-}
+};
 
 __wbVdevPrototype.setCellValue = function(cell, value) {
     dev[this.getCellId(cell)] = value;
-}
+};
 
 __wbVdevPrototype.publish = function(topic, message) {
     publish("/devices/" + this.__deviceId + "/" + topic, message);
-}
+};

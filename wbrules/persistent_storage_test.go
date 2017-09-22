@@ -45,7 +45,9 @@ func (s *PersistentStorageSuite) TestPersistentStorage() {
 	s.VerifyUnordered(
 		"tst -> /devices/vdev/controls/write/on: [1] (QoS 1)",
 		"driver -> /devices/vdev/controls/write: [1] (QoS 1, retained)",
-		"[info] write objects 42, \"HelloWorld\", {\"name\":\"MyObj\",\"foo\":\"bar\",\"baz\":84}",
+		"[info] pure object is not created",
+		"[info] pure subobject is not created",
+		"[info] write objects 42, \"HelloWorld\", {\"name\":\"MyObj\",\"foo\":\"bar\",\"baz\":84,\"sub\":{\"hello\":\"world\"}}",
 	)
 
 }
@@ -56,7 +58,8 @@ func (s *PersistentStorageSuite) TestPersistentStorage2() {
 	s.VerifyUnordered(
 		"tst -> /devices/vdev/controls/read/on: [1] (QoS 1)",
 		"driver -> /devices/vdev/controls/read: [1] (QoS 1, retained)",
-		"[info] read objects 42, \"HelloWorld\", {\"name\":\"MyObj\",\"foo\":\"bar\",\"baz\":84}",
+		"[info] read objects 42, \"HelloWorld\", {\"name\":\"MyObj\",\"foo\":\"bar\",\"baz\":84,\"sub\":{\"hello\":\"world\"}}",
+		"[info] read objects 42, \"HelloWorld\", {\"name\":\"MyObj\",\"foo\":\"bar\",\"baz\":84,\"sub\":{\"hello\":\"earth\"}}",
 	)
 
 }
