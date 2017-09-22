@@ -1072,6 +1072,7 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 						}
 					})
 					if !periodic {
+						close(entry.quitted)
 						return
 					}
 				case <-entry.quit:
