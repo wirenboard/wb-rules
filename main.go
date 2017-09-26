@@ -9,6 +9,8 @@ import (
 
 	"github.com/contactless/wb-rules/wbrules"
 	"github.com/contactless/wbgo"
+
+	"github.com/alexcesaro/statsd"
 )
 
 const (
@@ -23,6 +25,8 @@ const (
 )
 
 func main() {
+	var err error
+
 	brokerAddress := flag.String("broker", "tcp://localhost:1883", "MQTT broker url")
 	editDir := flag.String("editdir", "", "Editable script directory")
 	debug := flag.Bool("debug", false, "Enable debugging")
@@ -32,10 +36,21 @@ func main() {
 	precise := flag.Bool("precise", false, "Don't reown devices without driver")
 	cleanup := flag.Bool("cleanup", false, "Clean up MQTT data on unload")
 
+	hostname, err := os.Hostname()
+	if err != nil {
+		// TODO: maybe generate random string as hostname for this instance
+		wbgo.Warn.Print("failed to get hostname for this instance, using 'default'")
+		hostname = "default"
+	}
+
+	statsdUrl := flag.String("statsd", "", "Statsd server address (empty for no statsd communication)")
+	statsdPrefix := flag.String("statsd-prefix", hostname, "Statsd prefix for this app instance (hostname by default)")
+
 	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
 
 	flag.Parse()
+
 	if flag.NArg() < 1 {
 		wbgo.Error.Fatal("must specify rule file/directory name(s)")
 	}
@@ -50,6 +65,17 @@ func main() {
 	}
 	wbgo.MaybeInitProfiling(nil)
 
+	// prepare statsd client if required
+	var statsdClient *wbgo.StatsdClientWrapper
+	var runtimeStatsd *wbgo.StatsdRuntimeCollector
+	if *statsdUrl != "" {
+		if statsdClient, err = wbgo.NewStatsdClientWrapper("wb-rules", statsd.Address(*statsdUrl), statsd.Prefix(*statsdPrefix)); err != nil {
+			wbgo.Error.Fatalf("failed to create statsd client: %s", err)
+		}
+		runtimeStatsd = wbgo.NewStatsdRuntimeCollector(statsdClient)
+		runtimeStatsd.Start()
+	}
+
 	// prepare exit signal channel
 	exitCh := make(chan os.Signal, 1)
 	signal.Notify(exitCh, syscall.SIGINT, syscall.SIGTERM)
@@ -60,7 +86,8 @@ func main() {
 		SetMqtt(driverMqttClient).
 		SetUseStorage(*vdevDbFile != "").
 		SetStoragePath(*vdevDbFile).
-		SetReownUnknownDevices(!*precise)
+		SetReownUnknownDevices(!*precise).
+		SetStatsdClient(statsdClient)
 
 	if *noQueues {
 		driverArgs.SetTesting()
@@ -133,4 +160,5 @@ func main() {
 	engine.Stop()
 	driver.StopLoop()
 	driver.Close()
+	runtimeStatsd.Stop()
 }

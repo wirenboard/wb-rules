@@ -1,6 +1,8 @@
 hash: bde87cff8ad93e3b4b66c0d0c25fcb4fd8120a51b88a03ba09ac522fbae898a4
-updated: 2017-05-04T16:35:37.504227284+03:00
+updated: 2017-09-26T16:11:46.443248825+03:00
 imports:
+- name: github.com/alexcesaro/statsd
+  version: 7fea3f0d2fab1ad973e641e51dba45443a311a90
 - name: github.com/boltdb/bolt
   version: 2e25e3bb4285d41d223bb80b12658a2c9b9bf3e3
 - name: github.com/contactless/go-duktape
