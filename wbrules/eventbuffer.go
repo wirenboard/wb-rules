@@ -49,6 +49,13 @@ func (eb *EventBuffer) Retrieve() (e []*ControlChangeEvent) {
 	return
 }
 
+func (eb *EventBuffer) length() int {
+	eb.Lock()
+	defer eb.Unlock()
+
+	return len(eb.currentBuffer)
+}
+
 func (eb *EventBuffer) Close() {
 	close(eb.observer)
 }

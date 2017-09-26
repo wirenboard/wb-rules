@@ -119,6 +119,7 @@ func main() {
 	engineOptions.SetPersistentDBFile(*persistentDbFile)
 	engineOptions.SetModulesDirs(strings.Split(os.Getenv(WBRULES_MODULES_ENV), ":"))
 	engineOptions.SetCleanupOnStop(*cleanup)
+	engineOptions.SetStatsdClient(statsdClient)
 
 	if *noQueues {
 		engineOptions.SetTesting(true)

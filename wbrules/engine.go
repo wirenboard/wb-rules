@@ -3,6 +3,7 @@ package wbrules
 import (
 	"errors"
 	"fmt"
+	"github.com/alexcesaro/statsd"
 	wbgo "github.com/contactless/wbgo"
 	"github.com/robfig/cron"
 	"github.com/stretchr/objx"
@@ -46,6 +47,9 @@ const (
 	ATOMIC_FALSE = 0
 
 	ENGINE_CALLSYNC_TIMEOUT = 120 * time.Second
+
+	ENGINE_STATSD_POLL_INTERVAL = 5 * time.Second
+	ENGINE_STATSD_PREFIX        = "engine"
 )
 
 // errors
@@ -350,6 +354,7 @@ type ControlChangeEvent struct {
 type RuleEngineOptions struct {
 	debugQueues   bool
 	cleanupOnStop bool
+	Statsd        *wbgo.StatsdClientWrapper
 }
 
 func NewRuleEngineOptions() *RuleEngineOptions {
@@ -366,6 +371,11 @@ func (o *RuleEngineOptions) SetTesting(v bool) *RuleEngineOptions {
 
 func (o *RuleEngineOptions) SetCleanupOnStop(v bool) *RuleEngineOptions {
 	o.cleanupOnStop = v
+	return o
+}
+
+func (o *RuleEngineOptions) SetStatsdClient(c *wbgo.StatsdClientWrapper) *RuleEngineOptions {
+	o.Statsd = c
 	return o
 }
 
@@ -414,6 +424,8 @@ type RuleEngine struct {
 	timerDeferQueue *wbgo.DeferredList
 
 	cleanupOnStop bool
+
+	statsdClient *wbgo.StatsdClientWrapper
 
 	// subscriptions to control change events
 	// suitable for testing
@@ -470,7 +482,25 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 	engine.timerDeferQueue = wbgo.NewDeferredList(engine.CallHere)
 
 	engine.setupRuleEngineSettingsDevice()
+
+	if options.Statsd != nil {
+		engine.statsdClient = options.Statsd.Clone(ENGINE_STATSD_PREFIX)
+		engine.statsdClient.SetCallback(engine.collectStats)
+	}
+
 	return
+}
+
+func (engine *RuleEngine) collectStats(s *statsd.Client) {
+	// callSync queue
+	s.Gauge("sync_queue.len", len(engine.syncQueue))
+	s.Gauge("sync_queue.cap", cap(engine.syncQueue))
+
+	// number of timers
+	s.Gauge("timers", len(engine.timers))
+
+	// length of event buffer
+	s.Gauge("events", engine.eventBuffer.length())
 }
 
 func (engine *RuleEngine) ReadyCh() <-chan struct{} {
@@ -982,6 +1012,11 @@ func (engine *RuleEngine) updateDebugEnabled() {
 }
 
 func (engine *RuleEngine) Start() {
+	// start statsd client
+	if engine.statsdClient != nil {
+		engine.statsdClient.Start(ENGINE_STATSD_POLL_INTERVAL)
+	}
+
 	engine.readyCh = make(chan struct{})
 	engine.driverReadyCh = make(chan struct{}, 1)
 	engine.eventBuffer = NewEventBuffer()
@@ -1015,6 +1050,11 @@ func (engine *RuleEngine) Stop() {
 
 	// wait for main loop to release sync queue
 	<-engine.syncQueue
+
+	// stop statsd
+	if engine.statsdClient != nil {
+		engine.statsdClient.Stop()
+	}
 }
 
 func (engine *RuleEngine) IsActive() bool {
