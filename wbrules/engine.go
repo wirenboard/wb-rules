@@ -24,7 +24,7 @@ const (
 	RULE_ENGINE_SETTINGS_DEV_NAME = "wbrules"
 	RULE_DEBUG_CELL_NAME          = "Rule debugging"
 
-	SYNC_QUEUE_LEN = 1
+	SYNC_QUEUE_LEN = 32
 
 	ENGINE_LOG_DEBUG = EngineLogLevel(iota)
 	ENGINE_LOG_INFO
