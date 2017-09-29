@@ -677,9 +677,12 @@ func (engine *ESEngine) maybePublishUpdate(subtopic, physicalPath string) {
 }
 
 func (engine *ESEngine) runCleanups(path string) {
+	// run rules cleanups
+	engine.cleanup.RunCleanups(path)
+
 	// run context cleanups
 	// try to get local context for this script
-	if _, ok := engine.localCtxs[path]; ok {
+	if localCtx, ok := engine.localCtxs[path]; ok {
 		wbgo.Debug.Printf("local context for script %s exists; removing it", path)
 
 		// cleanup timers of this context
@@ -688,11 +691,11 @@ func (engine *ESEngine) runCleanups(path string) {
 		// TODO: launch internal cleanups
 		engine.removeThreadFromStorage(engine.globalCtx, path)
 
+		// invalidate local context
+		localCtx.invalidate()
+
 		delete(engine.localCtxs, path)
 	}
-
-	// run rules cleanups
-	engine.cleanup.RunCleanups(path)
 }
 
 func (engine *ESEngine) loadScriptAndRefresh(path string, loadIfUnchanged bool) (err error) {

@@ -38,6 +38,7 @@ type ESContext struct {
 	syncFunc             ESSyncFunc
 	callbackErrorHandler ESCallbackErrorHandler
 	factory              *ESContextFactory
+	valid                bool
 }
 
 type ESError struct {
@@ -74,6 +75,7 @@ func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, filename
 		syncFunc, // syncFunc
 		nil,      // callbackErrorHandler
 		f,        // factory
+		true,     // validation flag
 	}
 	ctx.callbackErrorHandler = ctx.DefaultCallbackErrorHandler
 	ctx.initGlobalObject()
@@ -86,6 +88,17 @@ func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, filename
 	f.duktapeToESContextMap[*dctx] = ctx
 
 	return ctx
+}
+
+func (ctx *ESContext) invalidate() {
+	ctx.Context = nil
+	ctx.valid = false
+}
+
+func (ctx *ESContext) mustBeValid() {
+	if !ctx.valid {
+		panic("operation on invalid context")
+	}
 }
 
 func (ctx *ESContext) DefaultCallbackErrorHandler(err ESError) {
@@ -263,6 +276,7 @@ func (ctx *ESContext) callbackKey(key ESCallback) string {
 }
 
 func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} {
+	ctx.mustBeValid()
 	wbgo.Debug.Printf("trying to invoke callback %d in context %p\n", key, ctx)
 
 	ctx.PushHeapStash()
@@ -340,6 +354,7 @@ func (ctx *ESContext) removeCallbackSync(key ESCallback) {
 }
 
 func (ctx *ESContext) RemoveCallback(key ESCallback) {
+	ctx.mustBeValid()
 	ctx.PushHeapStash()
 	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
 	ctx.DelPropString(-1, ctx.callbackKey(key))
