@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"testing"
+	"time"
 )
 
 type RuleShellCommandSuite struct {
@@ -102,6 +103,44 @@ func (s *RuleShellCommandSuite) TestRunShellCommandIO() {
 		"[info] exit(0): sed s/x/y/g",
 		"[info] output: yyyz",
 	)
+}
+
+// This test will fail if exitCallback for request runs on unloaded file
+func (s *RuleShellCommandSuite) TestCallbackCleanup() {
+	_, cleanup := testutils.SetupTempDir(s.T())
+	defer cleanup()
+
+	s.publish("/devices/somedev/controls/cmd/meta/type", "text", "somedev/cmd")
+	s.publish("/devices/somedev/controls/cmdNoCallback/meta/type", "text",
+		"somedev/cmdNoCallback")
+
+	s.publish("/devices/somedev/controls/cmd", "until [ -f fflag ]; do sleep 0.1; done", "somedev/cmd")
+
+	s.Verify(
+		"tst -> /devices/somedev/controls/cmd/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/cmdNoCallback/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/cmd: [until [ -f fflag ]; do sleep 0.1; done] (QoS 1, retained)",
+		"[info] cmd: until [ -f fflag ]; do sleep 0.1; done",
+	)
+
+	// remove script file
+	s.RemoveScript("testrules_command.js")
+
+	s.Verify("[removed] testrules_command.js")
+
+	// touch file
+	if _, err := Spawn("touch", []string{"fflag"}, false, false, nil); err != nil {
+		s.Ck("failed to run command standalone", err)
+	}
+
+	// load dummy script
+	s.LiveLoadScript("testrules_empty.js")
+
+	s.Verify("[changed] testrules_empty.js")
+
+	// here we need to wait for script to react on flag file
+	time.Sleep(500 * time.Millisecond)
+	s.VerifyEmpty()
 }
 
 func TestRuleShellCommandSuite(t *testing.T) {

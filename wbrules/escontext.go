@@ -95,6 +95,10 @@ func (ctx *ESContext) invalidate() {
 	ctx.valid = false
 }
 
+func (ctx *ESContext) IsValid() bool {
+	return ctx.valid
+}
+
 func (ctx *ESContext) mustBeValid() {
 	if !ctx.valid {
 		panic("operation on invalid context")
