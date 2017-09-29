@@ -1190,6 +1190,13 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 		}
 		if callbackFn != nil {
 			engine.CallSync(func() {
+				// check that context is still alive
+				// (file is not removed or reloaded)
+				if !ctx.IsValid() {
+					wbgo.Info.Println("ignore runShellCommand callback without Duktape context (maybe script is reloaded or removed)")
+					return
+				}
+
 				args := objx.New(map[string]interface{}{
 					"exitStatus": r.ExitStatus,
 				})
