@@ -1103,18 +1103,32 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 			for {
 				select {
 				case <-tickCh:
-					engine.CallSync(func() {
+					entryFunc := func() {
 						entry.Lock()
 						wasActive := entry.active
 						entry.Unlock()
 						if wasActive {
 							engine.fireTimer(n)
 						}
-					})
+					}
+
+					// try to push entry processing function into sync queue or
+					// exit immediately on quit signal
+					// timer may block here if you try to use classic CallSync
+					select {
+					case engine.syncQueue <- entryFunc:
+					case <-entry.quit:
+						entry.timer.Stop()
+						close(entry.quitted)
+						return
+					}
+
+					// stop timer loop if it is not periodical
 					if !periodic {
 						close(entry.quitted)
 						return
 					}
+
 				case <-entry.quit:
 					entry.timer.Stop()
 					close(entry.quitted)
