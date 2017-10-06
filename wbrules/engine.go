@@ -416,9 +416,8 @@ type RuleEngine struct {
 	cronMaker       func() Cron
 	cron            Cron
 	statusMtx       sync.Mutex
-	debugMtx        sync.Mutex
 	getTimerMtx     sync.Mutex
-	debugEnabled    bool
+	debugEnabled    uint32 // atomic
 	readyCh         chan struct{}
 	readyQueue      *wbgo.DeferredList
 	timerDeferQueue *wbgo.DeferredList
@@ -464,7 +463,7 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 		currentTimer:          NO_TIMER_NAME,
 		cronMaker:             func() Cron { return cron.New() },
 		cron:                  nil,
-		debugEnabled:          wbgo.DebuggingEnabled(),
+		debugEnabled:          ATOMIC_FALSE,
 		readyCh:               nil,
 		uninitializedRules:    make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY),
 		cleanupOnStop:         options.cleanupOnStop,
@@ -678,7 +677,7 @@ func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
 }
 
 func (engine *RuleEngine) CallSync(thunk func()) {
-	if engine.debugEnabled {
+	if atomic.LoadUint32(&engine.debugEnabled) == ATOMIC_TRUE {
 		select {
 		case engine.syncQueue <- thunk:
 		case <-time.After(ENGINE_CALLSYNC_TIMEOUT):
@@ -711,7 +710,7 @@ func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
 		"cells": objx.Map{
 			RULE_DEBUG_CELL_NAME: objx.Map{
 				"type":  "switch",
-				"value": engine.debugEnabled,
+				"value": atomic.LoadUint32(&engine.debugEnabled),
 			},
 		},
 	})
@@ -1005,9 +1004,11 @@ func (engine *RuleEngine) updateDebugEnabled() {
 			panic("No debug control in rule engine service device")
 		}
 
-		engine.debugMtx.Lock()
-		engine.debugEnabled = val
-		engine.debugMtx.Unlock()
+		var set uint32 = ATOMIC_FALSE
+		if val {
+			set = ATOMIC_TRUE
+		}
+		atomic.StoreUint32(&engine.debugEnabled, set)
 	})
 }
 
@@ -1413,9 +1414,7 @@ func (engine *RuleEngine) Log(level EngineLogLevel, message string) {
 	switch level {
 	case ENGINE_LOG_DEBUG:
 		wbgo.Debug.Printf("[rule debug] %s", message)
-		engine.debugMtx.Lock()
-		defer engine.debugMtx.Unlock()
-		if !engine.debugEnabled {
+		if atomic.LoadUint32(&engine.debugEnabled) != ATOMIC_TRUE {
 			return
 		}
 		topicItem = "debug"
