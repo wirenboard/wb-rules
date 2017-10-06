@@ -32,7 +32,11 @@ func (s *PersistentStorageSuite) TearDownFixture() {
 func (s *PersistentStorageSuite) SetupTest() {
 	s.PersistentDBFile = s.tmpDir + "/test_persistent.db"
 	s.VdevStorageFile = s.tmpDir + "/test-vdev.db"
-	s.SetupSkippingDefs("testrules_persistent.js", "testrules_persistent_2.js")
+	s.SetupSkippingDefs()
+	s.LiveLoadScriptToDir("testrules_persistent.js", s.tmpDir)
+	s.SkipTill("[info] loaded file 1")
+	s.LiveLoadScriptToDir("testrules_persistent_2.js", s.tmpDir)
+	s.SkipTill("[info] loaded file 2")
 }
 
 func (s *PersistentStorageSuite) TearDownTest() {
@@ -66,30 +70,28 @@ func (s *PersistentStorageSuite) TestPersistentStorage2() {
 
 // test local storages in different files
 func (s *PersistentStorageSuite) TestLocalPersistentStorage() {
-
 	// write values
-	s.publish("/devices/vdev/controls/localWrite/on", "1", "vdev/localWrite")
+	s.publish("/devices/vdev/controls/localWrite1/on", "1", "vdev/localWrite1")
+	s.SkipTill("[info] file1: write to local PS")
 
-	s.VerifyUnordered(
-		"tst -> /devices/vdev/controls/localWrite/on: [1] (QoS 1)",
-		"driver -> /devices/vdev/controls/localWrite: [1] (QoS 1, retained)",
-		"[info] create local storage name: _FoHhVAtest_local", // hash here depends on script filename
-		"[info] create local storage name: _oonG1Qtest_local",
-		"[info] file1: write to local PS",
-		"[info] file2: write to local PS",
-	)
+	s.publish("/devices/vdev/controls/localWrite2/on", "1", "vdev/localWrite2")
+	s.SkipTill("[info] file2: write to local PS")
 
 	// now read values
-	s.publish("/devices/vdev/controls/localRead/on", "1", "vdev/localRead")
+	s.publish("/devices/vdev/controls/localRead1/on", "1", "vdev/localRead1")
+	s.SkipTill("[info] file1: read objects \"hello_from_1\", undefined")
 
-	s.VerifyUnordered(
-		"tst -> /devices/vdev/controls/localRead/on: [1] (QoS 1)",
-		"driver -> /devices/vdev/controls/localRead: [1] (QoS 1, retained)",
-		"[info] create local storage name: _FoHhVAtest_local", // hash here depends on script filename
-		"[info] create local storage name: _oonG1Qtest_local",
-		"[info] file1: read objects \"hello_from_1\", undefined",
-		"[info] file2: read objects undefined, \"hello_from_2\"",
-	)
+	s.publish("/devices/vdev/controls/localRead2/on", "1", "vdev/localRead2")
+	s.SkipTill("[info] file2: read objects undefined, \"hello_from_2\"")
+}
+
+func (s *PersistentStorageSuite) TestLocalPersistentStorage2() {
+	// now read values
+	s.publish("/devices/vdev/controls/localRead1/on", "1", "vdev/localRead1")
+	s.SkipTill("[info] file1: read objects \"hello_from_1\", undefined")
+
+	s.publish("/devices/vdev/controls/localRead2/on", "1", "vdev/localRead2")
+	s.SkipTill("[info] file2: read objects undefined, \"hello_from_2\"")
 }
 
 func TestPersistentStorageSuite(t *testing.T) {

@@ -2,6 +2,7 @@ package wbrules
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"reflect"
@@ -38,7 +39,10 @@ type ESContext struct {
 	syncFunc             ESSyncFunc
 	callbackErrorHandler ESCallbackErrorHandler
 	factory              *ESContextFactory
-	valid                bool
+
+	ruleNames map[string]*Rule
+
+	valid bool
 }
 
 type ESError struct {
@@ -75,7 +79,8 @@ func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, filename
 		syncFunc, // syncFunc
 		nil,      // callbackErrorHandler
 		f,        // factory
-		true,     // validation flag
+		make(map[string]*Rule),
+		true, // validation flag
 	}
 	ctx.callbackErrorHandler = ctx.DefaultCallbackErrorHandler
 	ctx.initGlobalObject()
@@ -565,6 +570,20 @@ func (ctx *ESContext) GetCurrentFilename() string {
 	defer ctx.Pop()
 
 	return ctx.GetString(-1)
+}
+
+func (ctx *ESContext) AddRule(name string, rule *Rule) error {
+	if name == "" {
+		// TODO: empty rules storage
+		return nil
+	}
+
+	if _, found := ctx.ruleNames[name]; !found {
+		ctx.ruleNames[name] = rule
+		return nil
+	} else {
+		return fmt.Errorf("named rule redefinition: %s", name)
+	}
 }
 
 // TBD: handle loops in object graphs in PushJSObject
