@@ -246,7 +246,8 @@ type RuleId uint32
 type Rule struct {
 	tracker       DepTracker
 	id            RuleId
-	name          string // FIXME: deprecated
+	context       *ESContext
+	name          string // optional, but will be checked for redefinition if set
 	cond          RuleCondition
 	then          ESCallbackFunc
 	shouldCheck   bool

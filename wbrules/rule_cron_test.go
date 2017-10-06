@@ -37,10 +37,6 @@ func (s *RuleCronSuite) TestCron() {
 	// the new script contains rules with same names as in
 	// testrules_cron.js that should override the previous rules
 	s.ReplaceScript("testrules_cron.js", "testrules_cron_changed.js")
-	s.VerifyUnordered(
-		"[debug] defineRule: crontest_hourly",
-		"[debug] defineRule: crontest_daily",
-	)
 	s.Verify(
 		"[changed] testrules_cron.js",
 	)

@@ -70,13 +70,6 @@ func (s *AlarmSuite) loadAlarmsSkipping(skipLine string) {
 		"driver -> /devices/sampleAlarms/controls/log/meta/writable: [] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/log/meta/order: [4] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/log: [] (QoS 1, retained)",
-
-		"[debug] defineRule: __alarm1__somedev/importantDevicePower__activate",
-		"[debug] defineRule: __alarm1__somedev/importantDevicePower__deactivate",
-		"[debug] defineRule: __alarm2__somedev/unnecessaryDevicePower__activate",
-		"[debug] defineRule: __alarm2__somedev/unnecessaryDevicePower__deactivate",
-		"[debug] defineRule: __alarm3__somedev/devTemp__activate",
-		"[debug] defineRule: __alarm3__somedev/devTemp__deactivate",
 	)
 }
 

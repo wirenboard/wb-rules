@@ -225,7 +225,7 @@ func (s *RuleBasicsSuite) TestAnonymousRule() {
 func (s *RuleBasicsSuite) TestRuleRedefinition() {
 	s.LiveLoadScript("testrules_rule_redefinition.js")
 	s.EnsureGotErrors()
-	s.SkipTill("[error] defineRule error: named rule redefinition: testrules_rule_redefinition.js/test")
+	s.SkipTill("[error] defineRule error: named rule redefinition: test")
 	s.Verify("[changed] testrules_rule_redefinition.js")
 }
 

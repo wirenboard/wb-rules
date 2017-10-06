@@ -403,7 +403,6 @@ type RuleEngine struct {
 
 	rulesMutex            sync.Mutex
 	ruleMap               map[RuleId]*Rule
-	ruleNameMap           map[string]*Rule
 	ruleList              []RuleId
 	controlToRulesListMap map[ControlSpec][]*Rule
 	rulesWithoutControls  map[*Rule]bool
@@ -453,7 +452,6 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 		callbackIndex:         1,
 		nextRuleId:            1,
 		ruleMap:               make(map[RuleId]*Rule),
-		ruleNameMap:           make(map[string]*Rule),
 		ruleList:              make([]RuleId, 0, RULES_CAPACITY),
 		notedControls:         nil,
 		notedTimers:           nil,
@@ -1331,18 +1329,13 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	return err
 }
 
-func (engine *RuleEngine) DefineRule(rule *Rule) (id RuleId, err error) {
+func (engine *RuleEngine) DefineRule(rule *Rule, ctx *ESContext) (id RuleId, err error) {
 	engine.rulesMutex.Lock()
 	defer engine.rulesMutex.Unlock()
 
 	// for named rule - check for redefinition
-	if rule.name != "" {
-		if _, found := engine.ruleNameMap[rule.name]; found {
-			err = fmt.Errorf("named rule redefinition: %s", rule.name)
-			return
-		} else {
-			engine.ruleNameMap[rule.name] = rule
-		}
+	if err = ctx.AddRule(rule.name, rule); err != nil {
+		return
 	}
 
 	engine.ruleList = append(engine.ruleList, rule.id)
@@ -1354,9 +1347,6 @@ func (engine *RuleEngine) DefineRule(rule *Rule) (id RuleId, err error) {
 		defer engine.rulesMutex.Unlock()
 
 		delete(engine.ruleMap, rule.id)
-		if rule.name != "" {
-			delete(engine.ruleNameMap, rule.name)
-		}
 		for i, id := range engine.ruleList {
 			if id == rule.id {
 				engine.ruleList = append(
@@ -1365,6 +1355,8 @@ func (engine *RuleEngine) DefineRule(rule *Rule) (id RuleId, err error) {
 				break
 			}
 		}
+
+		rule.Destroy()
 	})
 
 	id = rule.id

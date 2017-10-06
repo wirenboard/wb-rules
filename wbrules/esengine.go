@@ -569,7 +569,7 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 	// create new thread and context
 	engine.globalCtx.PushThreadNewGlobalenv()
 	// [ stash threads thread ]
-	newLocalCtx := engine.ctxFactory.newESContextFromDuktape(engine.globalCtx.syncFunc, virtualPath, engine.globalCtx.GetContext(-1))
+	newLocalCtx := engine.ctxFactory.newESContextFromDuktape(engine.globalCtx.syncFunc, path, engine.globalCtx.GetContext(-1))
 	// [ stash threads thread ]
 
 	engine.localCtxs[path] = newLocalCtx
@@ -1216,8 +1216,10 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 
 func (engine *ESEngine) esWbDefineRule(ctx *ESContext) int {
 	var ok = false
-	var shortName, name string
+	var name string
 	var objIndex int
+
+	currentFilename := ctx.GetCurrentFilename()
 
 	switch ctx.GetTop() {
 	case 1:
@@ -1228,13 +1230,7 @@ func (engine *ESEngine) esWbDefineRule(ctx *ESContext) int {
 	case 2:
 		if ctx.IsString(0) && ctx.IsObject(1) {
 			objIndex = 1
-
-			shortName = ctx.GetString(0)
-			name = ctx.GetCurrentFilename() + "/" + shortName
-			// if engine.currentSource != nil {
-			// name = engine.currentSource.VirtualPath + "/" + shortName
-			// }
-
+			name = ctx.GetString(0)
 			ok = true
 		}
 	}
@@ -1247,6 +1243,12 @@ func (engine *ESEngine) esWbDefineRule(ctx *ESContext) int {
 	var err error
 	var ruleId RuleId
 
+	// configure cleanup scope
+	if currentFilename != "" {
+		engine.cleanup.PushCleanupScope(currentFilename)
+		defer engine.cleanup.PopCleanupScope(currentFilename)
+	}
+
 	if rule, err = engine.buildRule(ctx, name, objIndex); err != nil {
 		// FIXME: proper error handling
 		engine.Log(ENGINE_LOG_ERROR,
@@ -1254,13 +1256,13 @@ func (engine *ESEngine) esWbDefineRule(ctx *ESContext) int {
 		return duktape.DUK_RET_ERROR
 	}
 
-	if ruleId, err = engine.DefineRule(rule); err != nil {
+	if ruleId, err = engine.DefineRule(rule, ctx); err != nil {
 		engine.Log(ENGINE_LOG_ERROR,
 			fmt.Sprintf("defineRule error: %s", err))
 		return duktape.DUK_RET_ERROR
 	}
 
-	engine.maybeRegisterSourceItem(ctx, SOURCE_ITEM_RULE, shortName)
+	engine.maybeRegisterSourceItem(ctx, SOURCE_ITEM_RULE, name)
 
 	// return rule ID
 	ctx.PushNumber(float64(ruleId))

@@ -170,6 +170,44 @@ func (s *RuleReloadSuite) TestRemoveScript() {
 	)
 }
 
+func (s *RuleReloadSuite) TestIndirectRulesCleanup() {
+	// advance time to define rule in timeout
+	s.FireTimer(1, s.CurrentTime())
+	s.Verify(
+		"timer.fire(): 1",
+		"[info] timeout set",
+	)
+
+	// check indirect rule run
+	s.publish("/devices/vdev1/controls/qqq/on", "1", "vdev1/qqq")
+	s.Verify(
+		"tst -> /devices/vdev1/controls/qqq/on: [1] (QoS 1)",
+		"driver -> /devices/vdev1/controls/qqq: [1] (QoS 1, retained)",
+	)
+	s.VerifyUnordered(
+		"[info] detRun",
+		"[info] checkIndirect",
+		"[info] detectRun1: vdev1/qqq (s=false, a=10)",
+		"[info] detectRun: vdev1/qqq (s=false, a=10)",
+	)
+
+	// remove script
+	s.RemoveScript("testrules_reload_1.js")
+	s.SkipTill("[removed] testrules_reload_1.js")
+
+	// check rule again
+	s.publish("/devices/vdev1/controls/qqq/on", "1", "vdev1/qqq")
+	s.Verify(
+		"tst -> /devices/vdev1/controls/qqq/on: [1] (QoS 1)",
+		"driver -> /devices/vdev1/controls/qqq: [1] (QoS 1, retained)",
+	)
+	s.VerifyUnordered(
+		"[info] detectRun1: vdev1/qqq (s=false, a=10)",
+		"[info] detectRun: vdev1/qqq (s=false, a=10)",
+	)
+	s.VerifyEmpty()
+}
+
 func (s *RuleReloadSuite) TestRemoveRestore() {
 	s.RemoveScript("testrules_reload_2.js")
 	s.VerifyVdevCleanup("testrules_reload_2.js")

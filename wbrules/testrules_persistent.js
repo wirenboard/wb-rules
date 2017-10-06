@@ -10,11 +10,19 @@ defineVirtualDevice("vdev", {
             type: "switch",
             value: false
         },
-        localWrite: {
+        localWrite1: {
             type: "switch",
             value: false
         },
-        localRead: {
+        localRead1: {
+            type: "switch",
+            value: false
+        },
+        localWrite2: {
+            type: "switch",
+            value: false
+        },
+        localRead2: {
             type: "switch",
             value: false
         }
@@ -62,7 +70,7 @@ defineRule("testPersistentGlobalWrite", {
 });
 
 defineRule("testPersistentLocalWrite", {
-    whenChanged: "vdev/localWrite",
+    whenChanged: "vdev/localWrite1",
     then: function() {
         var ps = new PersistentStorage("test_local");
         ps["key1"] = "hello_from_1";
@@ -71,9 +79,11 @@ defineRule("testPersistentLocalWrite", {
 });
 
 defineRule("testPersistentLocalRead", {
-    whenChanged: "vdev/localRead",
+    whenChanged: "vdev/localRead1",
     then: function() {
         var ps = new PersistentStorage("test_local");
         log("file1: read objects " + JSON.stringify(ps["key1"]) + ", " + JSON.stringify(ps["key2"]));
     }
 });
+
+log("loaded file 1");

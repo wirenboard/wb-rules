@@ -15,4 +15,15 @@ defineRule("detRun", {
   }
 });
 
+// create rule indirectly to check dynamic cleanups
+setTimeout(function() {
+    defineRule("checkIndirect", {
+        when: function() { return true; },
+        then: function() {
+            log("checkIndirect");
+        }
+    });
+    log("timeout set");
+}, 0);
+
 testrules_reload_1_loaded = true;

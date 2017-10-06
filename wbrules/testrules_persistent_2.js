@@ -14,7 +14,7 @@ defineRule("testPersistentGlobalRead", {
 });
 
 defineRule("testPersistentLocalWrite", {
-    whenChanged: "vdev/localWrite",
+    whenChanged: "vdev/localWrite2",
     then: function() {
         var ps = new PersistentStorage("test_local");
         ps["key2"] = "hello_from_2";
@@ -23,9 +23,11 @@ defineRule("testPersistentLocalWrite", {
 });
 
 defineRule("testPersistentLocalRead", {
-    whenChanged: "vdev/localRead",
+    whenChanged: "vdev/localRead2",
     then: function() {
         var ps = new PersistentStorage("test_local");
         log("file2: read objects " + JSON.stringify(ps["key1"]) + ", " + JSON.stringify(ps["key2"]));
     }
 });
+
+log("loaded file 2");

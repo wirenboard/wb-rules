@@ -284,6 +284,15 @@ func (s *RuleSuiteBase) LiveLoadScript(script string) error {
 	return s.engine.LiveLoadFile(copiedScriptPath)
 }
 
+// load script right from its location
+// usable to test persistent storages
+func (s *RuleSuiteBase) LiveLoadScriptToDir(script, dir string) error {
+	data := s.ReadSourceDataFile(script)
+	path := dir + "/" + script
+	s.DataFileFixture.Ckf("WriteFile", ioutil.WriteFile(path, []byte(data), 0777))
+	return s.engine.LiveLoadFile(path)
+}
+
 func (s *RuleSuiteBase) RemoveScript(oldName string) {
 	s.engine.LiveRemoveFile(s.DataFilePath(oldName))
 }

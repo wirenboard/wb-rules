@@ -73,7 +73,7 @@ func (s *TestModulesSuite) TestModuleParams() {
 		"tst -> /devices/test/controls/params/on: [1] (QoS 1)",
 		"driver -> /devices/test/controls/params: [1] (QoS 1, retained)",
 		"[info] Module params init",
-		regexp.MustCompile("\\[__filename: testrules_modules\\.js, module\\.filename: .*/test/params\\.js\\]"),
+		regexp.MustCompile("\\[__filename: .*/testrules_modules\\.js, module\\.filename: .*/test/params\\.js\\]"),
 	)
 }
 
