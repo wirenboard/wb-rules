@@ -180,11 +180,9 @@ func (s *RuleReloadSuite) TestIndirectRulesCleanup() {
 
 	// check indirect rule run
 	s.publish("/devices/vdev1/controls/qqq/on", "1", "vdev1/qqq")
-	s.Verify(
+	s.VerifyUnordered(
 		"tst -> /devices/vdev1/controls/qqq/on: [1] (QoS 1)",
 		"driver -> /devices/vdev1/controls/qqq: [1] (QoS 1, retained)",
-	)
-	s.VerifyUnordered(
 		"[info] detRun",
 		"[info] checkIndirect",
 		"[info] detectRun1: vdev1/qqq (s=false, a=10)",
@@ -197,11 +195,9 @@ func (s *RuleReloadSuite) TestIndirectRulesCleanup() {
 
 	// check rule again
 	s.publish("/devices/vdev1/controls/qqq/on", "1", "vdev1/qqq")
-	s.Verify(
+	s.VerifyUnordered(
 		"tst -> /devices/vdev1/controls/qqq/on: [1] (QoS 1)",
 		"driver -> /devices/vdev1/controls/qqq: [1] (QoS 1, retained)",
-	)
-	s.VerifyUnordered(
 		"[info] detectRun1: vdev1/qqq (s=false, a=10)",
 		"[info] detectRun: vdev1/qqq (s=false, a=10)",
 	)
