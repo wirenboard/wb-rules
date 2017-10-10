@@ -8,11 +8,15 @@ type LocItem struct {
 
 // LocFileEntry represents a source file
 type LocFileEntry struct {
-	Devices      []LocItem    `json:"devices"`
-	Error        *ScriptError `json:"error,omitempty"`
-	Rules        []LocItem    `json:"rules"`
-	VirtualPath  string       `json:"virtualPath"`
-	PhysicalPath string       `json:"-"`
+	Enabled     bool         `json:"enabled"`
+	Error       *ScriptError `json:"error,omitempty"`
+	VirtualPath string       `json:"virtualPath"`
+	Rules       []LocItem    `json:"rules"`
+	Devices     []LocItem    `json:"devices"`
+	Timers      []LocItem    `json:"timers"`
+
+	PhysicalPath string     `json:"-"`
+	Context      *ESContext `json:"-"`
 }
 
 // LocFileManager interface provides a way to access a list of source

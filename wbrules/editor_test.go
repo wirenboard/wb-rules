@@ -36,7 +36,7 @@ func (s *EditorSuite) SetupTest() {
 	s.RpcFixture = testutils.NewRpcFixture(
 		s.T(), "wbrules", "Editor", "wbrules",
 		NewEditor(s),
-		"List", "Load", "Remove", "Save")
+		"ChangeState", "List", "Load", "Remove", "Save")
 }
 
 func (s *EditorSuite) TearDownTest() {
@@ -96,6 +96,11 @@ func (s *EditorSuite) walkSources(walkFn func(virtualPath, physicalPath string))
 func (s *EditorSuite) ListSourceFiles() (entries []LocFileEntry, err error) {
 	entries = make([]LocFileEntry, 0)
 	s.walkSources(func(virtualPath, physicalPath string) {
+		enabled := !strings.HasSuffix(virtualPath, FILE_DISABLED_SUFFIX)
+		if !enabled {
+			virtualPath = virtualPath[:len(virtualPath)-len(FILE_DISABLED_SUFFIX)]
+		}
+
 		if !strings.HasSuffix(virtualPath, ".js") {
 			return
 		}
@@ -103,8 +108,10 @@ func (s *EditorSuite) ListSourceFiles() (entries []LocFileEntry, err error) {
 		entry := LocFileEntry{
 			VirtualPath:  virtualPath,
 			PhysicalPath: physicalPath,
+			Enabled:      enabled,
 			Devices:      []LocItem{},
 			Rules:        []LocItem{},
+			Timers:       []LocItem{},
 		}
 		if virtualPath == "sample1.js" {
 			entry.Devices = []LocItem{{1, "abc"}, {2, "def"}}
@@ -121,6 +128,7 @@ func (s *EditorSuite) ListSourceFiles() (entries []LocFileEntry, err error) {
 func (s *EditorSuite) addSampleFiles() {
 	s.WriteDataFile("sample1.js", "// sample1")
 	s.WriteDataFile("sample2.js", "// sample2")
+	s.WriteDataFile("sample3.js.disabled", "// disabled sample3")
 }
 
 func (s *EditorSuite) verifySources(expected map[string]string) {
@@ -145,6 +153,7 @@ func (s *EditorSuite) TestListFiles() {
 	s.VerifyRpc("List", objx.Map{}, []objx.Map{
 		{
 			"virtualPath": "sample1.js",
+			"enabled":     true,
 			"devices": []objx.Map{
 				{"line": 1, "name": "abc"},
 				{"line": 2, "name": "def"},
@@ -152,11 +161,14 @@ func (s *EditorSuite) TestListFiles() {
 			"rules": []objx.Map{
 				{"line": 10, "name": "foobar"},
 			},
+			"timers": []objx.Map{},
 		},
 		{
 			"virtualPath": "sample2.js",
+			"enabled":     true,
 			"devices":     []objx.Map{},
 			"rules":       []objx.Map{},
+			"timers":      []objx.Map{},
 			"error": objx.Map{
 				"message": "syntax error!",
 				"traceback": []objx.Map{
@@ -164,6 +176,13 @@ func (s *EditorSuite) TestListFiles() {
 					{"line": 42, "name": "foobar.js"},
 				},
 			},
+		},
+		{
+			"virtualPath": "sample3.js",
+			"enabled":     false,
+			"devices":     []objx.Map{},
+			"rules":       []objx.Map{},
+			"timers":      []objx.Map{},
 		},
 	})
 }
@@ -181,48 +200,51 @@ func (s *EditorSuite) TestSaveFile() {
 		nil,
 	)
 	s.verifySources(map[string]string{
-		"sample1.js": "// sample1 (changed)",
-		"sample2.js": "// sample2",
+		"sample1.js":          "// sample1 (changed)",
+		"sample2.js":          "// sample2",
+		"sample3.js.disabled": "// disabled sample3",
 	})
 	s.verifySave(
 		// make sure spaces are allowed in filenames
-		objx.Map{"path": "//sample 3.js", "content": "// sample 3"},
-		objx.Map{"path": "sample 3.js"},
+		objx.Map{"path": "//sample 4.js", "content": "// sample 4"},
+		objx.Map{"path": "sample 4.js"},
 		nil,
 	)
 	s.verifySources(map[string]string{
-		"sample1.js":  "// sample1 (changed)",
-		"sample2.js":  "// sample2",
-		"sample 3.js": "// sample 3",
+		"sample1.js":          "// sample1 (changed)",
+		"sample2.js":          "// sample2",
+		"sample3.js.disabled": "// disabled sample3",
+		"sample 4.js":         "// sample 4",
 	})
 	s.verifySave(
-		objx.Map{"path": "sub/sample4.js", "content": "// sample4"},
-		objx.Map{"path": "sub/sample4.js"},
+		objx.Map{"path": "sub/sample5.js", "content": "// sample5"},
+		objx.Map{"path": "sub/sample5.js"},
 		nil,
 	)
 	s.verifySave(
-		objx.Map{"path": "sub/sample5.js", "content": "sample5 -- error"},
+		objx.Map{"path": "sub/sample6.js", "content": "sample6 -- error"},
 		objx.Map{
 			"error": "syntax error!",
-			"path":  "sub/sample5.js",
+			"path":  "sub/sample6.js",
 			"traceback": []objx.Map{
-				{"line": 1, "name": "sub/sample5.js"},
+				{"line": 1, "name": "sub/sample6.js"},
 				{"line": 42, "name": "foobar.js"},
 			},
 		},
 		NewScriptError(
 			"syntax error!", []LocItem{
-				{1, "sub/sample5.js"},
+				{1, "sub/sample6.js"},
 				{42, "foobar.js"},
 			},
 		),
 	)
 	s.verifySources(map[string]string{
-		"sample1.js":     "// sample1 (changed)",
-		"sample2.js":     "// sample2",
-		"sample 3.js":    "// sample 3",
-		"sub/sample4.js": "// sample4",
-		"sub/sample5.js": "sample5 -- error",
+		"sample1.js":          "// sample1 (changed)",
+		"sample2.js":          "// sample2",
+		"sample3.js.disabled": "// disabled sample3",
+		"sample 4.js":         "// sample 4",
+		"sub/sample5.js":      "// sample5",
+		"sub/sample6.js":      "sample6 -- error",
 	})
 
 	s.VerifyRpcError("Save", objx.Map{"path": "../foo/bar.js", "content": "evilfile"},
@@ -230,11 +252,12 @@ func (s *EditorSuite) TestSaveFile() {
 	s.VerifyRpcError("Save", objx.Map{"path": "qqq/$$$rrr.js", "content": "lamefile"},
 		EDITOR_ERROR_INVALID_PATH, "EditorError", "Invalid path")
 	s.verifySources(map[string]string{
-		"sample1.js":     "// sample1 (changed)",
-		"sample2.js":     "// sample2",
-		"sample 3.js":    "// sample 3",
-		"sub/sample4.js": "// sample4",
-		"sub/sample5.js": "sample5 -- error",
+		"sample1.js":          "// sample1 (changed)",
+		"sample2.js":          "// sample2",
+		"sample3.js.disabled": "// disabled sample3",
+		"sample 4.js":         "// sample 4",
+		"sub/sample5.js":      "// sample5",
+		"sub/sample6.js":      "sample6 -- error",
 	})
 	s.EnsureNoErrorsOrWarnings()
 
@@ -250,7 +273,8 @@ func (s *EditorSuite) TestSaveFile() {
 func (s *EditorSuite) TestRemoveFile() {
 	s.VerifyRpc("Remove", objx.Map{"path": "sample1.js"}, true)
 	s.verifySources(map[string]string{
-		"sample2.js": "// sample2",
+		"sample2.js":          "// sample2",
+		"sample3.js.disabled": "// disabled sample3",
 	})
 	s.VerifyRpcError("Remove", objx.Map{"path": "nosuchfile.js"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
@@ -258,8 +282,9 @@ func (s *EditorSuite) TestRemoveFile() {
 	s.VerifyRpcError("Remove", objx.Map{"path": "unlisted.js.ok"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
 	s.verifySources(map[string]string{
-		"sample2.js":     "// sample2",
-		"unlisted.js.ok": "// unlisted",
+		"sample2.js":          "// sample2",
+		"sample3.js.disabled": "// disabled sample3",
+		"unlisted.js.ok":      "// unlisted",
 	})
 }
 
@@ -270,7 +295,7 @@ func (s *EditorSuite) TestLoadFile() {
 	s.scriptErrorPath = "sample1.js"
 	scriptErr := NewScriptError(
 		"syntax error!", []LocItem{
-			{1, "sub/sample5.js"},
+			{1, "sub/sample6.js"},
 			{42, "foobar.js"},
 		},
 	)
@@ -280,7 +305,7 @@ func (s *EditorSuite) TestLoadFile() {
 		"error": objx.Map{
 			"message": "syntax error!",
 			"traceback": []objx.Map{
-				{"line": 1, "name": "sub/sample5.js"},
+				{"line": 1, "name": "sub/sample6.js"},
 				{"line": 42, "name": "foobar.js"},
 			},
 		},
@@ -290,6 +315,47 @@ func (s *EditorSuite) TestLoadFile() {
 	s.WriteDataFile("unlisted.js.ok", "// unlisted")
 	s.VerifyRpcError("Load", objx.Map{"path": "unlisted.js.ok"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
+}
+
+func (s *EditorSuite) TestEnableDisableFile() {
+	// check fail on changing state to the same
+	s.VerifyRpc("ChangeState", objx.Map{"path": "sample1.js", "state": true}, false)
+	s.VerifyRpc("ChangeState", objx.Map{"path": "sample3.js", "state": false}, false)
+
+	// check rename on changing state
+	s.VerifyRpc("ChangeState", objx.Map{"path": "sample1.js", "state": false}, true)
+	s.verifySources(map[string]string{
+		"sample1.js.disabled": "// sample1",
+		"sample2.js":          "// sample2",
+		"sample3.js.disabled": "// disabled sample3",
+	})
+
+	s.VerifyRpc("ChangeState", objx.Map{"path": "sample3.js", "state": true}, true)
+	s.verifySources(map[string]string{
+		"sample1.js.disabled": "// sample1",
+		"sample2.js":          "// sample2",
+		"sample3.js":          "// disabled sample3",
+	})
+
+	s.VerifyRpc("ChangeState", objx.Map{"path": "sample1.js", "state": true}, true)
+	s.verifySources(map[string]string{
+		"sample1.js": "// sample1",
+		"sample2.js": "// sample2",
+		"sample3.js": "// disabled sample3",
+	})
+
+	// check errors
+	s.VerifyRpcError("ChangeState", objx.Map{"path": "nosuchfile.js", "state": false},
+		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
+	s.VerifyRpcError("ChangeState", objx.Map{"path": "nosuchfile.js", "state": true},
+		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
+
+	// check file overwrite error
+	s.WriteDataFile("sample2.js.disabled", "// disabled sample2")
+	s.VerifyRpcError("ChangeState", objx.Map{"path": "sample2.js", "state": false},
+		EDITOR_ERROR_OVERWRITE, "EditorError", "New-state file already exists")
+
+	s.EnsureGotErrors()
 }
 
 func TestEditorSuite(t *testing.T) {
