@@ -133,7 +133,7 @@ func main() {
 	engine.Start()
 
 	gotSome := false
-	watcher := wbgo.NewDirWatcher("\\.js$", engine)
+	watcher := wbgo.NewDirWatcher("\\.js(\\"+wbrules.FILE_DISABLED_SUFFIX+")?$", engine)
 	if *editDir != "" {
 		engine.SetSourceRoot(*editDir)
 	}

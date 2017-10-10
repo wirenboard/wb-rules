@@ -31,6 +31,9 @@ const (
 	PERSISTENT_DB_CHMOD = 0640
 	SOURCE_ITEM_DEVICE  = itemType(iota)
 	SOURCE_ITEM_RULE
+	SOURCE_ITEM_TIMER
+
+	FILE_DISABLED_SUFFIX = ".disabled"
 
 	MODULE_FILENAME_PROP = "filename"
 	MODULE_STATIC_PROP   = "static"
@@ -96,14 +99,16 @@ func newTimerSet() *TimerSet {
 
 type ESEngine struct {
 	*RuleEngine
-	ctxFactory        *ESContextFactory     // ESContext factory
-	globalCtx         *ESContext            // global context - prototype for local contexts in threads
-	localCtxs         map[string]*ESContext // local scripts' contexts, mapped from script paths
-	ctxTimers         map[*ESContext]*TimerSet
-	sourceRoot        string
-	sources           sourceMap
-	currentSource     *LocFileEntry
-	sourcesMtx        sync.Mutex
+	ctxFactory *ESContextFactory     // ESContext factory
+	globalCtx  *ESContext            // global context - prototype for local contexts in threads
+	localCtxs  map[string]*ESContext // local scripts' contexts, mapped from script paths
+	ctxTimers  map[*ESContext]*TimerSet
+
+	sourceRoot      string
+	sources         map[string]*LocFileEntry // entries for all loaded files, including system files. Keys are abs paths
+	editableSources map[string]string        // map from virtual paths to abs paths for editable files
+	sourcesMtx      sync.Mutex
+
 	tracker           *wbgo.ContentTracker
 	persistentDBCache map[string]string
 	persistentDB      *bolt.DB
@@ -130,7 +135,8 @@ func NewESEngine(driver wbgo.Driver, logMqttClient wbgo.MQTTClient, options *ESE
 		ctxFactory:        newESContextFactory(),
 		localCtxs:         make(map[string]*ESContext),
 		ctxTimers:         make(map[*ESContext]*TimerSet),
-		sources:           make(sourceMap),
+		sources:           make(map[string]*LocFileEntry),
+		editableSources:   make(map[string]string),
 		tracker:           wbgo.NewContentTracker(),
 		persistentDBCache: make(map[string]string),
 		persistentDB:      nil,
@@ -462,17 +468,27 @@ func (engine *ESEngine) loadLib() error {
 	return noLibJs
 }
 
-func (engine *ESEngine) maybeRegisterSourceItem(ctx *ESContext, typ itemType, name string) {
-	if engine.currentSource == nil {
+func (engine *ESEngine) registerSourceItem(ctx *ESContext, typ itemType, name string) {
+	currentPath := ctx.GetCurrentFilename()
+	if currentPath == "" {
+		wbgo.Info.Println("source item '%s' without script file, don't register it", name)
 		return
+	}
+
+	currentSource := engine.sources[currentPath]
+
+	if currentSource == nil {
+		wbgo.Error.Panicf("Registering source item %s of file %s without entry", typ, currentPath)
 	}
 
 	var items *[]LocItem
 	switch typ {
 	case SOURCE_ITEM_DEVICE:
-		items = &engine.currentSource.Devices
+		items = &currentSource.Devices
 	case SOURCE_ITEM_RULE:
-		items = &engine.currentSource.Rules
+		items = &currentSource.Rules
+	case SOURCE_ITEM_TIMER:
+		items = &currentSource.Timers
 	default:
 		log.Panicf("bad source item type %d", typ)
 	}
@@ -481,7 +497,7 @@ func (engine *ESEngine) maybeRegisterSourceItem(ctx *ESContext, typ itemType, na
 	for _, loc := range ctx.GetTraceback() {
 		// Here we depend upon the fact that duktape displays
 		// unmodified source paths in the backtrace
-		if loc.filename == engine.currentSource.PhysicalPath {
+		if loc.filename == currentPath {
 			line = loc.line
 		}
 	}
@@ -494,35 +510,57 @@ func (engine *ESEngine) maybeRegisterSourceItem(ctx *ESContext, typ itemType, na
 func (engine *ESEngine) ListSourceFiles() (entries []LocFileEntry, err error) {
 	engine.sourcesMtx.Lock()
 	defer engine.sourcesMtx.Unlock()
-	pathList := make([]string, 0, len(engine.sources))
-	for virtualPath, _ := range engine.sources {
+
+	// prepare sorted list of local
+	pathList := make([]string, 0, len(engine.editableSources))
+	for virtualPath, _ := range engine.editableSources {
 		pathList = append(pathList, virtualPath)
 	}
 	sort.Strings(pathList)
+
 	entries = make([]LocFileEntry, len(pathList))
 	for n, virtualPath := range pathList {
-		entries[n] = *engine.sources[virtualPath]
+		entries[n] = *engine.sources[engine.editableSources[virtualPath]]
+		entries[n].Context = nil // don't mess up with Duktape
 	}
 	return
 }
 
-func (engine *ESEngine) checkSourcePath(path string) (cleanPath string, virtualPath string, underSourceRoot bool, err error) {
+// TODO
+func (engine *ESEngine) LocateFile(virtualPath string) (entry LocFileEntry, err error) {
+	return
+}
+
+// cleanPath is a clean shortest path from root directory to this file
+// virtualPath is a relative path for files in the edit directory
+// underSourceRoot is true when this file is in the edit directory\
+func (engine *ESEngine) checkSourcePath(path string) (cleanPath string, virtualPath string, underSourceRoot bool, enabled bool, err error) {
 	path, err = filepath.Abs(path)
 	if err != nil {
 		return
 	}
+
+	enabled = true
 
 	cleanPath = filepath.Clean(path)
 	if underSourceRoot = wbgo.IsSubpath(engine.sourceRoot, cleanPath); underSourceRoot {
 		virtualPath, err = filepath.Rel(engine.sourceRoot, path)
 	}
 
+	// check if file is disabled
+	if strings.HasSuffix(virtualPath, FILE_DISABLED_SUFFIX) {
+		// cut suffix from virtual path
+		// clean path need to stay clean!
+		virtualPath = virtualPath[:len(virtualPath)-len(FILE_DISABLED_SUFFIX)]
+		enabled = false
+	}
+
 	return
 }
 
-func (engine *ESEngine) checkVirtualPath(path string) (cleanPath string, virtualPath string, err error) {
+func (engine *ESEngine) checkVirtualPath(path string) (cleanPath string, virtualPath string, enabled bool, err error) {
 	physicalPath := filepath.Join(engine.sourceRoot, filepath.Clean(path))
-	cleanPath, virtualPath, underSourceRoot, err := engine.checkSourcePath(physicalPath)
+	cleanPath, virtualPath, underSourceRoot, enabled, err := engine.checkSourcePath(physicalPath)
 	if err == nil && !underSourceRoot {
 		err = errors.New("path not under source root")
 	}
@@ -531,34 +569,10 @@ func (engine *ESEngine) checkVirtualPath(path string) (cleanPath string, virtual
 
 func (engine *ESEngine) LoadFile(path string) (err error) {
 	return engine.LiveLoadFile(path)
-
-	// _, err = engine.loadScript(path, true)
-	// return
 }
 
-func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, error) {
-	path, virtualPath, underSourceRoot, err := engine.checkSourcePath(path)
-	if err != nil {
-		return false, err
-	}
-
-	if engine.currentSource != nil {
-		// must use a stack of sources to support recursive LoadScript()
-		panic("recursive loadScript() calls not supported")
-	}
-
-	wasChangedOrFirstSeen, err := engine.tracker.Track(virtualPath, path)
-	if err != nil {
-		return false, err
-	}
-	if !loadIfUnchanged && !wasChangedOrFirstSeen {
-		wbgo.Debug.Printf("script %s unchanged, not reloading (possibly just reloaded)", path)
-		return false, nil
-	}
-
-	// cleanup if old script exists
-	engine.runCleanups(path)
-
+// Prepares new context
+func (engine *ESEngine) prepareNewContext(path string) (newLocalCtx *ESContext) {
 	// prepare threads storage
 	engine.globalCtx.PushHeapStash()
 	// [ stash ]
@@ -569,7 +583,7 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 	// create new thread and context
 	engine.globalCtx.PushThreadNewGlobalenv()
 	// [ stash threads thread ]
-	newLocalCtx := engine.ctxFactory.newESContextFromDuktape(engine.globalCtx.syncFunc, path, engine.globalCtx.GetContext(-1))
+	newLocalCtx = engine.ctxFactory.newESContextFromDuktape(engine.globalCtx.syncFunc, path, engine.globalCtx.GetContext(-1))
 	// [ stash threads thread ]
 
 	engine.localCtxs[path] = newLocalCtx
@@ -579,28 +593,6 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 	// [ stash threads ]
 	engine.globalCtx.Pop2()
 	// []
-
-	engine.cleanup.PushCleanupScope(path)
-	defer engine.cleanup.PopCleanupScope(path)
-	if underSourceRoot {
-		engine.currentSource = &LocFileEntry{
-			VirtualPath:  virtualPath,
-			PhysicalPath: path,
-			Devices:      make([]LocItem, 0),
-			Rules:        make([]LocItem, 0),
-		}
-		engine.cleanup.AddCleanup(func() {
-			engine.sourcesMtx.Lock()
-			delete(engine.sources, virtualPath)
-			engine.sourcesMtx.Unlock()
-		})
-		defer func() {
-			engine.sourcesMtx.Lock()
-			engine.sources[virtualPath] = engine.currentSource
-			engine.sourcesMtx.Unlock()
-			engine.currentSource = nil
-		}()
-	}
 
 	// set error handler
 	newLocalCtx.SetCallbackErrorHandler(engine.CallbackErrorHandler)
@@ -637,6 +629,71 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 	// export modSearch
 	engine.exportModSearch(newLocalCtx)
 
+	return
+}
+
+func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, error) {
+	path, virtualPath, underSourceRoot, enabled, err := engine.checkSourcePath(path)
+	if err != nil {
+		return false, err
+	}
+
+	wasChangedOrFirstSeen, err := engine.tracker.Track(virtualPath, path)
+	if err != nil {
+		return false, err
+	}
+	if !loadIfUnchanged && !wasChangedOrFirstSeen {
+		wbgo.Debug.Printf("script %s unchanged, not reloading (possibly just reloaded)", path)
+		return false, nil
+	}
+
+	// cleanup if old script exists
+	engine.runCleanups(path)
+
+	engine.cleanup.PushCleanupScope(path)
+	defer engine.cleanup.PopCleanupScope(path)
+
+	// create new entry for current file
+	currentSource := &LocFileEntry{
+		VirtualPath:  virtualPath,
+		PhysicalPath: path,
+		Devices:      make([]LocItem, 0),
+		Rules:        make([]LocItem, 0),
+		Timers:       make([]LocItem, 0),
+		Enabled:      enabled,
+	}
+
+	// if this file is editable, don't forget to save it in editable files map
+	// which will be used to form file entries list in RPC
+	if underSourceRoot {
+		engine.editableSources[virtualPath] = path
+
+		engine.cleanup.AddCleanup(func() {
+			engine.sourcesMtx.Lock()
+			defer engine.sourcesMtx.Unlock()
+
+			delete(engine.editableSources, virtualPath)
+		})
+	} else {
+		wbgo.Info.Printf("%s is NOT under source root %s", path, engine.sourceRoot)
+	}
+
+	// remove file entry from list on cleanup
+	engine.cleanup.AddCleanup(func() {
+		engine.sourcesMtx.Lock()
+		delete(engine.sources, path)
+		engine.sourcesMtx.Unlock()
+	})
+
+	// create new context for this file
+	newLocalCtx := engine.prepareNewContext(path)
+	currentSource.Context = newLocalCtx
+
+	// add file to sources list
+	engine.sourcesMtx.Lock()
+	engine.sources[path] = currentSource
+	engine.sourcesMtx.Unlock()
+
 	return true, engine.trackESError(path, newLocalCtx.LoadScenario(path))
 }
 
@@ -652,7 +709,7 @@ func (engine *ESEngine) trackESError(path string, err error) error {
 	// reside under the source root.
 	traceback := make([]LocItem, 0, len(esError.Traceback))
 	for _, esLoc := range esError.Traceback {
-		_, virtualPath, underSourceRoot, err :=
+		_, virtualPath, underSourceRoot, _, err :=
 			engine.checkSourcePath(esLoc.filename)
 		if err == nil && underSourceRoot {
 			traceback = append(traceback, LocItem{esLoc.line, virtualPath})
@@ -660,14 +717,15 @@ func (engine *ESEngine) trackESError(path string, err error) error {
 	}
 
 	scriptErr := NewScriptError(esError.Message, traceback)
-	if engine.currentSource != nil {
-		engine.currentSource.Error = &scriptErr
-	}
+
+	// set error in the file entry
+	engine.sources[path].Error = &scriptErr
+
 	return scriptErr
 }
 
 func (engine *ESEngine) maybePublishUpdate(subtopic, physicalPath string) {
-	_, virtualPath, underSourceRoot, err := engine.checkSourcePath(physicalPath)
+	_, virtualPath, underSourceRoot, _, err := engine.checkSourcePath(physicalPath)
 	if err != nil {
 		wbgo.Error.Printf("checkSourcePath() failed for %s: %s", physicalPath, err)
 	}
@@ -713,7 +771,7 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 	r := make(chan error)
 	engine.WhenEngineReady(func() {
 		wbgo.Debug.Printf("OverwriteScript(%s)", virtualPath)
-		cleanPath, virtualPath, err := engine.checkVirtualPath(virtualPath)
+		cleanPath, virtualPath, _, err := engine.checkVirtualPath(virtualPath)
 		wbgo.Debug.Printf("OverwriteScript: %s %s %v", cleanPath, virtualPath, err)
 		if err != nil {
 			r <- err
@@ -757,7 +815,8 @@ func (engine *ESEngine) LiveLoadFile(path string) error {
 }
 
 func (engine *ESEngine) LiveRemoveFile(path string) error {
-	path, virtualPath, _, err := engine.checkSourcePath(path)
+	wbgo.Info.Printf("LiveRemoveFile: %s", path)
+	path, virtualPath, _, _, err := engine.checkSourcePath(path)
 
 	if err != nil {
 		return err
@@ -861,7 +920,7 @@ func (engine *ESEngine) esDefineVirtualDevice(ctx *ESContext) int {
 		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
 		return duktape.DUK_RET_INSTACK_ERROR
 	}
-	engine.maybeRegisterSourceItem(ctx, SOURCE_ITEM_DEVICE, name)
+	engine.registerSourceItem(ctx, SOURCE_ITEM_DEVICE, name)
 
 	// [ args | ]
 
@@ -1262,7 +1321,7 @@ func (engine *ESEngine) esWbDefineRule(ctx *ESContext) int {
 		return duktape.DUK_RET_ERROR
 	}
 
-	engine.maybeRegisterSourceItem(ctx, SOURCE_ITEM_RULE, name)
+	engine.registerSourceItem(ctx, SOURCE_ITEM_RULE, name)
 
 	// return rule ID
 	ctx.PushNumber(float64(ruleId))

@@ -14,7 +14,9 @@ func (s *RuleLocationSuite) SetupTest() {
 	s.SetupSkippingDefs(
 		"testrules_defhelper.js",
 		"testrules_locations.js",
+		"testrules_locations_dis.js.disabled",
 		"loc1/testrules_more.js")
+
 	// FIXME: need to wait for the engine to become ready because
 	// the engine cannot be stopped before it's ready in the
 	// context of the tests.
@@ -44,20 +46,25 @@ func (s *RuleLocationSuite) TestLocations() {
 		{
 			VirtualPath:  "loc1/testrules_more.js",
 			PhysicalPath: s.DataFilePath("loc1/testrules_more.js"),
+			Enabled:      true,
 			Devices: []LocItem{
 				{4, "qqq"},
 			},
-			Rules: []LocItem{},
+			Rules:  []LocItem{},
+			Timers: []LocItem{},
 		},
 		{
 			VirtualPath:  "testrules_defhelper.js",
 			PhysicalPath: s.DataFilePath("testrules_defhelper.js"),
+			Enabled:      true,
 			Devices:      []LocItem{},
 			Rules:        []LocItem{},
+			Timers:       []LocItem{},
 		},
 		{
 			VirtualPath:  "testrules_locations.js",
 			PhysicalPath: s.DataFilePath("testrules_locations.js"),
+			Enabled:      true,
 			Devices: []LocItem{
 				{4, "misc"},
 				{14, "foo"},
@@ -68,6 +75,15 @@ func (s *RuleLocationSuite) TestLocations() {
 				// defineRule() call is recorded
 				{24, "another"},
 			},
+			Timers: []LocItem{},
+		},
+		{
+			VirtualPath:  "testrules_locations_dis.js",
+			PhysicalPath: s.DataFilePath("testrules_locations_dis.js.disabled"),
+			Enabled:      false,
+			Devices:      []LocItem{},
+			Rules:        []LocItem{},
+			Timers:       []LocItem{},
 		},
 	}, s.listSourceFiles())
 }
@@ -79,20 +95,25 @@ func (s *RuleLocationSuite) TestUpdatingLocations() {
 		{
 			VirtualPath:  "loc1/testrules_more.js",
 			PhysicalPath: s.DataFilePath("loc1/testrules_more.js"),
+			Enabled:      true,
 			Devices: []LocItem{
 				{4, "qqqNew"},
 			},
-			Rules: []LocItem{},
+			Rules:  []LocItem{},
+			Timers: []LocItem{},
 		},
 		{
 			VirtualPath:  "testrules_defhelper.js",
 			PhysicalPath: s.DataFilePath("testrules_defhelper.js"),
+			Enabled:      true,
 			Devices:      []LocItem{},
 			Rules:        []LocItem{},
+			Timers:       []LocItem{},
 		},
 		{
 			VirtualPath:  "testrules_locations.js",
 			PhysicalPath: s.DataFilePath("testrules_locations.js"),
+			Enabled:      true,
 			Devices: []LocItem{
 				{4, "miscNew"},
 				{14, "foo"},
@@ -103,6 +124,15 @@ func (s *RuleLocationSuite) TestUpdatingLocations() {
 				// defineRule() call is recorded
 				{24, "another"},
 			},
+			Timers: []LocItem{},
+		},
+		{
+			VirtualPath:  "testrules_locations_dis.js",
+			PhysicalPath: s.DataFilePath("testrules_locations_dis.js.disabled"),
+			Enabled:      false,
+			Devices:      []LocItem{},
+			Rules:        []LocItem{},
+			Timers:       []LocItem{},
 		},
 	}, s.listSourceFiles())
 	s.SkipTill("[changed] loc1/testrules_more.js")
@@ -111,36 +141,58 @@ func (s *RuleLocationSuite) TestUpdatingLocations() {
 func (s *RuleLocationSuite) TestRemoval() {
 	s.RemoveScript("testrules_locations.js")
 	s.WaitFor(func() bool {
-		return len(s.listSourceFiles()) == 2
+		return len(s.listSourceFiles()) == 3
 	})
 	s.Equal([]LocFileEntry{
 		{
 			VirtualPath:  "loc1/testrules_more.js",
 			PhysicalPath: s.DataFilePath("loc1/testrules_more.js"),
+			Enabled:      true,
 			Devices: []LocItem{
 				{4, "qqq"},
 			},
-			Rules: []LocItem{},
+			Rules:  []LocItem{},
+			Timers: []LocItem{},
 		},
 		{
 			VirtualPath:  "testrules_defhelper.js",
 			PhysicalPath: s.DataFilePath("testrules_defhelper.js"),
+			Enabled:      true,
 			Devices:      []LocItem{},
 			Rules:        []LocItem{},
+			Timers:       []LocItem{},
+		},
+		{
+			VirtualPath:  "testrules_locations_dis.js",
+			PhysicalPath: s.DataFilePath("testrules_locations_dis.js.disabled"),
+			Enabled:      false,
+			Devices:      []LocItem{},
+			Rules:        []LocItem{},
+			Timers:       []LocItem{},
 		},
 	}, s.listSourceFiles())
 	s.SkipTill("[removed] testrules_locations.js")
 
 	s.RemoveScript("loc1/testrules_more.js")
 	s.WaitFor(func() bool {
-		return len(s.listSourceFiles()) == 1
+		return len(s.listSourceFiles()) == 2
 	})
 	s.Equal([]LocFileEntry{
 		{
 			VirtualPath:  "testrules_defhelper.js",
 			PhysicalPath: s.DataFilePath("testrules_defhelper.js"),
+			Enabled:      true,
 			Devices:      []LocItem{},
 			Rules:        []LocItem{},
+			Timers:       []LocItem{},
+		},
+		{
+			VirtualPath:  "testrules_locations_dis.js",
+			PhysicalPath: s.DataFilePath("testrules_locations_dis.js.disabled"),
+			Enabled:      false,
+			Devices:      []LocItem{},
+			Rules:        []LocItem{},
+			Timers:       []LocItem{},
 		},
 	}, s.listSourceFiles())
 	s.SkipTill("[removed] loc1/testrules_more.js")
@@ -159,20 +211,25 @@ func (s *RuleLocationSuite) TestFaultyScript() {
 		{
 			VirtualPath:  "loc1/testrules_more.js",
 			PhysicalPath: s.DataFilePath("loc1/testrules_more.js"),
+			Enabled:      true,
 			Devices: []LocItem{
 				{4, "qqq"},
 			},
-			Rules: []LocItem{},
+			Rules:  []LocItem{},
+			Timers: []LocItem{},
 		},
 		{
 			VirtualPath:  "testrules_defhelper.js",
 			PhysicalPath: s.DataFilePath("testrules_defhelper.js"),
+			Enabled:      true,
 			Devices:      []LocItem{},
 			Rules:        []LocItem{},
+			Timers:       []LocItem{},
 		},
 		{
 			VirtualPath:  "testrules_locations.js",
 			PhysicalPath: s.DataFilePath("testrules_locations.js"),
+			Enabled:      true,
 			Devices: []LocItem{
 				{4, "misc"},
 				{14, "foo"},
@@ -183,15 +240,26 @@ func (s *RuleLocationSuite) TestFaultyScript() {
 				// defineRule() call is recorded
 				{24, "another"},
 			},
+			Timers: []LocItem{},
+		},
+		{
+			VirtualPath:  "testrules_locations_dis.js",
+			PhysicalPath: s.DataFilePath("testrules_locations_dis.js.disabled"),
+			Enabled:      false,
+			Devices:      []LocItem{},
+			Rules:        []LocItem{},
+			Timers:       []LocItem{},
 		},
 		{
 			VirtualPath:  "testrules_locations_faulty.js",
 			PhysicalPath: s.DataFilePath("testrules_locations_faulty.js"),
+			Enabled:      true,
 			Devices: []LocItem{
 				{4, "nonFaultyDev"},
 			},
-			Rules: []LocItem{},
-			Error: &scriptErr,
+			Rules:  []LocItem{},
+			Timers: []LocItem{},
+			Error:  &scriptErr,
 		},
 	}, s.listSourceFiles())
 
