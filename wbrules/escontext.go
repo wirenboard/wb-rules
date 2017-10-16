@@ -7,6 +7,7 @@ import (
 	"log"
 	"reflect"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -341,21 +342,31 @@ type callbackHolder struct {
 	callback ESCallback
 }
 
+func callbackFinalizer(holder *callbackHolder) {
+	// this function already runs in a separate goroutine
+	holder.ctx.removeCallbackSync(holder.callback)
+}
+
 func (ctx *ESContext) WrapCallback(callbackStackIndex int) ESCallbackFunc {
 	holder := &callbackHolder{
 		ctx,
 		ctx.storeCallback(callbackStackIndex),
 	}
+	runtime.SetFinalizer(holder, callbackFinalizer)
 	return func(args objx.Map) interface{} {
 		return ctx.invokeCallback(holder.callback, args)
 	}
 }
 
 func (ctx *ESContext) removeCallbackSync(key ESCallback) {
+	// if context is invalid, just ignore this
+	if !ctx.valid {
+		return
+	}
+
 	if ctx.syncFunc == nil {
 		ctx.RemoveCallback(key)
 	} else {
-		// go ctx.syncFunc(func() {
 		ctx.syncFunc(func() {
 			ctx.RemoveCallback(key)
 		})
