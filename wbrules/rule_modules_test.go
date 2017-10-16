@@ -80,7 +80,7 @@ func (s *TestModulesSuite) TestModuleParams() {
 func (s *TestModulesSuite) TestStaticStorage() {
 	s.publish("/devices/test/controls/static/on", "1", "test/static")
 
-	s.Verify(
+	s.VerifyUnordered(
 		"tst -> /devices/test/controls/static/on: [1] (QoS 1)",
 		"driver -> /devices/test/controls/static: [1] (QoS 1, retained)",
 		"[info] Module static init",
@@ -93,7 +93,7 @@ func (s *TestModulesSuite) TestStaticStorage() {
 func (s *TestModulesSuite) TestModulesCache() {
 	s.publish("/devices/test/controls/cache/on", "1", "test/cache")
 
-	s.Verify(
+	s.VerifyUnordered(
 		"tst -> /devices/test/controls/cache/on: [1] (QoS 1)",
 		"driver -> /devices/test/controls/cache: [1] (QoS 1, retained)",
 		"[info] Module helloworld init",
