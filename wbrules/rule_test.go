@@ -228,6 +228,9 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	err = s.driver.StartLoop()
 	s.Ck("StartLoop()", err)
 
+	// wait for the first ready event
+	s.driver.WaitForReady()
+
 	s.driver.SetFilter(&wbgo.AllDevicesFilter{})
 
 	s.cron = nil
