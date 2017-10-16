@@ -103,16 +103,13 @@ func main() {
 	if err := driver.StartLoop(); err != nil {
 		wbgo.Error.Fatalf("error starting the driver: %s", err)
 	}
+	driver.WaitForReady()
 
 	wbgo.Info.Println("driver loop is started")
-	ready := make(chan struct{})
-	driver.OnRetainReady(func(tx wbgo.DriverTx) {
-		close(ready)
-	})
 	driver.SetFilter(&wbgo.AllDevicesFilter{})
 
 	wbgo.Info.Println("wait for driver to become ready")
-	<-ready
+	driver.WaitForReady()
 	wbgo.Info.Println("driver is ready")
 
 	engineOptions := wbrules.NewESEngineOptions()
