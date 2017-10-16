@@ -97,6 +97,9 @@ func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, filename
 }
 
 func (ctx *ESContext) invalidate() {
+	// remove context from factory, just in case
+	delete(ctx.factory.duktapeToESContextMap, *ctx.Context)
+
 	ctx.Context = nil
 	ctx.valid = false
 }
