@@ -27,7 +27,7 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 
 	s.publish("/devices/cellch/controls/button/on", "1",
 		"cellch/button", "cellch/sw", "cellch/misc")
-	s.Verify(
+	s.VerifyUnordered(
 		"tst -> /devices/cellch/controls/button/on: [1] (QoS 1)",
 		"driver -> /devices/cellch/controls/button: [1] (QoS 1)", // no 'retained' flag for button
 		"driver -> /devices/cellch/controls/sw: [1] (QoS 1, retained)",
@@ -43,7 +43,7 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 
 	s.publish("/devices/cellch/controls/button/on", "1",
 		"cellch/button", "cellch/sw", "cellch/misc")
-	s.Verify(
+	s.VerifyUnordered(
 		"tst -> /devices/cellch/controls/button/on: [1] (QoS 1)",
 		"driver -> /devices/cellch/controls/button: [1] (QoS 1)", // no 'retained' flag for button
 		"driver -> /devices/cellch/controls/sw: [0] (QoS 1, retained)",
