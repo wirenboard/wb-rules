@@ -83,6 +83,11 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 
 	*reply = EditorSaveResponse{nil, pth, nil}
 
+	// check if this file already exists and disabled, so update path
+	if entry, err := editor.locateFile(pth); err == nil && !entry.Enabled {
+		pth = pth + FILE_DISABLED_SUFFIX
+	}
+
 	err := editor.locFileManager.LiveWriteScript(pth, args.Content)
 	switch err.(type) {
 	case nil:
