@@ -278,6 +278,10 @@ func (s *RuleSuiteBase) ReplaceScript(oldName, newName string) {
 	s.Ck("LiveLoadFile()", s.engine.LiveLoadFile(copiedScriptPath))
 }
 
+func (s *RuleSuiteBase) RenameScript(oldName, newName string) {
+	s.Ck("RenameScript()", os.Rename(oldName, newName))
+}
+
 func (s *RuleSuiteBase) OverwriteScript(oldName, newName string) error {
 	return s.engine.LiveWriteScript(oldName, s.ReadSourceDataFile(newName))
 }

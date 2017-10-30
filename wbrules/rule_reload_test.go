@@ -266,6 +266,28 @@ func (s *RuleReloadSuite) TestWriteScript() {
 	}
 }
 
+func (s *RuleReloadSuite) TestDisableScript() {
+	// rename target file
+	s.RemoveScript("testrules_reload_1.js")
+	s.RenameScript("testrules_reload_1.js", "testrules_reload_1.js.disabled")
+	s.engine.LiveLoadFile("testrules_reload_1.js.disabled")
+
+	s.VerifyUnordered(
+		"Unsubscribe -- driver: /devices/vdev0/controls/someCell/on",
+		"driver -> /devices/vdev0/controls/someCell: [] (QoS 1, retained)",
+		"driver -> /devices/vdev0/controls/someCell/meta/order: [] (QoS 1, retained)",
+		"driver -> /devices/vdev0/controls/someCell/meta/type: [] (QoS 1, retained)",
+		"driver -> /devices/vdev0/controls/someCell/meta/writable: [] (QoS 1, retained)",
+		"driver -> /devices/vdev0/controls/someCell/meta/readonly: [] (QoS 1, retained)",
+		"driver -> /devices/vdev0/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/vdev0/meta/driver: [] (QoS 1, retained)",
+		"timer.Stop(): 1",
+		"[removed] testrules_reload_1.js",
+	)
+
+	s.VerifyEmpty()
+}
+
 func TestRuleReloadSuite(t *testing.T) {
 	testutils.RunSuites(t,
 		new(RuleReloadSuite),
