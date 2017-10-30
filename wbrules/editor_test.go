@@ -268,6 +268,23 @@ func (s *EditorSuite) TestSaveFile() {
 		EDITOR_ERROR_WRITE, "EditorError",
 		"Error writing the file")
 	s.EnsureGotErrors()
+
+	// check write into disabled file
+	s.expectLiveWrite("sample3.js.disabled", nil)
+	s.VerifyRpc("Save",
+		objx.Map{"path": "sample3.js", "content": "// new disabled sample3"},
+		objx.Map{"path": "sample3.js"},
+	)
+	s.verifyLiveWrite()
+
+	s.verifySources(map[string]string{
+		"sample1.js":          "// sample1 (changed)",
+		"sample2.js":          "// sample2",
+		"sample3.js.disabled": "// new disabled sample3",
+		"sample 4.js":         "// sample 4",
+		"sub/sample5.js":      "// sample5",
+		"sub/sample6.js":      "sample6 -- error",
+	})
 }
 
 func (s *EditorSuite) TestRemoveFile() {
