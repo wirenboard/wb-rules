@@ -685,14 +685,19 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 		engine.sourcesMtx.Unlock()
 	})
 
-	// create new context for this file
-	newLocalCtx := engine.prepareNewContext(path)
-	currentSource.Context = newLocalCtx
-
 	// add file to sources list
 	engine.sourcesMtx.Lock()
 	engine.sources[path] = currentSource
 	engine.sourcesMtx.Unlock()
+
+	// check if file is disabled, if so - stop here
+	if !enabled {
+		return false, nil
+	}
+
+	// create new context for this file
+	newLocalCtx := engine.prepareNewContext(path)
+	currentSource.Context = newLocalCtx
 
 	return true, engine.trackESError(path, newLocalCtx.LoadScenario(path))
 }
