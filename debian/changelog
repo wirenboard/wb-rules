@@ -1,3 +1,9 @@
+wb-rules (2.1~alpha3) stable; urgency=medium
+
+  * wbgo: treat controls as writable by default
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Thu, 14 Dec 2017 15:27:34 +0300
+
 wb-rules (2.1~alpha2) stable; urgency=medium
 
   * wbgo: device reowning
