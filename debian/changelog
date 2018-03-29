@@ -1,3 +1,9 @@
+wb-rules (1.6.9) stable; urgency=medium
+
+  * running mosquitto is required to start service
+
+ -- Attila Door <a.door@contactless.ru>  Mon, 26 Mar 2018 11:54:47 +0300
+
 wb-rules (1.6.8) stable; urgency=medium
 
   * load_alarms.js moved to /usr/share/wb-rules
