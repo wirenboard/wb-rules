@@ -3,7 +3,7 @@
 # Provides:          wb-rules
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Required-Start:
+# Required-Start:    mosquitto 
 # Required-Stop:
 # Short-Description: MQTT Rule Engine for Wiren Board
 # Description:       MQTT Rule Engine for Wiren Board
