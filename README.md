@@ -232,7 +232,7 @@ dev.abc.def).
 кроме уставок диммеров (тип rgb), считаются числовыми, уставки диммеров (тип rgb)
 и неизвестные типы параметров - строковыми. Список допустимых типов
 параметров см.
-[по ссылке](https://github.com/contactless/homeui/blob/contactless/conventions.md).
+[по ссылке](https://github.com/contactless/homeui/blob/master/conventions.md).
 
 Не следует использовать объект `dev` вне кода правил. Не следует
 присваивать значения параметрам через `dev` вне `then`-функций правил
