@@ -2,11 +2,14 @@ package wbrules
 
 import (
 	"fmt"
+	"github.com/boltdb/bolt"
 	wbgo "github.com/contactless/wbgo"
 	"github.com/robfig/cron"
 	"github.com/stretchr/objx"
 	"log"
+	"os"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -21,6 +24,8 @@ const (
 	NO_CALLBACK                   = ESCallback(0)
 	RULE_ENGINE_SETTINGS_DEV_NAME = "wbrules"
 	RULE_DEBUG_CELL_NAME          = "Rule debugging"
+
+	VIRTUAL_CELLS_DB_CHMOD = 0640
 
 	ENGINE_LOG_DEBUG = EngineLogLevel(iota)
 	ENGINE_LOG_INFO
@@ -140,55 +145,88 @@ func (cp cronProxy) AddFunc(spec string, cmd func()) error {
 	})
 }
 
-type RuleEngine struct {
-	cleanup           *ScopedCleanup
-	rev               uint64
-	model             *CellModel
-	mqttClient        wbgo.MQTTClient
-	cellChange        chan *CellSpec
-	timerFunc         TimerFunc
-	nextTimerId       uint64
-	timers            map[uint64]*TimerEntry
-	callbackIndex     ESCallback
-	ruleMap           map[string]*Rule
-	ruleList          []string
-	notedCells        map[*Cell]bool
-	notedTimers       map[string]bool
-	cellToRuleMap     map[*Cell][]*Rule
-	rulesWithoutCells map[*Rule]bool
-	timerRules        map[string][]*Rule
-	currentTimer      string
-	cronMaker         func() Cron
-	cron              Cron
-	statusMtx         sync.Mutex
-	debugMtx          sync.Mutex
-	debugEnabled      bool
-	readyCh           chan struct{}
+type RuleEngineOptions struct {
+	VirtualCellsStorageFile     string
+	VirtualCellsStorageFileMode os.FileMode
 }
 
-func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *RuleEngine) {
-	engine = &RuleEngine{
-		cleanup:           MakeScopedCleanup(),
-		rev:               0,
-		model:             model,
-		mqttClient:        mqttClient,
-		timerFunc:         newTimer,
-		nextTimerId:       1,
-		timers:            make(map[uint64]*TimerEntry),
-		callbackIndex:     1,
-		ruleMap:           make(map[string]*Rule),
-		ruleList:          make([]string, 0, RULES_CAPACITY),
-		notedCells:        nil,
-		notedTimers:       nil,
-		cellToRuleMap:     make(map[*Cell][]*Rule),
-		rulesWithoutCells: make(map[*Rule]bool),
-		timerRules:        make(map[string][]*Rule),
-		currentTimer:      NO_TIMER_NAME,
-		cronMaker:         func() Cron { return cron.New() },
-		cron:              nil,
-		debugEnabled:      wbgo.DebuggingEnabled(),
-		readyCh:           nil,
+func NewRuleEngineOptions() *RuleEngineOptions {
+	return &RuleEngineOptions{
+		VirtualCellsStorageFileMode: VIRTUAL_CELLS_DB_CHMOD,
 	}
+}
+
+func (o *RuleEngineOptions) SetVirtualCellsStorageFileMode(mode os.FileMode) {
+	o.VirtualCellsStorageFileMode = mode
+}
+
+func (o *RuleEngineOptions) SetVirtualCellsStorageFile(file string) {
+	o.VirtualCellsStorageFile = file
+}
+
+type RuleEngine struct {
+	cleanup             *ScopedCleanup
+	rev                 uint64
+	model               *CellModel
+	mqttClient          wbgo.MQTTClient
+	cellChange          chan *CellSpec
+	timerFunc           TimerFunc
+	nextTimerId         uint64
+	timers              map[uint64]*TimerEntry
+	callbackIndex       ESCallback
+	ruleMap             map[string]*Rule
+	ruleList            []string
+	notedCells          map[*Cell]bool
+	notedTimers         map[string]bool
+	cellToRuleMap       map[*Cell][]*Rule
+	rulesWithoutCells   map[*Rule]bool
+	timerRules          map[string][]*Rule
+	currentTimer        string
+	cronMaker           func() Cron
+	cron                Cron
+	statusMtx           sync.Mutex
+	debugMtx            sync.Mutex
+	debugEnabled        bool
+	readyCh             chan struct{}
+	virtualCellsStorage *bolt.DB
+}
+
+func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *RuleEngineOptions) (engine *RuleEngine) {
+	if options == nil {
+		panic("no options given to NewRuleEngine")
+	}
+
+	engine = &RuleEngine{
+		cleanup:             MakeScopedCleanup(),
+		rev:                 0,
+		model:               model,
+		mqttClient:          mqttClient,
+		timerFunc:           newTimer,
+		nextTimerId:         1,
+		timers:              make(map[uint64]*TimerEntry),
+		callbackIndex:       1,
+		ruleMap:             make(map[string]*Rule),
+		ruleList:            make([]string, 0, RULES_CAPACITY),
+		notedCells:          nil,
+		notedTimers:         nil,
+		cellToRuleMap:       make(map[*Cell][]*Rule),
+		rulesWithoutCells:   make(map[*Rule]bool),
+		timerRules:          make(map[string][]*Rule),
+		currentTimer:        NO_TIMER_NAME,
+		cronMaker:           func() Cron { return cron.New() },
+		cron:                nil,
+		debugEnabled:        wbgo.DebuggingEnabled(),
+		readyCh:             nil,
+		virtualCellsStorage: nil,
+	}
+
+	if options.VirtualCellsStorageFile != "" {
+		if err := engine.SetVirtualCellsDBMode(options.VirtualCellsStorageFile,
+			options.VirtualCellsStorageFileMode); err != nil {
+			panic("error opening virtual cells storage: " + err.Error())
+		}
+	}
+
 	engine.setupRuleEngineSettingsDevice()
 	return
 }
@@ -198,6 +236,133 @@ func (engine *RuleEngine) ReadyCh() <-chan struct{} {
 		panic("cannot engine's readyCh before the engine is started")
 	}
 	return engine.readyCh
+}
+
+// Create or open virtual cells DB file
+func (engine *RuleEngine) SetVirtualCellsDB(filename string) (err error) {
+	return engine.SetVirtualCellsDBMode(filename, VIRTUAL_CELLS_DB_CHMOD)
+}
+
+func (engine *RuleEngine) SetVirtualCellsDBMode(filename string, mode os.FileMode) (err error) {
+	if engine.virtualCellsStorage != nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("virtual cells DB is already opened"))
+		err = fmt.Errorf("virtual cells DB is aleready opened")
+		return
+	}
+
+	engine.virtualCellsStorage, err = bolt.Open(filename, mode,
+		&bolt.Options{Timeout: 1 * time.Second})
+
+	if err != nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("can't open virtual cells DB file: %s", err))
+	}
+
+	return
+}
+
+// Force close virtual cells DB
+func (engine *RuleEngine) CloseVirtualCellsDB() (err error) {
+	if engine.virtualCellsStorage == nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("virtual cells DB is not opened, nothing to close"))
+		err = fmt.Errorf("nothing to close")
+		return
+	}
+
+	err = engine.virtualCellsStorage.Close()
+
+	return
+}
+
+// "Cell not found" error
+type CellNotFoundError struct{}
+
+func (e *CellNotFoundError) Error() string {
+	return ""
+}
+
+// Get cell value by name from virtual cells DB
+func (engine *RuleEngine) getVirtualCellValueFromDB(device string, control string) (value string, err error) {
+	var ok bool
+
+	if engine.virtualCellsStorage == nil {
+		err = fmt.Errorf("DB is not initialized")
+		return
+	}
+
+	err = engine.virtualCellsStorage.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(device))
+		if b == nil { // no bucket for this device
+			ok = false
+			return nil
+		}
+		ok = true
+
+		rval := b.Get([]byte(control))
+		if rval == nil {
+			ok = false
+			return nil
+		}
+
+		value = string(rval)
+		return nil
+	})
+
+	if !ok {
+		err = &CellNotFoundError{}
+	}
+
+	return
+}
+
+// Set cell value in virtual cells DB
+func (engine *RuleEngine) storeVirtualCellValueToDBRaw(device string, control string, value string) (err error) {
+	ok := true
+
+	if engine.virtualCellsStorage == nil {
+		err = fmt.Errorf("DB is not initialized")
+		return
+	}
+
+	err = engine.virtualCellsStorage.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte(device))
+		if err != nil {
+			ok = false
+			return err
+		}
+
+		if err := b.Put([]byte(control), []byte(value)); err != nil {
+			ok = false
+			return err
+		}
+
+		return nil
+	})
+
+	if !ok {
+		err = fmt.Errorf("error writing cell value to DB: %s", err)
+		return
+	}
+
+	wbgo.Debug.Printf("%s/%s: store virtual cell value to DB: \"%s\"",
+		device, control, value)
+
+	return
+}
+
+func (engine *RuleEngine) storeVirtualCellValueToDB(cellSpec *CellSpec) (err error) {
+	if cellSpec == nil {
+		return fmt.Errorf("cellSpec is nil")
+	}
+
+	cell := engine.model.EnsureCell(cellSpec)
+
+	// check that this cell belongs to virtual device
+	// FIXME: this is awful
+	if _, ok := cell.device.(*CellModelLocalDevice); !ok {
+		return nil
+	}
+
+	return engine.storeVirtualCellValueToDBRaw(cellSpec.DevName, cellSpec.CellName, cell.value)
 }
 
 func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
@@ -491,6 +656,14 @@ func (engine *RuleEngine) Start() {
 					if cellSpec == nil || engine.isDebugCell(cellSpec) {
 						engine.updateDebugEnabled()
 					}
+
+					if cellSpec != nil {
+						if err := engine.storeVirtualCellValueToDB(cellSpec); err != nil {
+							wbgo.Warn.Printf("%s/%s: can't set virtual cell value: %s",
+								cellSpec.DevName, cellSpec.CellName, err)
+						}
+					}
+
 					engine.model.CallSync(func() {
 						engine.RunRules(cellSpec, NO_TIMER_NAME)
 					})
@@ -552,6 +725,7 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 						}
 					})
 					if !periodic {
+						close(entry.quitted)
 						return
 					}
 				case <-entry.quit:
@@ -576,6 +750,17 @@ func (engine *RuleEngine) Publish(topic, payload string, qos byte, retain bool) 
 }
 
 func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
+
+	// check device name (non-zero length, no wildcard symbols)
+	if len(name) == 0 {
+		return fmt.Errorf("invalid virtual device name: empty string")
+	}
+
+	if strings.ContainsAny(name, "#+") {
+		return fmt.Errorf("invalid virtual device name '%s': "+
+			"device name must not contain wildcard characters ('#' and '+')", name)
+	}
+
 	title := name
 	if obj.Has("title") {
 		title = obj.Get("title").Str(name)
@@ -638,10 +823,37 @@ func (engine *RuleEngine) DefineVirtualDevice(name string, obj objx.Map) error {
 			continue
 		}
 
+		forceDefault := false
+		forceDefaultRaw, hasForceDefault := cellDef["forceDefault"]
+
+		if hasForceDefault {
+			ok := false
+			forceDefault, ok = forceDefaultRaw.(bool)
+			if !ok {
+				return fmt.Errorf("%s/%s: non-boolean value of forceDefault propery",
+					name, cellName)
+			}
+		}
+
 		cellValue, ok := cellDef["value"]
 		if !ok {
 			return fmt.Errorf("%s/%s: cell value required for cell type %s",
 				name, cellName, cellType)
+		}
+
+		// try to get last stored value of virtual cell
+		if !forceDefault {
+			if v, err := engine.getVirtualCellValueFromDB(name, cellName); err == nil {
+				cellValue = v
+				wbgo.Debug.Printf("%s/%s: set previous virtual cell value \"%s\"",
+					name, cellName, cellValue)
+			} else if _, ok = err.(*CellNotFoundError); ok {
+				// cell not found, do nothing
+				wbgo.Debug.Printf("%s/%s: previous cell value not found", name, cellName)
+			} else {
+				wbgo.Warn.Printf("%s/%s: can't get previous virtual cell value: %s",
+					name, cellName, err)
+			}
 		}
 
 		cellReadonly := false
