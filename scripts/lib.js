@@ -600,3 +600,15 @@ var Alarms = (function () {
     }
   };
 })();
+
+
+function PersistentStorage(name, options) {
+    return new Proxy({name: _wbPersistentName(name, options)}, {
+        get: function (o, key) {
+            return _wbPersistentGet(o.name, key);
+        },
+        set: function (o, key, value) {
+            return _wbPersistentSet(o.name, key, value);
+        }
+    });
+}

@@ -2,16 +2,17 @@ package wbrules
 
 import (
 	"bytes"
-	"fmt"
-	wbgo "github.com/contactless/wbgo"
-	duktape "github.com/ivan4th/go-duktape"
-	"github.com/stretchr/objx"
+	"io/ioutil"
 	"log"
 	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
+
+	duktape "github.com/contactless/go-duktape"
+	wbgo "github.com/contactless/wbgo"
+	"github.com/stretchr/objx"
 )
 
 type ESLocation struct {
@@ -322,16 +323,49 @@ func (ctx *ESContext) LoadScript(path string) error {
 	return nil
 }
 
+// LoadScenario wraps loaded script into closure
+// and gives extra global objects with additional information
+// about environment
+func (ctx *ESContext) LoadScenario(path string) error {
+	// load script file
+	srcRaw, err := ioutil.ReadFile(path)
+
+	if err != nil {
+		return err
+	}
+
+	// wrap source code
+	src := "function(){" + string(srcRaw) + "}"
+
+	// TODO: push global object here
+
+	if err = ctx.LoadAndCallFunctionFromString(path, src); err != nil {
+		return err
+	}
+
+	// TODO: remove global object here
+
+	return nil
+}
+
+func (ctx *ESContext) LoadAndCallFunctionFromString(filename, content string) error {
+	return ctx.loadScriptFromStringFlags(filename, content, duktape.DUK_COMPILE_FUNCTION)
+}
+
 func (ctx *ESContext) LoadScriptFromString(filename, content string) error {
+	return ctx.loadScriptFromStringFlags(filename, content, 0)
+}
+
+func (ctx *ESContext) loadScriptFromStringFlags(filename, content string, flags uint) error {
 	ctx.PushString(filename)
 	// we use PcompileStringFilename here to get readable stacktraces
-	if r := ctx.PcompileStringFilename(0, content); r != 0 {
+	if r := ctx.PcompileStringFilename(flags, content); r != 0 {
 		defer ctx.Pop()
-		return fmt.Errorf("failed to compile %s: %s", filename, ctx.SafeToString(-1))
+		return ctx.GetESErrorAugmentingSyntaxErrors(filename)
 	}
 	defer ctx.Pop()
 	if r := ctx.Pcall(0); r != 0 {
-		return fmt.Errorf("failed to run %s: %s", filename, ctx.SafeToString(-1))
+		return ctx.GetESErrorAugmentingSyntaxErrors(filename)
 	}
 	return nil
 }

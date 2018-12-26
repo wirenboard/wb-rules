@@ -1,3 +1,56 @@
+wb-rules (1.7) stable; urgency=medium
+
+  * merge to master, it is stable enough
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Tue, 27 Jun 2017 18:37:53 +0300
+
+wb-rules (1.7~nmu5) stable; urgency=medium
+
+  * fix hang on some clearTimeout calls 
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Tue, 27 Jun 2017 18:37:53 +0300
+
+wb-rules (1.7~nmu4) stable; urgency=medium
+
+  * push warnings about Driver queues overflow
+  * add variable queues to Driver
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Fri, 23 Jun 2017 12:24:04 +0300
+
+wb-rules (1.7~nmu3) stable; urgency=medium
+
+  * push warnings about MQTT token queue overflow 
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Thu, 08 Jun 2017 17:53:39 +0300
+
+wb-rules (1.7~nmu2) stable; urgency=medium
+
+  * variable MQTT queues length 
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Mon, 22 May 2017 15:26:32 +0300
+
+wb-rules (1.7~nmu1) stable; urgency=medium
+
+  * modules - initial version
+  * detect errors in virtual device name
+  * switch to contactless/go-duktape
+  * Rules isolation
+  * enlarge message queues for large scripts (FIXME)
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Fri, 27 Jan 2017 19:44:42 +0300
+
+wb-rules (1.6.10~beta2) stable; urgency=medium
+
+  * Save virtual devices cells to persistent storage and restore 'em on bootup
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Thu, 12 Jan 2017 11:50:42 +0300
+
+wb-rules (1.6.10~beta1) stable; urgency=medium
+
+  * PersistentStorage support (global only right now)
+
+ -- Nikita Maslov <n.maslov@contactless.ru>  Fri, 30 Dec 2016 12:40:41 +0300
+
 wb-rules (1.6.9) stable; urgency=medium
 
   * running mosquitto is required to start service

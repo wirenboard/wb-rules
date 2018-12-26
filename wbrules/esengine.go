@@ -4,8 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/DisposaBoy/JsonConfigReader"
+	"github.com/boltdb/bolt"
+	duktape "github.com/contactless/go-duktape"
 	wbgo "github.com/contactless/wbgo"
-	duktape "github.com/ivan4th/go-duktape"
 	"github.com/stretchr/objx"
 	"io/ioutil"
 	"log"
@@ -20,12 +21,13 @@ import (
 type itemType int
 
 const (
-	LIB_FILE           = "lib.js"
-	LIB_SYS_PATH       = "/usr/share/wb-rules-system/scripts"
-	LIB_REL_PATH_1     = "scripts"
-	LIB_REL_PATH_2     = "../scripts"
-	MIN_INTERVAL_MS    = 1
-	SOURCE_ITEM_DEVICE = itemType(iota)
+	LIB_FILE            = "lib.js"
+	LIB_SYS_PATH        = "/usr/share/wb-rules-system/scripts"
+	LIB_REL_PATH_1      = "scripts"
+	LIB_REL_PATH_2      = "../scripts"
+	MIN_INTERVAL_MS     = 1
+	PERSISTENT_DB_CHMOD = 0640
+	SOURCE_ITEM_DEVICE  = itemType(iota)
 	SOURCE_ITEM_RULE
 )
 
@@ -34,14 +36,43 @@ var searchDirs = []string{LIB_SYS_PATH}
 
 type sourceMap map[string]*LocFileEntry
 
+type ESEngineOptions struct {
+	*RuleEngineOptions
+	PersistentDBFile     string
+	PersistentDBFileMode os.FileMode
+	ScriptDirs           []string
+}
+
+func NewESEngineOptions() *ESEngineOptions {
+	return &ESEngineOptions{
+		RuleEngineOptions:    NewRuleEngineOptions(),
+		PersistentDBFileMode: PERSISTENT_DB_CHMOD,
+	}
+}
+
+func (o *ESEngineOptions) SetPersistentDBFile(file string) {
+	o.PersistentDBFile = file
+}
+
+func (o *ESEngineOptions) SetPersistentDBFileMode(mode os.FileMode) {
+	o.PersistentDBFileMode = mode
+}
+
+func (o *ESEngineOptions) SetScriptDirs(dirs []string) {
+	o.ScriptDirs = dirs
+}
+
 type ESEngine struct {
 	*RuleEngine
-	ctx           *ESContext
-	sourceRoot    string
-	sources       sourceMap
-	currentSource *LocFileEntry
-	sourcesMtx    sync.Mutex
-	tracker       *wbgo.ContentTracker
+	ctx               *ESContext
+	sourceRoot        string
+	sources           sourceMap
+	currentSource     *LocFileEntry
+	sourcesMtx        sync.Mutex
+	tracker           *wbgo.ContentTracker
+	persistentDBCache map[string]string
+	persistentDB      *bolt.DB
+	scriptDirs        []string
 }
 
 func init() {
@@ -54,17 +85,39 @@ func init() {
 	}
 }
 
-func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine) {
+func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *ESEngineOptions) (engine *ESEngine) {
+	if options == nil {
+		panic("no options given to NewESEngine")
+	}
+
 	engine = &ESEngine{
-		RuleEngine: NewRuleEngine(model, mqttClient),
-		ctx:        newESContext(model.CallSync),
-		sources:    make(sourceMap),
-		tracker:    wbgo.NewContentTracker(),
+		RuleEngine:        NewRuleEngine(model, mqttClient, options.RuleEngineOptions),
+		ctx:               newESContext(model.CallSync),
+		sources:           make(sourceMap),
+		tracker:           wbgo.NewContentTracker(),
+		persistentDBCache: make(map[string]string),
+		persistentDB:      nil,
+		scriptDirs:        options.ScriptDirs,
+	}
+
+	if options.PersistentDBFile != "" {
+		if err := engine.SetPersistentDBMode(options.PersistentDBFile,
+			options.PersistentDBFileMode); err != nil {
+			panic("error opening persistent DB file: " + err.Error())
+		}
 	}
 
 	engine.ctx.SetCallbackErrorHandler(func(err ESError) {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("ECMAScript error: %s", err))
 	})
+
+	// export modSearch
+	engine.ctx.GetGlobalString("Duktape")
+	engine.ctx.PushGoFunc(func(c *duktape.Context) int {
+		return engine.ModSearch(c)
+	})
+	engine.ctx.PutPropString(-2, "modSearch")
+	engine.ctx.Pop()
 
 	engine.ctx.PushGlobalObject()
 	engine.ctx.DefineFunctions(map[string]func() int{
@@ -82,6 +135,9 @@ func NewESEngine(model *CellModel, mqttClient wbgo.MQTTClient) (engine *ESEngine
 		"_wbDefineRule":        engine.esWbDefineRule,
 		"runRules":             engine.esWbRunRules,
 		"readConfig":           engine.esReadConfig,
+		"_wbPersistentName":    engine.esPersistentName,
+		"_wbPersistentSet":     engine.esPersistentSet,
+		"_wbPersistentGet":     engine.esPersistentGet,
 	})
 	engine.ctx.GetPropString(-1, "log")
 	engine.ctx.DefineFunctions(map[string]func() int{
@@ -335,7 +391,7 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 		}()
 	}
 
-	return true, engine.trackESError(path, engine.ctx.LoadScript(path))
+	return true, engine.trackESError(path, engine.ctx.LoadScenario(path))
 }
 
 func (engine *ESEngine) trackESError(path string, err error) error {
@@ -463,7 +519,8 @@ func (engine *ESEngine) esDefineVirtualDevice() int {
 	obj := engine.ctx.GetJSObject(-1).(objx.Map)
 	if err := engine.DefineVirtualDevice(name, obj); err != nil {
 		wbgo.Error.Printf("device definition error: %s", err)
-		return duktape.DUK_RET_ERROR
+		engine.ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
+		return duktape.DUK_RET_INSTACK_ERROR
 	}
 	engine.maybeRegisterSourceItem(SOURCE_ITEM_DEVICE, name)
 	return 0
@@ -757,4 +814,242 @@ func (engine *ESEngine) EvalScript(code string) error {
 		ch <- err
 	})
 	return <-ch
+}
+
+// Persistent storage features
+
+// Create or open DB file
+func (engine *ESEngine) SetPersistentDB(filename string) error {
+	return engine.SetPersistentDBMode(filename, PERSISTENT_DB_CHMOD)
+}
+
+func (engine *ESEngine) SetPersistentDBMode(filename string, mode os.FileMode) (err error) {
+	if engine.persistentDB != nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage DB is already opened"))
+		err = fmt.Errorf("persistent storage DB is already opened")
+		return
+	}
+
+	engine.persistentDB, err = bolt.Open(filename, mode,
+		&bolt.Options{Timeout: 1 * time.Second})
+
+	if err != nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("can't open persistent DB file: %s", err))
+		return
+	}
+
+	return nil
+}
+
+// Force close DB
+func (engine *ESEngine) ClosePersistentDB() (err error) {
+	if engine.persistentDB == nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("DB is not opened, nothing to close"))
+		err = fmt.Errorf("nothing to close")
+		return
+	}
+
+	err = engine.persistentDB.Close()
+
+	return
+}
+
+// Creates a name for persistent storage bucket.
+// Used in 'PersistentStorage(name, options)'
+func (engine *ESEngine) esPersistentName() int {
+	if engine.persistentDB == nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	// arguments: (name string[, options = { global bool }])
+	var name string
+	global := false
+
+	numArgs := engine.ctx.GetTop()
+
+	if numArgs < 1 || numArgs > 2 {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad persistent storage definition"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	// parse name
+	if !engine.ctx.IsString(0) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage name must be string"))
+		return duktape.DUK_RET_ERROR
+	}
+	name = engine.ctx.GetString(0)
+
+	// parse options object
+	if numArgs == 2 && !engine.ctx.IsUndefined(1) {
+		if !engine.ctx.IsObject(1) {
+			engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage options must be object"))
+			return duktape.DUK_RET_ERROR
+		}
+
+		if engine.ctx.HasPropString(1, "global") {
+			ctx := engine.ctx
+			ctx.GetPropString(1, "global")
+
+			if !ctx.IsBoolean(-1) {
+				ctx.Pop()
+				engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage 'global' option must be bool"))
+				return duktape.DUK_RET_ERROR
+			}
+
+			global = ctx.GetBoolean(-1)
+			ctx.Pop()
+		}
+	}
+
+	// non-global storages are not supported yet
+	// TODO: true files isolation and fileName params for areas
+	if !global {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("Non-global persistent storages are not supported yet; force {global: true} to use it"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	// push name as return value
+	engine.ctx.PushString(name)
+
+	return 1
+}
+
+// Writes new value down to persistent DB
+func (engine *ESEngine) esPersistentSet() int {
+	if engine.persistentDB == nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	// arguments: (bucket string, key string, value)
+	var bucket, key, value string
+
+	if engine.ctx.GetTop() != 3 {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad persistentSet request, arg number mismatch"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	// parse bucket name
+	if !engine.ctx.IsString(0) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage bucket name must be string"))
+		return duktape.DUK_RET_ERROR
+	}
+	bucket = engine.ctx.GetString(0)
+
+	// parse key
+	if !engine.ctx.IsString(1) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage key must be string"))
+		return duktape.DUK_RET_ERROR
+	}
+	key = engine.ctx.GetString(1)
+
+	// parse value
+	value = engine.ctx.JsonEncode(2)
+
+	// perform a transaction
+	engine.persistentDB.Update(func(tx *bolt.Tx) error {
+		b, err := tx.CreateBucketIfNotExists([]byte(bucket))
+		if err != nil {
+			return err
+		}
+
+		if err := b.Put([]byte(key), []byte(value)); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	return 0
+}
+
+// Gets a value from persitent DB
+func (engine *ESEngine) esPersistentGet() int {
+	if engine.persistentDB == nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	// arguments: (bucket string, key string)
+	var bucket, key, value string
+
+	if engine.ctx.GetTop() != 2 {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad persistentGet request, arg number mismatch"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	// parse bucket name
+	if !engine.ctx.IsString(0) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage bucket name must be string"))
+		return duktape.DUK_RET_ERROR
+	}
+	bucket = engine.ctx.GetString(0)
+
+	// parse key
+	if !engine.ctx.IsString(1) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage key must be string"))
+		return duktape.DUK_RET_ERROR
+	}
+	key = engine.ctx.GetString(1)
+
+	// try to get these from cache
+	var ok bool
+	// read value
+	engine.persistentDB.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucket))
+		if b == nil { // no such bucket -> undefined
+			ok = false
+			return nil
+		}
+		ok = true
+		value = string(b.Get([]byte(key)))
+		return nil
+	})
+
+	if !ok {
+		// push 'undefined'
+		engine.ctx.PushUndefined()
+	} else {
+		// push value into stack and decode JSON
+		engine.ctx.PushString(value)
+		engine.ctx.JsonDecode(-1)
+	}
+
+	return 1
+}
+
+// native modSearch implementation
+func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
+	// arguments:
+	// 0: id
+	// 1: require
+	// 2: exports
+	// 3: module
+
+	// get module name (id)
+	id := ctx.GetString(0)
+	wbgo.Debug.Printf("[modsearch] required module %s", id)
+
+	// try to find this module in directory
+	for _, dir := range engine.scriptDirs {
+		path := dir + "/" + id + ".js"
+		wbgo.Debug.Printf("[modsearch] trying to read file %s", path)
+
+		// TODO: something external to load scripts properly
+		// now just try to read file
+		src, err := ioutil.ReadFile(path)
+
+		if err == nil {
+			wbgo.Debug.Printf("[modsearch] file found!")
+			wbgo.Debug.Printf("[modsearch] script file: %s", string(src))
+			// TODO: export all stuff
+			ctx.PushString(string(src))
+
+			return 1
+		}
+	}
+
+	wbgo.Warn.Printf("error requiring module %s, not found", id)
+
+	return duktape.DUK_RET_ERROR
 }
