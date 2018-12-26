@@ -33,17 +33,23 @@ wb-rules (1.7~nmu1) stable; urgency=medium
 
  -- Nikita Maslov <n.maslov@contactless.ru>  Fri, 27 Jan 2017 19:44:42 +0300
 
-wb-rules (1.6.9~beta2) stable; urgency=medium
+wb-rules (1.6.10~beta2) stable; urgency=medium
 
   * Save virtual devices cells to persistent storage and restore 'em on bootup
 
  -- Nikita Maslov <n.maslov@contactless.ru>  Thu, 12 Jan 2017 11:50:42 +0300
 
-wb-rules (1.6.9~beta1) stable; urgency=medium
+wb-rules (1.6.10~beta1) stable; urgency=medium
 
   * PersistentStorage support (global only right now)
 
  -- Nikita Maslov <n.maslov@contactless.ru>  Fri, 30 Dec 2016 12:40:41 +0300
+
+wb-rules (1.6.9) stable; urgency=medium
+
+  * running mosquitto is required to start service
+
+ -- Attila Door <a.door@contactless.ru>  Mon, 26 Mar 2018 11:54:47 +0300
 
 wb-rules (1.6.8) stable; urgency=medium
 
