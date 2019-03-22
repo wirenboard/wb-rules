@@ -5,6 +5,7 @@
 # Default-Stop:      0 1 6
 # Required-Start:    mosquitto 
 # Required-Stop:
+# Should-Start: wb-hwconf-manager wb-modules
 # Short-Description: MQTT Rule Engine for Wiren Board
 # Description:       MQTT Rule Engine for Wiren Board
 ### END INIT INFO
