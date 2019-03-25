@@ -6,3 +6,5 @@ fi
 
 update-rc.d wb-rules defaults
 invoke-rc.d wb-rules start
+
+systemctl daemon-reload || true
