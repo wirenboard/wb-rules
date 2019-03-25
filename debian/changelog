@@ -1,3 +1,9 @@
+wb-rules (1.7.1) stable; urgency=medium
+
+  * start after hwconf-manager to allow runtime peripherals to be initialized
+
+ -- Evgeny Boger <boger@contactless.ru>  Fri, 22 Mar 2019 20:14:46 +0300
+
 wb-rules (1.7) stable; urgency=medium
 
   * merge to master, it is stable enough
