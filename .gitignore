@@ -36,3 +36,4 @@ debian/wb-rules*
 # Temp files
 ~*
 .*.swp
+debian/.debhelper
