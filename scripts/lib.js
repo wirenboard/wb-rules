@@ -323,14 +323,26 @@ var Notify = (function (){
       });
     },
 
-    sendSMS: function sendSMS (to, text) {
+    sendSMS: function sendSMS (to, text, command) {
       var doSend = function () {
         _smsBusy = true;
         log("sending sms to {}: {}", to, text);
-        runShellCommand("wb-gsm restart_if_broken && gammu sendsms TEXT '{}' -unicode".format(to), {
+        command = command || "wb-gsm restart_if_broken && gammu sendsms TEXT '{}' -unicode";
+
+        var input = null;
+        var maxPlaceholders = 2;
+        var count = (command.match(/\{\}/g) || []).length;
+
+        if (count == maxPlaceholders) {
+            command = command.format(to, text);
+        } else {
+            command = command.format(to);
+            input = text;
+        }
+        runShellCommand(command, {
           captureErrorOutput: true,
           captureOutput: true,
-          input: text,
+          input: input,
           exitCallback: function (exitCode, capturedOutput, capturedErrorOutput) {
             _smsBusy = false;
             if (exitCode != 0)
@@ -364,7 +376,7 @@ var Alarms = (function () {
       if (!src.hasOwnProperty("to"))
         throw new Error("sms recipient without 'to'");
       return function sendSMSWrapper (text) {
-        Notify.sendSMS(src.to, text);
+        Notify.sendSMS(src.to, text, src.command || "");
       };
     }
   };
