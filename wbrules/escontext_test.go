@@ -1,10 +1,12 @@
 package wbrules
 
 import (
-	"github.com/stretchr/objx"
-	"github.com/stretchr/testify/assert"
+	"encoding/json"
 	"math"
 	"testing"
+
+	"github.com/stretchr/objx"
+	"github.com/stretchr/testify/assert"
 )
 
 var objTests = []string{
@@ -26,8 +28,12 @@ func TestJSToObjxAndBack(t *testing.T) {
 		}
 		object := ctx.GetJSObject(-1)
 		ctx.Pop()
-		json := objx.MustFromJSON(jsonStr)
-		assert.Equal(t, json, object)
+		var objxMap objx.Map
+		errUnmarshal := json.Unmarshal([]byte(jsonStr), &objxMap)
+		if errUnmarshal != nil {
+			t.Fatalf("Cant unmarshal json: '%s'", errUnmarshal)
+		}
+		assert.Equal(t, objxMap, object)
 
 		ctx.PushGlobalObject()
 		ctx.PushJSObject(object.(objx.Map))
@@ -37,8 +43,12 @@ func TestJSToObjxAndBack(t *testing.T) {
 		}
 		jsonStr1 := ctx.SafeToString(-1)
 		ctx.Pop()
-		json1 := objx.MustFromJSON(jsonStr1)
-		assert.Equal(t, json, json1)
+		var objxMap1 objx.Map
+		errUnmarshal1 := json.Unmarshal([]byte(jsonStr1), &objxMap1)
+		if errUnmarshal1 != nil {
+			t.Fatalf("Cant unmarshal json: '%s'", errUnmarshal1)
+		}
+		assert.Equal(t, objxMap, objxMap1)
 	}
 }
 
