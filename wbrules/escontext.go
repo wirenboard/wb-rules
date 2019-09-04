@@ -531,7 +531,7 @@ func (ctx *ESContext) GetESError() (r ESError) {
 		if groups != nil {
 			lineNumber, err := strconv.Atoi(groups[2])
 			if err != nil {
-				wbgo.Warn.Printf("bad js line number: %s", lineNumber)
+				wbgo.Warn.Printf("bad js line number: %d", lineNumber)
 				continue
 			}
 			r.Traceback = append(r.Traceback, ESLocation{groups[1], lineNumber})
@@ -559,7 +559,7 @@ func (ctx *ESContext) GetESErrorAugmentingSyntaxErrors(path string) (r ESError) 
 
 	lineNumber, err := strconv.Atoi(groups[1])
 	if err != nil {
-		wbgo.Warn.Printf("bad js line number: %s", lineNumber)
+		wbgo.Warn.Printf("bad js line number: %d", lineNumber)
 		return
 	}
 
