@@ -54,6 +54,11 @@
           "title": "Phone number",
           "minLength": 1,
           "propertyOrder": 2
+        },
+        "command": {
+          "type": "string",
+          "title": "Command",
+          "propertyOrder": 3
         }
       },
       "required": ["type", "to"]
@@ -208,7 +213,7 @@
       "title" : "Recipient",
       "oneOf": [
         { "$ref": "#/definitions/emailRecipient" },
-        { "$ref": "#/definitions/smsRecipient" }        
+        { "$ref": "#/definitions/smsRecipient" }
       ],
       "options": {
         "disable_collapse" : true

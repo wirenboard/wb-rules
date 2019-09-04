@@ -3,8 +3,9 @@
 # Provides:          wb-rules
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
-# Required-Start:
+# Required-Start:    mosquitto 
 # Required-Stop:
+# Should-Start: wb-hwconf-manager wb-modules
 # Short-Description: MQTT Rule Engine for Wiren Board
 # Description:       MQTT Rule Engine for Wiren Board
 ### END INIT INFO
@@ -30,6 +31,7 @@ RULE_DIR=/etc/wb-rules
 SYSTEM_RULE_DIR=/usr/share/wb-rules-system/rules/ 
 PRIVATE_RULE_DIR=/usr/share/wb-rules/
 WB_RULES_MODULES="/etc/wb-rules-modules:/usr/share/wb-rules-modules"
+WB_RULES_QUEUES_LEN=2048
 
 # Exit if the package is not installed
 [ -x "$DAEMON" ] || exit 0
@@ -45,7 +47,7 @@ WB_RULES_MODULES="/etc/wb-rules-modules:/usr/share/wb-rules-modules"
 # and status_of_proc is working.
 . /lib/lsb/init-functions
 
-DAEMON_ARGS="$WB_RULES_OPTIONS -syslog -editdir '$RULE_DIR' '$SYSTEM_RULE_DIR' '$RULE_DIR' '$PRIVATE_RULE_DIR'"
+DAEMON_ARGS="$WB_RULES_OPTIONS -syslog -queue-len $WB_RULES_QUEUES_LEN -editdir '$RULE_DIR' '$SYSTEM_RULE_DIR' '$RULE_DIR' '$PRIVATE_RULE_DIR'"
 
 #
 # Function that starts the daemon/service

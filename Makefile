@@ -33,7 +33,6 @@ install:
 	mkdir -p $(DESTDIR)/usr/bin/ $(DESTDIR)/etc/init.d/ $(DESTDIR)/etc/wb-rules/ $(DESTDIR)/usr/share/wb-mqtt-confed/schemas $(DESTDIR)/etc/wb-configs.d $(DESTDIR)/usr/share/wb-rules-system/scripts/ $(DESTDIR)/usr/share/wb-rules/
 	mkdir -p $(DESTDIR)/usr/share/wb-rules-modules/ $(DESTDIR)/etc/wb-rules-modules/
 	install -m 0755 wb-rules $(DESTDIR)/usr/bin/
-	install -m 0755 initscripts/wb-rules $(DESTDIR)/etc/init.d/wb-rules
 	install -m 0644 rules/rules.js $(DESTDIR)/etc/wb-rules/rules.js
 	install -m 0644 wb-rules.wbconfigs $(DESTDIR)/etc/wb-configs.d/13wb-rules
 
