@@ -5,11 +5,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/DisposaBoy/JsonConfigReader"
-	"github.com/boltdb/bolt"
-	duktape "github.com/contactless/go-duktape"
-	wbgo "github.com/contactless/wbgo"
-	"github.com/stretchr/objx"
 	"io/ioutil"
 	"log"
 	"os"
@@ -18,6 +13,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/DisposaBoy/JsonConfigReader"
+	"github.com/boltdb/bolt"
+	duktape "github.com/contactless/go-duktape"
+	wbgo "github.com/contactless/wbgo"
+	"github.com/stretchr/objx"
 )
 
 type itemType int
@@ -471,14 +472,14 @@ func (engine *ESEngine) loadLib() error {
 func (engine *ESEngine) registerSourceItem(ctx *ESContext, typ itemType, name string) {
 	currentPath := ctx.GetCurrentFilename()
 	if currentPath == "" {
-		wbgo.Info.Println("source item '%s' without script file, don't register it", name)
+		wbgo.Info.Printf("source item '%s' without script file, don't register it", name)
 		return
 	}
 
 	currentSource := engine.sources[currentPath]
 
 	if currentSource == nil {
-		wbgo.Error.Panicf("Registering source item %s of file %s without entry", typ, currentPath)
+		wbgo.Error.Panicf("Registering source item %d of file %s without entry", typ, currentPath)
 	}
 
 	var items *[]LocItem

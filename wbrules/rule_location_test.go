@@ -1,9 +1,10 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo/testutils"
 	"sync"
 	"testing"
+
+	"github.com/contactless/wbgo/testutils"
 )
 
 type RuleLocationSuite struct {
