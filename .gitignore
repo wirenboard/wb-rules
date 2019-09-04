@@ -32,3 +32,8 @@ vendor
 
 debian/files
 debian/wb-rules*
+
+# Temp files
+~*
+.*.swp
+debian/.debhelper
