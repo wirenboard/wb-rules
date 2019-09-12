@@ -1,10 +1,10 @@
 package: github.com/contactless/wb-rules
 import:
 - package: github.com/DisposaBoy/JsonConfigReader
-- package: github.com/contactless/wbgo
+- package: github.com/evgeny-boger/wbgo
   subpackages:
   - testutils
-  version: feature/rework
+  version: feature/rework_test
 - package: github.com/contactless/go-duktape
 - package: github.com/robfig/cron
 - package: github.com/stretchr/objx

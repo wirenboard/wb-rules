@@ -1,5 +1,5 @@
-hash: bde87cff8ad93e3b4b66c0d0c25fcb4fd8120a51b88a03ba09ac522fbae898a4
-updated: 2017-09-26T16:11:46.443248825+03:00
+hash: e7bc5f5e5fc371ec71dbd262c67ae432d5c858f8b784cb78d8eb5168bb204c5a
+updated: 2019-09-12T17:08:36.069685389+03:00
 imports:
 - name: github.com/alexcesaro/statsd
   version: 7fea3f0d2fab1ad973e641e51dba45443a311a90
@@ -11,16 +11,16 @@ imports:
   version: bc107ec72972f0e7048787415ea061578b5c3f33
   subpackages:
   - packets
-- name: github.com/contactless/wbgo
-  version: c12c1f66cd55f896fa3f5b2d8fa0d3b2330a571f
-  subpackages:
-  - testutils
 - name: github.com/davecgh/go-spew
   version: 5215b55f46b2b919f50a1df0eaa5886afe4e3b3d
   subpackages:
   - spew
 - name: github.com/DisposaBoy/JsonConfigReader
   version: 33a99fdf1d5ee1f79b5077e9c06f955ad356d5f4
+- name: github.com/evgeny-boger/wbgo
+  version: 16e894fd5ded0415f2c1bd47dc84c0336b36a3f2
+  subpackages:
+  - testutils
 - name: github.com/pmezard/go-difflib
   version: d8ed2627bdf02c080bf22230dbb337003b7aba2d
   subpackages:

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/alexcesaro/statsd"
-	wbgo "github.com/contactless/wbgo"
+	wbgo "github.com/evgeny-boger/wbgo"
 	"github.com/robfig/cron"
 	"github.com/stretchr/objx"
 	"log"

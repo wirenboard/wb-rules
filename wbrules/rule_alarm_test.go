@@ -3,7 +3,7 @@ package wbrules
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/contactless/wbgo/testutils"
+	"github.com/evgeny-boger/wbgo/testutils"
 	"regexp"
 	"strconv"
 	"strings"

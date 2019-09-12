@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/contactless/wb-rules/wbrules"
-	"github.com/contactless/wbgo"
+	"github.com/evgeny-boger/wbgo"
 
 	"github.com/alexcesaro/statsd"
 )

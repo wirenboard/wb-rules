@@ -9,7 +9,7 @@ import (
 	"sync"
 	"syscall"
 
-	wbgo "github.com/contactless/wbgo"
+	wbgo "github.com/evgeny-boger/wbgo"
 )
 
 type CommandResult struct {
