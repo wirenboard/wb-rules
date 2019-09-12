@@ -2,7 +2,7 @@ package wbrules
 
 import (
 	"fmt"
-	"github.com/contactless/wbgo/testutils"
+	"github.com/evgeny-boger/wbgo/testutils"
 	"io/ioutil"
 	"path/filepath"
 	"testing"

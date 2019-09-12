@@ -1,8 +1,8 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo"
-	"github.com/contactless/wbgo/testutils"
+	"github.com/evgeny-boger/wbgo"
+	"github.com/evgeny-boger/wbgo/testutils"
 	"io/ioutil"
 	"os"
 	"testing"
