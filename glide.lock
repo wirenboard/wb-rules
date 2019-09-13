@@ -25,8 +25,8 @@ imports:
   version: d8ed2627bdf02c080bf22230dbb337003b7aba2d
   subpackages:
   - difflib
-- name: github.com/robfig/cron
-  version: 9585fd555638e77bba25f25db5c44b41f264aeb7
+- name: gopkg.in/robfig/cron.v1
+  version: b41be1df696709bb6395fe435af20370037c0b4c
 - name: github.com/stretchr/objx
   version: 1a9d0bb9f541897e62256577b352fdbc1fb4fd94
 - name: github.com/stretchr/testify
