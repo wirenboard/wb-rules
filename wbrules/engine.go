@@ -3,15 +3,16 @@ package wbrules
 import (
 	"errors"
 	"fmt"
-	"github.com/alexcesaro/statsd"
-	wbgo "github.com/evgeny-boger/wbgo"
-	"github.com/robfig/cron"
-	"github.com/stretchr/objx"
 	"log"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/alexcesaro/statsd"
+	wbgo "github.com/evgeny-boger/wbgo"
+	"github.com/stretchr/objx"
+	cron "gopkg.in/robfig/cron.v1"
 )
 
 type EngineLogLevel int

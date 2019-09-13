@@ -6,7 +6,7 @@ import:
   - testutils
   version: feature/rework_test
 - package: github.com/contactless/go-duktape
-- package: github.com/robfig/cron
+- package: gopkg.in/robfig/cron.v1
 - package: github.com/stretchr/objx
 - package: github.com/stretchr/testify
   subpackages:
