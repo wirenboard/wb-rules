@@ -15,6 +15,8 @@ ifeq ($(DEB_TARGET_ARCH),i386)
 GO_ENV := GOARCH=386 CC=i586-linux-gnu-gcc
 endif
 
+GO_ENV := GO111MODULE=on $(GO_ENV)
+
 GO_FLAGS=-ldflags "-w"
 
 all: clean wb-rules
@@ -26,7 +28,7 @@ amd64:
 	$(MAKE) DEB_TARGET_ARCH=amd64
 
 wb-rules: main.go wbrules/*.go
-	$(GO_ENV) glide install
+	# $(GO_ENV) glide install
 	$(GO_ENV) go build
 
 install:
@@ -38,6 +40,7 @@ install:
 
 	install -m 0644 scripts/lib.js $(DESTDIR)/usr/share/wb-rules-system/scripts/lib.js
 	install -m 0644 rules/load_alarms.js $(DESTDIR)/usr/share/wb-rules/load_alarms.js
+	# install -m 0644 wbgo.so $(DESTDIR)/usr/share/wb-rules/wbgo.so
 	install -m 0644 rules/alarms.conf $(DESTDIR)/etc/wb-rules/alarms.conf
 	install -m 0644 rules/alarms.schema.json $(DESTDIR)/usr/share/wb-mqtt-confed/schemas/alarms.schema.json
 

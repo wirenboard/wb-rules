@@ -17,7 +17,7 @@ import (
 	"github.com/DisposaBoy/JsonConfigReader"
 	"github.com/boltdb/bolt"
 	duktape "github.com/contactless/go-duktape"
-	wbgo "github.com/evgeny-boger/wbgo"
+	wbgo "github.com/contactless/wbgo"
 	"github.com/stretchr/objx"
 )
 
@@ -110,7 +110,7 @@ type ESEngine struct {
 	editableSources map[string]string        // map from virtual paths to abs paths for editable files
 	sourcesMtx      sync.Mutex
 
-	tracker           *wbgo.ContentTracker
+	tracker           wbgo.ContentTracker
 	persistentDBCache map[string]string
 	persistentDB      *bolt.DB
 	modulesDirs       []string

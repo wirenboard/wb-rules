@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	"github.com/evgeny-boger/wbgo"
+	"github.com/contactless/wbgo"
 	"io/ioutil"
 	"os"
 	"path"

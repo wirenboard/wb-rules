@@ -2,8 +2,6 @@ package wbrules
 
 import (
 	"fmt"
-	"github.com/evgeny-boger/wbgo"
-	"github.com/evgeny-boger/wbgo/testutils"
 	"io/ioutil"
 	"os"
 	"regexp"
@@ -11,6 +9,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 )
 
 const (

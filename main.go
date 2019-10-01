@@ -2,13 +2,14 @@ package main
 
 import (
 	"flag"
+	"log"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
 	"github.com/contactless/wb-rules/wbrules"
-	"github.com/evgeny-boger/wbgo"
+	"github.com/contactless/wbgo"
 
 	"github.com/alexcesaro/statsd"
 )
@@ -49,7 +50,14 @@ func main() {
 	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
 
+	wbgoso := flag.String("wbgo", "/usr/share/wb-rules/wbgo.so", "Location to wbgo.so file")
+
 	flag.Parse()
+
+	errInit := wbgo.Init(*wbgoso)
+	if errInit != nil {
+		log.Fatalf("ERROR in init wbgo.so: '%s'", errInit)
+	}
 
 	if flag.NArg() < 1 {
 		wbgo.Error.Fatal("must specify rule file/directory name(s)")
@@ -66,14 +74,15 @@ func main() {
 	wbgo.MaybeInitProfiling(nil)
 
 	// prepare statsd client if required
-	var statsdClient *wbgo.StatsdClientWrapper
-	var runtimeStatsd *wbgo.StatsdRuntimeCollector
+	var statsdClient wbgo.StatsdClientWrapper
+	var runtimeStatsd wbgo.StatsdRuntimeCollector
 	if *statsdUrl != "" {
 		if statsdClient, err = wbgo.NewStatsdClientWrapper("wb-rules", statsd.Address(*statsdUrl), statsd.Prefix(*statsdPrefix)); err != nil {
 			wbgo.Error.Fatalf("failed to create statsd client: %s", err)
 		}
 		runtimeStatsd = wbgo.NewStatsdRuntimeCollector(statsdClient)
 		runtimeStatsd.Start()
+		defer runtimeStatsd.Stop()
 	}
 
 	// prepare exit signal channel
@@ -158,5 +167,4 @@ func main() {
 	engine.Stop()
 	driver.StopLoop()
 	driver.Close()
-	runtimeStatsd.Stop()
 }

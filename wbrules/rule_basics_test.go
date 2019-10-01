@@ -1,8 +1,9 @@
 package wbrules
 
 import (
-	"github.com/evgeny-boger/wbgo/testutils"
 	"testing"
+
+	"github.com/contactless/wbgo/testutils"
 )
 
 type RuleBasicsSuite struct {

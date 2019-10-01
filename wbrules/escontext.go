@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	duktape "github.com/contactless/go-duktape"
-	wbgo "github.com/evgeny-boger/wbgo"
+	wbgo "github.com/contactless/wbgo"
 	"github.com/stretchr/objx"
 )
 

@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	wbgo "github.com/evgeny-boger/wbgo"
+	wbgo "github.com/contactless/wbgo"
 	"github.com/stretchr/objx"
 )
 

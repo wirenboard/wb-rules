@@ -2,11 +2,12 @@ package wbrules
 
 import (
 	"fmt"
-	"github.com/evgeny-boger/wbgo"
-	"github.com/evgeny-boger/wbgo/testutils"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 )
 
 type RuleReloadSuite struct {

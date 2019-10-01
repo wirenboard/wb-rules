@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	"github.com/evgeny-boger/wbgo/testutils"
+	"github.com/contactless/wbgo/testutils"
 	"os"
 	"regexp"
 	"testing"

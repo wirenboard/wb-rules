@@ -1,9 +1,10 @@
 package wbrules
 
 import (
-	// "github.com/evgeny-boger/wbgo"
-	"github.com/evgeny-boger/wbgo/testutils"
+	// "github.com/contactless/wbgo"
 	"testing"
+
+	"github.com/contactless/wbgo/testutils"
 )
 
 type JSThreadingTestSuite struct {

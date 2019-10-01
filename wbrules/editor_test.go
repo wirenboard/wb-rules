@@ -2,13 +2,14 @@ package wbrules
 
 import (
 	"errors"
-	"github.com/evgeny-boger/wbgo/testutils"
-	"github.com/stretchr/objx"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/contactless/wbgo/testutils"
+	"github.com/stretchr/objx"
 )
 
 type EditorSuite struct {

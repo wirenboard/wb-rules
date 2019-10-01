@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/alexcesaro/statsd"
-	wbgo "github.com/evgeny-boger/wbgo"
+	"github.com/contactless/wbgo"
 	"github.com/stretchr/objx"
 	cron "gopkg.in/robfig/cron.v1"
 )
@@ -355,7 +355,7 @@ type ControlChangeEvent struct {
 type RuleEngineOptions struct {
 	debugQueues   bool
 	cleanupOnStop bool
-	Statsd        *wbgo.StatsdClientWrapper
+	Statsd        wbgo.StatsdClientWrapper
 }
 
 func NewRuleEngineOptions() *RuleEngineOptions {
@@ -375,7 +375,7 @@ func (o *RuleEngineOptions) SetCleanupOnStop(v bool) *RuleEngineOptions {
 	return o
 }
 
-func (o *RuleEngineOptions) SetStatsdClient(c *wbgo.StatsdClientWrapper) *RuleEngineOptions {
+func (o *RuleEngineOptions) SetStatsdClient(c wbgo.StatsdClientWrapper) *RuleEngineOptions {
 	o.Statsd = c
 	return o
 }
@@ -424,7 +424,7 @@ type RuleEngine struct {
 
 	cleanupOnStop bool
 
-	statsdClient *wbgo.StatsdClientWrapper
+	statsdClient wbgo.StatsdClientWrapper
 
 	// subscriptions to control change events
 	// suitable for testing
@@ -1195,7 +1195,7 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	}
 	sort.Strings(controlIds)
 
-	controlsArgs := make([]*wbgo.ControlArgs, 0, len(m))
+	controlsArgs := make([]wbgo.ControlArgs, 0, len(m))
 
 	for _, ctrlId := range controlIds {
 		// check if this object is a correct control definition (is an object, at least)
