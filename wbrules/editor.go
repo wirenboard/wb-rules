@@ -1,12 +1,13 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo"
 	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
 	"strings"
+
+	"github.com/contactless/wbgo"
 )
 
 var editorPathRx = regexp.MustCompile(`^[\w /-]{0,256}[\w -]{1,253}\.js$`)
