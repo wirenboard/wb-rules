@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/alexcesaro/statsd"
 )
+
+var version = "unknown"
 
 const (
 	DRIVER_CLIENT_ID = "rules"
@@ -26,6 +29,12 @@ const (
 )
 
 func main() {
+
+	if os.Args[1] == "version" {
+		fmt.Println(version)
+		os.Exit(0)
+	}
+
 	var err error
 
 	brokerAddress := flag.String("broker", "tcp://localhost:1883", "MQTT broker url")
