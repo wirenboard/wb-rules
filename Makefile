@@ -40,7 +40,7 @@ install:
 
 	install -m 0644 scripts/lib.js $(DESTDIR)/usr/share/wb-rules-system/scripts/lib.js
 	install -m 0644 rules/load_alarms.js $(DESTDIR)/usr/share/wb-rules/load_alarms.js
-	# install -m 0644 wbgo.so $(DESTDIR)/usr/share/wb-rules/wbgo.so
+	install -m 0644 $(DEB_TARGET_ARCH).wbgo.so $(DESTDIR)/usr/share/wb-rules/wbgo.so
 	install -m 0644 rules/alarms.conf $(DESTDIR)/etc/wb-rules/alarms.conf
 	install -m 0644 rules/alarms.schema.json $(DESTDIR)/usr/share/wb-mqtt-confed/schemas/alarms.schema.json
 
