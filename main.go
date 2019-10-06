@@ -53,7 +53,7 @@ func main() {
 		hostname = "default"
 	}
 
-	statsdUrl := flag.String("statsd", "", "Statsd server address (empty for no statsd communication)")
+	statsdURL := flag.String("statsd", "", "Statsd server address (empty for no statsd communication)")
 	statsdPrefix := flag.String("statsd-prefix", hostname, "Statsd prefix for this app instance (hostname by default)")
 
 	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
@@ -85,8 +85,8 @@ func main() {
 	// prepare statsd client if required
 	var statsdClient wbgo.StatsdClientWrapper
 	var runtimeStatsd wbgo.StatsdRuntimeCollector
-	if *statsdUrl != "" {
-		if statsdClient, err = wbgo.NewStatsdClientWrapper("wb-rules", statsd.Address(*statsdUrl), statsd.Prefix(*statsdPrefix)); err != nil {
+	if *statsdURL != "" {
+		if statsdClient, err = wbgo.NewStatsdClientWrapper("wb-rules", statsd.Address(*statsdURL), statsd.Prefix(*statsdPrefix)); err != nil {
 			wbgo.Error.Fatalf("failed to create statsd client: %s", err)
 		}
 		runtimeStatsd = wbgo.NewStatsdRuntimeCollector(statsdClient)
