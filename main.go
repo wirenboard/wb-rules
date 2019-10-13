@@ -63,11 +63,6 @@ func main() {
 
 	flag.Parse()
 
-	errInit := wbgo.Init(*wbgoso)
-	if errInit != nil {
-		log.Fatalf("ERROR in init wbgo.so: '%s'", errInit)
-	}
-
 	if flag.NArg() < 1 {
 		wbgo.Error.Fatal("must specify rule file/directory name(s)")
 	}
@@ -77,6 +72,12 @@ func main() {
 	if *debug {
 		wbgo.SetDebuggingEnabled(true)
 	}
+
+	errInit := wbgo.Init(*wbgoso)
+	if errInit != nil {
+		log.Fatalf("ERROR in init wbgo.so: '%s'", errInit)
+	}
+
 	if *mqttDebug {
 		wbgo.EnableMQTTDebugLog(*useSyslog)
 	}
