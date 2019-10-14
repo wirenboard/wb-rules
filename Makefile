@@ -45,4 +45,4 @@ install:
 	install -m 0644 rules/alarms.schema.json $(DESTDIR)/usr/share/wb-mqtt-confed/schemas/alarms.schema.json
 
 deb:
-	CC=arm-linux-gnueabi-gcc dpkg-buildpackage -b -aarmel -us -uc
+	$(GO_ENV) dpkg-buildpackage -b -a$(DEB_TARGET_ARCH) -us -uc
