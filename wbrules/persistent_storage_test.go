@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/contactless/wbgo"
-	"github.com/contactless/wbgo/testutils"
+	"github.com/contactless/wbgong"
+	"github.com/contactless/wbgong/testutils"
 )
 
 type PersistentStorageSuite struct {
@@ -23,7 +23,7 @@ func (s *PersistentStorageSuite) SetupFixture() {
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}
-	wbgo.Debug.Printf("created temp dir %s", s.tmpDir)
+	wbgong.Debug.Printf("created temp dir %s", s.tmpDir)
 }
 
 func (s *PersistentStorageSuite) TearDownFixture() {

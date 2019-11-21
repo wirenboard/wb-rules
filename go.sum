@@ -8,8 +8,8 @@ github.com/contactless/go-duktape v0.0.0-20170126162226-e07bb742a6e3 h1:G51noySW
 github.com/contactless/go-duktape v0.0.0-20170126162226-e07bb742a6e3/go.mod h1:bJfRqI3QcYW1DIlODSiKKNV7duNgpkR25dJbU8V3AwA=
 github.com/contactless/org.eclipse.paho.mqtt.golang v0.0.0-20160512050345-bc107ec72972 h1:itvKwLlIg3MLdjVqhPuYFd0y9RsrQQxSIhZXUeNFtmA=
 github.com/contactless/org.eclipse.paho.mqtt.golang v0.0.0-20160512050345-bc107ec72972/go.mod h1:ISd8VT87v5vB6N33PDJrbWYlI0+r46JxZ9+yEDTKThc=
-github.com/contactless/wbgo v0.0.0-20190924134428-c1db06fb2658 h1:yNZHMofcRDYRfdf0iI4asFU+xe45uK8RYbth0gXqyx0=
-github.com/contactless/wbgo v0.0.0-20190924134428-c1db06fb2658/go.mod h1:IXtZGiuLR8znOx98xMXOJ4BYtKvYWc9PKIX8i0RHhzA=
+github.com/contactless/wbgong v0.0.2 h1:qIqtkmMt+g4MU2Q8BantTA01BfBpX00mf+bEz8QL0Lk=
+github.com/contactless/wbgong v0.0.2/go.mod h1:r2wgXK7QCNzEzwdCTqw6vsHnlH/dtGR8eSrU08dPHrg=
 github.com/davecgh/go-spew v0.0.0-20151105211317-5215b55f46b2 h1:5zdDAMuB3gvbHB1m2BZT9+t9w+xaBmK3ehb7skDXcwM=
 github.com/davecgh/go-spew v0.0.0-20151105211317-5215b55f46b2/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v0.0.0-20151028094244-d8ed2627bdf0 h1:GD+A8+e+wFkqje55/2fOVnZPkoDIu1VooBWfNrnY8Uo=
@@ -22,6 +22,8 @@ golang.org/x/net v0.0.0-20160515061011-ef00b378c73f h1:gGO6Jnh1pD136wh3xKPJYe5ia
 golang.org/x/net v0.0.0-20160515061011-ef00b378c73f/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
 golang.org/x/sys v0.0.0-20160516132347-d4feaf1a7e61 h1:5wHhTD6KQrGlPwBCpZ7YPBr3Kw804JHcMfbh6jTqoXA=
 golang.org/x/sys v0.0.0-20160516132347-d4feaf1a7e61/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+gopkg.in/alexcesaro/statsd.v2 v2.0.0 h1:FXkZSCZIH17vLCO5sO2UucTHsH9pc+17F6pl3JVCwMc=
+gopkg.in/alexcesaro/statsd.v2 v2.0.0/go.mod h1:i0ubccKGzBVNBpdGV5MocxyA/XlLUJzA7SLonnE4drU=
 gopkg.in/fsnotify.v1 v1.3.0 h1:JOfhQrGyc8jb766XEc2vcjohQoQW9pGaFr8b1Kj2az0=
 gopkg.in/fsnotify.v1 v1.3.0/go.mod h1:Tz8NjZHkW78fSQdbUxIjBTcgA1z1m8ZHf0WmKUhAMys=
 gopkg.in/robfig/cron.v1 v1.2.0 h1:PSJsm0uPEND0Rumxxbo7qNb7bxQUTIWDIdpPS59/tcw=

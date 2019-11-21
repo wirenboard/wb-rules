@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgong"
 )
 
 var editorPathRx = regexp.MustCompile(`^[\w /-]{0,256}[\w -]{1,253}\.js$`)
@@ -97,7 +97,7 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 		reply.Error = err.Error()
 		reply.Traceback = err.(ScriptError).Traceback
 	default:
-		wbgo.Error.Printf("error writing %s: %s", pth, err)
+		wbgong.Error.Printf("error writing %s: %s", pth, err)
 		return writeError
 	}
 
@@ -130,7 +130,7 @@ func (editor *Editor) Remove(args *EditorPathArgs, reply *bool) error {
 		return err
 	}
 	if err = os.Remove(entry.PhysicalPath); err != nil {
-		wbgo.Error.Printf("error removing %s: %s", entry.PhysicalPath, err)
+		wbgong.Error.Printf("error removing %s: %s", entry.PhysicalPath, err)
 		return rmError
 	}
 	*reply = true
@@ -149,7 +149,7 @@ func (editor *Editor) Load(args *EditorPathArgs, reply *EditorContentResponse) e
 	}
 	content, err := ioutil.ReadFile(entry.PhysicalPath)
 	if err != nil {
-		wbgo.Error.Printf("error reading %s: %s", entry.PhysicalPath, err)
+		wbgong.Error.Printf("error reading %s: %s", entry.PhysicalPath, err)
 		return writeError
 	}
 	*reply = EditorContentResponse{
@@ -189,13 +189,13 @@ func (editor *Editor) ChangeState(args *EditorChangeStateArgs, reply *bool) erro
 
 	// check overwrite
 	if _, err = os.Stat(newPath); !os.IsNotExist(err) {
-		wbgo.Error.Printf("can't rename %s to %s: looks like second file exists already, deal with this by yourself!",
+		wbgong.Error.Printf("can't rename %s to %s: looks like second file exists already, deal with this by yourself!",
 			entry.PhysicalPath, newPath)
 		return overwriteError
 	}
 
 	if err = os.Rename(entry.PhysicalPath, newPath); err != nil {
-		wbgo.Error.Printf("error renaming %s to %s: %s", entry.PhysicalPath, newPath, err)
+		wbgong.Error.Printf("error renaming %s to %s: %s", entry.PhysicalPath, newPath, err)
 		return renameError
 	}
 

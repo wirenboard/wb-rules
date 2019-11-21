@@ -17,7 +17,7 @@ import (
 	"github.com/DisposaBoy/JsonConfigReader"
 	"github.com/boltdb/bolt"
 	duktape "github.com/contactless/go-duktape"
-	wbgo "github.com/contactless/wbgo"
+	"github.com/contactless/wbgong"
 	"github.com/stretchr/objx"
 )
 
@@ -110,7 +110,7 @@ type ESEngine struct {
 	editableSources map[string]string        // map from virtual paths to abs paths for editable files
 	sourcesMtx      sync.Mutex
 
-	tracker           wbgo.ContentTracker
+	tracker           wbgong.ContentTracker
 	persistentDBCache map[string]string
 	persistentDB      *bolt.DB
 	modulesDirs       []string
@@ -126,7 +126,7 @@ func init() {
 	}
 }
 
-func NewESEngine(driver wbgo.Driver, logMqttClient wbgo.MQTTClient, options *ESEngineOptions) (engine *ESEngine, err error) {
+func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options *ESEngineOptions) (engine *ESEngine, err error) {
 	if options == nil {
 		panic("no options given to NewESEngine")
 	}
@@ -138,7 +138,7 @@ func NewESEngine(driver wbgo.Driver, logMqttClient wbgo.MQTTClient, options *ESE
 		ctxTimers:         make(map[*ESContext]*TimerSet),
 		sources:           make(map[string]*LocFileEntry),
 		editableSources:   make(map[string]string),
-		tracker:           wbgo.NewContentTracker(),
+		tracker:           wbgong.NewContentTracker(),
 		persistentDBCache: make(map[string]string),
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
@@ -210,7 +210,7 @@ func NewESEngine(driver wbgo.Driver, logMqttClient wbgo.MQTTClient, options *ESE
 	// [ global ]
 
 	if err := engine.loadLib(); err != nil {
-		wbgo.Error.Panicf("failed to load runtime library: %s", err)
+		wbgong.Error.Panicf("failed to load runtime library: %s", err)
 	}
 
 	engine.globalCtx.Pop()
@@ -271,7 +271,7 @@ func (engine *ESEngine) removeThreadFromStorage(ctx *ESContext, path string) {
 	if ctx.HasPropString(-1, path) {
 		ctx.DelPropString(-1, path)
 	} else {
-		wbgo.Error.Printf("trying to remove thread %s, but it doesn't exist", path)
+		wbgong.Error.Printf("trying to remove thread %s, but it doesn't exist", path)
 	}
 }
 
@@ -472,14 +472,14 @@ func (engine *ESEngine) loadLib() error {
 func (engine *ESEngine) registerSourceItem(ctx *ESContext, typ itemType, name string) {
 	currentPath := ctx.GetCurrentFilename()
 	if currentPath == "" {
-		wbgo.Info.Printf("source item '%s' without script file, don't register it", name)
+		wbgong.Info.Printf("source item '%s' without script file, don't register it", name)
 		return
 	}
 
 	currentSource := engine.sources[currentPath]
 
 	if currentSource == nil {
-		wbgo.Error.Panicf("Registering source item %d of file %s without entry", typ, currentPath)
+		wbgong.Error.Panicf("Registering source item %d of file %s without entry", typ, currentPath)
 	}
 
 	var items *[]LocItem
@@ -544,7 +544,7 @@ func (engine *ESEngine) checkSourcePath(path string) (cleanPath string, virtualP
 	enabled = true
 
 	cleanPath = filepath.Clean(path)
-	if underSourceRoot = wbgo.IsSubpath(engine.sourceRoot, cleanPath); underSourceRoot {
+	if underSourceRoot = wbgong.IsSubpath(engine.sourceRoot, cleanPath); underSourceRoot {
 		virtualPath, err = filepath.Rel(engine.sourceRoot, path)
 	}
 
@@ -613,7 +613,7 @@ func (engine *ESEngine) prepareNewContext(path string) (newLocalCtx *ESContext) 
 		newLocalCtx.PushGlobalObject()
 		// [ ... initEnv global ]
 		if newLocalCtx.Pcall(1) != 0 {
-			wbgo.Error.Println("Failed to call __esInitEnv")
+			wbgong.Error.Println("Failed to call __esInitEnv")
 		}
 		// [ ... ret ]
 		newLocalCtx.Pop()
@@ -644,7 +644,7 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 		return false, err
 	}
 	if !loadIfUnchanged && !wasChangedOrFirstSeen {
-		wbgo.Debug.Printf("script %s unchanged, not reloading (possibly just reloaded)", path)
+		wbgong.Debug.Printf("script %s unchanged, not reloading (possibly just reloaded)", path)
 		return false, nil
 	}
 
@@ -676,7 +676,7 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 			delete(engine.editableSources, virtualPath)
 		})
 	} else {
-		wbgo.Info.Printf("%s is NOT under source root %s", path, engine.sourceRoot)
+		wbgong.Info.Printf("%s is NOT under source root %s", path, engine.sourceRoot)
 	}
 
 	// remove file entry from list on cleanup
@@ -733,7 +733,7 @@ func (engine *ESEngine) trackESError(path string, err error) error {
 func (engine *ESEngine) maybePublishUpdate(subtopic, physicalPath string) {
 	_, virtualPath, underSourceRoot, _, err := engine.checkSourcePath(physicalPath)
 	if err != nil {
-		wbgo.Error.Printf("checkSourcePath() failed for %s: %s", physicalPath, err)
+		wbgong.Error.Printf("checkSourcePath() failed for %s: %s", physicalPath, err)
 	}
 	if underSourceRoot {
 		engine.Publish("/wbrules/updates/"+subtopic, virtualPath, 1, false)
@@ -747,7 +747,7 @@ func (engine *ESEngine) runCleanups(path string) {
 	// run context cleanups
 	// try to get local context for this script
 	if localCtx, ok := engine.localCtxs[path]; ok {
-		wbgo.Debug.Printf("local context for script %s exists; removing it", path)
+		wbgong.Debug.Printf("local context for script %s exists; removing it", path)
 
 		// cleanup timers of this context
 		engine.runTimerCleanups(engine.localCtxs[path])
@@ -776,9 +776,9 @@ func (engine *ESEngine) loadScriptAndRefresh(path string, loadIfUnchanged bool) 
 func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 	r := make(chan error)
 	engine.WhenEngineReady(func() {
-		wbgo.Debug.Printf("OverwriteScript(%s)", virtualPath)
+		wbgong.Debug.Printf("OverwriteScript(%s)", virtualPath)
 		cleanPath, virtualPath, _, err := engine.checkVirtualPath(virtualPath)
-		wbgo.Debug.Printf("OverwriteScript: %s %s %v", cleanPath, virtualPath, err)
+		wbgong.Debug.Printf("OverwriteScript: %s %s %v", cleanPath, virtualPath, err)
 		if err != nil {
 			r <- err
 			return
@@ -787,7 +787,7 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 		// Make sure directories that contain the script exist
 		if strings.Contains(virtualPath, "/") {
 			if err = os.MkdirAll(filepath.Dir(cleanPath), 0777); err != nil {
-				wbgo.Error.Printf("error making dirs for %s: %s", cleanPath, err)
+				wbgong.Error.Printf("error making dirs for %s: %s", cleanPath, err)
 				r <- err
 				return
 			}
@@ -821,7 +821,7 @@ func (engine *ESEngine) LiveLoadFile(path string) error {
 }
 
 func (engine *ESEngine) LiveRemoveFile(path string) error {
-	wbgo.Info.Printf("LiveRemoveFile: %s", path)
+	wbgong.Info.Printf("LiveRemoveFile: %s", path)
 	path, virtualPath, _, _, err := engine.checkSourcePath(path)
 
 	if err != nil {
@@ -922,7 +922,7 @@ func (engine *ESEngine) esDefineVirtualDevice(ctx *ESContext) int {
 	obj := ctx.GetJSObject(1).(objx.Map)
 
 	if err := engine.DefineVirtualDevice(name, obj); err != nil {
-		wbgo.Error.Printf("device definition error: %s", err)
+		wbgong.Error.Printf("device definition error: %s", err)
 		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
 		return duktape.DUK_RET_INSTACK_ERROR
 	}
@@ -1075,8 +1075,8 @@ func (engine *ESEngine) esPublish(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esWbDevObject(ctx *ESContext) int {
-	if wbgo.DebuggingEnabled() {
-		wbgo.Debug.Printf("esWbDevObject(): top=%d isString=%v", ctx.GetTop(), ctx.IsString(-1))
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("esWbDevObject(): top=%d isString=%v", ctx.GetTop(), ctx.IsString(-1))
 	}
 	if ctx.GetTop() != 1 || !ctx.IsString(-1) {
 		return duktape.DUK_RET_ERROR
@@ -1092,7 +1092,7 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 	}
 	devProxy, ok := ctx.GetGoObject(-2).(*DeviceProxy)
 	if !ok {
-		wbgo.Error.Printf("invalid _wbCellObject call")
+		wbgong.Error.Printf("invalid _wbCellObject call")
 		return duktape.DUK_RET_TYPE_ERROR
 	}
 
@@ -1128,7 +1128,7 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 			}
 			m, ok := ctx.GetJSObject(-1).(objx.Map)
 			if !ok || !m.Has(JS_DEVPROXY_FUNC_SETVALUE_ARG) {
-				wbgo.Error.Printf("invalid control definition")
+				wbgong.Error.Printf("invalid control definition")
 				return duktape.DUK_RET_TYPE_ERROR
 			}
 			c.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG])
@@ -1149,7 +1149,7 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 func (engine *ESEngine) esWbStartTimer(ctx *ESContext) int {
 	if ctx.GetTop() != 3 || !ctx.IsNumber(1) {
 		// FIXME: need to throw proper exception here
-		wbgo.Error.Println("bad _wbStartTimer call")
+		wbgong.Error.Println("bad _wbStartTimer call")
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1157,12 +1157,12 @@ func (engine *ESEngine) esWbStartTimer(ctx *ESContext) int {
 	if ctx.IsString(0) {
 		name = ctx.ToString(0)
 		if name == "" {
-			wbgo.Error.Println("empty timer name")
+			wbgong.Error.Println("empty timer name")
 			return duktape.DUK_RET_ERROR
 		}
 		engine.StopTimerByName(name)
 	} else if !ctx.IsFunction(0) {
-		wbgo.Error.Println("invalid timer spec")
+		wbgong.Error.Println("invalid timer spec")
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1197,7 +1197,7 @@ func (engine *ESEngine) esWbStopTimer(ctx *ESContext) int {
 	if ctx.IsNumber(0) {
 		n := TimerId(ctx.GetNumber(-1))
 		if n == 0 {
-			wbgo.Error.Printf("timer id cannot be zero")
+			wbgong.Error.Printf("timer id cannot be zero")
 			return 0
 		}
 		engine.StopTimerByIndex(n)
@@ -1250,7 +1250,7 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 	go func() {
 		r, err := Spawn(args[0], args[1:], captureOutput, captureErrorOutput, input)
 		if err != nil {
-			wbgo.Error.Printf("external command failed: %s", err)
+			wbgong.Error.Printf("external command failed: %s", err)
 			return
 		}
 		if callbackFn != nil {
@@ -1258,7 +1258,7 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 				// check that context is still alive
 				// (file is not removed or reloaded)
 				if !ctx.IsValid() {
-					wbgo.Info.Println("ignore runShellCommand callback without Duktape context (maybe script is reloaded or removed)")
+					wbgong.Info.Println("ignore runShellCommand callback without Duktape context (maybe script is reloaded or removed)")
 					return
 				}
 
@@ -1272,7 +1272,7 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 				callbackFn(args)
 			})
 		} else if r.ExitStatus != 0 {
-			wbgo.Error.Printf("command '%s' failed with exit status %d",
+			wbgong.Error.Printf("command '%s' failed with exit status %d",
 				strings.Join(args, " "), r.ExitStatus)
 		}
 	}()
@@ -1387,8 +1387,8 @@ func (engine *ESEngine) esWbCtrlRule(ctx *ESContext, state bool) int {
 		return duktape.DUK_RET_ERROR
 	}
 
-	if wbgo.DebuggingEnabled() {
-		wbgo.Debug.Printf("[ruleengine] %sRule(ruleId=%d)", act, ruleId)
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[ruleengine] %sRule(ruleId=%d)", act, ruleId)
 	}
 
 	return 0
@@ -1592,7 +1592,7 @@ func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 		return nil
 	})
 
-	wbgo.Debug.Printf("write value to persistent storage %s: '%s' <= '%s'", bucket, key, value)
+	wbgong.Debug.Printf("write value to persistent storage %s: '%s' <= '%s'", bucket, key, value)
 
 	return 0
 }
@@ -1626,7 +1626,7 @@ func (engine *ESEngine) esPersistentGet(ctx *ESContext) int {
 	}
 	key = ctx.GetString(1)
 
-	wbgo.Debug.Printf("trying to get value from persistent storage %s: %s", bucket, key)
+	wbgong.Debug.Printf("trying to get value from persistent storage %s: %s", bucket, key)
 
 	// try to get these from cache
 	var ok bool
@@ -1666,19 +1666,19 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 
 	// get module name (id)
 	id := ctx.GetString(0)
-	wbgo.Debug.Printf("[modsearch] required module %s", id)
+	wbgong.Debug.Printf("[modsearch] required module %s", id)
 
 	// try to find this module in directory
 	for _, dir := range engine.modulesDirs {
 		path := dir + "/" + id + ".js"
-		wbgo.Debug.Printf("[modsearch] trying to read file %s", path)
+		wbgong.Debug.Printf("[modsearch] trying to read file %s", path)
 
 		// TBD: something external to load scripts properly
 		// now just try to read file
 		src, err := ioutil.ReadFile(path)
 
 		if err == nil {
-			wbgo.Debug.Printf("[modsearch] file found!")
+			wbgong.Debug.Printf("[modsearch] file found!")
 
 			// set module properties
 			// put module.filename
@@ -1716,7 +1716,7 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 		}
 	}
 
-	wbgo.Error.Printf("error requiring module %s, not found", id)
+	wbgong.Error.Printf("error requiring module %s, not found", id)
 
 	return duktape.DUK_RET_ERROR
 }

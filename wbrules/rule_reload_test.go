@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/contactless/wbgo"
-	"github.com/contactless/wbgo/testutils"
+	"github.com/contactless/wbgong"
+	"github.com/contactless/wbgong/testutils"
 )
 
 type RuleReloadSuite struct {
@@ -22,7 +22,7 @@ func (s *RuleReloadSuite) SetupTest() {
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}
-	wbgo.Debug.Printf("created temp dir %s for reload tests", s.reloadTmpDir)
+	wbgong.Debug.Printf("created temp dir %s for reload tests", s.reloadTmpDir)
 
 	s.VdevStorageFile = s.reloadTmpDir + "/test_vdev.db"
 	s.PersistentDBFile = s.reloadTmpDir + "/test_persistent.db"

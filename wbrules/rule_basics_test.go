@@ -3,7 +3,7 @@ package wbrules
 import (
 	"testing"
 
-	"github.com/contactless/wbgo/testutils"
+	"github.com/contactless/wbgong/testutils"
 )
 
 type RuleBasicsSuite struct {
