@@ -1,8 +1,14 @@
+wb-rules (2.2) stable; urgency=medium
+
+  * release version 2.2
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Mon, 25 Nov 2019 22:11:24 +0300
+
 wb-rules (2.2~alpha1) stable; urgency=medium
 
   * wbgo: ported to wbgong
 
- -- Roman Kubar <r.kubar@wirenboard.ru>  Thu, 24 Nov 2019 20:58:34 +0300
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Sun, 24 Nov 2019 20:58:34 +0300
 
 wb-rules (2.1~alpha3) stable; urgency=medium
 
