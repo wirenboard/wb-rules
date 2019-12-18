@@ -1,3 +1,9 @@
+wb-rules (1.8.1) stable; urgency=medium
+
+  * add buffered writes to vcell storage database
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Wed, 18 Dec 2019 23:57:16 +0300
+
 wb-rules (1.8) stable; urgency=medium
 
   * add support for cusom shell command for sending SMS in alarm component 
