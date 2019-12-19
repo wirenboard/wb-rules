@@ -198,6 +198,8 @@ type RuleEngine struct {
 	storageQueue        map[string]storageRow
 	storageMutex        sync.Mutex
 	storageTicker       *time.Ticker
+	exitCh              chan bool
+	stopWg              sync.WaitGroup
 }
 
 type storageRow map[string]string
@@ -229,6 +231,8 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *RuleEn
 		debugEnabled:        wbgo.DebuggingEnabled(),
 		readyCh:             nil,
 		virtualCellsStorage: nil,
+		exitCh:              make(chan bool),
+		stopWg:              sync.WaitGroup{},
 	}
 
 	var storageCacheTime = DEFAULT_STORAGE_CACHE_SECONDS
@@ -587,6 +591,7 @@ func (engine *RuleEngine) handleStop() {
 	engine.cellChange = nil
 	engine.readyCh = nil
 	engine.statusMtx.Unlock()
+	engine.CloseVirtualCellsDB()
 }
 
 func (engine *RuleEngine) isDebugCell(cellSpec *CellSpec) bool {
@@ -685,9 +690,20 @@ func (engine *RuleEngine) Start() {
 				}
 			case <-engine.storageTicker.C:
 				engine.cachedSaveToStorage()
+			case <-engine.exitCh:
+				engine.handleStop()
+				engine.stopWg.Done()
+				return
 			}
 		}
 	}()
+}
+
+// Stop gracefully shutdowns RuleEngine
+func (engine *RuleEngine) Stop() {
+	engine.stopWg.Add(1)
+	engine.exitCh <- true
+	engine.stopWg.Wait()
 }
 
 // FlushStorage writes cached data to disk
@@ -696,6 +712,7 @@ func (engine *RuleEngine) FlushStorage() {
 }
 
 func (engine *RuleEngine) cachedSaveToStorage() (err error) {
+	wbgo.Debug.Println("Flushing cached storage to disk")
 	engine.storageMutex.Lock()
 	defer engine.storageMutex.Unlock()
 
