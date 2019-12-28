@@ -1,9 +1,10 @@
 package wbrules
 
 import (
-	"github.com/evgeny-boger/wbgo/testutils"
 	"testing"
 	"time"
+
+	"github.com/contactless/wbgong/testutils"
 )
 
 type RuleTimersSuite struct {

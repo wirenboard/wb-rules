@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	wbgo "github.com/evgeny-boger/wbgo"
+	wbgong "github.com/contactless/wbgong"
 	"github.com/stretchr/objx"
 )
 
@@ -133,7 +133,7 @@ func (ruleCond *CellChangedRuleCondition) Check(e *ControlChangeEvent) (bool, in
 	}
 
 	if !e.IsComplete {
-		wbgo.Debug.Printf("skipping rule due to incomplete cell in whenChanged: %s", e.Spec)
+		wbgong.Debug.Printf("skipping rule due to incomplete cell in whenChanged: %s", e.Spec)
 		return false, nil
 	}
 
@@ -315,8 +315,8 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 				"newValue": e.Value,
 			})
 		}
-		if wbgo.DebuggingEnabled() {
-			wbgo.Debug.Printf("[rule] firing Rule ruleId=%d", rule.id)
+		if wbgong.DebuggingEnabled() {
+			wbgong.Debug.Printf("[rule] firing Rule ruleId=%d", rule.id)
 		}
 		rule.then(args)
 	}
@@ -328,7 +328,7 @@ func (rule *Rule) MaybeAddToCron(cron Cron) {
 		rule.then(nil)
 	})
 	if err != nil {
-		wbgo.Error.Printf("rule %s: invalid cron spec: %s", rule.name, err)
+		wbgong.Error.Printf("rule %s: invalid cron spec: %s", rule.name, err)
 	}
 }
 

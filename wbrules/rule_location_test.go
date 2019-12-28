@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/evgeny-boger/wbgo/testutils"
+	"github.com/contactless/wbgong/testutils"
 )
 
 type RuleLocationSuite struct {

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/alexcesaro/statsd"
-	wbgo "github.com/evgeny-boger/wbgo"
+	"github.com/contactless/wbgong"
 	"github.com/stretchr/objx"
 	cron "gopkg.in/robfig/cron.v1"
 )
@@ -67,19 +67,19 @@ func (c *ControlSpec) String() string {
 	return c.DeviceId + "/" + c.ControlId
 }
 
-type TimerFunc func(id TimerId, d time.Duration, periodic bool) wbgo.Timer
+type TimerFunc func(id TimerId, d time.Duration, periodic bool) wbgong.Timer
 
-func newTimer(id TimerId, d time.Duration, periodic bool) wbgo.Timer {
+func newTimer(id TimerId, d time.Duration, periodic bool) wbgong.Timer {
 	if periodic {
-		return wbgo.NewRealTicker(d)
+		return wbgong.NewRealTicker(d)
 	} else {
-		return wbgo.NewRealTimer(d)
+		return wbgong.NewRealTimer(d)
 	}
 }
 
 type TimerEntry struct {
 	sync.Mutex
-	timer          wbgo.Timer
+	timer          wbgong.Timer
 	periodic       bool
 	quit, quitted  chan struct{}
 	name           string
@@ -110,7 +110,7 @@ func (entry *TimerEntry) handleRemove() {
 }
 
 type proxyOwner interface {
-	Driver() wbgo.Driver
+	Driver() wbgong.Driver
 	getRev() uint32
 	trackControlSpec(ControlSpec)
 }
@@ -118,7 +118,7 @@ type proxyOwner interface {
 type DeviceProxy struct {
 	owner proxyOwner
 	name  string
-	dev   wbgo.Device
+	dev   wbgong.Device
 	rev   uint32
 }
 
@@ -131,14 +131,14 @@ type ControlProxy struct {
 
 	devProxy *DeviceProxy
 	name     string
-	control  wbgo.Control
+	control  wbgong.Control
 
 	cachedValue interface{}
 	cacheValid  bool
 }
 
-func getDeviceRefFromDriver(devId string, drv wbgo.Driver) (dev wbgo.Device, err error) {
-	err = drv.Access(func(tx wbgo.DriverTx) error {
+func getDeviceRefFromDriver(devId string, drv wbgong.Driver) (dev wbgong.Device, err error) {
+	err = drv.Access(func(tx wbgong.DriverTx) error {
 		dev = tx.GetDevice(devId)
 		return nil
 	})
@@ -157,8 +157,8 @@ func (devProxy *DeviceProxy) updated() bool {
 }
 
 func (devProxy *DeviceProxy) EnsureControlProxy(ctrlId string) *ControlProxy {
-	if wbgo.DebuggingEnabled() {
-		wbgo.Debug.Printf("[devProxy] EnsureControlProxy for control %s/%s", devProxy.name, ctrlId)
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[devProxy] EnsureControlProxy for control %s/%s", devProxy.name, ctrlId)
 	}
 	return &ControlProxy{
 		devProxy:    devProxy,
@@ -169,15 +169,15 @@ func (devProxy *DeviceProxy) EnsureControlProxy(ctrlId string) *ControlProxy {
 	}
 }
 
-func (devProxy *DeviceProxy) getControl(ctrlId string) wbgo.Control {
+func (devProxy *DeviceProxy) getControl(ctrlId string) wbgong.Control {
 	devId := devProxy.name
 
-	if wbgo.DebuggingEnabled() {
-		wbgo.Debug.Printf("[devProxy] getControl for control %s/%s", devId, ctrlId)
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[devProxy] getControl for control %s/%s", devId, ctrlId)
 	}
 
-	var c wbgo.Control
-	devProxy.owner.Driver().Access(func(tx wbgo.DriverTx) error {
+	var c wbgong.Control
+	devProxy.owner.Driver().Access(func(tx wbgong.DriverTx) error {
 		dev := tx.GetDevice(devId)
 		if dev == nil {
 			return nil // TODO: careful with error here, some rules want control spec without control itself
@@ -189,7 +189,7 @@ func (devProxy *DeviceProxy) getControl(ctrlId string) wbgo.Control {
 	return c
 }
 
-func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgo.Control, value interface{}, tx wbgo.DriverTx) error {
+func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgong.Control, value interface{}, tx wbgong.DriverTx) error {
 	ctrlProxy.Lock()
 	defer ctrlProxy.Unlock()
 
@@ -200,14 +200,14 @@ func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgo.Control, value inter
 }
 
 // just a syntax sugar
-func (ctrlProxy *ControlProxy) accessDriver(f func(tx wbgo.DriverTx) error) error {
+func (ctrlProxy *ControlProxy) accessDriver(f func(tx wbgong.DriverTx) error) error {
 	return ctrlProxy.devProxy.owner.Driver().Access(f)
 }
 
-func (ctrlProxy *ControlProxy) getControl() wbgo.Control {
+func (ctrlProxy *ControlProxy) getControl() wbgong.Control {
 	if ctrlProxy.devProxy.updated() {
-		if wbgo.DebuggingEnabled() {
-			wbgo.Debug.Printf("[controlProxy %s/%s] cache invalidate!", ctrlProxy.devProxy.name, ctrlProxy.name)
+		if wbgong.DebuggingEnabled() {
+			wbgong.Debug.Printf("[controlProxy %s/%s] cache invalidate!", ctrlProxy.devProxy.name, ctrlProxy.name)
 		}
 		ctrlProxy.Lock()
 		ctrlProxy.cacheValid = false
@@ -228,7 +228,7 @@ func (ctrlProxy *ControlProxy) RawValue() (v string) {
 		return ""
 	}
 
-	ctrlProxy.accessDriver(func(tx wbgo.DriverTx) error {
+	ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
 		ctrl.SetTx(tx)
 		v = ctrl.GetRawValue()
 		return nil
@@ -238,8 +238,8 @@ func (ctrlProxy *ControlProxy) RawValue() (v string) {
 
 // TODO: return error on non-existing/incomplete control
 func (ctrlProxy *ControlProxy) Value() (v interface{}) {
-	if wbgo.DebuggingEnabled() {
-		wbgo.Debug.Printf("[ctrlProxy] getting value of control %s/%s", ctrlProxy.devProxy.name, ctrlProxy.name)
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[ctrlProxy] getting value of control %s/%s", ctrlProxy.devProxy.name, ctrlProxy.name)
 	}
 
 	ctrl := ctrlProxy.getControl()
@@ -255,7 +255,7 @@ func (ctrlProxy *ControlProxy) Value() (v interface{}) {
 	} else {
 		// update cache value
 		ctrlProxy.Unlock()
-		err := ctrlProxy.accessDriver(func(tx wbgo.DriverTx) (err error) {
+		err := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) (err error) {
 			ctrl.SetTx(tx)
 			v, err = ctrl.GetValue()
 			if err != nil {
@@ -278,37 +278,37 @@ func (ctrlProxy *ControlProxy) Value() (v interface{}) {
 		}
 	}
 
-	if wbgo.DebuggingEnabled() {
-		wbgo.Debug.Printf("[ctrlProxy] getValue(%s/%s): %v", ctrlProxy.devProxy.name, ctrlProxy.name, v)
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[ctrlProxy] getValue(%s/%s): %v", ctrlProxy.devProxy.name, ctrlProxy.name, v)
 	}
 	return
 }
 
 func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
-	if wbgo.DebuggingEnabled() {
-		wbgo.Debug.Printf("[ctrlProxy %s/%s] SetValue(%v)", ctrlProxy.devProxy.name, ctrlProxy.name, value)
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[ctrlProxy %s/%s] SetValue(%v)", ctrlProxy.devProxy.name, ctrlProxy.name, value)
 	}
 
 	ctrl := ctrlProxy.getControl()
 	if ctrl == nil {
-		wbgo.Error.Printf("failed to SetValue for unexisting control")
+		wbgong.Error.Printf("failed to SetValue for unexisting control")
 		return
 	}
 
 	isLocal := false
-	err := ctrlProxy.accessDriver(func(tx wbgo.DriverTx) error {
+	err := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
 		ctrl.SetTx(tx)
-		_, isLocal = ctrl.GetDevice().(wbgo.LocalDevice)
+		_, isLocal = ctrl.GetDevice().(wbgong.LocalDevice)
 		return ctrl.SetValue(value)()
 	})
 
 	if isLocal {
-		// run update value handler immediately, don't wait for wbgo backend
+		// run update value handler immediately, don't wait for wbgong backend
 		ctrlProxy.updateValueHandler(nil, value, nil)
 	}
 
 	if err != nil {
-		wbgo.Error.Printf("control %s/%s SetValue() error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, err)
+		wbgong.Error.Printf("control %s/%s SetValue() error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, err)
 	}
 }
 
@@ -319,7 +319,7 @@ func (ctrlProxy *ControlProxy) IsComplete() (v bool) {
 		return false
 	}
 
-	_ = ctrlProxy.accessDriver(func(tx wbgo.DriverTx) error {
+	_ = ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
 		ctrl.SetTx(tx)
 		v = ctrl.IsComplete()
 		return nil
@@ -355,7 +355,7 @@ type ControlChangeEvent struct {
 type RuleEngineOptions struct {
 	debugQueues   bool
 	cleanupOnStop bool
-	Statsd        *wbgo.StatsdClientWrapper
+	Statsd        wbgong.StatsdClientWrapper
 }
 
 func NewRuleEngineOptions() *RuleEngineOptions {
@@ -375,7 +375,7 @@ func (o *RuleEngineOptions) SetCleanupOnStop(v bool) *RuleEngineOptions {
 	return o
 }
 
-func (o *RuleEngineOptions) SetStatsdClient(c *wbgo.StatsdClientWrapper) *RuleEngineOptions {
+func (o *RuleEngineOptions) SetStatsdClient(c wbgong.StatsdClientWrapper) *RuleEngineOptions {
 	o.Statsd = c
 	return o
 }
@@ -387,8 +387,8 @@ type RuleEngine struct {
 	syncQueueActive bool
 	syncQueue       chan func()
 	syncQuitCh      chan chan struct{}
-	mqttClient      wbgo.MQTTClient // for service
-	driver          wbgo.Driver
+	mqttClient      wbgong.MQTTClient // for service
+	driver          wbgong.Driver
 	driverReadyCh   chan struct{}
 
 	eventBuffer *EventBuffer
@@ -419,12 +419,12 @@ type RuleEngine struct {
 	getTimerMtx     sync.Mutex
 	debugEnabled    uint32 // atomic
 	readyCh         chan struct{}
-	readyQueue      *wbgo.DeferredList
-	timerDeferQueue *wbgo.DeferredList
+	readyQueue      *wbgong.DeferredList
+	timerDeferQueue *wbgong.DeferredList
 
 	cleanupOnStop bool
 
-	statsdClient *wbgo.StatsdClientWrapper
+	statsdClient wbgong.StatsdClientWrapper
 
 	// subscriptions to control change events
 	// suitable for testing
@@ -432,7 +432,7 @@ type RuleEngine struct {
 	controlChangeSubs      []chan *ControlChangeEvent
 }
 
-func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngineOptions) (engine *RuleEngine) {
+func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEngineOptions) (engine *RuleEngine) {
 	if options == nil {
 		panic("no options given to NewRuleEngine")
 	}
@@ -476,8 +476,8 @@ func NewRuleEngine(driver wbgo.Driver, mqtt wbgo.MQTTClient, options *RuleEngine
 	// engine.controlChangeChLen = ENGINE_CONTROL_CHANGE_QUEUE_LEN
 	// }
 
-	engine.readyQueue = wbgo.NewDeferredList(engine.CallSync)
-	engine.timerDeferQueue = wbgo.NewDeferredList(engine.CallHere)
+	engine.readyQueue = wbgong.NewDeferredList(engine.CallSync)
+	engine.timerDeferQueue = wbgong.NewDeferredList(engine.CallHere)
 
 	engine.setupRuleEngineSettingsDevice()
 
@@ -514,7 +514,7 @@ func (engine *RuleEngine) SubscribeControlChange() <-chan *ControlChangeEvent {
 
 	ret := make(chan *ControlChangeEvent, 0) // ENGINE_CONTROL_CHANGE_QUEUE_LEN)
 	engine.controlChangeSubs = append(engine.controlChangeSubs, ret)
-	wbgo.Debug.Printf("[ruleengine] Add subscriber for ControlChangeEvent (channel %v)", ret)
+	wbgong.Debug.Printf("[ruleengine] Add subscriber for ControlChangeEvent (channel %v)", ret)
 	return ret
 }
 
@@ -546,7 +546,7 @@ func (engine *RuleEngine) notifyControlChangeSubs(e *ControlChangeEvent) {
 }
 
 func (engine *RuleEngine) syncLoop() {
-	wbgo.Info.Println("[engine] Starting sync loop")
+	wbgong.Info.Println("[engine] Starting sync loop")
 	for {
 		select {
 		case f, ok := <-engine.syncQueue:
@@ -554,7 +554,7 @@ func (engine *RuleEngine) syncLoop() {
 				f()
 			}
 		case q := <-engine.syncQuitCh:
-			wbgo.Info.Println("[engine] Stopping sync loop")
+			wbgong.Info.Println("[engine] Stopping sync loop")
 			close(q)
 			return
 		}
@@ -562,9 +562,9 @@ func (engine *RuleEngine) syncLoop() {
 }
 
 func (engine *RuleEngine) processEvent(event *ControlChangeEvent) {
-	if wbgo.DebuggingEnabled() {
-		wbgo.Debug.Printf("control change: %s", event.Spec)
-		wbgo.Debug.Printf("rule engine: running rules after control change: %s", event.Spec)
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("control change: %s", event.Spec)
+		wbgong.Debug.Printf("rule engine: running rules after control change: %s", event.Spec)
 	}
 	if engine.isDebugControl(event.Spec) {
 		engine.updateDebugEnabled()
@@ -581,7 +581,7 @@ func (engine *RuleEngine) mainLoop() {
 	// control changes are ignored until the engine is ready
 	// FIXME: some very small probability of race condition is
 	// present here
-	wbgo.Info.Println("[engine] Starting main loop")
+	wbgong.Info.Println("[engine] Starting main loop")
 ReadyWaitLoop:
 	for {
 		select {
@@ -592,20 +592,20 @@ ReadyWaitLoop:
 				events := engine.eventBuffer.Retrieve()
 
 				for _, event := range events {
-					wbgo.Debug.Printf("control change (not ready yet): %s", event.Spec)
+					wbgong.Debug.Printf("control change (not ready yet): %s", event.Spec)
 					engine.notifyControlChangeSubs(event)
 					if engine.isDebugControl(event.Spec) {
 						engine.updateDebugEnabled()
 					}
 				}
 			} else {
-				wbgo.Debug.Printf("stoping the engine (not ready yet)")
+				wbgong.Debug.Printf("stoping the engine (not ready yet)")
 				engine.handleStop()
 				return
 			}
 		}
 	}
-	wbgo.Debug.Printf("setting up cron")
+	wbgong.Debug.Printf("setting up cron")
 	engine.CallSync(engine.setupCron)
 
 	// the first rule run is removed, now it's all done with the first real event
@@ -614,8 +614,8 @@ ReadyWaitLoop:
 	engine.CallSync(engine.timerDeferQueue.Ready)
 	close(engine.readyCh)
 
-	wbgo.Info.Printf("the engine is ready")
-	// wbgo.Info.Printf("******** READY ********")
+	wbgong.Info.Printf("the engine is ready")
+	// wbgong.Info.Printf("******** READY ********")
 	for {
 		select {
 		case _, ok := <-engine.eventBuffer.Observe():
@@ -626,20 +626,20 @@ ReadyWaitLoop:
 				}
 			} else {
 				engine.handleStop()
-				wbgo.Info.Println("[engine] Stop main loop")
+				wbgong.Info.Println("[engine] Stop main loop")
 				return
 			}
 		}
 	}
 }
 
-func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
+func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 	if atomic.LoadUint32(&engine.active) == ENGINE_STOP {
 		return
 	}
 
-	if wbgo.DebuggingEnabled() {
-		wbgo.Debug.Printf("[engine] driverEventHandler(event %T(%v))", event, event)
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[engine] driverEventHandler(event %T(%v))", event, event)
 	}
 
 	var value interface{}
@@ -648,12 +648,12 @@ func (engine *RuleEngine) driverEventHandler(event wbgo.DriverEvent) {
 	isRetained := false
 
 	switch e := event.(type) {
-	case wbgo.ControlValueEvent:
+	case wbgong.ControlValueEvent:
 		value, _ = e.Control.GetValue()
 		spec = ControlSpec{e.Control.GetDevice().GetId(), e.Control.GetId()}
 		isComplete = e.Control.IsComplete()
 		isRetained = e.Control.IsRetained()
-	case wbgo.NewExternalDeviceControlMetaEvent:
+	case wbgong.NewExternalDeviceControlMetaEvent:
 		value, _ = e.Control.GetValue()
 		spec = ControlSpec{e.Control.GetDevice().GetId(), e.Control.GetId()}
 		isComplete = e.Control.IsComplete()
@@ -746,7 +746,7 @@ func (engine *RuleEngine) StoreRuleControlSpec(rule *Rule, spec ControlSpec) {
 			}
 		}
 	}
-	wbgo.Debug.Printf("adding control spec %s for rule %d", spec.String(), rule.id)
+	wbgong.Debug.Printf("adding control spec %s for rule %d", spec.String(), rule.id)
 	engine.controlToRulesListMap[spec] = append(list, rule)
 	engine.rulesWithoutControls[rule] = false
 }
@@ -775,11 +775,11 @@ func (engine *RuleEngine) StoreRuleDeps(rule *Rule) {
 			// too often. Only mark a rule as such if it doesn't have
 			// any controls associated with it and it isn't an control-independent rule
 			// (such as a cron rule)
-			if wbgo.DebuggingEnabled() {
+			if wbgong.DebuggingEnabled() {
 				// Here we use Warn output but only in case if debugging is enabled.
 				// This improves testability (due to EnsureNoErrorsOrWarnings()) but
 				// avoids polluting logs with endless warnings when debugging is off.
-				wbgo.Warn.Printf("rule %s doesn't use any controls inside condition functions", rule.name)
+				wbgong.Warn.Printf("rule %s doesn't use any controls inside condition functions", rule.name)
 			}
 			if !found {
 				engine.rulesWithoutControls[rule] = true
@@ -813,7 +813,7 @@ func (engine *RuleEngine) fireTimer(n TimerId) {
 	engine.timersMutex.Unlock()
 
 	if !found {
-		wbgo.Error.Printf("firing unknown timer %d", n)
+		wbgong.Error.Printf("firing unknown timer %d", n)
 		return
 	}
 	if entry.name == NO_TIMER_NAME {
@@ -857,7 +857,7 @@ func (engine *RuleEngine) StopTimerByIndex(n TimerId) {
 
 		entry.stop()
 	} else {
-		wbgo.Error.Printf("trying to stop unknown timer: %d", n)
+		wbgong.Error.Printf("trying to stop unknown timer: %d", n)
 	}
 }
 
@@ -877,14 +877,14 @@ func (engine *RuleEngine) OnTimerRemoveByIndex(n TimerId, thunk func()) {
 	if entry, found := engine.FindTimerByIndex(n); found {
 		entry.onRemove(thunk)
 	} else {
-		wbgo.Error.Printf("trying to handle remove of unknown timer: %d", n)
+		wbgong.Error.Printf("trying to handle remove of unknown timer: %d", n)
 	}
 }
 
 func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName string) {
-	if wbgo.DebuggingEnabled() {
-		wbgo.Debug.Println("[ruleengine] RunRules, event ", ctrlEvent, ", timer ", timerName)
-		wbgo.Debug.Printf("[ruleengine] RulesLists for all: %v", engine.controlToRulesListMap)
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Println("[ruleengine] RunRules, event ", ctrlEvent, ", timer ", timerName)
+		wbgong.Debug.Printf("[ruleengine] RulesLists for all: %v", engine.controlToRulesListMap)
 	}
 	engine.rulesMutex.Lock()
 	defer engine.rulesMutex.Unlock()
@@ -954,7 +954,7 @@ func (engine *RuleEngine) setupCron() {
 }
 
 func (engine *RuleEngine) handleStop() {
-	wbgo.Debug.Printf("engine stopped")
+	wbgong.Debug.Printf("engine stopped")
 
 	engine.timersMutex.Lock()
 	timerEntries := make([]*TimerEntry, 0, len(engine.timers))
@@ -984,7 +984,7 @@ func (engine *RuleEngine) isDebugControl(ctrlSpec ControlSpec) bool {
 func (engine *RuleEngine) updateDebugEnabled() {
 	engine.CallSync(func() {
 		var val bool
-		err := engine.driver.Access(func(tx wbgo.DriverTx) error {
+		err := engine.driver.Access(func(tx wbgong.DriverTx) error {
 			dev := tx.GetDevice(RULE_ENGINE_SETTINGS_DEV_NAME)
 			if dev == nil {
 				return ControlNotFoundError
@@ -1022,7 +1022,7 @@ func (engine *RuleEngine) Start() {
 	engine.eventBuffer = NewEventBuffer()
 
 	engine.driver.OnDriverEvent(engine.driverEventHandler)
-	engine.driver.OnRetainReady(func(tx wbgo.DriverTx) {
+	engine.driver.OnRetainReady(func(tx wbgong.DriverTx) {
 		engine.driverReadyCh <- struct{}{}
 	})
 	engine.syncQueueActive = true
@@ -1037,7 +1037,7 @@ func (engine *RuleEngine) Stop() {
 
 	// run all necessary cleanups
 	if engine.cleanupOnStop {
-		wbgo.Info.Println("[engine] Performing MQTT cleanup on stop")
+		wbgong.Info.Println("[engine] Performing MQTT cleanup on stop")
 		engine.cleanup.RunAllCleanups()
 	}
 
@@ -1079,10 +1079,10 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 	if name == NO_TIMER_NAME {
 		entry.thunk = callback
 	} else if callback != nil {
-		wbgo.Warn.Printf("warning: ignoring callback func for a named timer")
+		wbgong.Warn.Printf("warning: ignoring callback func for a named timer")
 	}
 
-	wbgo.Debug.Printf("[engine] Starting timer '%s' (id %d)", name, n)
+	wbgong.Debug.Printf("[engine] Starting timer '%s' (id %d)", name, n)
 
 	engine.timerDeferQueue.MaybeDefer(func() {
 		entry.Lock()
@@ -1143,7 +1143,7 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 
 func (engine *RuleEngine) Publish(topic, payload string, qos byte, retain bool) {
 	engine.mqttClient.Start()
-	engine.mqttClient.Publish(wbgo.MQTTMessage{
+	engine.mqttClient.Publish(wbgong.MQTTMessage{
 		Topic:    topic,
 		Payload:  payload,
 		QoS:      byte(qos),
@@ -1164,7 +1164,7 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	}
 
 	// prepare whole description for this device
-	devArgs := wbgo.NewLocalDeviceArgs().SetId(devId).SetVirtual(true)
+	devArgs := wbgong.NewLocalDeviceArgs().SetId(devId).SetVirtual(true)
 
 	// try to get title
 	if obj.Has(VDEV_DESCR_PROP_TITLE) {
@@ -1195,7 +1195,7 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	}
 	sort.Strings(controlIds)
 
-	controlsArgs := make([]*wbgo.ControlArgs, 0, len(m))
+	controlsArgs := make([]wbgong.ControlArgs, 0, len(m))
 
 	for _, ctrlId := range controlIds {
 		// check if this object is a correct control definition (is an object, at least)
@@ -1210,7 +1210,7 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		}
 
 		// create control args
-		args := wbgo.NewControlArgs().SetId(ctrlId)
+		args := wbgong.NewControlArgs().SetId(ctrlId)
 
 		// append args to controls args list
 		controlsArgs = append(controlsArgs, args)
@@ -1275,7 +1275,7 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 
 		// get properties for 'range' type
 		// FIXME: deprecated
-		if ctrlType == wbgo.CONV_TYPE_RANGE {
+		if ctrlType == wbgong.CONV_TYPE_RANGE {
 			fmax := VDEV_CONTROL_RANGE_MAX_DEFAULT
 			max, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_MAX]
 			if ok {
@@ -1292,8 +1292,8 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	}
 
 	// create virtual device using collected descriptions
-	var dev wbgo.LocalDevice
-	err := engine.driver.Access(func(tx wbgo.DriverTx) (err error) {
+	var dev wbgong.LocalDevice
+	err := engine.driver.Access(func(tx wbgong.DriverTx) (err error) {
 		// create device by device description
 		dev, err = tx.CreateDevice(devArgs)()
 		if err != nil {
@@ -1319,11 +1319,11 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 
 	// defer cleanup
 	engine.cleanup.AddCleanup(func() {
-		err := engine.driver.Access(func(tx wbgo.DriverTx) error {
+		err := engine.driver.Access(func(tx wbgong.DriverTx) error {
 			return tx.RemoveDevice(dev)()
 		})
 		if err != nil {
-			wbgo.Warn.Printf("failed to remove device %s in cleanup: %s", devId, err)
+			wbgong.Warn.Printf("failed to remove device %s in cleanup: %s", devId, err)
 		}
 	})
 
@@ -1362,7 +1362,7 @@ func (engine *RuleEngine) DefineRule(rule *Rule, ctx *ESContext) (id RuleId, err
 
 	id = rule.id
 
-	wbgo.Debug.Printf("[ruleengine] defineRule(name='%s') ruleId=%d, cond %T(%v)", rule.name, id, rule.cond, rule.cond)
+	wbgong.Debug.Printf("[ruleengine] defineRule(name='%s') ruleId=%d, cond %T(%v)", rule.name, id, rule.cond, rule.cond)
 
 	return
 }
@@ -1370,8 +1370,8 @@ func (engine *RuleEngine) DefineRule(rule *Rule, ctx *ESContext) (id RuleId, err
 // Refresh() should be called after engine rules are altered
 // while the engine is running.
 func (engine *RuleEngine) Refresh() {
-	if wbgo.DebuggingEnabled() {
-		wbgo.Debug.Println("[engine] Refresh()")
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Println("[engine] Refresh()")
 	}
 	atomic.AddUint32(&engine.rev, 1) // invalidate device/control proxies
 	engine.setupCron()
@@ -1390,7 +1390,7 @@ func (engine *RuleEngine) Refresh() {
 	engine.timerRules = make(map[string][]*Rule)
 }
 
-func (engine *RuleEngine) Driver() wbgo.Driver {
+func (engine *RuleEngine) Driver() wbgong.Driver {
 	return engine.driver
 }
 
@@ -1406,19 +1406,19 @@ func (engine *RuleEngine) Log(level EngineLogLevel, message string) {
 	var topicItem string
 	switch level {
 	case ENGINE_LOG_DEBUG:
-		wbgo.Debug.Printf("[rule debug] %s", message)
+		wbgong.Debug.Printf("[rule debug] %s", message)
 		if atomic.LoadUint32(&engine.debugEnabled) != ATOMIC_TRUE {
 			return
 		}
 		topicItem = "debug"
 	case ENGINE_LOG_INFO:
-		wbgo.Info.Printf("[rule info] %s", message)
+		wbgong.Info.Printf("[rule info] %s", message)
 		topicItem = "info"
 	case ENGINE_LOG_WARNING:
-		wbgo.Warn.Printf("[rule warning] %s", message)
+		wbgong.Warn.Printf("[rule warning] %s", message)
 		topicItem = "warning"
 	case ENGINE_LOG_ERROR:
-		wbgo.Error.Printf("[rule error] %s", message)
+		wbgong.Error.Printf("[rule error] %s", message)
 		topicItem = "error"
 	}
 	engine.Publish("/wbrules/log/"+topicItem, message, 1, false)

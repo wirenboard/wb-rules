@@ -3,12 +3,13 @@ package wbrules
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/evgeny-boger/wbgo/testutils"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/contactless/wbgong/testutils"
 )
 
 type AlarmSuite struct {

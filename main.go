@@ -2,16 +2,20 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
 	"github.com/contactless/wb-rules/wbrules"
-	"github.com/evgeny-boger/wbgo"
+	"github.com/contactless/wbgong"
 
 	"github.com/alexcesaro/statsd"
 )
+
+var version = "unknown"
 
 const (
 	DRIVER_CLIENT_ID = "rules"
@@ -25,6 +29,12 @@ const (
 )
 
 func main() {
+
+	if os.Args[1] == "version" {
+		fmt.Println(version)
+		os.Exit(0)
+	}
+
 	var err error
 
 	brokerAddress := flag.String("broker", "tcp://localhost:1883", "MQTT broker url")
@@ -39,49 +49,58 @@ func main() {
 	hostname, err := os.Hostname()
 	if err != nil {
 		// TODO: maybe generate random string as hostname for this instance
-		wbgo.Warn.Print("failed to get hostname for this instance, using 'default'")
+		wbgong.Warn.Print("failed to get hostname for this instance, using 'default'")
 		hostname = "default"
 	}
 
-	statsdUrl := flag.String("statsd", "", "Statsd server address (empty for no statsd communication)")
+	statsdURL := flag.String("statsd", "", "Statsd server address (empty for no statsd communication)")
 	statsdPrefix := flag.String("statsd-prefix", hostname, "Statsd prefix for this app instance (hostname by default)")
 
 	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
 
+	wbgoso := flag.String("wbgo", "/usr/share/wb-rules/wbgo.so", "Location to wbgo.so file")
+
 	flag.Parse()
 
 	if flag.NArg() < 1 {
-		wbgo.Error.Fatal("must specify rule file/directory name(s)")
+		wbgong.Error.Fatal("must specify rule file/directory name(s)")
 	}
 	if *useSyslog {
-		wbgo.UseSyslog()
+		wbgong.UseSyslog()
 	}
 	if *debug {
-		wbgo.SetDebuggingEnabled(true)
+		wbgong.SetDebuggingEnabled(true)
 	}
+
+	errInit := wbgong.Init(*wbgoso)
+	if errInit != nil {
+		log.Fatalf("ERROR in init wbgo.so: '%s'", errInit)
+	}
+
 	if *mqttDebug {
-		wbgo.EnableMQTTDebugLog(*useSyslog)
+		wbgong.EnableMQTTDebugLog(*useSyslog)
 	}
-	wbgo.MaybeInitProfiling(nil)
+	wbgong.MaybeInitProfiling(nil)
 
 	// prepare statsd client if required
-	var statsdClient *wbgo.StatsdClientWrapper
-	var runtimeStatsd *wbgo.StatsdRuntimeCollector
-	if *statsdUrl != "" {
-		if statsdClient, err = wbgo.NewStatsdClientWrapper("wb-rules", statsd.Address(*statsdUrl), statsd.Prefix(*statsdPrefix)); err != nil {
-			wbgo.Error.Fatalf("failed to create statsd client: %s", err)
+	var statsdClient wbgong.StatsdClientWrapper
+	var runtimeStatsd wbgong.StatsdRuntimeCollector
+	if *statsdURL != "" {
+		if statsdClient, err = wbgong.NewStatsdClientWrapper("wb-rules", statsd.Address(*statsdURL), statsd.Prefix(*statsdPrefix)); err != nil {
+			wbgong.Error.Fatalf("failed to create statsd client: %s", err)
 		}
-		runtimeStatsd = wbgo.NewStatsdRuntimeCollector(statsdClient)
+		runtimeStatsd = wbgong.NewStatsdRuntimeCollector(statsdClient)
 		runtimeStatsd.Start()
+		defer runtimeStatsd.Stop()
 	}
 
 	// prepare exit signal channel
 	exitCh := make(chan os.Signal, 1)
 	signal.Notify(exitCh, syscall.SIGINT, syscall.SIGTERM)
 
-	driverMqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID)
-	driverArgs := wbgo.NewDriverArgs().
+	driverMqttClient := wbgong.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID)
+	driverArgs := wbgong.NewDriverArgs().
 		SetId(DRIVER_CONV_ID).
 		SetMqtt(driverMqttClient).
 		SetUseStorage(*vdevDbFile != "").
@@ -93,24 +112,24 @@ func main() {
 		driverArgs.SetTesting()
 	}
 
-	driver, err := wbgo.NewDriverBase(driverArgs)
+	driver, err := wbgong.NewDriverBase(driverArgs)
 	if err != nil {
-		wbgo.Error.Fatalf("error creating driver: %s", err)
+		wbgong.Error.Fatalf("error creating driver: %s", err)
 	}
 
-	wbgo.Info.Println("driver is created")
+	wbgong.Info.Println("driver is created")
 
 	if err := driver.StartLoop(); err != nil {
-		wbgo.Error.Fatalf("error starting the driver: %s", err)
+		wbgong.Error.Fatalf("error starting the driver: %s", err)
 	}
 	driver.WaitForReady()
 
-	wbgo.Info.Println("driver loop is started")
-	driver.SetFilter(&wbgo.AllDevicesFilter{})
+	wbgong.Info.Println("driver loop is started")
+	driver.SetFilter(&wbgong.AllDevicesFilter{})
 
-	wbgo.Info.Println("wait for driver to become ready")
+	wbgong.Info.Println("wait for driver to become ready")
 	driver.WaitForReady()
-	wbgo.Info.Println("driver is ready")
+	wbgong.Info.Println("driver is ready")
 
 	engineOptions := wbrules.NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(*persistentDbFile)
@@ -122,32 +141,32 @@ func main() {
 		engineOptions.SetTesting(true)
 	}
 
-	engineMqttClient := wbgo.NewPahoMQTTClient(*brokerAddress, ENGINE_CLIENT_ID)
+	engineMqttClient := wbgong.NewPahoMQTTClient(*brokerAddress, ENGINE_CLIENT_ID)
 	engine, err := wbrules.NewESEngine(driver, engineMqttClient, engineOptions)
 	if err != nil {
-		wbgo.Error.Fatalf("error creating engine: %s", err)
+		wbgong.Error.Fatalf("error creating engine: %s", err)
 	}
 	engine.Start()
 
 	gotSome := false
-	watcher := wbgo.NewDirWatcher("\\.js(\\"+wbrules.FILE_DISABLED_SUFFIX+")?$", engine)
+	watcher := wbgong.NewDirWatcher("\\.js(\\"+wbrules.FILE_DISABLED_SUFFIX+")?$", engine)
 	if *editDir != "" {
 		engine.SetSourceRoot(*editDir)
 	}
 	for _, path := range flag.Args() {
 		if err := watcher.Load(path); err != nil {
-			wbgo.Error.Printf("error loading script file/dir %s: %s", path, err)
+			wbgong.Error.Printf("error loading script file/dir %s: %s", path, err)
 		} else {
 			gotSome = true
 		}
 	}
 	if !gotSome {
-		wbgo.Error.Fatalf("no valid scripts found")
+		wbgong.Error.Fatalf("no valid scripts found")
 	}
-	wbgo.Info.Println("all rule files are loaded")
+	wbgong.Info.Println("all rule files are loaded")
 
 	if *editDir != "" {
-		rpc := wbgo.NewMQTTRPCServer("wbrules", engineMqttClient)
+		rpc := wbgong.NewMQTTRPCServer("wbrules", engineMqttClient)
 		rpc.Register(wbrules.NewEditor(engine))
 		rpc.Start()
 	}
@@ -158,5 +177,4 @@ func main() {
 	engine.Stop()
 	driver.StopLoop()
 	driver.Close()
-	runtimeStatsd.Stop()
 }

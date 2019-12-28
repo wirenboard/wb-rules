@@ -2,8 +2,6 @@ package wbrules
 
 import (
 	"fmt"
-	"github.com/evgeny-boger/wbgo"
-	"github.com/evgeny-boger/wbgo/testutils"
 	"io/ioutil"
 	"os"
 	"regexp"
@@ -11,6 +9,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/contactless/wbgong"
+	"github.com/contactless/wbgong/testutils"
 )
 
 const (
@@ -38,12 +39,12 @@ func (cron *fakeCron) AddFunc(spec string, cmd func()) error {
 }
 
 func (cron *fakeCron) Start() {
-	wbgo.Debug.Printf("fakeCron.Start()")
+	wbgong.Debug.Printf("fakeCron.Start()")
 	cron.started = true
 }
 
 func (cron *fakeCron) Stop() {
-	wbgo.Debug.Printf("fakeCron.Stop()")
+	wbgong.Debug.Printf("fakeCron.Stop()")
 	cron.started = false
 }
 
@@ -66,8 +67,8 @@ type RuleSuiteBase struct {
 	*testutils.DataFileFixture
 	*testutils.FakeTimerFixture
 
-	driver                          wbgo.Driver
-	client, driverClient, logClient wbgo.MQTTClient
+	driver                          wbgong.Driver
+	client, driverClient, logClient wbgong.MQTTClient
 
 	engine *ESEngine
 
@@ -91,7 +92,7 @@ func (s *RuleSuiteBase) createTempFiles() {
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}
-	wbgo.Debug.Printf("created temp dir %s", tmpDir)
+	wbgong.Debug.Printf("created temp dir %s", tmpDir)
 
 	if s.PersistentDBFile == "" {
 		s.PersistentDBFile = tmpDir + "/test-persistent.db"
@@ -101,7 +102,7 @@ func (s *RuleSuiteBase) createTempFiles() {
 		os.RemoveAll(tmpDir)
 	}
 
-	wbgo.Debug.Printf("RuleSuiteBase created temp dir %s", tmpDir)
+	wbgong.Debug.Printf("RuleSuiteBase created temp dir %s", tmpDir)
 }
 
 func (s *RuleSuiteBase) preprocessItemsForVerify(items []interface{}) (newItems []interface{}) {
@@ -158,12 +159,12 @@ func (s *RuleSuiteBase) expectControlChange(expectedControlNames ...string) {
 	for i := range actualControlNames {
 		var e *ControlChangeEvent
 
-		wbgo.Debug.Printf("TEST: controlChange channel is %v", s.controlChange)
+		wbgong.Debug.Printf("TEST: controlChange channel is %v", s.controlChange)
 
 		t := time.After(5 * time.Second)
 		select {
 		case e = <-s.controlChange:
-			wbgo.Debug.Printf("received ControlChangeEvent %v", e)
+			wbgong.Debug.Printf("received ControlChangeEvent %v", e)
 		case <-t:
 			s.FailNow(fmt.Sprintf("timeout waiting for control change event: '%s'", expectedControlNames[i]))
 		}
@@ -195,7 +196,7 @@ func (s *RuleSuiteBase) T() *testing.T {
 func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	var err error
 
-	wbgo.SetDebuggingEnabled(true)
+	wbgong.SetDebuggingEnabled(true)
 
 	s.Suite.SetupTest()
 	s.FakeMQTTFixture = testutils.NewFakeMQTTFixture(s.T())
@@ -210,7 +211,7 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	}
 
 	s.driverClient = s.Broker.MakeClient("driver")
-	dargs := wbgo.NewDriverArgs().
+	dargs := wbgong.NewDriverArgs().
 		SetId(WBRULES_DRIVER_ID).
 		SetMqtt(s.driverClient).
 		SetTesting()
@@ -222,7 +223,7 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 		dargs.SetStoragePath(s.VdevStorageFile)
 	}
 
-	s.driver, err = wbgo.NewDriverBase(dargs)
+	s.driver, err = wbgong.NewDriverBase(dargs)
 	s.Ck("can't create driver", err)
 
 	err = s.driver.StartLoop()
@@ -231,7 +232,7 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	// wait for the first ready event
 	s.driver.WaitForReady()
 
-	s.driver.SetFilter(&wbgo.AllDevicesFilter{})
+	s.driver.SetFilter(&wbgong.AllDevicesFilter{})
 
 	s.cron = nil
 
@@ -316,14 +317,14 @@ func (s *RuleSuiteBase) SetupSkippingDefs(ruleFiles ...string) {
 	return
 }
 
-func (s *RuleSuiteBase) newFakeTimer(id TimerId, d time.Duration, periodic bool) wbgo.Timer {
+func (s *RuleSuiteBase) newFakeTimer(id TimerId, d time.Duration, periodic bool) wbgong.Timer {
 	return s.NewFakeTimerOrTicker(uint64(id), d, periodic)
 }
 
 func (s *RuleSuiteBase) publish(topic, value string, expectedCellNames ...string) {
 	retained := !strings.HasSuffix(topic, "/on")
-	wbgo.Debug.Printf("publishing %s to %s, expecting change of %v", value, topic, expectedCellNames)
-	s.client.Publish(wbgo.MQTTMessage{topic, value, 1, retained})
+	wbgong.Debug.Printf("publishing %s to %s, expecting change of %v", value, topic, expectedCellNames)
+	s.client.Publish(wbgong.MQTTMessage{topic, value, 1, retained})
 	s.expectControlChange(expectedCellNames...)
 }
 
@@ -336,7 +337,7 @@ func (s *RuleSuiteBase) publishSomedev() {
 }
 
 func (s *RuleSuiteBase) SetCellValue(devId, ctrlId string, value interface{}) {
-	err := s.driver.Access(func(tx wbgo.DriverTx) (err error) {
+	err := s.driver.Access(func(tx wbgong.DriverTx) (err error) {
 		dev := tx.GetDevice(devId)
 		ctrl := dev.GetControl(ctrlId)
 		err = ctrl.UpdateValue(value)()

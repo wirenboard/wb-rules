@@ -15,6 +15,8 @@ ifeq ($(DEB_TARGET_ARCH),i386)
 GO_ENV := GOARCH=386 CC=i586-linux-gnu-gcc
 endif
 
+GO_ENV := GO111MODULE=on $(GO_ENV)
+
 GO_FLAGS=-ldflags "-w"
 
 all: clean wb-rules
@@ -26,8 +28,8 @@ amd64:
 	$(MAKE) DEB_TARGET_ARCH=amd64
 
 wb-rules: main.go wbrules/*.go
-	$(GO_ENV) glide install
-	$(GO_ENV) go build
+	# $(GO_ENV) glide install
+	$(GO_ENV) go build -trimpath -ldflags "-w -X main.version=`git describe --tags --always --dirty`"
 
 install:
 	mkdir -p $(DESTDIR)/usr/bin/ $(DESTDIR)/etc/init.d/ $(DESTDIR)/etc/wb-rules/ $(DESTDIR)/usr/share/wb-mqtt-confed/schemas $(DESTDIR)/etc/wb-configs.d $(DESTDIR)/usr/share/wb-rules-system/scripts/ $(DESTDIR)/usr/share/wb-rules/
@@ -38,8 +40,9 @@ install:
 
 	install -m 0644 scripts/lib.js $(DESTDIR)/usr/share/wb-rules-system/scripts/lib.js
 	install -m 0644 rules/load_alarms.js $(DESTDIR)/usr/share/wb-rules/load_alarms.js
+	install -m 0644 $(DEB_TARGET_ARCH).wbgo.so $(DESTDIR)/usr/share/wb-rules/wbgo.so
 	install -m 0644 rules/alarms.conf $(DESTDIR)/etc/wb-rules/alarms.conf
 	install -m 0644 rules/alarms.schema.json $(DESTDIR)/usr/share/wb-mqtt-confed/schemas/alarms.schema.json
 
 deb:
-	CC=arm-linux-gnueabi-gcc dpkg-buildpackage -b -aarmel -us -uc
+	$(GO_ENV) dpkg-buildpackage -b -a$(DEB_TARGET_ARCH) -us -uc

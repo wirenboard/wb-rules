@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	duktape "github.com/contactless/go-duktape"
-	wbgo "github.com/evgeny-boger/wbgo"
+	"github.com/contactless/wbgong"
 	"github.com/stretchr/objx"
 )
 
@@ -88,7 +88,7 @@ func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, filename
 	ctx.initFilename(filename)
 	ctx.initHeapPropertyObjectIfNotExist(ESCALLBACKS_OBJ_NAME)
 
-	wbgo.Debug.Printf("create context %p\n", ctx)
+	wbgong.Debug.Printf("create context %p\n", ctx)
 
 	// save context for conversions
 	f.duktapeToESContextMap[*dctx] = ctx
@@ -115,7 +115,7 @@ func (ctx *ESContext) mustBeValid() {
 }
 
 func (ctx *ESContext) DefaultCallbackErrorHandler(err ESError) {
-	wbgo.Error.Printf("failed to invoke callback in context %p: %s", ctx, err)
+	wbgong.Error.Printf("failed to invoke callback in context %p: %s", ctx, err)
 }
 
 func (ctx *ESContext) SetCallbackErrorHandler(handler ESCallbackErrorHandler) {
@@ -169,12 +169,12 @@ func (ctx *ESContext) getJSObject(objIndex int, top bool) interface{} {
 			return m
 		}
 	case t.IsBuffer():
-		wbgo.Error.Println("buffers aren't supported yet")
+		wbgong.Error.Println("buffers aren't supported yet")
 		return nil
 	case t.IsPointer():
 		return ctx.GetPointer(objIndex)
 	default:
-		wbgo.Error.Panicf("bad object type %d", t)
+		wbgong.Error.Panicf("bad object type %d", t)
 		return nil // avoid compiler warning
 	}
 }
@@ -290,7 +290,7 @@ func (ctx *ESContext) callbackKey(key ESCallback) string {
 
 func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} {
 	ctx.mustBeValid()
-	wbgo.Debug.Printf("trying to invoke callback %d in context %p\n", key, ctx)
+	wbgong.Debug.Printf("trying to invoke callback %d in context %p\n", key, ctx)
 
 	ctx.PushHeapStash()
 
@@ -326,7 +326,7 @@ func (ctx *ESContext) storeCallback(callbackStackIndex int) ESCallback {
 	key := ctx.factory.callbackIndex
 	ctx.factory.callbackIndex++
 
-	wbgo.Debug.Printf("store callback %d at context %p\n", key, ctx)
+	wbgong.Debug.Printf("store callback %d at context %p\n", key, ctx)
 
 	ctx.PushHeapStash()
 	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
@@ -478,7 +478,7 @@ func (ctx *ESContext) DefineFunctions(fns map[string]func(*ESContext) int) {
 			if ctx, ok := factory.duktapeToESContextMap[*dctx]; ok {
 				return f(ctx)
 			} else {
-				wbgo.Error.Panicf("No known conversion for duktape context to ESContext from %v", dctx)
+				wbgong.Error.Panicf("No known conversion for duktape context to ESContext from %v", dctx)
 				panic("")
 			}
 		})
@@ -531,7 +531,7 @@ func (ctx *ESContext) GetESError() (r ESError) {
 		if groups != nil {
 			lineNumber, err := strconv.Atoi(groups[2])
 			if err != nil {
-				wbgo.Warn.Printf("bad js line number: %d", lineNumber)
+				wbgong.Warn.Printf("bad js line number: %d", lineNumber)
 				continue
 			}
 			r.Traceback = append(r.Traceback, ESLocation{groups[1], lineNumber})
@@ -559,7 +559,7 @@ func (ctx *ESContext) GetESErrorAugmentingSyntaxErrors(path string) (r ESError) 
 
 	lineNumber, err := strconv.Atoi(groups[1])
 	if err != nil {
-		wbgo.Warn.Printf("bad js line number: %d", lineNumber)
+		wbgong.Warn.Printf("bad js line number: %d", lineNumber)
 		return
 	}
 

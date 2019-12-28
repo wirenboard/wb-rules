@@ -9,7 +9,7 @@ import (
 	"sync"
 	"syscall"
 
-	wbgo "github.com/evgeny-boger/wbgo"
+	wbgong "github.com/contactless/wbgong"
 )
 
 type CommandResult struct {
@@ -85,7 +85,7 @@ func Spawn(name string, args []string, captureOutput bool, captureErrorOutput bo
 	if err = cmd.Wait(); err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			r.ExitStatus = exitErr.Sys().(syscall.WaitStatus).ExitStatus()
-			wbgo.Debug.Printf("command '%s': error: exit status: %d", cmd.Path, r.ExitStatus)
+			wbgong.Debug.Printf("command '%s': error: exit status: %d", cmd.Path, r.ExitStatus)
 		} else {
 			return nil, err
 		}

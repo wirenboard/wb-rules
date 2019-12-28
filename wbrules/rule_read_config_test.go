@@ -2,10 +2,11 @@ package wbrules
 
 import (
 	"fmt"
-	"github.com/evgeny-boger/wbgo/testutils"
 	"io/ioutil"
 	"path/filepath"
 	"testing"
+
+	"github.com/contactless/wbgong/testutils"
 )
 
 type RuleReadConfigSuite struct {

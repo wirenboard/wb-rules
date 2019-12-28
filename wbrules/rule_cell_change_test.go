@@ -1,8 +1,9 @@
 package wbrules
 
 import (
-	"github.com/evgeny-boger/wbgo/testutils"
 	"testing"
+
+	"github.com/contactless/wbgong/testutils"
 )
 
 type RuleCellChangesSuite struct {
@@ -20,10 +21,10 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 	// The engine prints warnings if a rule gets marked as cell-less,
 	// but only in case if debugging is enabled, as not to pollute
 	// logs with too much warnings.
-	// wbgo.SetDebuggingEnabled(true)
+	// wbgong.SetDebuggingEnabled(true)
 	// We don't want to skew other test resuls becuse Engine
-	// initializes its MQTT debug flag fron wbgo debug flag
-	// defer wbgo.SetDebuggingEnabled(false)
+	// initializes its MQTT debug flag fron wbgong debug flag
+	// defer wbgong.SetDebuggingEnabled(false)
 
 	s.publish("/devices/cellch/controls/button/on", "1",
 		"cellch/button", "cellch/sw", "cellch/misc")

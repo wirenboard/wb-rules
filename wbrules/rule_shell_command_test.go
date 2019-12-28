@@ -1,11 +1,12 @@
 package wbrules
 
 import (
-	"github.com/evgeny-boger/wbgo/testutils"
 	"os"
 	"path"
 	"testing"
 	"time"
+
+	"github.com/contactless/wbgong/testutils"
 )
 
 type RuleShellCommandSuite struct {
