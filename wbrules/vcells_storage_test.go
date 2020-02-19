@@ -1,11 +1,12 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo"
-	"github.com/contactless/wbgo/testutils"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/contactless/wbgo"
+	"github.com/contactless/wbgo/testutils"
 )
 
 type VirtualCellsStorageSuite struct {
@@ -53,6 +54,7 @@ func (s *VirtualCellsStorageSuite) TestStorage1() {
 		"driver -> /devices/test-vdev/controls/cell3: [1] (QoS 1, retained)",
 		"driver -> /devices/test-vdev/controls/cellText: [bar] (QoS 1, retained)",
 	)
+	s.engine.RuleEngine.FlushStorage()
 	s.VerifyEmpty()
 }
 
@@ -63,6 +65,7 @@ func (s *VirtualCellsStorageSuite) TestStorage2() {
 		"driver -> /devices/test-trigger/controls/echo: [1] (QoS 1)",
 		"[info] vdev true, true, false, bar",
 	)
+	s.engine.RuleEngine.FlushStorage()
 	s.VerifyEmpty()
 }
 

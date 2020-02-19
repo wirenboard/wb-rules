@@ -2,17 +2,21 @@ package wbrules
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/boltdb/bolt"
 	wbgo "github.com/contactless/wbgo"
 	"github.com/robfig/cron"
 	"github.com/stretchr/objx"
-	"log"
-	"os"
-	"sort"
-	"strings"
-	"sync"
-	"time"
 )
+
+var storageCacheParam = os.Getenv("WBGO_STORAGE_CACHE_SEC")
 
 type EngineLogLevel int
 
@@ -26,6 +30,8 @@ const (
 	RULE_DEBUG_CELL_NAME          = "Rule debugging"
 
 	VIRTUAL_CELLS_DB_CHMOD = 0640
+
+	DEFAULT_STORAGE_CACHE_SECONDS = 30
 
 	ENGINE_LOG_DEBUG = EngineLogLevel(iota)
 	ENGINE_LOG_INFO
@@ -189,7 +195,14 @@ type RuleEngine struct {
 	debugEnabled        bool
 	readyCh             chan struct{}
 	virtualCellsStorage *bolt.DB
+	storageQueue        map[string]storageRow
+	storageMutex        sync.Mutex
+	storageTicker       *time.Ticker
+	exitCh              chan bool
+	stopWg              sync.WaitGroup
 }
+
+type storageRow map[string]string
 
 func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *RuleEngineOptions) (engine *RuleEngine) {
 	if options == nil {
@@ -218,7 +231,22 @@ func NewRuleEngine(model *CellModel, mqttClient wbgo.MQTTClient, options *RuleEn
 		debugEnabled:        wbgo.DebuggingEnabled(),
 		readyCh:             nil,
 		virtualCellsStorage: nil,
+		exitCh:              make(chan bool),
+		stopWg:              sync.WaitGroup{},
 	}
+
+	var storageCacheTime = DEFAULT_STORAGE_CACHE_SECONDS
+	if storageCacheParam != "" {
+		parsedCacheTime, errParse := strconv.Atoi(storageCacheParam)
+		if errParse != nil || parsedCacheTime < 1 {
+			wbgo.Warn.Printf("Bad WBGO_STORAGE_CACHE_SEC environment variable, must be more then 0. Using default value %d", DEFAULT_STORAGE_CACHE_SECONDS)
+			storageCacheTime = DEFAULT_STORAGE_CACHE_SECONDS
+		} else {
+			storageCacheTime = parsedCacheTime
+		}
+	}
+	engine.storageTicker = time.NewTicker(time.Duration(storageCacheTime) * time.Second) // TODO: make parameter configurable
+	engine.storageQueue = make(map[string]storageRow)
 
 	if options.VirtualCellsStorageFile != "" {
 		if err := engine.SetVirtualCellsDBMode(options.VirtualCellsStorageFile,
@@ -268,6 +296,8 @@ func (engine *RuleEngine) CloseVirtualCellsDB() (err error) {
 		return
 	}
 
+	engine.cachedSaveToStorage()
+
 	err = engine.virtualCellsStorage.Close()
 
 	return
@@ -288,6 +318,16 @@ func (engine *RuleEngine) getVirtualCellValueFromDB(device string, control strin
 		err = fmt.Errorf("DB is not initialized")
 		return
 	}
+
+	engine.storageMutex.Lock()
+	if _, ok := engine.storageQueue[device]; ok {
+		if _, ok := engine.storageQueue[device][control]; ok {
+			ret := engine.storageQueue[device][control]
+			engine.storageMutex.Unlock()
+			return ret, nil
+		}
+	}
+	engine.storageMutex.Unlock()
 
 	err = engine.virtualCellsStorage.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(device))
@@ -316,37 +356,13 @@ func (engine *RuleEngine) getVirtualCellValueFromDB(device string, control strin
 
 // Set cell value in virtual cells DB
 func (engine *RuleEngine) storeVirtualCellValueToDBRaw(device string, control string, value string) (err error) {
-	ok := true
-
-	if engine.virtualCellsStorage == nil {
-		err = fmt.Errorf("DB is not initialized")
-		return
+	engine.storageMutex.Lock()
+	defer engine.storageMutex.Unlock()
+	if _, ok := engine.storageQueue[device]; !ok {
+		engine.storageQueue[device] = make(storageRow)
 	}
-
-	err = engine.virtualCellsStorage.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucketIfNotExists([]byte(device))
-		if err != nil {
-			ok = false
-			return err
-		}
-
-		if err := b.Put([]byte(control), []byte(value)); err != nil {
-			ok = false
-			return err
-		}
-
-		return nil
-	})
-
-	if !ok {
-		err = fmt.Errorf("error writing cell value to DB: %s", err)
-		return
-	}
-
-	wbgo.Debug.Printf("%s/%s: store virtual cell value to DB: \"%s\"",
-		device, control, value)
-
-	return
+	engine.storageQueue[device][control] = value
+	return nil
 }
 
 func (engine *RuleEngine) storeVirtualCellValueToDB(cellSpec *CellSpec) (err error) {
@@ -575,6 +591,7 @@ func (engine *RuleEngine) handleStop() {
 	engine.cellChange = nil
 	engine.readyCh = nil
 	engine.statusMtx.Unlock()
+	engine.CloseVirtualCellsDB()
 }
 
 func (engine *RuleEngine) isDebugCell(cellSpec *CellSpec) bool {
@@ -671,9 +688,65 @@ func (engine *RuleEngine) Start() {
 					engine.handleStop()
 					return
 				}
+			case <-engine.storageTicker.C:
+				engine.cachedSaveToStorage()
+			case <-engine.exitCh:
+				engine.handleStop()
+				engine.stopWg.Done()
+				return
 			}
 		}
 	}()
+}
+
+// Stop gracefully shutdowns RuleEngine
+func (engine *RuleEngine) Stop() {
+	engine.stopWg.Add(1)
+	engine.exitCh <- true
+	engine.stopWg.Wait()
+}
+
+// FlushStorage writes cached data to disk
+func (engine *RuleEngine) FlushStorage() {
+	engine.cachedSaveToStorage()
+}
+
+func (engine *RuleEngine) cachedSaveToStorage() (err error) {
+	wbgo.Debug.Println("Flushing cached storage to disk")
+	engine.storageMutex.Lock()
+	defer engine.storageMutex.Unlock()
+
+	if engine.virtualCellsStorage == nil || len(engine.storageQueue) < 1 {
+		return nil
+	}
+
+	if engine.virtualCellsStorage == nil || len(engine.storageQueue) < 1 {
+		return nil
+	}
+	err = engine.virtualCellsStorage.Update(func(tx *bolt.Tx) error {
+		for devID, controls := range engine.storageQueue {
+			for ctrlID, value := range controls {
+				b, err := tx.CreateBucketIfNotExists([]byte(devID))
+				if err != nil {
+					wbgo.Error.Printf("Can't create bucket for device %s: %s", devID, err)
+					continue
+				}
+
+				if err := b.Put([]byte(ctrlID), []byte(value)); err != nil {
+					wbgo.Error.Printf("Can't save value for control %s: %s", ctrlID, err)
+					continue
+				}
+				wbgo.Debug.Printf("%s/%s: store virtual cell value to DB: \"%s\"",
+					devID, ctrlID, value)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		wbgo.Error.Printf("Can't save message to storage: %s", err)
+	}
+	engine.storageQueue = make(map[string]storageRow)
+	return
 }
 
 func (engine *RuleEngine) IsActive() bool {

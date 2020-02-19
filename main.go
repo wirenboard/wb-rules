@@ -3,8 +3,9 @@ package main
 import (
 	"flag"
 	"os"
+	"os/signal"
 	"strings"
-	"time"
+	"syscall"
 
 	"github.com/contactless/wb-rules/wbrules"
 	"github.com/contactless/wbgo"
@@ -81,7 +82,18 @@ func main() {
 
 	engine.Start()
 
-	for {
-		time.Sleep(1 * time.Second)
-	}
+	waitSignals()
+
+	engine.Stop()
+}
+
+func waitSignals() {
+	sigs := make(chan os.Signal, 1)
+	done := make(chan bool, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		done <- true
+	}()
+	<-done
 }
