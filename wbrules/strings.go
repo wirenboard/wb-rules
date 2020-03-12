@@ -29,4 +29,5 @@ const (
 	JS_DEVPROXY_FUNC_VALUE        = "value"
 	JS_DEVPROXY_FUNC_VALUE_RET    = "v"
 	JS_DEVPROXY_FUNC_ISCOMPLETE   = "isComplete"
+	JS_DEVPROXY_FUNC_GETMETA      = "getMeta"
 )

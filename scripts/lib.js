@@ -81,9 +81,17 @@ var _WbRules = {
     }
     return o[name] = new Proxy(_wbDevObject(name), {
       get: function (dev, name) {
+        var sharpPosition = name.indexOf("#");
+        var metaField = "";
+        if (sharpPosition > 0 && sharpPosition < name.length - 1) {
+          metaField = name.slice(sharpPosition + 1);
+          name = name.slice(0, sharpPosition);
+        }
         var cell = ensureCell(dev, name);
         if (_WbRules.requireCompleteCells && !cell.isComplete())
           throw new _WbRules.IncompleteCellCaught(name);
+        if (metaField !== "")
+          return cell.getMeta()[metaField];
         return cell.value().v;
       },
       set: function (dev, name, value) {

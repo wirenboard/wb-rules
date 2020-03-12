@@ -1142,6 +1142,21 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 			ctx.PushBoolean(c.IsComplete())
 			return 1
 		},
+		JS_DEVPROXY_FUNC_GETMETA: func(ctx *ESContext) int {
+			ctx.PushThis()
+			c := ctx.GetGoObject(-1).(*ControlProxy)
+			ctx.Pop()
+
+			ctrlMeta := c.control.GetMeta()
+			dataMap := make(map[string]interface{})
+			for key, value := range ctrlMeta {
+				dataMap[key] = value
+			}
+			m := objx.New(dataMap)
+			ctx.PushJSObject(m)
+
+			return 1
+		},
 	})
 	return 1
 }
