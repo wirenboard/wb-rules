@@ -312,6 +312,36 @@ func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
 	}
 }
 
+// SetError sets error value of controller
+func (ctrlProxy *ControlProxy) SetError(err string) {
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[ctrlProxy %s/%s] SetError(%v)", ctrlProxy.devProxy.name, ctrlProxy.name, err)
+	}
+
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		wbgong.Error.Printf("failed to SetError for unexisting control")
+		return
+	}
+
+	isLocal := false
+	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
+		errSet := errors.New(err)
+		ctrl.SetTx(tx)
+		_, isLocal = ctrl.GetDevice().(wbgong.LocalDevice)
+		return ctrl.SetError(errSet)()
+	})
+
+	//if isLocal {
+	//	// run update value handler immediately, don't wait for wbgong backend
+	//	ctrlProxy.updateValueHandler(nil, value, nil)
+	//}
+
+	if errAccess != nil {
+		wbgong.Error.Printf("control %s/%s SetError() error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, err)
+	}
+}
+
 // FIXME: error handling here
 func (ctrlProxy *ControlProxy) IsComplete() (v bool) {
 	ctrl := ctrlProxy.getControl()

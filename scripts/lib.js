@@ -95,7 +95,17 @@ var _WbRules = {
         return cell.value().v;
       },
       set: function (dev, name, value) {
-        ensureCell(dev, name).setValue({ v: value });
+        var sharpPosition = name.indexOf("#");
+        var metaField = "";
+        if (sharpPosition > 0 && sharpPosition < name.length - 1) {
+          metaField = name.slice(sharpPosition + 1);
+          name = name.slice(0, sharpPosition);
+        }
+        if (metaField === "error") {
+          ensureCell(dev, name).setError({ v: value });
+        } else {
+          ensureCell(dev, name).setValue({ v: value });
+        }
       }
     });
   },
