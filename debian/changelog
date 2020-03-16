@@ -1,3 +1,9 @@
+wb-rules (2.2.1) stable; urgency=medium
+
+  * Fix writeable flag on creation of virtual device
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Mon, 16 Mar 2020 22:53:08 +0300
+
 wb-rules (2.2) stable; urgency=medium
 
   * release version 2.2
