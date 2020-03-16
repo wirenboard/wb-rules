@@ -101,8 +101,8 @@ var _WbRules = {
           metaField = name.slice(sharpPosition + 1);
           name = name.slice(0, sharpPosition);
         }
-        if (metaField === "error") {
-          ensureCell(dev, name).setError({ v: value });
+        if (metaField !== "") {
+          ensureCell(dev, name).setMeta({ k: metaField, v: value });
         } else {
           ensureCell(dev, name).setValue({ v: value });
         }

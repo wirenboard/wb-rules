@@ -1134,7 +1134,7 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 			c.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG])
 			return 1
 		},
-		JS_DEVPROXY_FUNC_SETERROR: func(ctx *ESContext) int {
+		JS_DEVPROXY_FUNC_SETMETA: func(ctx *ESContext) int {
 			ctx.PushThis()
 			c := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
@@ -1147,8 +1147,12 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 				wbgong.Error.Printf("invalid control definition")
 				return duktape.DUK_RET_TYPE_ERROR
 			}
-			toSet := fmt.Sprintf("%v", m[JS_DEVPROXY_FUNC_SETVALUE_ARG])
-			c.SetError(toSet)
+			key := fmt.Sprintf("%v", m[JS_DEVPROXY_FUNC_SETVALUE_KEY])
+			value := fmt.Sprintf("%v", m[JS_DEVPROXY_FUNC_SETVALUE_ARG])
+			cce := c.SetMeta(key, value)
+			if cce != nil {
+				engine.PushToEventBuffer(cce)
+			}
 			return 1
 		},
 		JS_DEVPROXY_FUNC_ISCOMPLETE: func(ctx *ESContext) int {

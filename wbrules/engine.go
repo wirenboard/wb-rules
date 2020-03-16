@@ -312,34 +312,56 @@ func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
 	}
 }
 
-// SetError sets error value of controller
-func (ctrlProxy *ControlProxy) SetError(err string) {
+// SetMeta sets meta field of controller
+func (ctrlProxy *ControlProxy) SetMeta(key, value string) (cce *ControlChangeEvent) {
 	if wbgong.DebuggingEnabled() {
-		wbgong.Debug.Printf("[ctrlProxy %s/%s] SetError(%v)", ctrlProxy.devProxy.name, ctrlProxy.name, err)
+		wbgong.Debug.Printf("[ctrlProxy %s/%s] SetMeta(%v=%v)", ctrlProxy.devProxy.name, ctrlProxy.name, key, value)
 	}
 
 	ctrl := ctrlProxy.getControl()
 	if ctrl == nil {
-		wbgong.Error.Printf("failed to SetError for unexisting control")
+		wbgong.Error.Printf("failed to SetMeta for unexisting control")
 		return
 	}
 
+	var spec ControlSpec
+	isComplete := false
+	isRetained := false
+
 	isLocal := false
 	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
-		errSet := errors.New(err)
 		ctrl.SetTx(tx)
 		_, isLocal = ctrl.GetDevice().(wbgong.LocalDevice)
-		return ctrl.SetError(errSet)()
+		isComplete = ctrl.IsComplete()
+		isRetained = ctrl.IsRetained()
+		ctrlID := fmt.Sprintf("%s#%s", ctrl.GetId(), key)
+		spec = ControlSpec{ctrl.GetDevice().GetId(), ctrlID}
+		switch key {
+		case wbgong.CONV_META_SUBTOPIC_ERROR:
+			errSet := errors.New(value)
+			return ctrl.SetError(errSet)()
+		case wbgong.CONV_META_SUBTOPIC_DESCRIPTION:
+			return ctrl.SetDescription(value)()
+		default:
+			errText := fmt.Sprintf("setting up meta field with name '%s' is unsupported", key)
+			return errors.New(errText)
+		}
+
 	})
 
-	//if isLocal {
-	//	// run update value handler immediately, don't wait for wbgong backend
-	//	ctrlProxy.updateValueHandler(nil, value, nil)
-	//}
-
 	if errAccess != nil {
-		wbgong.Error.Printf("control %s/%s SetError() error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, err)
+		wbgong.Error.Printf("control %s/%s SetMeta(%s=%s) error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, key, value, errAccess)
+		return
 	}
+	if isLocal {
+		cce = &ControlChangeEvent{
+			Spec:       spec,
+			IsComplete: isComplete,
+			IsRetained: isRetained,
+			Value:      value,
+		}
+	}
+	return
 }
 
 // FIXME: error handling here
@@ -663,6 +685,11 @@ ReadyWaitLoop:
 	}
 }
 
+// PushToEventBuffer sends prepared ControlChangeEvent to engines event buffer
+func (engine *RuleEngine) PushToEventBuffer(cce *ControlChangeEvent) {
+	engine.eventBuffer.PushEvent(cce)
+}
+
 func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 	if atomic.LoadUint32(&engine.active) == ENGINE_STOP {
 		return
@@ -691,6 +718,18 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 
 		// here we need to invalidate controls/devices proxy
 		atomic.AddUint32(&engine.rev, 1)
+
+		// pushing event about new external meta received
+		ev := event.(wbgong.NewExternalDeviceControlMetaEvent)
+		metaCtrl := fmt.Sprintf("%s#%s", e.Control.GetId(), ev.Type)
+		metaSpec := ControlSpec{e.Control.GetDevice().GetId(), metaCtrl}
+		metaCCE := &ControlChangeEvent{
+			Spec:       metaSpec,
+			IsComplete: true, //TODO: find if all controls complete
+			IsRetained: isRetained,
+			Value:      ev.Value,
+		}
+		engine.eventBuffer.PushEvent(metaCCE)
 	default:
 		return
 	}
