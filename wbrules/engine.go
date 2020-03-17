@@ -332,34 +332,27 @@ func (ctrlProxy *ControlProxy) SetMeta(key, value string) (cce *ControlChangeEve
 	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
 		ctrl.SetTx(tx)
 		_, isLocal = ctrl.GetDevice().(wbgong.LocalDevice)
+		if !isLocal {
+			return wbgong.ExternalControlError
+		}
 		isComplete = ctrl.IsComplete()
 		isRetained = ctrl.IsRetained()
 		ctrlID := fmt.Sprintf("%s#%s", ctrl.GetId(), key)
 		spec = ControlSpec{ctrl.GetDevice().GetId(), ctrlID}
-		switch key {
-		case wbgong.CONV_META_SUBTOPIC_ERROR:
-			errSet := errors.New(value)
-			return ctrl.SetError(errSet)()
-		case wbgong.CONV_META_SUBTOPIC_DESCRIPTION:
-			return ctrl.SetDescription(value)()
-		default:
-			errText := fmt.Sprintf("setting up meta field with name '%s' is unsupported", key)
-			return errors.New(errText)
-		}
 
+		unsafeTx := ctrl.GetDevice().GetDriver().CreateUnsafeTx()
+		return unsafeTx.UpdateControlMeta(ctrl, key, value)()
 	})
 
 	if errAccess != nil {
 		wbgong.Error.Printf("control %s/%s SetMeta(%s=%s) error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, key, value, errAccess)
 		return
 	}
-	if isLocal {
-		cce = &ControlChangeEvent{
-			Spec:       spec,
-			IsComplete: isComplete,
-			IsRetained: isRetained,
-			Value:      value,
-		}
+	cce = &ControlChangeEvent{
+		Spec:       spec,
+		IsComplete: isComplete,
+		IsRetained: isRetained,
+		Value:      value,
 	}
 	return
 }
