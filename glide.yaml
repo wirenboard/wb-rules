@@ -1,12 +1,12 @@
 package: github.com/contactless/wb-rules
 import:
 - package: github.com/DisposaBoy/JsonConfigReader
-- package: github.com/contactless/wbgo
+- package: github.com/evgeny-boger/wbgo
   subpackages:
   - testutils
-  version: quickfix/queue_size-nmu2
+  version: feature/rework_test
 - package: github.com/contactless/go-duktape
-- package: github.com/robfig/cron
+- package: gopkg.in/robfig/cron.v1
 - package: github.com/stretchr/objx
 - package: github.com/stretchr/testify
   subpackages:

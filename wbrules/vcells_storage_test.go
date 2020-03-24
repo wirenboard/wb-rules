@@ -1,11 +1,12 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo"
-	"github.com/contactless/wbgo/testutils"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/contactless/wbgong"
+	"github.com/contactless/wbgong/testutils"
 )
 
 type VirtualCellsStorageSuite struct {
@@ -19,7 +20,7 @@ func (s *VirtualCellsStorageSuite) SetupFixture() {
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}
-	wbgo.Debug.Printf("created temp dir %s", s.tmpDir)
+	wbgong.Debug.Printf("created temp dir %s", s.tmpDir)
 }
 
 func (s *VirtualCellsStorageSuite) TearDownFixture() {
@@ -27,7 +28,7 @@ func (s *VirtualCellsStorageSuite) TearDownFixture() {
 }
 
 func (s *VirtualCellsStorageSuite) SetupTest() {
-	s.VirtualCellsStorageFile = s.tmpDir + "/test-vcells.db"
+	s.VdevStorageFile = s.tmpDir + "/test-vcells.db"
 	s.SetupSkippingDefs("testrules_vcells_storage.js")
 }
 

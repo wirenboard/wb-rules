@@ -1,14 +1,19 @@
 package wbrules
 
 import (
-	wbgo "github.com/contactless/wbgo"
+	wbgong "github.com/contactless/wbgong"
 	"github.com/stretchr/objx"
+)
+
+const (
+	RULE_OR_COND_CAPACITY = 10
 )
 
 type DepTracker interface {
 	StartTrackingDeps()
-	StoreRuleCellSpec(rule *Rule, cellSpec *CellSpec)
+	StoreRuleControlSpec(rule *Rule, ctrlSpec ControlSpec)
 	StoreRuleDeps(rule *Rule)
+	SetUninitializedRule(rule *Rule)
 }
 
 type Cron interface {
@@ -24,19 +29,24 @@ type RuleCondition interface {
 	// to be passed as newValue to the rule. In
 	// case nil is returned as the optional value,
 	// the value of cell must be used.
-	Check(cell *Cell) (bool, interface{})
-	GetCells() []*CellSpec
+	RequireInitialization() bool
+	Check(e *ControlChangeEvent) (bool, interface{})
+	GetControlSpecs() []ControlSpec
 	MaybeAddToCron(cron Cron, thunk func()) (added bool, err error)
 }
 
 type RuleConditionBase struct{}
 
-func (ruleCond *RuleConditionBase) Check(Cell *Cell) (bool, interface{}) {
+func (ruleCond *RuleConditionBase) RequireInitialization() bool {
+	return true
+}
+
+func (ruleCond *RuleConditionBase) Check(e *ControlChangeEvent) (bool, interface{}) {
 	return false, nil
 }
 
-func (ruleCond *RuleConditionBase) GetCells() []*CellSpec {
-	return []*CellSpec{}
+func (ruleCond *RuleConditionBase) GetControlSpecs() []ControlSpec {
+	return []ControlSpec{}
 }
 
 func (ruleCond *RuleConditionBase) MaybeAddToCron(cron Cron, thunk func()) (bool, error) {
@@ -58,7 +68,7 @@ func NewLevelTriggeredRuleCondition(cond func() bool) *LevelTriggeredRuleConditi
 	}
 }
 
-func (ruleCond *LevelTriggeredRuleCondition) Check(cell *Cell) (bool, interface{}) {
+func (ruleCond *LevelTriggeredRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
 	return ruleCond.cond(), nil
 }
 
@@ -70,7 +80,7 @@ func NewDestroyedRuleCondition() *DestroyedRuleCondition {
 	return &DestroyedRuleCondition{}
 }
 
-func (ruleCond *DestroyedRuleCondition) Check(cell *Cell) (bool, interface{}) {
+func (ruleCond *DestroyedRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
 	panic("invoking a destroyed rule")
 }
 
@@ -88,7 +98,7 @@ func NewEdgeTriggeredRuleCondition(cond func() bool) *EdgeTriggeredRuleCondition
 	}
 }
 
-func (ruleCond *EdgeTriggeredRuleCondition) Check(cell *Cell) (bool, interface{}) {
+func (ruleCond *EdgeTriggeredRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
 	current := ruleCond.cond()
 	shouldFire := current && (ruleCond.firstRun || current != ruleCond.prevCondValue)
 	ruleCond.prevCondValue = current
@@ -98,37 +108,40 @@ func (ruleCond *EdgeTriggeredRuleCondition) Check(cell *Cell) (bool, interface{}
 
 type CellChangedRuleCondition struct {
 	RuleConditionBase
-	cellSpec CellSpec
+	ctrlSpec ControlSpec
 	oldValue interface{}
 }
 
-func NewCellChangedRuleCondition(cellSpec CellSpec) (*CellChangedRuleCondition, error) {
+func NewCellChangedRuleCondition(ctrlSpec ControlSpec) (*CellChangedRuleCondition, error) {
 	return &CellChangedRuleCondition{
-		cellSpec: cellSpec,
+		ctrlSpec: ctrlSpec,
 		oldValue: nil,
 	}, nil
 }
 
-func (ruleCond *CellChangedRuleCondition) GetCells() []*CellSpec {
-	return []*CellSpec{&ruleCond.cellSpec}
+func (ruleCond *CellChangedRuleCondition) RequireInitialization() bool {
+	return false
 }
 
-func (ruleCond *CellChangedRuleCondition) Check(cell *Cell) (bool, interface{}) {
-	if cell == nil || cell.DevName() != ruleCond.cellSpec.DevName ||
-		cell.Name() != ruleCond.cellSpec.CellName {
+func (ruleCond *CellChangedRuleCondition) GetControlSpecs() []ControlSpec {
+	return []ControlSpec{ruleCond.ctrlSpec}
+}
+
+func (ruleCond *CellChangedRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
+	if e == nil || e.Spec != ruleCond.ctrlSpec {
 		return false, nil
 	}
 
-	if !cell.IsComplete() {
-		wbgo.Debug.Printf("skipping rule due to incomplete cell in whenChanged: %s/%s",
-			cell.DevName(), cell.Name())
+	if !e.IsComplete {
+		wbgong.Debug.Printf("skipping rule due to incomplete cell in whenChanged: %s", e.Spec)
 		return false, nil
 	}
 
-	v := cell.Value()
-	if ruleCond.oldValue == v && !cell.IsButton() {
+	v := e.Value
+	if e.IsRetained && ruleCond.oldValue == v {
 		return false, nil
 	}
+
 	ruleCond.oldValue = v
 	return true, nil
 }
@@ -146,7 +159,7 @@ func NewFuncValueChangedRuleCondition(f func() interface{}) *FuncValueChangedRul
 	}
 }
 
-func (ruleCond *FuncValueChangedRuleCondition) Check(cell *Cell) (bool, interface{}) {
+func (ruleCond *FuncValueChangedRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
 	v := ruleCond.thunk()
 	if ruleCond.oldValue == v {
 		return false, nil
@@ -157,28 +170,59 @@ func (ruleCond *FuncValueChangedRuleCondition) Check(cell *Cell) (bool, interfac
 
 type OrRuleCondition struct {
 	RuleConditionBase
-	conds []RuleCondition
+	initialized bool
+	conds       []RuleCondition
 }
 
 func NewOrRuleCondition(conds []RuleCondition) *OrRuleCondition {
-	return &OrRuleCondition{conds: conds}
+	ret := &OrRuleCondition{initialized: false, conds: conds}
+	if !ret.RequireInitialization() {
+		ret.initialized = true
+	}
+	return ret
 }
 
-func (ruleCond *OrRuleCondition) GetCells() []*CellSpec {
-	r := make([]*CellSpec, 0, 10)
+func (ruleCond *OrRuleCondition) RequireInitialization() bool {
+	for i := range ruleCond.conds {
+		if ruleCond.conds[i].RequireInitialization() {
+			return true
+		}
+	}
+	return false
+}
+
+func (ruleCond *OrRuleCondition) GetControlSpecs() []ControlSpec {
+	r := make([]ControlSpec, 0, RULE_OR_COND_CAPACITY)
 	for _, cond := range ruleCond.conds {
-		r = append(r, cond.GetCells()...)
+		r = append(r, cond.GetControlSpecs()...)
 	}
 	return r
 }
 
-func (ruleCond *OrRuleCondition) Check(cell *Cell) (bool, interface{}) {
+func (ruleCond *OrRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
+	// if condition is not initialized, we need to check all subconditions to collect deps
+	// 'Or' condition is initialized by default if no subconditions requires initialization
+	var res = false
+	var newValue interface{}
+	var gotValue = false
+
 	for _, cond := range ruleCond.conds {
-		if shouldFire, newValue := cond.Check(cell); shouldFire {
-			return true, newValue
+		if shouldFire, newVal := cond.Check(e); shouldFire {
+			// this condition is to keep
+			if !ruleCond.initialized {
+				if !gotValue {
+					gotValue = true
+					newValue = newVal
+					res = true
+				}
+			} else {
+				return true, newVal
+			}
 		}
 	}
-	return false, nil
+
+	ruleCond.initialized = true
+	return res, newValue
 }
 
 type CronRuleCondition struct {
@@ -196,31 +240,45 @@ func (ruleCond *CronRuleCondition) MaybeAddToCron(cron Cron, thunk func()) (adde
 	return
 }
 
+// RuleId is returned from defineRule to control rule
+type RuleId uint32
+
 type Rule struct {
-	tracker     DepTracker
-	name        string
-	cond        RuleCondition
-	then        ESCallbackFunc
-	shouldCheck bool
-	nonCellRule bool
+	tracker       DepTracker
+	id            RuleId
+	context       *ESContext
+	name          string // optional, but will be checked for redefinition if set
+	cond          RuleCondition
+	then          ESCallbackFunc
+	shouldCheck   bool
+	isIndependent bool
+	hasDeps       bool
+	enabled       bool
 }
 
-func NewRule(tracker DepTracker, name string, cond RuleCondition, then ESCallbackFunc) *Rule {
+func NewRule(tracker DepTracker, id RuleId, name string, cond RuleCondition, then ESCallbackFunc) *Rule {
 	rule := &Rule{
-		tracker:     tracker,
-		name:        name,
-		cond:        cond,
-		then:        then,
-		shouldCheck: false,
-		nonCellRule: false,
+		tracker:       tracker,
+		id:            id,
+		name:          name,
+		cond:          cond,
+		then:          then,
+		shouldCheck:   false,
+		isIndependent: false,
+		hasDeps:       false,
+		enabled:       true,
 	}
 	rule.StoreInitiallyKnownDeps()
 	return rule
 }
 
 func (rule *Rule) StoreInitiallyKnownDeps() {
-	for _, cellSpec := range rule.cond.GetCells() {
-		rule.tracker.StoreRuleCellSpec(rule, cellSpec)
+	for _, ctrlSpec := range rule.cond.GetControlSpecs() {
+		rule.tracker.StoreRuleControlSpec(rule, ctrlSpec)
+		rule.hasDeps = true
+	}
+	if rule.cond.RequireInitialization() {
+		rule.tracker.SetUninitializedRule(rule)
 	}
 }
 
@@ -228,8 +286,8 @@ func (rule *Rule) ShouldCheck() {
 	rule.shouldCheck = true
 }
 
-func (rule *Rule) Check(cell *Cell) {
-	if cell != nil && !rule.shouldCheck {
+func (rule *Rule) Check(e *ControlChangeEvent) {
+	if e != nil && !rule.shouldCheck {
 		// Don't invoke js if no cells mentioned in the
 		// condition callback changed. If rules are run
 		// not due to a cell being changed, still need
@@ -237,35 +295,40 @@ func (rule *Rule) Check(cell *Cell) {
 		return
 	}
 	rule.tracker.StartTrackingDeps()
-	shouldFire, newValue := rule.cond.Check(cell)
+	shouldFire, newValue := rule.cond.Check(e)
 	var args objx.Map
 	rule.tracker.StoreRuleDeps(rule)
 	rule.shouldCheck = false
 
-	switch {
-	case !shouldFire:
-		return
-	case newValue != nil:
-		args = objx.New(map[string]interface{}{
-			"newValue": newValue,
-		})
-	case cell != nil:
-		args = objx.New(map[string]interface{}{
-			"device":   cell.DevName(),
-			"cell":     cell.Name(),
-			"newValue": cell.Value(),
-		})
+	if rule.enabled {
+		switch {
+		case !shouldFire:
+			return
+		case newValue != nil:
+			args = objx.New(map[string]interface{}{
+				"newValue": newValue,
+			})
+		case e != nil:
+			args = objx.New(map[string]interface{}{
+				"device":   e.Spec.DeviceId,
+				"cell":     e.Spec.ControlId,
+				"newValue": e.Value,
+			})
+		}
+		if wbgong.DebuggingEnabled() {
+			wbgong.Debug.Printf("[rule] firing Rule ruleId=%d", rule.id)
+		}
+		rule.then(args)
 	}
-	rule.then(args)
 }
 
 func (rule *Rule) MaybeAddToCron(cron Cron) {
 	var err error
-	rule.nonCellRule, err = rule.cond.MaybeAddToCron(cron, func() {
+	rule.isIndependent, err = rule.cond.MaybeAddToCron(cron, func() {
 		rule.then(nil)
 	})
 	if err != nil {
-		wbgo.Error.Printf("rule %s: invalid cron spec: %s", rule.name, err)
+		wbgong.Error.Printf("rule %s: invalid cron spec: %s", rule.name, err)
 	}
 }
 
@@ -274,9 +337,14 @@ func (rule *Rule) Destroy() {
 	rule.cond = NewDestroyedRuleCondition()
 }
 
-// IsNonCellRule() returns true if the rule doesn't use any cells for
+// IsIndependent() returns true if the rule doesn't use any controls for
 // its condition yet shouldn't be invoked upon every RunRules().
 // This is currently used for cron rules.
-func (rule *Rule) IsNonCellRule() bool {
-	return rule.nonCellRule
+func (rule *Rule) IsIndependent() bool {
+	return rule.isIndependent
+}
+
+// HasDeps checks whether the rule has dependencies
+func (rule *Rule) HasDeps() bool {
+	return rule.isIndependent || rule.hasDeps
 }

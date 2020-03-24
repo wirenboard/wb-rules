@@ -111,7 +111,7 @@ defineRule("cellChange2", {
       throw new Error("invalid arguments for then");
     var v = dev[devName][cellName];
     if (v !== newValue)
-      throw new Error("bad newValue! " + newValue);
+      throw new Error("bad newValue! " + newValue + " " + typeof newValue + ", expected " + v + " " + typeof v);
     // just make sure that format works here, too
     log("cellChange2: {}/{}={} ({})".format(devName, cellName, v, typeof(v)));
   }
@@ -139,4 +139,12 @@ defineRule("funcValueChange2", {
     log("funcValueChange2: {}: {} ({})", cellSpec(devName, cellName),
         newValue, typeof(newValue));
   }
+});
+
+// test anonymous rule
+defineRule({
+    whenChanged: "somedev/anon",
+    then: function() {
+        log("anonymous rule run");
+    }
 });

@@ -1,12 +1,13 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo"
 	"io/ioutil"
 	"os"
 	"path"
 	"regexp"
 	"strings"
+
+	"github.com/contactless/wbgong"
 )
 
 var editorPathRx = regexp.MustCompile(`^[\w /-]{0,256}[\w -]{1,253}\.js$`)
@@ -37,6 +38,8 @@ const (
 	EDITOR_ERROR_FILE_NOT_FOUND = 1003
 	EDITOR_ERROR_REMOVE         = 1004
 	EDITOR_ERROR_READ           = 1005
+	EDITOR_ERROR_RENAME         = 1006
+	EDITOR_ERROR_OVERWRITE      = 1007
 )
 
 var invalidPathError = &EditorError{EDITOR_ERROR_INVALID_PATH, "Invalid path"}
@@ -44,7 +47,9 @@ var listDirError = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directo
 var writeError = &EditorError{EDITOR_ERROR_WRITE, "Error writing the file"}
 var fileNotFoundError = &EditorError{EDITOR_ERROR_FILE_NOT_FOUND, "File not found"}
 var rmError = &EditorError{EDITOR_ERROR_REMOVE, "Error removing the file"}
+var renameError = &EditorError{EDITOR_ERROR_RENAME, "Error renaming the file"}
 var readError = &EditorError{EDITOR_ERROR_READ, "Error reading the file"}
+var overwriteError = &EditorError{EDITOR_ERROR_OVERWRITE, "New-state file already exists"}
 
 func NewEditor(locFileManager LocFileManager) *Editor {
 	return &Editor{locFileManager}
@@ -79,6 +84,11 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 
 	*reply = EditorSaveResponse{nil, pth, nil}
 
+	// check if this file already exists and disabled, so update path
+	if entry, err := editor.locateFile(pth); err == nil && !entry.Enabled {
+		pth = pth + FILE_DISABLED_SUFFIX
+	}
+
 	err := editor.locFileManager.LiveWriteScript(pth, args.Content)
 	switch err.(type) {
 	case nil:
@@ -87,7 +97,7 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 		reply.Error = err.Error()
 		reply.Traceback = err.(ScriptError).Traceback
 	default:
-		wbgo.Error.Printf("error writing %s: %s", pth, err)
+		wbgong.Error.Printf("error writing %s: %s", pth, err)
 		return writeError
 	}
 
@@ -120,7 +130,7 @@ func (editor *Editor) Remove(args *EditorPathArgs, reply *bool) error {
 		return err
 	}
 	if err = os.Remove(entry.PhysicalPath); err != nil {
-		wbgo.Error.Printf("error removing %s: %s", entry.PhysicalPath, err)
+		wbgong.Error.Printf("error removing %s: %s", entry.PhysicalPath, err)
 		return rmError
 	}
 	*reply = true
@@ -139,12 +149,56 @@ func (editor *Editor) Load(args *EditorPathArgs, reply *EditorContentResponse) e
 	}
 	content, err := ioutil.ReadFile(entry.PhysicalPath)
 	if err != nil {
-		wbgo.Error.Printf("error reading %s: %s", entry.PhysicalPath, err)
+		wbgong.Error.Printf("error reading %s: %s", entry.PhysicalPath, err)
 		return writeError
 	}
 	*reply = EditorContentResponse{
 		string(content),
 		entry.Error,
 	}
+	return nil
+}
+
+type EditorChangeStateArgs struct {
+	Path  string `json:"path"`
+	State bool   `json:"state"`
+}
+
+func (editor *Editor) ChangeState(args *EditorChangeStateArgs, reply *bool) error {
+	entry, err := editor.locateFile(args.Path)
+
+	if err != nil {
+		return err
+	}
+
+	*reply = false
+
+	// is state is not changed - just say about it
+	if args.State == entry.Enabled {
+		return nil
+	}
+
+	var newPath string
+	// if we need to enable file, remove suffix
+	// else add suffix
+	if args.State {
+		newPath = entry.PhysicalPath[:len(entry.PhysicalPath)-len(FILE_DISABLED_SUFFIX)]
+	} else {
+		newPath = entry.PhysicalPath + FILE_DISABLED_SUFFIX
+	}
+
+	// check overwrite
+	if _, err = os.Stat(newPath); !os.IsNotExist(err) {
+		wbgong.Error.Printf("can't rename %s to %s: looks like second file exists already, deal with this by yourself!",
+			entry.PhysicalPath, newPath)
+		return overwriteError
+	}
+
+	if err = os.Rename(entry.PhysicalPath, newPath); err != nil {
+		wbgong.Error.Printf("error renaming %s to %s: %s", entry.PhysicalPath, newPath, err)
+		return renameError
+	}
+
+	*reply = true
 	return nil
 }

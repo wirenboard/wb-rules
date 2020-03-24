@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo/testutils"
+	"github.com/contactless/wbgong/testutils"
 	"testing"
 )
 
@@ -16,7 +16,7 @@ func (s *RuleCronSuite) SetupTest() {
 func (s *RuleCronSuite) TestCron() {
 	s.WaitFor(func() bool {
 		c := make(chan bool)
-		s.model.CallSync(func() {
+		s.engine.CallSync(func() {
 			c <- s.cron != nil && s.cron.started
 		})
 		return <-c
@@ -38,7 +38,7 @@ func (s *RuleCronSuite) TestCron() {
 	// testrules_cron.js that should override the previous rules
 	s.ReplaceScript("testrules_cron.js", "testrules_cron_changed.js")
 	s.Verify(
-		"driver -> /wbrules/updates/changed: [testrules_cron.js] (QoS 1)",
+		"[changed] testrules_cron.js",
 	)
 
 	s.cron.invokeEntries("@hourly")

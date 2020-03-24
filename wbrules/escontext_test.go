@@ -1,10 +1,12 @@
 package wbrules
 
 import (
-	"github.com/stretchr/objx"
-	"github.com/stretchr/testify/assert"
+	"encoding/json"
 	"math"
 	"testing"
+
+	"github.com/stretchr/objx"
+	"github.com/stretchr/testify/assert"
 )
 
 var objTests = []string{
@@ -18,15 +20,20 @@ var objTests = []string{
 }
 
 func TestJSToObjxAndBack(t *testing.T) {
-	ctx := newESContext(nil)
+	f := newESContextFactory()
+	ctx := f.newESContext(nil, "")
 	for _, jsonStr := range objTests {
 		if r := ctx.PevalString("(" + jsonStr + ")"); r != 0 {
 			t.Fatal("failed to evaluate the script")
 		}
 		object := ctx.GetJSObject(-1)
 		ctx.Pop()
-		json := objx.MustFromJSON(jsonStr)
-		assert.Equal(t, json, object)
+		var objxMap objx.Map
+		errUnmarshal := json.Unmarshal([]byte(jsonStr), &objxMap)
+		if errUnmarshal != nil {
+			t.Fatalf("Cant unmarshal json: '%s'", errUnmarshal)
+		}
+		assert.Equal(t, objxMap, object)
 
 		ctx.PushGlobalObject()
 		ctx.PushJSObject(object.(objx.Map))
@@ -36,13 +43,18 @@ func TestJSToObjxAndBack(t *testing.T) {
 		}
 		jsonStr1 := ctx.SafeToString(-1)
 		ctx.Pop()
-		json1 := objx.MustFromJSON(jsonStr1)
-		assert.Equal(t, json, json1)
+		var objxMap1 objx.Map
+		errUnmarshal1 := json.Unmarshal([]byte(jsonStr1), &objxMap1)
+		if errUnmarshal1 != nil {
+			t.Fatalf("Cant unmarshal json: '%s'", errUnmarshal1)
+		}
+		assert.Equal(t, objxMap, objxMap1)
 	}
 }
 
 func TestNumConversions(t *testing.T) {
-	ctx := newESContext(nil)
+	f := newESContextFactory()
+	ctx := f.newESContext(nil, "")
 	ctx.PushJSObject(objx.Map{
 		"v_uint8":   uint8(0xf0),
 		"v_uint16":  uint16(0xf001),
@@ -117,11 +129,12 @@ var locTests = []struct {
 }
 
 func TestCallLocation(t *testing.T) {
-	ctx := newESContext(nil)
+	f := newESContextFactory()
+	ctx := f.newESContext(nil, "")
 	var storedTracebacks []ESTraceback
 	ctx.PushGlobalObject()
-	ctx.DefineFunctions(map[string]func() int{
-		"storeLoc": func() int {
+	ctx.DefineFunctions(map[string]func(*ESContext) int{
+		"storeLoc": func(ctx *ESContext) int {
 			storedTracebacks = append(storedTracebacks, ctx.GetTraceback())
 			return 0
 		},

@@ -7,10 +7,14 @@ var devCells = {
 
 defineAlias("smc", "vdev/someCell");
 
-defineVirtualDevice("vdev", {
-  title: "VDev",
-  cells: devCells
-});
+try {
+    defineVirtualDevice("vdev", {
+      title: "VDev",
+      cells: devCells
+    });
+} catch(e) {
+    log(e);
+}
 
 function cellSpec(devName, cellName) {
   return devName === undefined ? "(no cell)" : "{}/{}".format(devName, cellName);
@@ -42,4 +46,4 @@ function defDetectRun(name) {
 defDetectRun("detectRun");
 defChangeRule("rule1", "vdev/someCell");
 
-testrules_reload_2_n++;
+global.__proto__.testrules_reload_2_n++;

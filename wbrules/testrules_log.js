@@ -1,4 +1,4 @@
-global.testLog = function testLog () {
+global.__proto__.testLog = function testLog () {
   log("log()");
   debug("debug()");
   log.debug("log.debug({})", 42);

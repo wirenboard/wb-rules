@@ -2,6 +2,7 @@ package wbrules
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"reflect"
@@ -11,8 +12,13 @@ import (
 	"strings"
 
 	duktape "github.com/contactless/go-duktape"
-	wbgo "github.com/contactless/wbgo"
+	"github.com/contactless/wbgong"
 	"github.com/stretchr/objx"
+)
+
+const (
+	ESCALLBACKS_OBJ_NAME = "_esCallbacks"
+	FILENAME_PROP_NAME   = "__filename"
 )
 
 type ESLocation struct {
@@ -31,9 +37,13 @@ type ESSyncFunc func(thunk func())
 
 type ESContext struct {
 	*duktape.Context
-	callbackIndex        ESCallback
 	syncFunc             ESSyncFunc
 	callbackErrorHandler ESCallbackErrorHandler
+	factory              *ESContextFactory
+
+	ruleNames map[string]*Rule
+
+	valid bool
 }
 
 type ESError struct {
@@ -41,25 +51,71 @@ type ESError struct {
 	Traceback ESTraceback
 }
 
+// ESContextFactory creates ESContexts and  stores properties which are
+// common for related ESContexts (in one application).
+// ESContextFactory is logically binded to Duktape heap.
+type ESContextFactory struct {
+	duktapeToESContextMap map[duktape.Context]*ESContext
+	callbackIndex         ESCallback
+}
+
+func newESContextFactory() *ESContextFactory {
+	return &ESContextFactory{
+		duktapeToESContextMap: make(map[duktape.Context]*ESContext),
+		callbackIndex:         1,
+	}
+}
+
 func (err ESError) Error() string {
 	return err.Message
 }
 
-func newESContext(syncFunc ESSyncFunc) *ESContext {
+func (f *ESContextFactory) newESContext(syncFunc ESSyncFunc, filename string) *ESContext {
+	return f.newESContextFromDuktape(syncFunc, filename, duktape.NewContext())
+}
+
+func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, filename string, dctx *duktape.Context) *ESContext {
 	ctx := &ESContext{
-		duktape.NewContext(),
-		1,
-		syncFunc,
-		nil,
+		dctx,     // *duktape.Context
+		syncFunc, // syncFunc
+		nil,      // callbackErrorHandler
+		f,        // factory
+		make(map[string]*Rule),
+		true, // validation flag
 	}
 	ctx.callbackErrorHandler = ctx.DefaultCallbackErrorHandler
 	ctx.initGlobalObject()
-	ctx.initGlobalProperty("_esCallbacks")
+	ctx.initFilename(filename)
+	ctx.initHeapPropertyObjectIfNotExist(ESCALLBACKS_OBJ_NAME)
+
+	wbgong.Debug.Printf("create context %p\n", ctx)
+
+	// save context for conversions
+	f.duktapeToESContextMap[*dctx] = ctx
+
 	return ctx
 }
 
+func (ctx *ESContext) invalidate() {
+	// remove context from factory, just in case
+	delete(ctx.factory.duktapeToESContextMap, *ctx.Context)
+
+	ctx.Context = nil
+	ctx.valid = false
+}
+
+func (ctx *ESContext) IsValid() bool {
+	return ctx.valid
+}
+
+func (ctx *ESContext) mustBeValid() {
+	if !ctx.valid {
+		panic("operation on invalid context")
+	}
+}
+
 func (ctx *ESContext) DefaultCallbackErrorHandler(err ESError) {
-	wbgo.Error.Printf("failed to invoke callback: %s", err)
+	wbgong.Error.Printf("failed to invoke callback in context %p: %s", ctx, err)
 }
 
 func (ctx *ESContext) SetCallbackErrorHandler(handler ESCallbackErrorHandler) {
@@ -113,12 +169,12 @@ func (ctx *ESContext) getJSObject(objIndex int, top bool) interface{} {
 			return m
 		}
 	case t.IsBuffer():
-		wbgo.Error.Println("buffers aren't supported yet")
+		wbgong.Error.Println("buffers aren't supported yet")
 		return nil
 	case t.IsPointer():
 		return ctx.GetPointer(objIndex)
 	default:
-		wbgo.Error.Panicf("bad object type %d", t)
+		wbgong.Error.Panicf("bad object type %d", t)
 		return nil // avoid compiler warning
 	}
 }
@@ -211,12 +267,21 @@ func (ctx *ESContext) initGlobalObject() {
 	ctx.Pop()
 }
 
-func (ctx *ESContext) initGlobalProperty(propName string) {
+func (ctx *ESContext) initFilename(filename string) {
+	ctx.PushString(filename)
+	ctx.PutGlobalString(FILENAME_PROP_NAME)
+}
+
+func (ctx *ESContext) initHeapPropertyObjectIfNotExist(propName string) {
 	// callback list stash property holds callback functions referenced by ids
-	ctx.PushGlobalStash()
-	ctx.PushObject()
-	ctx.PutPropString(-2, propName)
-	ctx.Pop()
+	ctx.PushHeapStash()
+	defer ctx.Pop()
+
+	// check if property exists
+	if !ctx.HasPropString(-1, propName) {
+		ctx.PushObject()
+		ctx.PutPropString(-2, propName)
+	}
 }
 
 func (ctx *ESContext) callbackKey(key ESCallback) string {
@@ -224,8 +289,12 @@ func (ctx *ESContext) callbackKey(key ESCallback) string {
 }
 
 func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} {
-	ctx.PushGlobalStash()
-	ctx.GetPropString(-1, "_esCallbacks")
+	ctx.mustBeValid()
+	wbgong.Debug.Printf("trying to invoke callback %d in context %p\n", key, ctx)
+
+	ctx.PushHeapStash()
+
+	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
 	ctx.PushString(ctx.callbackKey(key))
 	argCount := 0
 	if args != nil {
@@ -253,11 +322,14 @@ func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} 
 // as uint64. In this case the returned value is guaranteed to be
 // greater than zero.
 func (ctx *ESContext) storeCallback(callbackStackIndex int) ESCallback {
-	key := ctx.callbackIndex
-	ctx.callbackIndex++
+	// get previous callback index
+	key := ctx.factory.callbackIndex
+	ctx.factory.callbackIndex++
 
-	ctx.PushGlobalStash()
-	ctx.GetPropString(-1, "_esCallbacks")
+	wbgong.Debug.Printf("store callback %d at context %p\n", key, ctx)
+
+	ctx.PushHeapStash()
+	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
 	if callbackStackIndex < 0 {
 		ctx.Dup(callbackStackIndex - 2)
 	} else {
@@ -274,7 +346,8 @@ type callbackHolder struct {
 }
 
 func callbackFinalizer(holder *callbackHolder) {
-	go holder.ctx.removeCallbackSync(holder.callback)
+	// this function already runs in a separate goroutine
+	holder.ctx.removeCallbackSync(holder.callback)
 }
 
 func (ctx *ESContext) WrapCallback(callbackStackIndex int) ESCallbackFunc {
@@ -289,18 +362,24 @@ func (ctx *ESContext) WrapCallback(callbackStackIndex int) ESCallbackFunc {
 }
 
 func (ctx *ESContext) removeCallbackSync(key ESCallback) {
+	// if context is invalid, just ignore this
+	if !ctx.valid {
+		return
+	}
+
 	if ctx.syncFunc == nil {
 		ctx.RemoveCallback(key)
 	} else {
-		go ctx.syncFunc(func() {
+		ctx.syncFunc(func() {
 			ctx.RemoveCallback(key)
 		})
 	}
 }
 
 func (ctx *ESContext) RemoveCallback(key ESCallback) {
-	ctx.PushGlobalStash()
-	ctx.GetPropString(-1, "_esCallbacks")
+	ctx.mustBeValid()
+	ctx.PushHeapStash()
+	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
 	ctx.DelPropString(-1, ctx.callbackKey(key))
 	ctx.Pop()
 }
@@ -335,25 +414,50 @@ func (ctx *ESContext) LoadScenario(path string) error {
 	}
 
 	// wrap source code
-	src := "function(){" + string(srcRaw) + "}"
+	src := "function(module){" + string(srcRaw) + "}"
 
-	// TODO: push global object here
-
-	if err = ctx.LoadAndCallFunctionFromString(path, src); err != nil {
+	// compile function
+	if err = ctx.LoadFunctionFromString(path, src); err != nil {
 		return err
 	}
 
-	// TODO: remove global object here
+	// push 'module' argument
+	ctx.PushObject()
+
+	// set module prototype
+	ctx.PushGlobalObject()
+	ctx.GetPropString(-1, "__wbModulePrototype")
+	ctx.SetPrototype(-3)
+	ctx.Pop()
+
+	// set 'filename' param
+	ctx.PushString(path)
+	ctx.PutPropString(-2, "filename")
+
+	// call function
+	defer ctx.Pop()
+	if r := ctx.Pcall(1); r != 0 {
+		return ctx.GetESErrorAugmentingSyntaxErrors(path)
+	}
 
 	return nil
 }
 
-func (ctx *ESContext) LoadAndCallFunctionFromString(filename, content string) error {
+func (ctx *ESContext) LoadFunctionFromString(filename, content string) error {
 	return ctx.loadScriptFromStringFlags(filename, content, duktape.DUK_COMPILE_FUNCTION)
 }
 
 func (ctx *ESContext) LoadScriptFromString(filename, content string) error {
-	return ctx.loadScriptFromStringFlags(filename, content, 0)
+	if err := ctx.loadScriptFromStringFlags(filename, content, 0); err != nil {
+		return err
+	}
+
+	defer ctx.Pop()
+	if r := ctx.Pcall(0); r != 0 {
+		return ctx.GetESErrorAugmentingSyntaxErrors(filename)
+	}
+
+	return nil
 }
 
 func (ctx *ESContext) loadScriptFromStringFlags(filename, content string, flags uint) error {
@@ -363,18 +467,20 @@ func (ctx *ESContext) loadScriptFromStringFlags(filename, content string, flags 
 		defer ctx.Pop()
 		return ctx.GetESErrorAugmentingSyntaxErrors(filename)
 	}
-	defer ctx.Pop()
-	if r := ctx.Pcall(0); r != 0 {
-		return ctx.GetESErrorAugmentingSyntaxErrors(filename)
-	}
 	return nil
 }
 
-func (ctx *ESContext) DefineFunctions(fns map[string]func() int) {
+func (ctx *ESContext) DefineFunctions(fns map[string]func(*ESContext) int) {
 	for name, fn := range fns {
 		f := fn
-		ctx.PushGoFunc(func(*duktape.Context) int {
-			return f()
+		factory := ctx.factory
+		ctx.PushGoFunc(func(dctx *duktape.Context) int {
+			if ctx, ok := factory.duktapeToESContextMap[*dctx]; ok {
+				return f(ctx)
+			} else {
+				wbgong.Error.Panicf("No known conversion for duktape context to ESContext from %v", dctx)
+				panic("")
+			}
 		})
 		ctx.PutPropString(-2, name)
 	}
@@ -425,7 +531,7 @@ func (ctx *ESContext) GetESError() (r ESError) {
 		if groups != nil {
 			lineNumber, err := strconv.Atoi(groups[2])
 			if err != nil {
-				wbgo.Warn.Printf("bad js line number: %s", lineNumber)
+				wbgong.Warn.Printf("bad js line number: %d", lineNumber)
 				continue
 			}
 			r.Traceback = append(r.Traceback, ESLocation{groups[1], lineNumber})
@@ -453,7 +559,7 @@ func (ctx *ESContext) GetESErrorAugmentingSyntaxErrors(path string) (r ESError) 
 
 	lineNumber, err := strconv.Atoi(groups[1])
 	if err != nil {
-		wbgo.Warn.Printf("bad js line number: %s", lineNumber)
+		wbgong.Warn.Printf("bad js line number: %d", lineNumber)
 		return
 	}
 
@@ -470,6 +576,28 @@ func (ctx *ESContext) GetTraceback() ESTraceback {
 	ctx.PushErrorObject(duktape.DUK_ERR_ERROR, "fake")
 	defer ctx.Pop()
 	return ctx.GetESError().Traceback
+}
+
+// get current filename from globals
+func (ctx *ESContext) GetCurrentFilename() string {
+	ctx.GetGlobalString(FILENAME_PROP_NAME)
+	defer ctx.Pop()
+
+	return ctx.GetString(-1)
+}
+
+func (ctx *ESContext) AddRule(name string, rule *Rule) error {
+	if name == "" {
+		// TODO: empty rules storage
+		return nil
+	}
+
+	if _, found := ctx.ruleNames[name]; !found {
+		ctx.ruleNames[name] = rule
+		return nil
+	} else {
+		return fmt.Errorf("named rule redefinition: %s", name)
+	}
 }
 
 // TBD: handle loops in object graphs in PushJSObject

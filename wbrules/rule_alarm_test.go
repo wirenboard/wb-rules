@@ -3,12 +3,13 @@ package wbrules
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/contactless/wbgo/testutils"
 	"regexp"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/contactless/wbgong/testutils"
 )
 
 type AlarmSuite struct {
@@ -18,6 +19,7 @@ type AlarmSuite struct {
 func (s *AlarmSuite) SetupTest() {
 	s.SetupSkippingDefs("testrules_alarm.js")
 	s.publishTestDev()
+
 }
 
 func (s *AlarmSuite) loadAlarms() {
@@ -46,53 +48,58 @@ func (s *AlarmSuite) loadAlarmsSkipping(skipLine string) {
 	s.Ck("failed to init alarms", s.engine.EvalScript(fmt.Sprintf("Alarms.load(%s)", confPathJS)))
 	s.engine.Refresh()
 
-	s.Verify(
+	s.VerifyUnordered(
 		"driver -> /devices/sampleAlarms/meta/name: [Sample Alarms] (QoS 1, retained)",
+		"driver -> /devices/sampleAlarms/meta/driver: [wbrules] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta/type: [alarm] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta/readonly: [1] (QoS 1, retained)",
+		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta/writable: [] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta/order: [1] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff: [0] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_temperatureOutOfBounds/meta/type: [alarm] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_temperatureOutOfBounds/meta/readonly: [1] (QoS 1, retained)",
+		"driver -> /devices/sampleAlarms/controls/alarm_temperatureOutOfBounds/meta/writable: [] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_temperatureOutOfBounds/meta/order: [2] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_temperatureOutOfBounds: [0] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_unnecessaryDeviceIsOn/meta/type: [alarm] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_unnecessaryDeviceIsOn/meta/readonly: [1] (QoS 1, retained)",
+		"driver -> /devices/sampleAlarms/controls/alarm_unnecessaryDeviceIsOn/meta/writable: [] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_unnecessaryDeviceIsOn/meta/order: [3] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_unnecessaryDeviceIsOn: [0] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/log/meta/type: [text] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/log/meta/readonly: [1] (QoS 1, retained)",
+		"driver -> /devices/sampleAlarms/controls/log/meta/writable: [] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/log/meta/order: [4] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/log: [] (QoS 1, retained)",
 	)
 }
 
-func (s *AlarmSuite) cellRef(dev, ctl string) (cellRef, topicBase string) {
+func (s *AlarmSuite) controlRef(dev, ctl string) (controlRef, topicBase string) {
 	return dev + "/" + ctl, fmt.Sprintf("/devices/%s/controls/%s", dev, ctl)
 }
 
-func (s *AlarmSuite) publishCell(dev, ctl, typ, value string) {
-	cellRef, topicBase := s.cellRef(dev, ctl)
-	s.publish(topicBase+"/meta/type", typ, cellRef)
-	s.publish(topicBase, value, cellRef)
+func (s *AlarmSuite) publishControl(dev, ctl, typ, value string) {
+	controlRef, topicBase := s.controlRef(dev, ctl)
+	s.publish(topicBase+"/meta/type", typ, controlRef)
+	s.publish(topicBase, value, controlRef)
 	s.Verify(
 		fmt.Sprintf("tst -> %s/meta/type: [%s] (QoS 1, retained)", topicBase, typ),
 		fmt.Sprintf("tst -> %s: [%s] (QoS 1, retained)", topicBase, value))
 }
 
 func (s *AlarmSuite) publishTestDev() {
-	s.publishCell("somedev", "importantDevicePower", "switch", "1")
-	s.publishCell("somedev", "unnecessaryDevicePower", "switch", "0")
-	s.publishCell("somedev", "devTemp", "temperature", "11")
+	s.publishControl("somedev", "importantDevicePower", "switch", "1")
+	s.publishControl("somedev", "unnecessaryDevicePower", "switch", "0")
+	s.publishControl("somedev", "devTemp", "temperature", "11")
 }
 
-func (s *AlarmSuite) publishCellValue(dev, ctl, value string, expectedCellNames ...string) {
-	cellRef, topicBase := s.cellRef(dev, ctl)
-	s.publish(topicBase, value, append([]string{cellRef}, expectedCellNames...)...)
+func (s *AlarmSuite) publishControlValue(dev, ctl, value string, expectedControlNames ...string) {
+	controlRef, topicBase := s.controlRef(dev, ctl)
+	s.publish(topicBase, value, append([]string{controlRef}, expectedControlNames...)...)
 	s.Verify(fmt.Sprintf("tst -> %s: [%s] (QoS 1, retained)", topicBase, value))
 }
 
-func (s *AlarmSuite) verifyAlarmCellChange(name string, active bool) {
+func (s *AlarmSuite) verifyAlarmControlChange(name string, active bool) {
 	activeStr := "0"
 	if active {
 		activeStr = "1"
@@ -114,9 +121,9 @@ func (s *AlarmSuite) verifyNotificationMsgs(text string) {
 func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 	s.loadAlarms()
 	for i := 0; i < 3; i++ {
-		s.publishCellValue("somedev", "importantDevicePower", "0",
-			"sampleAlarms/importantDeviceIsOff", "sampleAlarms/log")
-		s.verifyAlarmCellChange("importantDeviceIsOff", true)
+		s.publishControlValue("somedev", "importantDevicePower", "0",
+			"sampleAlarms/alarm_importantDeviceIsOff", "sampleAlarms/log")
+		s.verifyAlarmControlChange("importantDeviceIsOff", true)
 		s.verifyNotificationMsgs("Important device is off")
 		var timerId int
 		s.Verify(testutils.RegexpCaptureMatcher(
@@ -128,25 +135,25 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 			}))
 
 		// no repeated alarm upon the same value
-		s.publishCellValue("somedev", "importantDevicePower", "0")
+		s.publishControlValue("somedev", "importantDevicePower", "0")
 		s.VerifyEmpty()
 
 		for j := 0; j < 3; j++ {
 			ts := s.AdvanceTime(200 * time.Second)
 			s.FireTimer(uint64(timerId), ts)
 			s.Verify(fmt.Sprintf("timer.fire(): %d", timerId))
-			s.expectCellChange("sampleAlarms/importantDeviceIsOff")
+			s.expectControlChange("sampleAlarms/log")
 			s.verifyNotificationMsgs("Important device is off")
 		}
 
-		s.publishCellValue("somedev", "importantDevicePower", "1",
-			"sampleAlarms/importantDeviceIsOff", "sampleAlarms/log")
-		s.verifyAlarmCellChange("importantDeviceIsOff", false)
+		s.publishControlValue("somedev", "importantDevicePower", "1",
+			"sampleAlarms/alarm_importantDeviceIsOff", "sampleAlarms/log")
+		s.verifyAlarmControlChange("importantDeviceIsOff", false)
 		s.Verify(fmt.Sprintf("timer.Stop(): %d", timerId))
 		s.verifyNotificationMsgs("Important device is back on")
 
 		// alarm stays off
-		s.publishCellValue("somedev", "importantDevicePower", "1")
+		s.publishControlValue("somedev", "importantDevicePower", "1")
 		s.VerifyEmpty()
 	}
 }
@@ -154,38 +161,38 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 func (s *AlarmSuite) TestNonRepeatedExpectedValueAlarm() {
 	s.loadAlarms()
 	for i := 0; i < 3; i++ {
-		s.publishCellValue("somedev", "unnecessaryDevicePower", "1",
-			"sampleAlarms/unnecessaryDeviceIsOn", "sampleAlarms/log")
-		s.verifyAlarmCellChange("unnecessaryDeviceIsOn", true)
+		s.publishControlValue("somedev", "unnecessaryDevicePower", "1",
+			"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
+		s.verifyAlarmControlChange("unnecessaryDeviceIsOn", true)
 		s.verifyNotificationMsgs("Unnecessary device is on")
 
 		// no repeated alarm upon the same value
-		s.publishCellValue("somedev", "unnecessaryDevicePower", "1")
+		s.publishControlValue("somedev", "unnecessaryDevicePower", "1")
 		s.VerifyEmpty()
 
-		s.publishCellValue("somedev", "unnecessaryDevicePower", "0",
-			"sampleAlarms/unnecessaryDeviceIsOn", "sampleAlarms/log")
-		s.verifyAlarmCellChange("unnecessaryDeviceIsOn", false)
+		s.publishControlValue("somedev", "unnecessaryDevicePower", "0",
+			"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
+		s.verifyAlarmControlChange("unnecessaryDeviceIsOn", false)
 		s.verifyNotificationMsgs("somedev/unnecessaryDevicePower is back to normal, value = false")
 		s.VerifyEmpty()
 
-		s.publishCellValue("somedev", "unnecessaryDevicePower", "0")
+		s.publishControlValue("somedev", "unnecessaryDevicePower", "0")
 		s.VerifyEmpty()
 	}
 }
 
 func (s *AlarmSuite) setOutOfRangeTemp(temp int) {
-	s.publishCellValue("somedev", "devTemp", strconv.Itoa(temp),
-		"sampleAlarms/temperatureOutOfBounds", "sampleAlarms/log")
-	s.verifyAlarmCellChange("temperatureOutOfBounds", true)
+	s.publishControlValue("somedev", "devTemp", strconv.Itoa(temp),
+		"sampleAlarms/alarm_temperatureOutOfBounds", "sampleAlarms/log")
+	s.verifyAlarmControlChange("temperatureOutOfBounds", true)
 	s.verifyNotificationMsgs(fmt.Sprintf("Temperature out of bounds, value = %d", temp))
 	s.Verify(regexp.MustCompile(`^new fake ticker: \d+, 10000$`))
 }
 
 func (s *AlarmSuite) setOkTemp(temp int, stopTimer bool) {
-	s.publishCellValue("somedev", "devTemp", strconv.Itoa(temp),
-		"sampleAlarms/temperatureOutOfBounds", "sampleAlarms/log")
-	s.verifyAlarmCellChange("temperatureOutOfBounds", false)
+	s.publishControlValue("somedev", "devTemp", strconv.Itoa(temp),
+		"sampleAlarms/alarm_temperatureOutOfBounds", "sampleAlarms/log")
+	s.verifyAlarmControlChange("temperatureOutOfBounds", false)
 	if stopTimer {
 		s.Verify(regexp.MustCompile(`^timer\.Stop\(\): \d+`))
 	}
@@ -199,14 +206,14 @@ func (s *AlarmSuite) TestRepeatedMinMaxAlarmWithMaxCount() {
 	// go below min
 	s.setOutOfRangeTemp(9)
 
-	s.publishCellValue("somedev", "devTemp", "8")
+	s.publishControlValue("somedev", "devTemp", "8")
 	s.VerifyEmpty() // still out of bounds, but timer wasn't fired yet
 
 	for i := 0; i < 4; i++ {
 		ts := s.AdvanceTime(10 * time.Millisecond)
 		s.FireTimer(1, ts)
 		s.Verify("timer.fire(): 1")
-		s.expectCellChange("sampleAlarms/importantDeviceIsOff")
+		s.expectControlChange("sampleAlarms/log")
 		s.verifyNotificationMsgs("Temperature out of bounds, value = 8")
 	}
 	s.Verify("timer.Stop(): 1")

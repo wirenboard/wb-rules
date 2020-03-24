@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo/testutils"
+	"github.com/contactless/wbgong/testutils"
 	"testing"
 )
 
@@ -14,6 +14,11 @@ func (s *LogSuite) SetupTest() {
 }
 
 func (s *LogSuite) TestLog() {
+	s.publish("/devices/wbrules/controls/Rule debugging/on", "0", "wbrules/Rule debugging")
+	s.Verify(
+		"tst -> /devices/wbrules/controls/Rule debugging/on: [0] (QoS 1)",
+		"driver -> /devices/wbrules/controls/Rule debugging: [0] (QoS 1, retained)",
+	)
 	s.engine.EvalScript("testLog()")
 	s.Verify(
 		"[info] log()",

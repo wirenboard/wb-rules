@@ -30,7 +30,7 @@ WB_RULES_OPTIONS=""
 RULE_DIR=/etc/wb-rules
 SYSTEM_RULE_DIR=/usr/share/wb-rules-system/rules/ 
 PRIVATE_RULE_DIR=/usr/share/wb-rules/
-WB_RULES_QUEUES_LEN=2048
+WB_RULES_MODULES="/etc/wb-rules-modules:/usr/share/wb-rules-modules"
 
 # Exit if the package is not installed
 [ -x "$DAEMON" ] || exit 0
@@ -46,7 +46,7 @@ WB_RULES_QUEUES_LEN=2048
 # and status_of_proc is working.
 . /lib/lsb/init-functions
 
-DAEMON_ARGS="$WB_RULES_OPTIONS -syslog -queue-len $WB_RULES_QUEUES_LEN -editdir '$RULE_DIR' '$SYSTEM_RULE_DIR' '$RULE_DIR' '$PRIVATE_RULE_DIR'"
+DAEMON_ARGS="$WB_RULES_OPTIONS -syslog -editdir '$RULE_DIR' '$SYSTEM_RULE_DIR' '$RULE_DIR' '$PRIVATE_RULE_DIR'"
 
 #
 # Function that starts the daemon/service
@@ -61,9 +61,9 @@ do_start()
         #    log_failure_msg "Can't start wb-rules: configuration file $CONFIG_FILE not found"
         #    return 2
         #fi
-        start-stop-daemon --start --quiet --make-pidfile --pidfile $PIDFILE --exec $DAEMON --test > /dev/null \
+        WB_RULES_MODULES=$WB_RULES_MODULES start-stop-daemon --start --quiet --make-pidfile --pidfile $PIDFILE --exec $DAEMON --test > /dev/null \
 		|| return 1
-	start-stop-daemon --start --quiet --make-pidfile --background --pidfile $PIDFILE \
+        WB_RULES_MODULES=$WB_RULES_MODULES start-stop-daemon --start --quiet --make-pidfile --background --pidfile $PIDFILE \
                           --startas /bin/bash -- -c "exec $DAEMON $DAEMON_ARGS" || return 2
 	# Add code here, if necessary, that waits for the process to be ready
 	# to handle requests from services started subsequently which depend

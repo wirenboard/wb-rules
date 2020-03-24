@@ -1,8 +1,9 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo/testutils"
 	"testing"
+
+	"github.com/contactless/wbgong/testutils"
 )
 
 type RuleBasicsSuite struct {
@@ -91,10 +92,10 @@ func (s *RuleBasicsSuite) TestDirectMQTTMessages() {
 	s.Verify(
 		"tst -> /devices/somedev/controls/sendit/meta/type: [switch] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sendit: [1] (QoS 1, retained)",
-		"driver -> /abc/def/ghi: [0] (QoS 0)",
-		"driver -> /misc/whatever: [abcdef] (QoS 1)",
-		"driver -> /zzz/foo: [qqq] (QoS 2)",
-		"driver -> /zzz/foo/qwerty: [42] (QoS 2, retained)",
+		"wbrules-log -> /abc/def/ghi: [0] (QoS 0)",
+		"wbrules-log -> /misc/whatever: [abcdef] (QoS 1)",
+		"wbrules-log -> /zzz/foo: [qqq] (QoS 2)",
+		"wbrules-log -> /zzz/foo/qwerty: [42] (QoS 2, retained)",
 	)
 }
 
@@ -137,12 +138,12 @@ func (s *RuleBasicsSuite) TestRemoteButtons() {
 	s.Verify(
 		"tst -> /devices/somedev/controls/abutton/meta/type: [pushbutton] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/abutton: [1] (QoS 1, retained)",
-		"[info] cellChange2: somedev/abutton=false (boolean)",
+		"[info] cellChange2: somedev/abutton=true (boolean)",
 	)
 	s.publish("/devices/somedev/controls/abutton", "1", "somedev/abutton")
 	s.Verify(
 		"tst -> /devices/somedev/controls/abutton: [1] (QoS 1, retained)",
-		"[info] cellChange2: somedev/abutton=false (boolean)",
+		"[info] cellChange2: somedev/abutton=true (boolean)",
 	)
 }
 
@@ -209,6 +210,24 @@ func (s *RuleBasicsSuite) TestFuncValueChange() {
 		"tst -> /devices/somedev/controls/cellforfunc2: [5] (QoS 1, retained)",
 		"[info] funcValueChange2: (no cell): true (boolean)",
 	)
+}
+
+func (s *RuleBasicsSuite) TestAnonymousRule() {
+	s.publish("/devices/somedev/controls/anon/meta/type", "pushbutton", "somedev/anon")
+	s.publish("/devices/somedev/controls/anon", "1", "somedev/anon")
+
+	s.Verify("tst -> /devices/somedev/controls/anon/meta/type: [pushbutton] (QoS 1, retained)")
+	s.VerifyUnordered(
+		"tst -> /devices/somedev/controls/anon: [1] (QoS 1, retained)",
+		"[info] anonymous rule run",
+	)
+}
+
+func (s *RuleBasicsSuite) TestRuleRedefinition() {
+	s.LiveLoadScript("testrules_rule_redefinition.js")
+	s.EnsureGotErrors()
+	s.SkipTill("[error] defineRule error: named rule redefinition: test")
+	s.Verify("[changed] testrules_rule_redefinition.js")
 }
 
 func TestRuleBasicsSuite(t *testing.T) {

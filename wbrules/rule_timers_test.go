@@ -1,9 +1,10 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo/testutils"
 	"testing"
 	"time"
+
+	"github.com/contactless/wbgong/testutils"
 )
 
 type RuleTimersSuite struct {
@@ -111,6 +112,30 @@ func (s *RuleTimersSuite) TestShortTimers() {
 		"new fake ticker: 7, 1",
 		"new fake ticker: 8, 1",
 	)
+	s.VerifyEmpty()
+}
+
+func (s *RuleTimersSuite) TestCleanupTimers() {
+	s.publish("/devices/somedev/controls/foo/meta/type", "text", "somedev/foo")
+	s.publish("/devices/somedev/controls/foo", "cleanup", "somedev/foo")
+
+	s.Verify(
+		"tst -> /devices/somedev/controls/foo/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/foo: [cleanup] (QoS 1, retained)",
+		"new fake timer: 1, 500",
+		"new fake timer: 2, 1500",
+		"new fake ticker: 3, 500",
+	)
+
+	s.RemoveScript("testrules_timers.js")
+
+	s.VerifyUnordered(
+		"timer.Stop(): 1",
+		"timer.Stop(): 2",
+		"timer.Stop(): 3",
+		"[removed] testrules_timers.js",
+	)
+
 	s.VerifyEmpty()
 }
 

@@ -130,3 +130,20 @@ defineRule("shortTimers", {
     startTicker("someticker1", -1);
   }
 });
+
+defineRule("cleanupTimers", {
+    asSoonAs: function() {
+        return dev.somedev.foo == "cleanup";
+    },
+    then: function() {
+        setTimeout(function() {
+            log("timer fired(0)");
+        }, 500);
+        setTimeout(function() {
+            log("timer fired(1)");
+        }, 1500);
+        setInterval(function() {
+            log("interval fired");
+        }, 500);
+    }
+});

@@ -1,9 +1,10 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgo/testutils"
 	"regexp"
 	"testing"
+
+	"github.com/contactless/wbgong/testutils"
 )
 
 type RuleRuntimeErrorsSuite struct {
