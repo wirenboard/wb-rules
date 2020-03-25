@@ -40,9 +40,13 @@ const (
 	EDITOR_ERROR_READ           = 1005
 	EDITOR_ERROR_RENAME         = 1006
 	EDITOR_ERROR_OVERWRITE      = 1007
+	EDITOR_ERROR_INVALID_EXT    = 1008
+	EDITOR_ERROR_INVALID_LEN    = 1009
 )
 
-var invalidPathError = &EditorError{EDITOR_ERROR_INVALID_PATH, "Invalid path"}
+var invalidPathError = &EditorError{EDITOR_ERROR_INVALID_PATH, "File path should contains only digits, letters, whitespaces, '_' and '-' chars"}
+var invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should ends with .js"}
+var invalidLenError = &EditorError{EDITOR_ERROR_INVALID_LEN, "File path should be shorter than or equal to 512 chars"}
 var listDirError = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
 var writeError = &EditorError{EDITOR_ERROR_WRITE, "Error writing the file"}
 var fileNotFoundError = &EditorError{EDITOR_ERROR_FILE_NOT_FOUND, "File not found"}
@@ -78,7 +82,11 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 		pth = pth[1:]
 	}
 
-	if !editorPathRx.MatchString(pth) {
+	if !strings.HasSuffix(pth, ".js") {
+		return invalidExtensionError
+	} else if len(args.Path) > 512 {
+		return invalidLenError
+	} else if !editorPathRx.MatchString(pth) {
 		return invalidPathError
 	}
 

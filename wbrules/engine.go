@@ -1299,14 +1299,29 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		}
 		args.SetDoLoadPrevious(!forceDefault)
 
+		// get 'lazyInit' metaproperty
+		lazyInit := false
+		lazyInitRaw, hasLazyInit := ctrlDef[VDEV_CONTROL_DESCR_PROP_LAZYINIT]
+		if hasLazyInit {
+			ok := false
+			lazyInit, ok = lazyInitRaw.(bool)
+			if !ok {
+				return fmt.Errorf("%s/%s: non-boolean value of lazyInit propery",
+					devId, ctrlId)
+			}
+		}
+		args.SetLazyInit(lazyInit)
+
 		ctrlValue, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_VALUE]
-		if !ok && ctrlType != "pushbutton" { // FIXME: awful, need some special checkers
+		if !ok && ctrlType != "pushbutton" && !lazyInit { // FIXME: awful, need some special checkers
 			return fmt.Errorf("%s/%s: control value required for control type %s",
 				devId, ctrlId, ctrlType)
 		}
 
 		// set control value itself
-		args.SetValue(ctrlValue)
+		if !lazyInit {
+			args.SetValue(ctrlValue)
+		}
 
 		// get readonly/writeable flag
 		ctrlReadonly := VDEV_CONTROL_READONLY_DEFAULT
