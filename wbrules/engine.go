@@ -1331,7 +1331,7 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		// set readonly/writeable flag
 		if ctrlReadonly {
 			args.SetReadonly(ctrlReadonly)
-		} else {
+		} else if hasWriteable {
 			args.SetWritable(true)
 		}
 
