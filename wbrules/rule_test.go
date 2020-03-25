@@ -162,11 +162,18 @@ func (s *RuleSuiteBase) expectControlChange(expectedControlNames ...string) {
 		wbgong.Debug.Printf("TEST: controlChange channel is %v", s.controlChange)
 
 		t := time.After(5 * time.Second)
-		select {
-		case e = <-s.controlChange:
-			wbgong.Debug.Printf("received ControlChangeEvent %v", e)
-		case <-t:
-			s.FailNow(fmt.Sprintf("timeout waiting for control change event: '%s'", expectedControlNames[i]))
+	FORLOOP1:
+		for {
+			select {
+			case e = <-s.controlChange:
+				if strings.Contains(e.Spec.ControlId, "#") {
+					continue FORLOOP1
+				}
+				wbgong.Debug.Printf("received ControlChangeEvent %v\n", e)
+				break FORLOOP1
+			case <-t:
+				s.FailNow(fmt.Sprintf("timeout waiting for control change event: '%s'", expectedControlNames[i]))
+			}
 		}
 
 		t = nil
@@ -185,7 +192,9 @@ func (s *RuleSuiteBase) expectControlChange(expectedControlNames ...string) {
 	select {
 	case <-timer:
 	case e := <-s.controlChange:
-		s.Require().Fail("unexpected control change", "control: %v", e.Spec)
+		if !strings.Contains(e.Spec.ControlId, "#") {
+			s.Require().Fail("unexpected control change", "control: %v", e.Spec)
+		}
 	}
 }
 
@@ -349,6 +358,18 @@ func (s *RuleSuiteBase) SetCellValue(devId, ctrlId string, value interface{}) {
 	ctrlSpec := event.Spec
 
 	s.Equal(devId+"/"+ctrlId, ctrlSpec.String())
+}
+
+func (s *RuleSuiteBase) SetCellValueNoVerify(devID, ctrlID string, value interface{}) {
+	err := s.driver.Access(func(tx wbgong.DriverTx) (err error) {
+		dev := tx.GetDevice(devID)
+		ctrl := dev.GetControl(ctrlID)
+		err = ctrl.UpdateValue(value)()
+
+		return err
+	})
+	s.Ck("Access()", err)
+	<-s.controlChange
 }
 
 func (s *RuleSuiteBase) TearDownTest() {
