@@ -1,3 +1,9 @@
+wb-rules (2.3.1~alpha1) stable; urgency=medium
+
+  * option to lazily inited controls
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Wed, 25 Mar 2020 04:10:35 +0300
+
 wb-rules (2.3.0) stable; urgency=medium
 
   * access to meta-topics
