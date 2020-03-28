@@ -1,3 +1,9 @@
+wb-rules (2.3.0) stable; urgency=medium
+
+  * access to meta-topics
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Wed, 25 Mar 2020 03:17:18 +0300
+
 wb-rules (2.2.1) stable; urgency=medium
 
   * Fix writeable flag on creation of virtual device
