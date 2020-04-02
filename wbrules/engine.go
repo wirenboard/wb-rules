@@ -1308,7 +1308,8 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 
 		// create controls
 		for _, ctrlArgs := range controlsArgs {
-			ctrl, err := dev.CreateControl(ctrlArgs)()
+			var ctrl wbgong.Control
+			ctrl, err = dev.CreateControl(ctrlArgs)()
 			if err != nil {
 				// cleanup
 				tx.RemoveDevice(dev)()
