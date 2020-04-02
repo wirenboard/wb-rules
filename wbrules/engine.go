@@ -1308,15 +1308,12 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 
 		// create controls
 		for _, ctrlArgs := range controlsArgs {
-			var ctrl wbgong.Control
-			ctrl, err = dev.CreateControl(ctrlArgs)()
+			_, err = dev.CreateControl(ctrlArgs)()
 			if err != nil {
 				// cleanup
 				tx.RemoveDevice(dev)()
 				return
 			}
-			writable := ctrlArgs.GetWritable() // workaround to overwrite wbgo.so defaults
-			ctrl.SetWritable(*writable)
 		}
 
 		return
