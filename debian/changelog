@@ -1,3 +1,9 @@
+wb-rules (2.2.3) stable; urgency=medium
+
+  * Fix writable defaults of switch, pushbutton and range
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Thu 02 Apr 2020 10:53:05 PM MSK
+
 wb-rules (2.2.2) stable; urgency=medium
 
   * Anotation that new version breaks old wb-rules-system

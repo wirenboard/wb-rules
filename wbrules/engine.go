@@ -1271,6 +1271,12 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 			args.SetReadonly(ctrlReadonly)
 		} else if hasWriteable {
 			args.SetWritable(true)
+		} else if ctrlType == wbgong.CONV_TYPE_SWITCH {
+			args.SetWritable(true) // switch type writable by default
+		} else if ctrlType == wbgong.CONV_TYPE_PUSHBUTTON {
+			args.SetWritable(true) // pushbutton type writable by default
+		} else if ctrlType == wbgong.CONV_TYPE_RANGE {
+			args.SetWritable(true) // range type writable by default
 		}
 
 		// get properties for 'range' type
@@ -1302,12 +1308,14 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 
 		// create controls
 		for _, ctrlArgs := range controlsArgs {
-			_, err = dev.CreateControl(ctrlArgs)()
+			ctrl, err := dev.CreateControl(ctrlArgs)()
 			if err != nil {
 				// cleanup
 				tx.RemoveDevice(dev)()
 				return
 			}
+			writable := ctrlArgs.GetWritable() // workaround to overwrite wbgo.so defaults
+			ctrl.SetWritable(*writable)
 		}
 
 		return
