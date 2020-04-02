@@ -1,3 +1,9 @@
+wb-rules (2.2.3) stable; urgency=medium
+
+  * Fix debug switch writable flag
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Thu, 02 Apr 2020 16:01:37 +0300
+
 wb-rules (2.2.2) stable; urgency=medium
 
   * Anotation that new version breaks old wb-rules-system

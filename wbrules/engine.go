@@ -708,8 +708,9 @@ func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
 		"title": "Rule Engine Settings",
 		"cells": objx.Map{
 			RULE_DEBUG_CELL_NAME: objx.Map{
-				"type":  "switch",
-				"value": atomic.LoadUint32(&engine.debugEnabled),
+				"type":      "switch",
+				"value":     atomic.LoadUint32(&engine.debugEnabled),
+				"writeable": true,
 			},
 		},
 	})
