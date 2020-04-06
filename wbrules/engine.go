@@ -1266,17 +1266,17 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 			ctrlReadonly = !w
 		}
 
-		// set readonly/writeable flag
-		if ctrlReadonly {
+		// set readonly flag
+		if hasReadonly {
 			args.SetReadonly(ctrlReadonly)
-		} else if hasWriteable {
-			args.SetWritable(true)
-		} else if ctrlType == wbgong.CONV_TYPE_SWITCH {
-			args.SetWritable(true) // switch type writable by default
-		} else if ctrlType == wbgong.CONV_TYPE_PUSHBUTTON {
-			args.SetWritable(true) // pushbutton type writable by default
-		} else if ctrlType == wbgong.CONV_TYPE_RANGE {
-			args.SetWritable(true) // range type writable by default
+		} else if ctrlType == wbgong.CONV_TYPE_SWITCH { // switch type writable by default
+			args.SetReadonly(false)
+		} else if ctrlType == wbgong.CONV_TYPE_PUSHBUTTON { // pushbutton type writable by default
+			args.SetReadonly(false)
+		} else if ctrlType == wbgong.CONV_TYPE_RANGE { // range type writable by default
+			args.SetReadonly(false)
+		} else { // all other types is readonly by default
+			args.SetReadonly(true)
 		}
 
 		// get properties for 'range' type
