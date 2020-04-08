@@ -1,6 +1,7 @@
-wb-rules (2.2.3) stable; urgency=medium
+wb-rules (2.3.0) stable; urgency=medium
 
-  * Fix writable defaults of switch, pushbutton and range
+  * Removed writable flag
+  * Reworked readonly flag
 
  -- Roman Kubar <r.kubar@wirenboard.ru>  Thu 02 Apr 2020 10:53:05 PM MSK
 
