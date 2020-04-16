@@ -5,6 +5,18 @@ wb-rules (2.3.0) stable; urgency=medium
 
  -- Roman Kubar <r.kubar@wirenboard.ru>  Wed, 08 Apr 2020 22:19:07 +0300
 
+wb-rules (2.2.4) stable; urgency=medium
+
+  * Fix sticking cache on control values in some cases
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Thu, 16 Apr 2020 02:21:48 +0300
+
+wb-rules (2.2.3) stable; urgency=medium
+
+  * Fix writable defaults of switch, pushbutton and range
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Tue, 14 Apr 2020 17:09:43 +0300
+
 wb-rules (2.2.2) stable; urgency=medium
 
   * Anotation that new version breaks old wb-rules-system

@@ -247,6 +247,7 @@ func (ctrlProxy *ControlProxy) Value() (v interface{}) {
 		return nil
 	}
 
+	isLocal := false
 	// check cached value first
 	ctrlProxy.Lock()
 	if ctrlProxy.cacheValid {
@@ -262,8 +263,13 @@ func (ctrlProxy *ControlProxy) Value() (v interface{}) {
 				return
 			}
 
+			_, isLocal = ctrl.GetDevice().(wbgong.LocalDevice)
 			// set update value handler to keep cache clear and fresh
-			ctrl.SetValueUpdateHandler(ctrlProxy.updateValueHandler)
+			if isLocal {
+				ctrl.SetOnValueReceiveHandler(ctrlProxy.updateValueHandler)
+			} else {
+				ctrl.SetValueUpdateHandler(ctrlProxy.updateValueHandler)
+			}
 			return
 		})
 
