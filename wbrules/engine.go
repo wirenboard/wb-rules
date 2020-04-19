@@ -1272,11 +1272,14 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		// set readonly flag
 		if hasReadonly {
 			args.SetReadonly(ctrlReadonly)
-		} else if ctrlType == wbgong.CONV_TYPE_SWITCH { // switch type writable by default
+		// switch, pushbutton,range, rgb are writable by default
+		} else if ctrlType == wbgong.CONV_TYPE_SWITCH {
 			args.SetReadonly(false)
-		} else if ctrlType == wbgong.CONV_TYPE_PUSHBUTTON { // pushbutton type writable by default
+		} else if ctrlType == wbgong.CONV_TYPE_PUSHBUTTON {
 			args.SetReadonly(false)
-		} else if ctrlType == wbgong.CONV_TYPE_RANGE { // range type writable by default
+		} else if ctrlType == wbgong.CONV_TYPE_RANGE {
+			args.SetReadonly(false)
+		} else if ctrlType == wbgong.CONV_TYPE_RGB {
 			args.SetReadonly(false)
 		} else { // all other types is readonly by default
 			args.SetReadonly(ctrlReadonly)
