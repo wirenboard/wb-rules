@@ -3,7 +3,7 @@ wb-rules (2.3.0) stable; urgency=medium
   * Removed writable flag
   * Reworked readonly flag
 
- -- Roman Kubar <r.kubar@wirenboard.ru>  Mon, 20 Apr 2020 14:31:13 +0300
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Mon, 20 Apr 2020 14:46:25 +0300
 
 wb-rules (2.2.4) stable; urgency=medium
 
