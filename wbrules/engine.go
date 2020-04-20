@@ -290,15 +290,14 @@ func (ctrlProxy *ControlProxy) Value() (v interface{}) {
 	return
 }
 
-func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
+func (ctrlProxy *ControlProxy) SetValue(value interface{}) error {
 	if wbgong.DebuggingEnabled() {
 		wbgong.Debug.Printf("[ctrlProxy %s/%s] SetValue(%v)", ctrlProxy.devProxy.name, ctrlProxy.name, value)
 	}
 
 	ctrl := ctrlProxy.getControl()
 	if ctrl == nil {
-		wbgong.Error.Printf("failed to SetValue for unexisting control")
-		return
+		return errors.New(fmt.Sprintf("failed to SetValue for unexisting control %s/%s", ctrlProxy.devProxy.name, ctrlProxy.name))
 	}
 
 	isLocal := false
@@ -316,6 +315,7 @@ func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
 	if err != nil {
 		wbgong.Error.Printf("control %s/%s SetValue() error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, err)
 	}
+	return nil
 }
 
 // FIXME: error handling here

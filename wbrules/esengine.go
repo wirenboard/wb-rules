@@ -1131,7 +1131,10 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 				wbgong.Error.Printf("invalid control definition")
 				return duktape.DUK_RET_TYPE_ERROR
 			}
-			c.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG])
+			errSet := c.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG])
+			if errSet != nil {
+				engine.Log(ENGINE_LOG_ERROR, errSet.Error())
+			}
 			return 1
 		},
 		JS_DEVPROXY_FUNC_ISCOMPLETE: func(ctx *ESContext) int {
