@@ -1884,7 +1884,10 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 				return duktape.DUK_RET_TYPE_ERROR
 			}
 
-			c.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG], true)
+			errSet := c.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG], true)
+			if errSet != nil {
+				engine.Log(ENGINE_LOG_ERROR, errSet.Error())
+			}
 			return 1
 		},
 		JS_DEVPROXY_FUNC_SETMETA: func(ctx *ESContext) int {
