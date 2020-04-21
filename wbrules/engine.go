@@ -1252,37 +1252,37 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		// set control value itself
 		args.SetValue(ctrlValue)
 
+		_, hasWritable := ctrlDef[VDEV_CONTROL_DESCR_PROP_WRITEABLE]
+		if hasWritable {
+			return fmt.Errorf("writeable flag is deprecated, use readonly instead: https://github.com/contactless/wb-rules/blob/master/README-readonly.md")
+		}
+
 		// get readonly/writeable flag
 		ctrlReadonly := VDEV_CONTROL_READONLY_DEFAULT
 
 		ctrlReadonlyRaw, hasReadonly := ctrlDef[VDEV_CONTROL_DESCR_PROP_READONLY]
-		ctrlWriteableRaw, hasWriteable := ctrlDef[VDEV_CONTROL_DESCR_PROP_WRITEABLE]
 		if hasReadonly {
 			ctrlReadonly, ok = ctrlReadonlyRaw.(bool)
 			if !ok {
 				return fmt.Errorf("%s/%s: non-boolean value of 'readonly' property",
 					devId, ctrlId)
 			}
-		} else if hasWriteable {
-			w, ok := ctrlWriteableRaw.(bool)
-			if !ok {
-				return fmt.Errorf("%s/%s: non-boolean value of 'writeable' property",
-					devId, ctrlId)
-			}
-			ctrlReadonly = !w
 		}
 
-		// set readonly/writeable flag
-		if ctrlReadonly {
+		// set readonly flag
+		if hasReadonly {
 			args.SetReadonly(ctrlReadonly)
-		} else if hasWriteable {
-			args.SetWritable(true)
+		// switch, pushbutton,range, rgb are writable by default
 		} else if ctrlType == wbgong.CONV_TYPE_SWITCH {
-			args.SetWritable(true) // switch type writable by default
+			args.SetReadonly(false)
 		} else if ctrlType == wbgong.CONV_TYPE_PUSHBUTTON {
-			args.SetWritable(true) // pushbutton type writable by default
+			args.SetReadonly(false)
 		} else if ctrlType == wbgong.CONV_TYPE_RANGE {
-			args.SetWritable(true) // range type writable by default
+			args.SetReadonly(false)
+		} else if ctrlType == wbgong.CONV_TYPE_RGB {
+			args.SetReadonly(false)
+		} else { // all other types is readonly by default
+			args.SetReadonly(ctrlReadonly)
 		}
 
 		// get properties for 'range' type
