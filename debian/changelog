@@ -1,3 +1,9 @@
+wb-rules (2.3.1) stable; urgency=medium
+
+  * Fix external controls without readonly flag
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Wed, 22 Apr 2020 22:38:44 +0300
+
 wb-rules (2.3.0) stable; urgency=medium
 
   * Removed writable flag
