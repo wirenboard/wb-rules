@@ -836,8 +836,10 @@ func (engine *RuleEngine) fireTimer(n TimerId) {
 }
 
 func (engine *RuleEngine) removeTimer(n TimerId) {
-	engine.timers[n].handleRemove()
-	delete(engine.timers, n)
+	if entry, found := engine.timers[n]; found {
+		entry.handleRemove()
+		delete(engine.timers, n)
+	}
 }
 
 func (engine *RuleEngine) StopTimerByName(name string) {
