@@ -1,8 +1,14 @@
-wb-rules (2.3.2) stable; urgency=medium
+wb-rules (2.3.3) stable; urgency=medium
 
   * Fix external controls creation that was inited before wb-rules starts
 
- -- Roman Kubar <r.kubar@wirenboard.ru>  Fri, 24 Apr 2020 20:31:51 +0300
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Wed, 06 May 2020 22:05:57 +0300
+
+wb-rules (2.3.2) stable; urgency=medium
+
+  * Fix panic on clearTimeout inside setTimeout callback
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Tue, 05 May 2020 18:53:48 +0300
 
 wb-rules (2.3.1) stable; urgency=medium
 
