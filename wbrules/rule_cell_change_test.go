@@ -37,8 +37,9 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 		"[info] switchChanged: sw=true",
 	)
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
-	s.Verify(
+	s.VerifyUnordered(
 		"tst -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 
 	s.publish("/devices/cellch/controls/button/on", "1",
@@ -51,10 +52,11 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 		"[info] startCellChange: sw <- false",
 		"[info] switchChanged: sw=false",
 	)
-	s.WaitForErrors() // expected error "control somedev/sw SetValue() error: This control is not writable"
+	//s.WaitForErrors() // expected error "control somedev/sw SetValue() error: This control is not writable"
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
-	s.Verify(
+	s.VerifyUnordered(
 		"tst -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	// SOFT-181, see comment at the beginning of this test
 	s.EnsureNoErrorsOrWarnings()
