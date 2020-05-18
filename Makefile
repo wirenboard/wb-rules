@@ -29,6 +29,8 @@ amd64:
 
 wb-rules: main.go wbrules/*.go
 	# $(GO_ENV) glide install
+	cp amd64.wbgo.so wbrules/wbgo.so
+	go test -trimpath -ldflags="-s -w" ./wbrules
 	$(GO_ENV) go build -trimpath -ldflags "-w -X main.version=`git describe --tags --always --dirty`"
 
 install:
