@@ -18,7 +18,7 @@ const (
 	VDEV_CONTROL_DESCR_PROP_MAX = "max"
 
 	// default value for 'readonly'
-	VDEV_CONTROL_READONLY_DEFAULT = false
+	VDEV_CONTROL_READONLY_DEFAULT = true
 
 	// default 'max' value for 'range' type
 	// FIXME: deprecated

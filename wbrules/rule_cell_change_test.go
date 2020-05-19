@@ -35,7 +35,6 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 		"driver -> /devices/cellch/controls/misc: [1] (QoS 1, retained)",
 		"[info] startCellChange: sw <- true",
 		"[info] switchChanged: sw=true",
-		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
 	s.Verify(
@@ -51,8 +50,8 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 		"driver -> /devices/cellch/controls/misc: [1] (QoS 1, retained)",
 		"[info] startCellChange: sw <- false",
 		"[info] switchChanged: sw=false",
-		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
+	s.WaitForErrors() // expected error "control somedev/sw SetValue() error: This control is not writable"
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
 	s.Verify(
 		"tst -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",

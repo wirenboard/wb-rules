@@ -1,8 +1,51 @@
-wb-rules (2.3.0) stable; urgency=medium
+wb-rules (2.4.0) stable; urgency=medium
 
   * access to meta-topics
 
- -- Roman Kubar <r.kubar@wirenboard.ru>  Wed, 25 Mar 2020 03:17:18 +0300
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Tue, 19 May 2020 21:34:53 +0300
+
+wb-rules (2.3.3) stable; urgency=medium
+
+  * Fix external controls creation that was inited before wb-rules starts
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Wed, 06 May 2020 22:05:57 +0300
+
+wb-rules (2.3.2) stable; urgency=medium
+
+  * Fix panic on clearTimeout inside setTimeout callback
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Tue, 05 May 2020 18:53:48 +0300
+
+wb-rules (2.3.1) stable; urgency=medium
+
+  * Fix external controls without readonly flag
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Wed, 22 Apr 2020 22:38:44 +0300
+
+wb-rules (2.3.0) stable; urgency=medium
+
+  * Removed writable flag
+  * Reworked readonly flag
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Mon, 20 Apr 2020 14:46:25 +0300
+
+wb-rules (2.2.4) stable; urgency=medium
+
+  * Fix sticking cache on control values in some cases
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Thu, 16 Apr 2020 02:21:48 +0300
+
+wb-rules (2.2.3) stable; urgency=medium
+
+  * Fix writable defaults of switch, pushbutton and range
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Tue, 14 Apr 2020 17:09:43 +0300
+
+wb-rules (2.2.2) stable; urgency=medium
+
+  * Anotation that new version breaks old wb-rules-system
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Sun, 29 Mar 2020 14:39:00 +0300
 
 wb-rules (2.2.1) stable; urgency=medium
 
