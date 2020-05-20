@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -346,8 +347,34 @@ func (ctrlProxy *ControlProxy) SetMeta(key, value string) (cce *ControlChangeEve
 		ctrlID := fmt.Sprintf("%s#%s", ctrl.GetId(), key)
 		spec = ControlSpec{ctrl.GetDevice().GetId(), ctrlID}
 
-		unsafeTx := ctrl.GetDevice().GetDriver().CreateUnsafeTx()
-		return unsafeTx.UpdateControlMeta(ctrl, key, value)()
+		switch key {
+		case wbgong.CONV_META_SUBTOPIC_DESCRIPTION:
+			err := ctrl.SetDescription(value)()
+			if err != nil {
+			}
+		case wbgong.CONV_META_SUBTOPIC_ERROR:
+			return ctrl.SetError(errors.New(value))()
+		case wbgong.CONV_META_SUBTOPIC_MAX:
+			if max, err := strconv.Atoi(value); err != nil {
+				return err
+			} else {
+				return ctrl.SetMax(max)()
+			}
+		case wbgong.CONV_META_SUBTOPIC_ORDER:
+			if order, err := strconv.Atoi(value); err != nil {
+				return err
+			} else {
+				return ctrl.SetOrder(order)()
+			}
+		case wbgong.CONV_META_SUBTOPIC_READONLY:
+			v := value == wbgong.CONV_META_BOOL_TRUE
+			return ctrl.SetReadonly(v)()
+		case wbgong.CONV_META_SUBTOPIC_TYPE:
+			return ctrl.SetType(value)()
+		case wbgong.CONV_META_SUBTOPIC_UNITS:
+			return ctrl.SetUnits(value)()
+		}
+		return nil
 	})
 
 	if errAccess != nil {
@@ -1351,7 +1378,7 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		// set readonly flag
 		if hasReadonly {
 			args.SetReadonly(ctrlReadonly)
-		// switch, pushbutton,range, rgb are writable by default
+			// switch, pushbutton,range, rgb are writable by default
 		} else if ctrlType == wbgong.CONV_TYPE_SWITCH {
 			args.SetReadonly(false)
 		} else if ctrlType == wbgong.CONV_TYPE_PUSHBUTTON {
