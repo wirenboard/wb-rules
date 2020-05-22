@@ -52,7 +52,7 @@ func (s *RuleCellChangesSuite) TestAssigningSameValueToACellSeveralTimes() {
 		"[info] startCellChange: sw <- false",
 		"[info] switchChanged: sw=false",
 	)
-	//s.WaitForErrors() // expected error "control somedev/sw SetValue() error: This control is not writable"
+
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
 	s.VerifyUnordered(
 		"tst -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
