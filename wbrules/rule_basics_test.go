@@ -21,8 +21,9 @@ func (s *RuleBasicsSuite) TestRules() {
 		"[info] heaterOn fired, changed: stabSettings/enabled -> true",
 	)
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
-	s.Verify(
+	s.VerifyUnordered(
 		"tst -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 	)
 
 	s.publish("/devices/somedev/controls/temp", "21", "somedev/temp")
@@ -36,7 +37,8 @@ func (s *RuleBasicsSuite) TestRules() {
 		"[info] heaterOff fired, changed: somedev/temp -> 22",
 	)
 	s.publish("/devices/somedev/controls/sw", "0", "somedev/sw")
-	s.Verify(
+	s.VerifyUnordered(
+		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
 	)
 
@@ -46,7 +48,8 @@ func (s *RuleBasicsSuite) TestRules() {
 		"[info] heaterOn fired, changed: somedev/temp -> 18",
 	)
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
-	s.Verify(
+	s.VerifyUnordered(
+		"driver -> /devices/somedev/controls/sw/on: [1] (QoS 1)",
 		"tst -> /devices/somedev/controls/sw: [1] (QoS 1, retained)",
 	)
 
@@ -62,8 +65,9 @@ func (s *RuleBasicsSuite) TestRules() {
 		"[info] heaterOff fired, changed: stabSettings/enabled -> false",
 	)
 	s.publish("/devices/somedev/controls/sw", "0", "somedev/sw")
-	s.Verify(
+	s.VerifyUnordered(
 		"tst -> /devices/somedev/controls/sw: [0] (QoS 1, retained)",
+		"driver -> /devices/somedev/controls/sw/on: [0] (QoS 1)",
 	)
 
 	s.publish("/devices/somedev/controls/foobar", "1", "somedev/foobar")
