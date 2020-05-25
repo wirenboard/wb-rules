@@ -65,7 +65,7 @@ defineVirtualDevice("relayClicker", {
   title: "Relay Clicker", // Название устройства /devices/relayClicker/meta/name
   cells: {
     // параметры
-    enabled: { // /devices/relayClicker/controls/enbabled
+    enabled: { // /devices/relayClicker/controls/enabled
       type: "switch",  // тип (.../meta/type)
       value: false     // значение по умолчанию
     }
