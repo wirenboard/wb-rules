@@ -25,9 +25,10 @@ func (s *RuleMetaSuite) TestMeta() {
 
 	// unset error by js code
 	s.SetCellValueNoVerify("testDevice", "textControl", "unsetError")
-	s.Verify(
+	s.VerifyUnordered(
 		"driver -> /devices/testDevice/controls/textControl: [unsetError] (QoS 1, retained)",
 		"[info] got textControl, changed: testDevice/textControl -> unsetError",
+		"driver -> /devices/testDevice/controls/textControl/meta/error: [] (QoS 1, retained)",
 		"driver -> /devices/testDevice/controls/textControl/meta/error: [] (QoS 1, retained)",
 	)
 	s.expectControlChange("testDevice/textControl")
