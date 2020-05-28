@@ -193,6 +193,7 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		"enableRule":           engine.esWbEnableRule,
 		"runRule":              engine.esWbRunRule,
 		"defineVirtualDevice":  engine.esDefineVirtualDevice,
+		"getDevice":            engine.esGetDevice,
 		"_wbPersistentName":    engine.esPersistentName,
 	})
 	engine.globalCtx.GetPropString(-1, "log")
@@ -296,6 +297,7 @@ func (engine *ESEngine) initVdevPrototype(ctx *ESContext) {
 	ctx.DefineFunctions(map[string]func(*ESContext) int{
 		"getDeviceId": engine.esVdevGetDeviceId,
 		"getCellId":   engine.esVdevGetCellId,
+		"addControl":  engine.esVdevAddControl,
 		// getCellValue and setCellValue are defined in lib.js
 	})
 
@@ -912,6 +914,52 @@ func (engine *ESEngine) getStringPropFromObject(ctx *ESContext, objIndex int, pr
 	return
 }
 
+func (engine *ESEngine) esGetDevice(ctx *ESContext) int {
+	if ctx.GetTop() != 1 || !ctx.IsString(0) {
+		return duktape.DUK_RET_ERROR
+	}
+
+	name := ctx.GetString(0)
+
+	errDevice := engine.GetDevice(name)
+	if errDevice != nil {
+		wbgong.Error.Printf("Error in getting device: %s", errDevice)
+		return duktape.DUK_RET_ERROR
+	}
+	// [ args | ]
+
+	// create virtual device object
+	ctx.PushObject()
+	// [ args | vDevObject ]
+
+	// get prototype
+
+	// get global object first
+	ctx.PushGlobalObject()
+	// [ args | vDevObject global ]
+
+	// get prototype object
+	ctx.GetPropString(-1, VDEV_OBJ_PROTO_NAME)
+	// [ args | vDevObject global __wbVdevPrototype ]
+
+	// apply prototype
+	ctx.SetPrototype(-3)
+	// [ args | vDevObject global ]
+
+	ctx.Pop()
+	// [ args | vDevObject ]
+
+	// push device ID property
+
+	ctx.PushString(name)
+	// [ args | vDevObject devId ]
+
+	ctx.PutPropString(-2, VDEV_OBJ_PROP_DEVID)
+	// [ args | vDevObject ]
+
+	return 1
+}
+
 // defineVirtualDevice creates virtual device object in MQTT
 // and returns JS object to control it
 func (engine *ESEngine) esDefineVirtualDevice(ctx *ESContext) int {
@@ -1033,6 +1081,36 @@ func (engine *ESEngine) esVdevGetCellId(ctx *ESContext) int {
 	ctx.PushString(cellId)
 	// [ cell | cellId ]
 
+	return 1
+}
+
+func (engine *ESEngine) esVdevAddControl(ctx *ESContext) int {
+	if !ctx.IsString(0) || !ctx.IsObject(1) {
+		wbgong.Error.Printf("addControl(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	ctrlId := ctx.GetString(0)
+	ctrlDef := ctx.GetJSObject(1).(objx.Map)
+
+	// push this
+	ctx.PushThis()
+	// [ cell | this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+		// [ cell | ]
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	ctx.Pop()
+
+	errControl := engine.AddControl(devId, ctrlId, ctrlDef)
+	if errControl != nil {
+		wbgong.Error.Printf("Error in creating control %s on device %s: %s", ctrlId, devId, errControl)
+	}
 	return 1
 }
 
