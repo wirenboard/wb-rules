@@ -295,9 +295,10 @@ func (engine *ESEngine) initVdevPrototype(ctx *ESContext) {
 	ctx.PushObject()
 	// [ global __wbVdevPrototype ]
 	ctx.DefineFunctions(map[string]func(*ESContext) int{
-		"getDeviceId": engine.esVdevGetDeviceId,
-		"getCellId":   engine.esVdevGetCellId,
-		"addControl":  engine.esVdevAddControl,
+		"getDeviceId":   engine.esVdevGetDeviceId,
+		"getCellId":     engine.esVdevGetCellId,
+		"addControl":    engine.esVdevAddControl,
+		"removeControl": engine.esVdevRemoveControl,
 		// getCellValue and setCellValue are defined in lib.js
 	})
 
@@ -1081,6 +1082,35 @@ func (engine *ESEngine) esVdevGetCellId(ctx *ESContext) int {
 	ctx.PushString(cellId)
 	// [ cell | cellId ]
 
+	return 1
+}
+
+func (engine *ESEngine) esVdevRemoveControl(ctx *ESContext) int {
+	if !ctx.IsString(0) {
+		wbgong.Error.Printf("removeControl(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	ctrlId := ctx.GetString(0)
+
+	// push this
+	ctx.PushThis()
+	// [ cell | this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+		// [ cell | ]
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	ctx.Pop()
+
+	errControl := engine.RemoveControl(devId, ctrlId)
+	if errControl != nil {
+		wbgong.Error.Printf("Error in removing control %s on device %s: %s", ctrlId, devId, errControl)
+	}
 	return 1
 }
 

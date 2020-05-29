@@ -1,3 +1,9 @@
+wb-rules (2.5.0~alpha2) stable; urgency=medium
+
+  * removeControl() function available to user scripts
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Fri, 29 May 2020 03:22:49 +0300
+
 wb-rules (2.5.0~alpha1) stable; urgency=medium
 
   * getDevice() function available to user scripts

@@ -1243,6 +1243,28 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 	return nil
 }
 
+func (engine *RuleEngine) RemoveControl(devID, ctrlID string) error {
+	errAccess := engine.driver.Access(func(tx wbgong.DriverTx) (err error) {
+		dev := tx.GetDevice(devID)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		localDevice, isLocal := dev.(wbgong.LocalDevice)
+		if !isLocal {
+			return wbgong.ExternalDeviceError
+		}
+
+		err = localDevice.RemoveControl(ctrlID)()
+
+		return
+	})
+
+	if errAccess != nil {
+		return errAccess
+	}
+	return nil
+}
+
 func (engine *RuleEngine) AddControl(devID, ctrlID string, ctrlDef objx.Map) error {
 	args := wbgong.NewControlArgs().SetId(ctrlID)
 
@@ -1273,6 +1295,7 @@ func (engine *RuleEngine) AddControl(devID, ctrlID string, ctrlDef objx.Map) err
 	}
 	return nil
 }
+
 func (engine *RuleEngine) GetDevice(devId string) error {
 	// create virtual device using collected descriptions
 	errAccess := engine.driver.Access(func(tx wbgong.DriverTx) (err error) {
