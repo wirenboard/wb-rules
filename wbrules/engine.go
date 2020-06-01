@@ -1240,6 +1240,14 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 		// set argument
 		args.SetMax(int(fmax))
 	}
+	if descr, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_DESCRIPTION]; ok {
+		if fdescr, okString := descr.(string); okString {
+			args.SetDescription(fdescr)
+		} else {
+			return fmt.Errorf("%s/%s: non-string value of description property",
+				devId, ctrlId)
+		}
+	}
 	return nil
 }
 

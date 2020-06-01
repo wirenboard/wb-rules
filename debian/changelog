@@ -1,3 +1,17 @@
+wb-rules (2.5.0~alpha3) stable; urgency=medium
+
+  * added number of functions to manipulate controls:
+      isControlExists()
+      [set|get]Description()
+      [set|get]Type()
+      [set|get]Units()
+      [set|get]Readonly()
+      [set|get]Max()
+      [set|get]Error()
+      [set|get]Order()
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Mon, 01 Jun 2020 04:48:50 +0300
+
 wb-rules (2.5.0~alpha2) stable; urgency=medium
 
   * removeControl() function available to user scripts
