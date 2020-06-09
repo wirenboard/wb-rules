@@ -1,3 +1,9 @@
+wb-rules (2.5.0~alpha4) stable; urgency=medium
+
+  * added controlsList() method to device object
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Wed, 10 Jun 2020 00:18:23 +0300
+
 wb-rules (2.5.0~alpha3) stable; urgency=medium
 
   * added number of functions to manipulate controls:

@@ -189,6 +189,26 @@ func (devProxy *DeviceProxy) getControl(ctrlId string) wbgong.Control {
 	return c
 }
 
+func (devProxy *DeviceProxy) controlsList() []wbgong.Control {
+	devId := devProxy.name
+
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[devProxy] controlsList for device %s", devId)
+	}
+
+	var c []wbgong.Control
+	devProxy.owner.Driver().Access(func(tx wbgong.DriverTx) error {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return nil // TODO: careful with error here, some rules want control spec without control itself
+		}
+		c = dev.ControlsList()
+		return nil
+	})
+
+	return c
+}
+
 func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgong.Control, value interface{}, tx wbgong.DriverTx) error {
 	ctrlProxy.Lock()
 	defer ctrlProxy.Unlock()

@@ -306,6 +306,7 @@ func (engine *ESEngine) initVdevPrototype(ctx *ESContext) {
 		"getControl":      engine.esVdevGetControl,
 		"isControlExists": engine.esVdevControlExists,
 		"removeControl":   engine.esVdevRemoveControl,
+		"controlsList":    engine.esVdevControlsList,
 		// getCellValue and setCellValue are defined in lib.js
 	})
 
@@ -1247,6 +1248,67 @@ func (engine *ESEngine) esVdevGetControl(ctx *ESContext) int {
 	return 1
 }
 
+func (engine *ESEngine) esVdevControlsList(ctx *ESContext) int {
+	// push this
+	ctx.PushThis()
+	// [ cell | this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+		// [ cell | ]
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+	devProxy := engine.GetDeviceProxy(devId)
+	ctrls := devProxy.controlsList()
+
+	ctx.Pop()
+	// [ args | ]
+	vIndex := ctx.PushArray()
+
+	for i, ctrl := range ctrls {
+		// create virtual device cell object
+		ctx.PushObject()
+		// [ args | vDevObject ]
+
+		// get prototype
+
+		// get global object first
+		ctx.PushGlobalObject()
+		// [ args | vDevObject global ]
+
+		// get prototype object
+		ctx.GetPropString(-1, VDEV_OBJ_PROTO_CELL_NAME)
+		// [ args | vDevObject global __wbVdevPrototype ]
+
+		// apply prototype
+		ctx.SetPrototype(-3)
+		// [ args | vDevObject global ]
+
+		ctx.Pop()
+		// [ args | vDevObject ]
+
+		// push device ID property
+
+		ctx.PushString(ctrl.GetId())
+		// [ args | vDevObject cellId ]
+
+		ctx.PutPropString(-2, VDEV_OBJ_PROP_CELLID)
+		// [ args | vDevObject ]
+
+		ctx.PushString(devId)
+		// [ args | vDevObject devId ]
+
+		ctx.PutPropString(-2, VDEV_OBJ_PROP_DEVID)
+		// [ args | vDevObject ]
+		ctx.PutPropIndex(vIndex, uint(i))
+	}
+
+	return 1
+}
+
 func (engine *ESEngine) esVdevAddControl(ctx *ESContext) int {
 	if !ctx.IsString(0) || !ctx.IsObject(1) {
 		wbgong.Error.Printf("addControl(): bad parameters")
@@ -1337,9 +1399,11 @@ func (engine *ESEngine) esVdevCellGetError(ctx *ESContext) int {
 	if err != 1 {
 		return err
 	}
-
-	ctx.PushString(ctrlProxy.getControl().GetError().Error())
-
+	var errString string
+	if ctrlProxy.getControl().GetError() != nil {
+		errString = ctrlProxy.getControl().GetError().Error()
+	}
+	ctx.PushString(errString)
 	return 1
 }
 
