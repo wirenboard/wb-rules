@@ -322,6 +322,7 @@ func (engine *ESEngine) initVdevCellPrototype(ctx *ESContext) {
 	ctx.PushObject()
 	// [ global __wbVdevCellPrototype ]
 	ctx.DefineFunctions(map[string]func(*ESContext) int{
+		"getId":          engine.esVdevCellGetId,
 		"setDescription": engine.esVdevCellSetDescription,
 		"getDescription": engine.esVdevCellGetDescription,
 		"setType":        engine.esVdevCellSetType,
@@ -1414,6 +1415,17 @@ func (engine *ESEngine) esVdevCellGetOrder(ctx *ESContext) int {
 	}
 
 	ctx.PushInt(ctrlProxy.getControl().GetOrder())
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellGetId(ctx *ESContext) int {
+	ctrlProxy, err := engine.getControlFromCtx(ctx)
+	if err != 1 {
+		return err
+	}
+
+	ctx.PushString(ctrlProxy.getControl().GetId())
 
 	return 1
 }

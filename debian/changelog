@@ -1,3 +1,9 @@
+wb-rules (2.5.0~alpha5) stable; urgency=medium
+
+  * getId() method of control object
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Thu, 11 Jun 2020 03:09:33 +0300
+
 wb-rules (2.5.0~alpha4) stable; urgency=medium
 
   * added controlsList() method to device object
