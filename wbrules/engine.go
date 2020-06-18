@@ -209,6 +209,25 @@ func (devProxy *DeviceProxy) controlsList() []wbgong.Control {
 	return c
 }
 
+func (devProxy *DeviceProxy) isVirtual() (isLocal bool, err error) {
+	devId := devProxy.name
+
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[devProxy] isVirtual for device %s", devId)
+	}
+
+	err = devProxy.owner.Driver().Access(func(tx wbgong.DriverTx) error {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError // TODO: careful with error here, some rules want control spec without control itself
+		}
+		_, isLocal = dev.(wbgong.LocalDevice)
+		return nil
+	})
+
+	return
+}
+
 func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgong.Control, value interface{}, tx wbgong.DriverTx) error {
 	ctrlProxy.Lock()
 	defer ctrlProxy.Unlock()
@@ -1332,11 +1351,6 @@ func (engine *RuleEngine) GetDevice(devId string) error {
 		if dev == nil {
 			return wbgong.DeviceNotExistError
 		}
-		_, isLocal := dev.(wbgong.LocalDevice)
-		if !isLocal {
-			return wbgong.ExternalDeviceError
-		}
-
 		return
 	})
 

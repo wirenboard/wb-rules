@@ -1,3 +1,13 @@
+wb-rules (2.5.0~alpha6) stable; urgency=medium
+
+  * added global function getControl()
+  * added device methods:
+      getId()
+      isVirtual()
+  * device method getDeviceId() is deprecated
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Fri, 19 Jun 2020 01:43:28 +0300
+
 wb-rules (2.5.0~alpha5) stable; urgency=medium
 
   * getId() method of control object
