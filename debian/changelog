@@ -1,3 +1,9 @@
+wb-rules (2.5.0~alpha7) stable; urgency=medium
+
+  * added ability to track any mqtt topic
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Fri, 26 Jun 2020 01:41:08 +0300
+
 wb-rules (2.5.0~alpha6) stable; urgency=medium
 
   * added global function getControl()
