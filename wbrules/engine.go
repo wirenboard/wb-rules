@@ -1521,7 +1521,7 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 	engine.nextTrackId++
 
 	tracker := NewMqttTracker(topic, trackerID)
-	tracker.Callback = ctx.WrapCallback(-1)
+	tracker.Callback = ctx.WrapCallback(1)
 	if _, ok := engine.tracks[topic]; !ok {
 		engine.tracks[topic] = make(MqttTrackerMap)
 		engine.mqttClient.Start()
