@@ -428,6 +428,10 @@ type RuleEngine struct {
 	readyQueue      *wbgong.DeferredList
 	timerDeferQueue *wbgong.DeferredList
 
+	tracks           map[string]MqttTrackerMap
+	nextTrackId      MqttTrackerID
+	mqttTrackerMutex sync.Mutex
+
 	cleanupOnStop bool
 
 	statsdClient wbgong.StatsdClientWrapper
@@ -472,6 +476,7 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 		readyCh:               nil,
 		uninitializedRules:    make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY),
 		cleanupOnStop:         options.cleanupOnStop,
+		tracks:                make(map[string]MqttTrackerMap),
 
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
@@ -1274,7 +1279,7 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		// set readonly flag
 		if hasReadonly {
 			args.SetReadonly(ctrlReadonly)
-		// switch, pushbutton,range, rgb are writable by default
+			// switch, pushbutton,range, rgb are writable by default
 		} else if ctrlType == wbgong.CONV_TYPE_SWITCH {
 			args.SetReadonly(false)
 		} else if ctrlType == wbgong.CONV_TYPE_PUSHBUTTON {
@@ -1379,6 +1384,45 @@ func (engine *RuleEngine) DefineRule(rule *Rule, ctx *ESContext) (id RuleId, err
 	wbgong.Debug.Printf("[ruleengine] defineRule(name='%s') ruleId=%d, cond %T(%v)", rule.name, id, rule.cond, rule.cond)
 
 	return
+}
+
+// DefineMqttTracker creates new mqtt tracker and subscribe to specified topic if needed
+func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err error) {
+	engine.mqttTrackerMutex.Lock()
+	defer engine.mqttTrackerMutex.Unlock()
+
+	trackerID := engine.nextTrackId
+	engine.nextTrackId++
+
+	tracker := NewMqttTracker(topic, trackerID)
+	tracker.Callback = ctx.WrapCallback(-1)
+	if _, ok := engine.tracks[topic]; !ok {
+		engine.tracks[topic] = make(MqttTrackerMap)
+		engine.mqttClient.Subscribe(engine.trackHandler, topic)
+	}
+	engine.tracks[topic][trackerID] = tracker
+
+	engine.cleanup.AddCleanup(func() {
+		engine.mqttTrackerMutex.Lock()
+		defer engine.mqttTrackerMutex.Unlock()
+
+		delete(engine.tracks[topic], trackerID)
+	})
+
+	return nil
+}
+
+func (engine *RuleEngine) trackHandler(msg wbgong.MQTTMessage) {
+	var args objx.Map
+	if _, ok := engine.tracks[msg.Topic]; ok {
+		for _, tracker := range engine.tracks[msg.Topic] {
+			args = objx.New(map[string]interface{}{
+				"topic": msg.Topic,
+				"value": msg.Payload,
+			})
+			tracker.Callback(args)
+		}
+	}
 }
 
 // Refresh() should be called after engine rules are altered

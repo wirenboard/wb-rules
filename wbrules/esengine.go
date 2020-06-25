@@ -194,6 +194,7 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		"runRule":              engine.esWbRunRule,
 		"defineVirtualDevice":  engine.esDefineVirtualDevice,
 		"_wbPersistentName":    engine.esPersistentName,
+		"trackMqtt":            engine.trackMqtt,
 	})
 	engine.globalCtx.GetPropString(-1, "log")
 	engine.globalCtx.DefineFunctions(map[string]func(*ESContext) int{
@@ -1331,6 +1332,24 @@ func (engine *ESEngine) esWbDefineRule(ctx *ESContext) int {
 
 	// return rule ID
 	ctx.PushNumber(float64(ruleId))
+	return 1
+}
+
+func (engine *ESEngine) trackMqtt(ctx *ESContext) int {
+	if !(ctx.IsString(0) && ctx.IsFunction(1)) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad track definition"))
+		return duktape.DUK_RET_ERROR
+	}
+	topic := ctx.GetString(0)
+
+	currentFilename := ctx.GetCurrentFilename()
+	if currentFilename != "" {
+		engine.cleanup.PushCleanupScope(currentFilename)
+		defer engine.cleanup.PopCleanupScope(currentFilename)
+	}
+
+	engine.DefineMqttTracker(topic, ctx)
+
 	return 1
 }
 
