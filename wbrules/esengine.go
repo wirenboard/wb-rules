@@ -1519,31 +1519,7 @@ func (engine *ESEngine) esVdevCellSetDescription(ctx *ESContext) int {
 		return errCtrl
 	}
 
-	ctrl := ctrlProxy.getControl()
-	if ctrl == nil {
-		wbgong.Error.Printf("failed to set field for unexisting control")
-		return duktape.DUK_RET_ERROR
-	}
-
-	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
-		ctrl.SetTx(tx)
-		_, isLocal := ctrl.GetDevice().(wbgong.LocalDevice)
-		if !isLocal {
-			return wbgong.ExternalControlError
-		}
-
-		errSet := ctrl.SetDescription(descr)()
-		if errSet != nil {
-			return errSet
-		}
-		return nil
-	})
-
-	if errAccess != nil {
-		wbgong.Error.Printf("Can't set description: %s", errAccess)
-		return duktape.DUK_RET_ERROR
-	}
-
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_DESCRIPTION, descr)
 	return 1
 }
 
@@ -1559,30 +1535,7 @@ func (engine *ESEngine) esVdevCellSetType(ctx *ESContext) int {
 		return errCtrl
 	}
 
-	ctrl := ctrlProxy.getControl()
-	if ctrl == nil {
-		wbgong.Error.Printf("failed to set field for unexisting control")
-		return duktape.DUK_RET_ERROR
-	}
-
-	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
-		ctrl.SetTx(tx)
-		_, isLocal := ctrl.GetDevice().(wbgong.LocalDevice)
-		if !isLocal {
-			return wbgong.ExternalControlError
-		}
-
-		errSet := ctrl.SetType(typeStr)()
-		if errSet != nil {
-			return errSet
-		}
-		return nil
-	})
-
-	if errAccess != nil {
-		wbgong.Error.Printf("Can't set type: %s", errAccess)
-		return duktape.DUK_RET_ERROR
-	}
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_TYPE, typeStr)
 
 	return 1
 }
@@ -1599,30 +1552,7 @@ func (engine *ESEngine) esVdevCellSetUnits(ctx *ESContext) int {
 		return errCtrl
 	}
 
-	ctrl := ctrlProxy.getControl()
-	if ctrl == nil {
-		wbgong.Error.Printf("failed to set field for unexisting control")
-		return duktape.DUK_RET_ERROR
-	}
-
-	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
-		ctrl.SetTx(tx)
-		_, isLocal := ctrl.GetDevice().(wbgong.LocalDevice)
-		if !isLocal {
-			return wbgong.ExternalControlError
-		}
-
-		errSet := ctrl.SetUnits(unitsStr)()
-		if errSet != nil {
-			return errSet
-		}
-		return nil
-	})
-
-	if errAccess != nil {
-		wbgong.Error.Printf("Can't set units: %s", errAccess)
-		return duktape.DUK_RET_ERROR
-	}
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_UNITS, unitsStr)
 
 	return 1
 }
@@ -1639,30 +1569,12 @@ func (engine *ESEngine) esVdevCellSetReadonly(ctx *ESContext) int {
 		return errCtrl
 	}
 
-	ctrl := ctrlProxy.getControl()
-	if ctrl == nil {
-		wbgong.Error.Printf("failed to set field for unexisting control")
-		return duktape.DUK_RET_ERROR
+	readonlyStr := wbgong.CONV_META_BOOL_FALSE
+	if readonly {
+		readonlyStr = wbgong.CONV_META_BOOL_TRUE
 	}
 
-	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
-		ctrl.SetTx(tx)
-		_, isLocal := ctrl.GetDevice().(wbgong.LocalDevice)
-		if !isLocal {
-			return wbgong.ExternalControlError
-		}
-
-		errSet := ctrl.SetReadonly(readonly)()
-		if errSet != nil {
-			return errSet
-		}
-		return nil
-	})
-
-	if errAccess != nil {
-		wbgong.Error.Printf("Can't set readonly: %s", errAccess)
-		return duktape.DUK_RET_ERROR
-	}
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_READONLY, readonlyStr)
 
 	return 1
 }
@@ -1672,37 +1584,14 @@ func (engine *ESEngine) esVdevCellSetMax(ctx *ESContext) int {
 		wbgong.Error.Printf("setMax(): bad parameters")
 		return duktape.DUK_RET_ERROR
 	}
-	readonly := int(ctx.GetNumber(0))
+	max := int(ctx.GetNumber(0))
 
 	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
 	if errCtrl != 1 {
 		return errCtrl
 	}
 
-	ctrl := ctrlProxy.getControl()
-	if ctrl == nil {
-		wbgong.Error.Printf("failed to set field for unexisting control")
-		return duktape.DUK_RET_ERROR
-	}
-
-	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
-		ctrl.SetTx(tx)
-		_, isLocal := ctrl.GetDevice().(wbgong.LocalDevice)
-		if !isLocal {
-			return wbgong.ExternalControlError
-		}
-
-		errSet := ctrl.SetMax(readonly)()
-		if errSet != nil {
-			return errSet
-		}
-		return nil
-	})
-
-	if errAccess != nil {
-		wbgong.Error.Printf("Can't set max: %s", errAccess)
-		return duktape.DUK_RET_ERROR
-	}
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MAX, fmt.Sprintf("%d", max))
 
 	return 1
 }
@@ -1719,30 +1608,7 @@ func (engine *ESEngine) esVdevCellSetError(ctx *ESContext) int {
 		return errCtrl
 	}
 
-	ctrl := ctrlProxy.getControl()
-	if ctrl == nil {
-		wbgong.Error.Printf("failed to set field for unexisting control")
-		return duktape.DUK_RET_ERROR
-	}
-
-	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
-		ctrl.SetTx(tx)
-		_, isLocal := ctrl.GetDevice().(wbgong.LocalDevice)
-		if !isLocal {
-			return wbgong.ExternalControlError
-		}
-
-		errSet := ctrl.SetError(errors.New(errorStr))()
-		if errSet != nil {
-			return errSet
-		}
-		return nil
-	})
-
-	if errAccess != nil {
-		wbgong.Error.Printf("Can't set error: %s", errAccess)
-		return duktape.DUK_RET_ERROR
-	}
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_ERROR, errorStr)
 
 	return 1
 }
@@ -1759,30 +1625,7 @@ func (engine *ESEngine) esVdevCellSetOrder(ctx *ESContext) int {
 		return errCtrl
 	}
 
-	ctrl := ctrlProxy.getControl()
-	if ctrl == nil {
-		wbgong.Error.Printf("failed to set field for unexisting control")
-		return duktape.DUK_RET_ERROR
-	}
-
-	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
-		ctrl.SetTx(tx)
-		_, isLocal := ctrl.GetDevice().(wbgong.LocalDevice)
-		if !isLocal {
-			return wbgong.ExternalControlError
-		}
-
-		errSet := ctrl.SetOrder(order)()
-		if errSet != nil {
-			return errSet
-		}
-		return nil
-	})
-
-	if errAccess != nil {
-		wbgong.Error.Printf("Can't set order: %s", errAccess)
-		return duktape.DUK_RET_ERROR
-	}
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_ORDER, fmt.Sprintf("%d", order))
 
 	return 1
 }
