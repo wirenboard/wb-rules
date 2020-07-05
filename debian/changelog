@@ -1,3 +1,9 @@
+wb-rules (2.4.0) stable; urgency=medium
+
+  * access to meta-topics
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Tue, 19 May 2020 21:34:53 +0300
+
 wb-rules (2.3.3) stable; urgency=medium
 
   * Fix external controls creation that was inited before wb-rules starts

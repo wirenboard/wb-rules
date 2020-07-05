@@ -6,10 +6,8 @@ github.com/boltdb/bolt v0.0.0-20161223174454-2e25e3bb4285 h1:EROEheZarnka03RF04n
 github.com/boltdb/bolt v0.0.0-20161223174454-2e25e3bb4285/go.mod h1:clJnj/oiGkjum5o1McbSZDSLxVThjynRyGBgiAx27Ps=
 github.com/contactless/go-duktape v0.0.0-20170126162226-e07bb742a6e3 h1:G51noySWA6KZ1dwTz0PX+6ZGNghzOGdatpvP5c//bjo=
 github.com/contactless/go-duktape v0.0.0-20170126162226-e07bb742a6e3/go.mod h1:bJfRqI3QcYW1DIlODSiKKNV7duNgpkR25dJbU8V3AwA=
-github.com/contactless/org.eclipse.paho.mqtt.golang v0.0.0-20160512050345-bc107ec72972 h1:itvKwLlIg3MLdjVqhPuYFd0y9RsrQQxSIhZXUeNFtmA=
-github.com/contactless/org.eclipse.paho.mqtt.golang v0.0.0-20160512050345-bc107ec72972/go.mod h1:ISd8VT87v5vB6N33PDJrbWYlI0+r46JxZ9+yEDTKThc=
-github.com/contactless/wbgong v0.0.2 h1:qIqtkmMt+g4MU2Q8BantTA01BfBpX00mf+bEz8QL0Lk=
-github.com/contactless/wbgong v0.0.2/go.mod h1:r2wgXK7QCNzEzwdCTqw6vsHnlH/dtGR8eSrU08dPHrg=
+github.com/contactless/wbgong v0.0.3 h1:8xLRhkFmK1/o6re5rmQ54ItxyHY2ySDtItcepQQxT9Y=
+github.com/contactless/wbgong v0.0.3/go.mod h1:r2wgXK7QCNzEzwdCTqw6vsHnlH/dtGR8eSrU08dPHrg=
 github.com/davecgh/go-spew v0.0.0-20151105211317-5215b55f46b2 h1:5zdDAMuB3gvbHB1m2BZT9+t9w+xaBmK3ehb7skDXcwM=
 github.com/davecgh/go-spew v0.0.0-20151105211317-5215b55f46b2/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/pmezard/go-difflib v0.0.0-20151028094244-d8ed2627bdf0 h1:GD+A8+e+wFkqje55/2fOVnZPkoDIu1VooBWfNrnY8Uo=
