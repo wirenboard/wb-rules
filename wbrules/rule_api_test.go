@@ -92,7 +92,7 @@ func (s *RuleAPISuite) TestAPI() {
 
 }
 
-func TestRuleMetaSuite(t *testing.T) {
+func TestRuleAPISuite(t *testing.T) {
 	testutils.RunSuites(t,
 		new(RuleAPISuite),
 	)
