@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -357,6 +358,77 @@ func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
 	}
 }
 
+// SetMeta sets meta field of controller
+func (ctrlProxy *ControlProxy) SetMeta(key, value string) (cce *ControlChangeEvent) {
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[ctrlProxy %s/%s] SetMeta(%v=%v)", ctrlProxy.devProxy.name, ctrlProxy.name, key, value)
+	}
+
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		wbgong.Error.Printf("failed to SetMeta for unexisting control")
+		return
+	}
+
+	var spec ControlSpec
+	isComplete := false
+	isRetained := false
+
+	isLocal := false
+	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
+		ctrl.SetTx(tx)
+		_, isLocal = ctrl.GetDevice().(wbgong.LocalDevice)
+		if !isLocal {
+			return wbgong.ExternalControlError
+		}
+		isComplete = ctrl.IsComplete()
+		isRetained = ctrl.IsRetained()
+		ctrlID := fmt.Sprintf("%s#%s", ctrl.GetId(), key)
+		spec = ControlSpec{ctrl.GetDevice().GetId(), ctrlID}
+
+		switch key {
+		case wbgong.CONV_META_SUBTOPIC_DESCRIPTION:
+			err := ctrl.SetDescription(value)()
+			if err != nil {
+			}
+		case wbgong.CONV_META_SUBTOPIC_ERROR:
+			return ctrl.SetError(errors.New(value))()
+		case wbgong.CONV_META_SUBTOPIC_MAX:
+			if max, err := strconv.Atoi(value); err != nil {
+				return err
+			} else {
+				return ctrl.SetMax(max)()
+			}
+		case wbgong.CONV_META_SUBTOPIC_ORDER:
+			if order, err := strconv.Atoi(value); err != nil {
+				return err
+			} else {
+				return ctrl.SetOrder(order)()
+			}
+		case wbgong.CONV_META_SUBTOPIC_READONLY:
+			v := value == wbgong.CONV_META_BOOL_TRUE
+			return ctrl.SetReadonly(v)()
+		case wbgong.CONV_META_SUBTOPIC_TYPE:
+			return ctrl.SetType(value)()
+		case wbgong.CONV_META_SUBTOPIC_UNITS:
+			return ctrl.SetUnits(value)()
+		}
+		return nil
+	})
+
+	if errAccess != nil {
+		wbgong.Error.Printf("control %s/%s SetMeta(%s=%s) error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, key, value, errAccess)
+		return
+	}
+	cce = &ControlChangeEvent{
+		Spec:       spec,
+		IsComplete: isComplete,
+		IsRetained: isRetained,
+		Value:      value,
+	}
+	return
+}
+
 // FIXME: error handling here
 func (ctrlProxy *ControlProxy) IsComplete() (v bool) {
 	ctrl := ctrlProxy.getControl()
@@ -678,6 +750,11 @@ ReadyWaitLoop:
 	}
 }
 
+// PushToEventBuffer sends prepared ControlChangeEvent to engines event buffer
+func (engine *RuleEngine) PushToEventBuffer(cce *ControlChangeEvent) {
+	engine.eventBuffer.PushEvent(cce)
+}
+
 func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 	if atomic.LoadUint32(&engine.active) == ENGINE_STOP {
 		return
@@ -706,6 +783,18 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 
 		// here we need to invalidate controls/devices proxy
 		atomic.AddUint32(&engine.rev, 1)
+
+		// pushing event about new external meta received
+		ev := event.(wbgong.NewExternalDeviceControlMetaEvent)
+		metaCtrl := fmt.Sprintf("%s#%s", e.Control.GetId(), ev.Type)
+		metaSpec := ControlSpec{e.Control.GetDevice().GetId(), metaCtrl}
+		metaCCE := &ControlChangeEvent{
+			Spec:       metaSpec,
+			IsComplete: true, //TODO: find if all controls complete
+			IsRetained: isRetained,
+			Value:      ev.Value,
+		}
+		engine.eventBuffer.PushEvent(metaCCE)
 	default:
 		return
 	}
@@ -1220,6 +1309,19 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 		}
 	}
 	args.SetDoLoadPrevious(!forceDefault)
+
+	// get 'lazyInit' metaproperty
+	lazyInit := false
+	lazyInitRaw, hasLazyInit := ctrlDef[VDEV_CONTROL_DESCR_PROP_LAZYINIT]
+	if hasLazyInit {
+		ok := false
+		lazyInit, ok = lazyInitRaw.(bool)
+		if !ok {
+			return fmt.Errorf("%s/%s: non-boolean value of lazyInit propery",
+				devId, ctrlId)
+		}
+	}
+	args.SetLazyInit(lazyInit)
 
 	ctrlValue, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_VALUE]
 	if !ok && ctrlType != "pushbutton" { // FIXME: awful, need some special checkers

@@ -1915,12 +1915,48 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 			c.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG])
 			return 1
 		},
+		JS_DEVPROXY_FUNC_SETMETA: func(ctx *ESContext) int {
+			ctx.PushThis()
+			c := ctx.GetGoObject(-1).(*ControlProxy)
+			ctx.Pop()
+
+			if ctx.GetTop() != 1 || !ctx.IsObject(-1) {
+				return duktape.DUK_RET_ERROR
+			}
+			m, ok := ctx.GetJSObject(-1).(objx.Map)
+			if !ok || !m.Has(JS_DEVPROXY_FUNC_SETVALUE_ARG) {
+				wbgong.Error.Printf("invalid control definition")
+				return duktape.DUK_RET_TYPE_ERROR
+			}
+			key := fmt.Sprintf("%v", m[JS_DEVPROXY_FUNC_SETVALUE_KEY])
+			value := fmt.Sprintf("%v", m[JS_DEVPROXY_FUNC_SETVALUE_ARG])
+			cce := c.SetMeta(key, value)
+			if cce != nil {
+				engine.PushToEventBuffer(cce)
+			}
+			return 1
+		},
 		JS_DEVPROXY_FUNC_ISCOMPLETE: func(ctx *ESContext) int {
 			ctx.PushThis()
 			c := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
 
 			ctx.PushBoolean(c.IsComplete())
+			return 1
+		},
+		JS_DEVPROXY_FUNC_GETMETA: func(ctx *ESContext) int {
+			ctx.PushThis()
+			c := ctx.GetGoObject(-1).(*ControlProxy)
+			ctx.Pop()
+
+			ctrlMeta := c.control.GetMeta()
+			dataMap := make(map[string]interface{})
+			for key, value := range ctrlMeta {
+				dataMap[key] = value
+			}
+			m := objx.New(dataMap)
+			ctx.PushJSObject(m)
+
 			return 1
 		},
 	})
