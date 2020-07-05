@@ -6,15 +6,15 @@ import (
 	"github.com/contactless/wbgong/testutils"
 )
 
-type RuleAPISuite struct {
+type RuleControlsAPISuite struct {
 	RuleSuiteBase
 }
 
-func (s *RuleAPISuite) SetupTest() {
-	s.SetupSkippingDefs("testrules_api.js")
+func (s *RuleControlsAPISuite) SetupTest() {
+	s.SetupSkippingDefs("testrules_controls_api.js")
 }
 
-func (s *RuleAPISuite) TestAPI() {
+func (s *RuleControlsAPISuite) TestAPI() {
 	// spawn new control
 	s.publish("/devices/spawner/controls/spawn/on", "1", "spawner/spawn")
 	s.VerifyUnordered(
@@ -92,8 +92,8 @@ func (s *RuleAPISuite) TestAPI() {
 
 }
 
-func TestRuleAPISuite(t *testing.T) {
+func TestRuleControlsAPISuite(t *testing.T) {
 	testutils.RunSuites(t,
-		new(RuleAPISuite),
+		new(RuleControlsAPISuite),
 	)
 }

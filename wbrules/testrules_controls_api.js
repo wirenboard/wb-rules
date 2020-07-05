@@ -4,7 +4,7 @@ defineRule({
     whenChanged: ["spawner/spawn"],
     then: function(newValue) {
         getDevice("spawner").controlsList().forEach(function (ctrl) {
-            log("ctrlID: {}, error: {}".format(ctrl.getId(), ctrl.getError()))
+            log("ctrlID: {}, error: {}".format(ctrl.getId(), ctrl.getError()));
         })
         if (getDevice("spawner").isControlExists(ctrlID)) {
             getDevice("spawner").removeControl(ctrlID);
@@ -37,23 +37,23 @@ defineRule({
 defineRule({
     whenChanged: ["spawner/change"],
     then: function(newValue) {
-        ctrl = getDevice("spawner").getControl(ctrlID)
+        ctrl = getDevice("spawner").getControl(ctrlID);
         if (newValue) {
-            ctrl.setDescription("true Description")
-            ctrl.setError("new Error")
-            ctrl.setType("range")
-            ctrl.setOrder(5)
-            ctrl.setMax(255)
-            ctrl.setReadonly(true)
-            ctrl.setUnits("meters")
+            ctrl.setDescription("true Description");
+            ctrl.setError("new Error");
+            ctrl.setType("range");
+            ctrl.setOrder(5);
+            ctrl.setMax(255);
+            ctrl.setReadonly(true);
+            ctrl.setUnits("meters");
         } else {
-            ctrl.setDescription("new Description")
-            ctrl.setError("")
-            ctrl.setType("text")
-            ctrl.setOrder(4)
-            ctrl.setMax(0)
-            ctrl.setReadonly(false)
-            ctrl.setUnits("chars")
+            ctrl.setDescription("new Description");
+            ctrl.setError("");
+            ctrl.setType("text");
+            ctrl.setOrder(4);
+            ctrl.setMax(0);
+            ctrl.setReadonly(false);
+            ctrl.setUnits("chars");
         }
     }
 });
