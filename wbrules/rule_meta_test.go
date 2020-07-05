@@ -16,22 +16,34 @@ func (s *RuleMetaSuite) SetupTest() {
 
 func (s *RuleMetaSuite) TestMeta() {
 	// set error by js code
-	s.SetCellValueNoVerify("testDevice", "textControl", "setError")
-	s.Verify(
-		"driver -> /devices/testDevice/controls/textControl: [setError] (QoS 1, retained)",
-		"[info] got textControl, changed: testDevice/textControl -> setError",
+	s.publish("/devices/testDevice/controls/startControl/on", "1", "testDevice/startControl")
+	s.VerifyUnordered(
+		"driver -> /devices/testDevice/controls/startControl: [1] (QoS 1, retained)",
+		"tst -> /devices/testDevice/controls/startControl/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [got startControl, changed: testDevice/startControl -> true] (QoS 1)",
 		"driver -> /devices/testDevice/controls/textControl/meta/error: [error text] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta/description: [new description] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta/type: [range] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta/max: [255] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta/units: [meters] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta/order: [4] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta/readonly: [1] (QoS 1, retained)",
 	)
 
 	// unset error by js code
-	s.SetCellValueNoVerify("testDevice", "textControl", "unsetError")
+	s.publish("/devices/testDevice/controls/startControl/on", "0", "testDevice/startControl")
 	s.VerifyUnordered(
-		"driver -> /devices/testDevice/controls/textControl: [unsetError] (QoS 1, retained)",
-		"[info] got textControl, changed: testDevice/textControl -> unsetError",
+		"driver -> /devices/testDevice/controls/startControl: [0] (QoS 1, retained)",
+		"tst -> /devices/testDevice/controls/startControl/on: [0] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [got startControl, changed: testDevice/startControl -> false] (QoS 1)",
 		"driver -> /devices/testDevice/controls/textControl/meta/error: [] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta/error: [] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta/description: [old description] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta/type: [text] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta/max: [0] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta/order: [5] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta/units: [chars] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta/readonly: [0] (QoS 1, retained)",
 	)
-	s.expectControlChange("testDevice/textControl")
 
 	// when error set on somedev/sw -> testDevice/switchControl is changed to true
 	s.publish("/devices/somedev/controls/sw/meta/error", "another error", "somedev/sw", "testDevice/switchControl")
@@ -51,7 +63,6 @@ func (s *RuleMetaSuite) TestMeta() {
 	)
 
 	s.VerifyEmpty()
-
 }
 
 func TestRuleMetaSuite(t *testing.T) {

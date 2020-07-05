@@ -16,23 +16,37 @@ defineVirtualDevice("testDevice", {
     },
     textControl: {
       type: "text",
-      value: "some text"
+      value: "some text",
+      readonly: false
+    },
+    startControl: {
+      type: "switch",
+      value: false
     }
   }
 });
 
-defineRule("onChangetextControl", {
-  whenChanged: "testDevice/textControl",
+defineRule("onChangeStartControl", {
+  whenChanged: "testDevice/startControl",
   then: function (newValue, devName, cellName) {
-    log("got textControl, changed: {} -> {}", cellSpec(devName, cellName),
+    log("got startControl, changed: {} -> {}", cellSpec(devName, cellName),
        newValue === undefined ? "(none)" : newValue);
-    switch(newValue) {
-    case "setError":
+    if (newValue) {
       dev["testDevice/textControl#error"] = "error text";
-      break;
-    case "unsetError":
-        dev["testDevice/textControl#error"] = "";
-        break;
+      dev["testDevice/textControl#description"] = "new description";
+      dev["testDevice/textControl#type"] = "range";
+      dev["testDevice/textControl#max"] = "255";
+      dev["testDevice/textControl#order"] = "4";
+      dev["testDevice/textControl#units"] = "meters";
+      dev["testDevice/textControl#readonly"] = "1";
+    } else {
+      dev["testDevice/textControl#error"] = "";
+      dev["testDevice/textControl#description"] = "old description";
+      dev["testDevice/textControl#type"] = "text";
+      dev["testDevice/textControl#max"] = "0";
+      dev["testDevice/textControl#order"] = "5";
+      dev["testDevice/textControl#units"] = "chars";
+      dev["testDevice/textControl#readonly"] = "0";
     }
   }
 });
