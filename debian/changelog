@@ -1,4 +1,4 @@
-wb-rules (2.5.0~alpha6) stable; urgency=medium
+wb-rules (2.5.0) stable; urgency=medium
 
   * added global function getControl()
   * added device methods:
