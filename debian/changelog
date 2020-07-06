@@ -1,3 +1,52 @@
+wb-rules (2.5.0) stable; urgency=medium
+
+  * added global function getControl()
+  * added device methods:
+      getId()
+      isVirtual()
+  * device method getDeviceId() is deprecated
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Fri, 19 Jun 2020 01:43:28 +0300
+
+wb-rules (2.5.0~alpha5) stable; urgency=medium
+
+  * getId() method of control object
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Thu, 11 Jun 2020 03:09:33 +0300
+
+wb-rules (2.5.0~alpha4) stable; urgency=medium
+
+  * added controlsList() method to device object
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Wed, 10 Jun 2020 00:18:23 +0300
+
+wb-rules (2.5.0~alpha3) stable; urgency=medium
+
+  * added number of functions to manipulate controls:
+      isControlExists()
+      [set|get]Description()
+      [set|get]Type()
+      [set|get]Units()
+      [set|get]Readonly()
+      [set|get]Max()
+      [set|get]Error()
+      [set|get]Order()
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Mon, 01 Jun 2020 04:48:50 +0300
+
+wb-rules (2.5.0~alpha2) stable; urgency=medium
+
+  * removeControl() function available to user scripts
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Fri, 29 May 2020 03:22:49 +0300
+
+wb-rules (2.5.0~alpha1) stable; urgency=medium
+
+  * getDevice() function available to user scripts
+  * addControl() function available to user scripts
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Fri, 29 May 2020 02:49:36 +0300
+
 wb-rules (2.4.0) stable; urgency=medium
 
   * access to meta-topics

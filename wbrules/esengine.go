@@ -42,8 +42,10 @@ const (
 	GLOBAL_OBJ_PROTO_NAME = "__wbGlobalPrototype"
 	MODULE_OBJ_PROTO_NAME = "__wbModulePrototype"
 
-	VDEV_OBJ_PROP_DEVID = "__deviceId"
-	VDEV_OBJ_PROTO_NAME = "__wbVdevPrototype"
+	VDEV_OBJ_PROP_DEVID      = "__deviceId"
+	VDEV_OBJ_PROP_CELLID     = "__cellId"
+	VDEV_OBJ_PROTO_NAME      = "__wbVdevPrototype"
+	VDEV_OBJ_PROTO_CELL_NAME = "__wbVdevCellPrototype"
 
 	THREAD_STORAGE_OBJ_NAME       = "_esThreads"
 	MODULES_USER_STORAGE_OBJ_NAME = "_esModules"
@@ -165,6 +167,9 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	// init virtual device prototype
 	engine.initVdevPrototype(engine.globalCtx)
 
+	// init virtual device cell prototype
+	engine.initVdevCellPrototype(engine.globalCtx)
+
 	// init threads storage
 	engine.initGlobalThreadList(engine.globalCtx)
 
@@ -193,6 +198,8 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		"enableRule":           engine.esWbEnableRule,
 		"runRule":              engine.esWbRunRule,
 		"defineVirtualDevice":  engine.esDefineVirtualDevice,
+		"getDevice":            engine.esGetDevice,
+		"getControl":           engine.esGetControl,
 		"_wbPersistentName":    engine.esPersistentName,
 	})
 	engine.globalCtx.GetPropString(-1, "log")
@@ -294,12 +301,88 @@ func (engine *ESEngine) initVdevPrototype(ctx *ESContext) {
 	ctx.PushObject()
 	// [ global __wbVdevPrototype ]
 	ctx.DefineFunctions(map[string]func(*ESContext) int{
-		"getDeviceId": engine.esVdevGetDeviceId,
-		"getCellId":   engine.esVdevGetCellId,
+		"getDeviceId":     engine.esVdevGetDeviceId,
+		"getId":           engine.esVdevGetId,
+		"getCellId":       engine.esVdevGetCellId,
+		"addControl":      engine.esVdevAddControl,
+		"getControl":      engine.esVdevGetControl,
+		"isControlExists": engine.esVdevControlExists,
+		"removeControl":   engine.esVdevRemoveControl,
+		"controlsList":    engine.esVdevControlsList,
+		"isVirtual":       engine.esVdevIsVirtual,
 		// getCellValue and setCellValue are defined in lib.js
 	})
 
 	ctx.PutPropString(-2, "__wbVdevPrototype")
+}
+
+// initVdevCellPrototype inits __wbVdevCellPrototype object - prototype
+// for virtual device cells controllers
+func (engine *ESEngine) initVdevCellPrototype(ctx *ESContext) {
+	ctx.PushGlobalObject()
+	defer ctx.Pop()
+
+	ctx.PushObject()
+	// [ global __wbVdevCellPrototype ]
+	ctx.DefineFunctions(map[string]func(*ESContext) int{
+		"getId":          engine.esVdevCellGetId,
+		"setDescription": engine.esVdevCellSetDescription,
+		"getDescription": engine.esVdevCellGetDescription,
+		"setType":        engine.esVdevCellSetType,
+		"getType":        engine.esVdevCellGetType,
+		"setUnits":       engine.esVdevCellSetUnits,
+		"getUnits":       engine.esVdevCellGetUnits,
+		"setReadonly":    engine.esVdevCellSetReadonly,
+		"getReadonly":    engine.esVdevCellGetReadonly,
+		"setMax":         engine.esVdevCellSetMax,
+		"getMax":         engine.esVdevCellGetMax,
+		"setError":       engine.esVdevCellSetError,
+		"getError":       engine.esVdevCellGetError,
+		"setOrder":       engine.esVdevCellSetOrder,
+		"getOrder":       engine.esVdevCellGetOrder,
+	})
+
+	ctx.PutPropString(-2, "__wbVdevCellPrototype")
+}
+
+func (engine *ESEngine) makeControlObject(ctx *ESContext, devID, ctrlID string) {
+	ctx.Pop()
+	// [ args | ]
+
+	// create virtual device cell object
+	ctx.PushObject()
+	// [ args | vDevObject ]
+
+	// get prototype
+
+	// get global object first
+	ctx.PushGlobalObject()
+	// [ args | vDevObject global ]
+
+	// get prototype object
+	ctx.GetPropString(-1, VDEV_OBJ_PROTO_CELL_NAME)
+	// [ args | vDevObject global __wbVdevPrototype ]
+
+	// apply prototype
+	ctx.SetPrototype(-3)
+	// [ args | vDevObject global ]
+
+	ctx.Pop()
+	// [ args | vDevObject ]
+
+	// push device ID property
+
+	ctx.PushString(ctrlID)
+	// [ args | vDevObject cellId ]
+
+	ctx.PutPropString(-2, VDEV_OBJ_PROP_CELLID)
+	// [ args | vDevObject ]
+
+	ctx.PushString(devID)
+	// [ args | vDevObject devId ]
+
+	ctx.PutPropString(-2, VDEV_OBJ_PROP_DEVID)
+	// [ args | vDevObject ]
 }
 
 // Engine callback error handler
@@ -912,6 +995,89 @@ func (engine *ESEngine) getStringPropFromObject(ctx *ESContext, objIndex int, pr
 	return
 }
 
+func (engine *ESEngine) esGetDevice(ctx *ESContext) int {
+	if ctx.GetTop() != 1 || !ctx.IsString(0) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("getDevice(): bad parameters"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	name := ctx.GetString(0)
+
+	errDevice := engine.GetDevice(name)
+	if errDevice != nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("Error in getting device: %s", errDevice))
+		ctx.PushUndefined()
+		return 1
+	}
+	// [ args | ]
+
+	// create virtual device object
+	ctx.PushObject()
+	// [ args | vDevObject ]
+
+	// get prototype
+
+	// get global object first
+	ctx.PushGlobalObject()
+	// [ args | vDevObject global ]
+
+	// get prototype object
+	ctx.GetPropString(-1, VDEV_OBJ_PROTO_NAME)
+	// [ args | vDevObject global __wbVdevPrototype ]
+
+	// apply prototype
+	ctx.SetPrototype(-3)
+	// [ args | vDevObject global ]
+
+	ctx.Pop()
+	// [ args | vDevObject ]
+
+	// push device ID property
+
+	ctx.PushString(name)
+	// [ args | vDevObject devId ]
+
+	ctx.PutPropString(-2, VDEV_OBJ_PROP_DEVID)
+	// [ args | vDevObject ]
+
+	return 1
+}
+
+func (engine *ESEngine) esGetControl(ctx *ESContext) int {
+	if ctx.GetTop() != 1 || !ctx.IsString(0) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("getDevice(): bad parameters"))
+		return duktape.DUK_RET_ERROR
+	}
+
+	name := ctx.GetString(0)
+
+	ids := strings.Split(name, "/")
+	if len(ids) != 2 {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("getDevice(): bad parameters: should be 'devID/cellID'"))
+		return duktape.DUK_RET_ERROR
+	}
+	devID := ids[0]
+	ctrlID := ids[1]
+
+	errDevice := engine.GetDevice(devID)
+	if errDevice != nil {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("Error in getting device: %s", errDevice))
+		ctx.PushUndefined()
+		return 1
+	}
+	devProxy := engine.GetDeviceProxy(devID)
+	ctrl := devProxy.getControl(ctrlID)
+	if ctrl == nil {
+		wbgong.Error.Printf("getControl(): no such control '%s'", ctrlID)
+		ctx.PushUndefined()
+		return 1
+	}
+
+	engine.makeControlObject(ctx, devID, ctrlID)
+
+	return 1
+}
+
 // defineVirtualDevice creates virtual device object in MQTT
 // and returns JS object to control it
 func (engine *ESEngine) esDefineVirtualDevice(ctx *ESContext) int {
@@ -962,10 +1128,42 @@ func (engine *ESEngine) esDefineVirtualDevice(ctx *ESContext) int {
 	return 1
 }
 
-// esVdevGetDeviceId returns virtual device ID string (for MQTT)
+func (engine *ESEngine) esVdevIsVirtual(ctx *ESContext) int {
+	// push this
+	ctx.PushThis()
+	// [ cell | this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+		// [ cell | ]
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+	ctx.Pop()
+	devProxy := engine.GetDeviceProxy(devId)
+	isVirtual, errVirtual := devProxy.isVirtual()
+	if errVirtual != nil {
+		wbgong.Error.Printf("isVirtial(): error in executing fufnction: %s", errVirtual)
+		return duktape.DUK_RET_ERROR
+	}
+
+	ctx.PushBoolean(isVirtual)
+
+	return 1
+}
+
+// esVdevGetDeviceId is deprecated, uses esVdevGetId with error message about deprecation
+func (engine *ESEngine) esVdevGetDeviceId(ctx *ESContext) int {
+	engine.Log(ENGINE_LOG_WARNING, "getDeviceId() is deprecated and will be removed soon, use getId() instead")
+	return engine.esVdevGetId(ctx)
+}
+
+// esVdevGetId returns virtual device ID string (for MQTT)
 // from virtual device object
 // Exported to JS as method of virtual device object
-func (engine *ESEngine) esVdevGetDeviceId(ctx *ESContext) int {
+func (engine *ESEngine) esVdevGetId(ctx *ESContext) int {
 	// this -> virtual device object
 	// no arguments
 	if ctx.GetTop() != 0 {
@@ -1034,6 +1232,432 @@ func (engine *ESEngine) esVdevGetCellId(ctx *ESContext) int {
 	// [ cell | cellId ]
 
 	return 1
+}
+
+func (engine *ESEngine) esVdevRemoveControl(ctx *ESContext) int {
+	if !ctx.IsString(0) {
+		wbgong.Error.Printf("removeControl(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	ctrlId := ctx.GetString(0)
+
+	// push this
+	ctx.PushThis()
+	// [ cell | this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+		// [ cell | ]
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	ctx.Pop()
+
+	errControl := engine.RemoveControl(devId, ctrlId)
+	if errControl != nil {
+		wbgong.Error.Printf("Error in removing control %s on device %s: %s", ctrlId, devId, errControl)
+	}
+	return 1
+}
+
+func (engine *ESEngine) esVdevControlExists(ctx *ESContext) int {
+	if !ctx.IsString(0) {
+		wbgong.Error.Printf("isControlExists(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	ctrlId := ctx.GetString(0)
+
+	// push this
+	ctx.PushThis()
+	// [ cell | this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+		// [ cell | ]
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	ctx.Pop()
+
+	ctrl := engine.GetDeviceProxy(devId).getControl(ctrlId)
+	if ctrl == nil {
+		ctx.PushBoolean(false)
+	} else {
+		ctx.PushBoolean(true)
+	}
+	return 1
+}
+
+func (engine *ESEngine) esVdevGetControl(ctx *ESContext) int {
+	if !ctx.IsString(0) {
+		wbgong.Error.Printf("getControl(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	ctrlId := ctx.GetString(0)
+
+	// push this
+	ctx.PushThis()
+	// [ cell | this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+		// [ cell | ]
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+	devProxy := engine.GetDeviceProxy(devId)
+	ctrl := devProxy.getControl(ctrlId)
+	if ctrl == nil {
+		wbgong.Error.Printf("getControl(): no such control '%s'", ctrlId)
+		ctx.PushUndefined()
+		return 1
+	}
+
+	engine.makeControlObject(ctx, devId, ctrlId)
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevControlsList(ctx *ESContext) int {
+	// push this
+	ctx.PushThis()
+	// [ cell | this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+		// [ cell | ]
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+	devProxy := engine.GetDeviceProxy(devId)
+	ctrls := devProxy.controlsList()
+
+	ctx.Pop()
+	// [ args | ]
+	vIndex := ctx.PushArray()
+
+	for i, ctrl := range ctrls {
+		// create virtual device cell object
+		ctx.PushObject()
+		// [ args | vDevObject ]
+
+		// get prototype
+
+		// get global object first
+		ctx.PushGlobalObject()
+		// [ args | vDevObject global ]
+
+		// get prototype object
+		ctx.GetPropString(-1, VDEV_OBJ_PROTO_CELL_NAME)
+		// [ args | vDevObject global __wbVdevPrototype ]
+
+		// apply prototype
+		ctx.SetPrototype(-3)
+		// [ args | vDevObject global ]
+
+		ctx.Pop()
+		// [ args | vDevObject ]
+
+		// push device ID property
+
+		ctx.PushString(ctrl.GetId())
+		// [ args | vDevObject cellId ]
+
+		ctx.PutPropString(-2, VDEV_OBJ_PROP_CELLID)
+		// [ args | vDevObject ]
+
+		ctx.PushString(devId)
+		// [ args | vDevObject devId ]
+
+		ctx.PutPropString(-2, VDEV_OBJ_PROP_DEVID)
+		// [ args | vDevObject ]
+		ctx.PutPropIndex(vIndex, uint(i))
+	}
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevAddControl(ctx *ESContext) int {
+	if !ctx.IsString(0) || !ctx.IsObject(1) {
+		wbgong.Error.Printf("addControl(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	ctrlId := ctx.GetString(0)
+	ctrlDef := ctx.GetJSObject(1).(objx.Map)
+
+	// push this
+	ctx.PushThis()
+	// [ cell | this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+		// [ cell | ]
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	ctx.Pop()
+
+	errControl := engine.AddControl(devId, ctrlId, ctrlDef)
+	if errControl != nil {
+		wbgong.Error.Printf("Error in creating control %s on device %s: %s", ctrlId, devId, errControl)
+	}
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellGetDescription(ctx *ESContext) int {
+	ctrlProxy, err := engine.getControlFromCtx(ctx)
+	if err != 1 {
+		return err
+	}
+
+	ctx.PushString(ctrlProxy.getControl().GetDescription())
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellGetType(ctx *ESContext) int {
+	ctrlProxy, err := engine.getControlFromCtx(ctx)
+	if err != 1 {
+		return err
+	}
+
+	ctx.PushString(ctrlProxy.getControl().GetType())
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellGetUnits(ctx *ESContext) int {
+	ctrlProxy, err := engine.getControlFromCtx(ctx)
+	if err != 1 {
+		return err
+	}
+
+	ctx.PushString(ctrlProxy.getControl().GetUnits())
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellGetReadonly(ctx *ESContext) int {
+	ctrlProxy, err := engine.getControlFromCtx(ctx)
+	if err != 1 {
+		return err
+	}
+
+	ctx.PushBoolean(ctrlProxy.getControl().GetReadonly())
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellGetMax(ctx *ESContext) int {
+	ctrlProxy, err := engine.getControlFromCtx(ctx)
+	if err != 1 {
+		return err
+	}
+
+	ctx.PushInt(ctrlProxy.getControl().GetMax())
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellGetError(ctx *ESContext) int {
+	ctrlProxy, err := engine.getControlFromCtx(ctx)
+	if err != 1 {
+		return err
+	}
+	var errString string
+	if ctrlProxy.getControl().GetError() != nil {
+		errString = ctrlProxy.getControl().GetError().Error()
+	}
+	ctx.PushString(errString)
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellGetOrder(ctx *ESContext) int {
+	ctrlProxy, err := engine.getControlFromCtx(ctx)
+	if err != 1 {
+		return err
+	}
+
+	ctx.PushInt(ctrlProxy.getControl().GetOrder())
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellGetId(ctx *ESContext) int {
+	ctrlProxy, err := engine.getControlFromCtx(ctx)
+	if err != 1 {
+		return err
+	}
+
+	ctx.PushString(ctrlProxy.getControl().GetId())
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellSetDescription(ctx *ESContext) int {
+	if !ctx.IsString(0) {
+		wbgong.Error.Printf("setDescription(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	descr := ctx.GetString(0)
+
+	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
+	if errCtrl != 1 {
+		return errCtrl
+	}
+
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_DESCRIPTION, descr)
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellSetType(ctx *ESContext) int {
+	if !ctx.IsString(0) {
+		wbgong.Error.Printf("setType(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	typeStr := ctx.GetString(0)
+
+	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
+	if errCtrl != 1 {
+		return errCtrl
+	}
+
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_TYPE, typeStr)
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellSetUnits(ctx *ESContext) int {
+	if !ctx.IsString(0) {
+		wbgong.Error.Printf("setUnits(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	unitsStr := ctx.GetString(0)
+
+	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
+	if errCtrl != 1 {
+		return errCtrl
+	}
+
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_UNITS, unitsStr)
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellSetReadonly(ctx *ESContext) int {
+	if !ctx.IsBoolean(0) {
+		wbgong.Error.Printf("setReadonly(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	readonly := ctx.GetBoolean(0)
+
+	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
+	if errCtrl != 1 {
+		return errCtrl
+	}
+
+	readonlyStr := wbgong.CONV_META_BOOL_FALSE
+	if readonly {
+		readonlyStr = wbgong.CONV_META_BOOL_TRUE
+	}
+
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_READONLY, readonlyStr)
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellSetMax(ctx *ESContext) int {
+	if !ctx.IsNumber(0) {
+		wbgong.Error.Printf("setMax(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	max := int(ctx.GetNumber(0))
+
+	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
+	if errCtrl != 1 {
+		return errCtrl
+	}
+
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MAX, fmt.Sprintf("%d", max))
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellSetError(ctx *ESContext) int {
+	if !ctx.IsString(0) {
+		wbgong.Error.Printf("setError(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	errorStr := ctx.GetString(0)
+
+	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
+	if errCtrl != 1 {
+		return errCtrl
+	}
+
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_ERROR, errorStr)
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellSetOrder(ctx *ESContext) int {
+	if !ctx.IsNumber(0) {
+		wbgong.Error.Printf("setOrder(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	order := int(ctx.GetNumber(0))
+
+	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
+	if errCtrl != 1 {
+		return errCtrl
+	}
+
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_ORDER, fmt.Sprintf("%d", order))
+
+	return 1
+}
+
+func (engine *ESEngine) getControlFromCtx(ctx *ESContext) (*ControlProxy, int) {
+	// push this
+	ctx.PushThis()
+	// [ cell | this ]
+
+	// get virtual device id
+	devID, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+		// [ cell | ]
+
+		return nil, duktape.DUK_RET_TYPE_ERROR
+	}
+
+	ctrlID, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_CELLID)
+	if err != nil {
+		ctx.Pop()
+		// [ cell | ]
+
+		return nil, duktape.DUK_RET_TYPE_ERROR
+	}
+	ctx.Pop()
+	ctrl := engine.GetDeviceProxy(devID).EnsureControlProxy(ctrlID)
+	if ctrl.control == nil {
+		wbgong.Error.Printf("Control %s/%s not found", devID, ctrlID)
+		return nil, duktape.DUK_RET_ERROR
+	}
+	return ctrl, 1
 }
 
 func (engine *ESEngine) esFormat(ctx *ESContext) int {

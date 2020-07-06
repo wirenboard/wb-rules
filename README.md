@@ -340,6 +340,57 @@ defineRule("onChange", {
 });
 ```
 
+### API создания/управления устройств
+
+Функция `defineVirtualDevice()` возвращает объект, представляющей собой виртуальное устройство.
+Также этот объект можно получить с помощью глобальной функции `getDevice(<id девайса>)`. Аналогично, можно получить объект контрола
+при помощи глобальной функции `getControl(<id девайса>/<id контрола>)`, т.е. для получения контрола `ctrlID` на девайсе `deviceID` нужно вызвать `getControl("deviceID/ctrlID")`.
+К девайсу можно добавлять котролы динамически при помощи метода `addControl(<id контрола>, {описание параметров})`, удалять — `removeControl(<id контрола>)`.
+Для проверки контрола на существование можно воспользоваться функцией `isControlExists(<id контрола>)`. Так как при попытке установить
+значения контролов не виртуальных (внешних) девайсов возникает исключение — для проверки на принадлежность девайса можно использовать
+метод `isVirtual()`. Для удобства выполнения операция над всеми контролами, присутствующими на девайсе можно использовать
+метод получения массива контролов `controlsList()` и, например, итерировать его так:
+
+```javascript
+getDevice("deviceID").controlsList().forEach(function (ctrl) {...});
+```
+
+Полный список методов объекта девайса:
+* `getId() => string`
+* `getDeviceId() => string` - deprecated, используйте `getId()`
+* `getCellId(string) => string`
+* `addControl(string, {описание параметров})`
+* `removeControl(string)`
+* `getControl(string) => __wbVdevCellPrototype`
+* `isControlExists(string) => boolean`
+* `controlsList() => []__wbVdevCellPrototype`
+* `isVirtual() => boolean`
+
+Контролам можно устанавливать значения мета-полей при помощи сеттеров.
+Например, установить `description` можно при помощи метода `setDescription(string)`, `units` — `setUnits(string)` и т.д.
+Аналогично можно и получать значения этих полей геттерами, например, для `description` — `getDescription()` 
+
+Полный список методов объекта контрола
+
+Setters:
+* `setDescription(string)`
+* `setType(string)`
+* `setUnits(string)`
+* `setReadonly(string)`
+* `setMax(string)`
+* `setError(string)`
+* `setOrder(string)`
+
+Getters:
+* `getId() => string`
+* `getDescription() => string`
+* `getType() => string`
+* `getUnits() => string`
+* `getReadonly() => boolean`
+* `getMax() => number`
+* `getError() => string`
+* `getOrder() => number`
+
 ### Просмотр и выполнение правил
 
 В данном разделе подробно рассматривается механизм

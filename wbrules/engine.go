@@ -190,6 +190,45 @@ func (devProxy *DeviceProxy) getControl(ctrlId string) wbgong.Control {
 	return c
 }
 
+func (devProxy *DeviceProxy) controlsList() []wbgong.Control {
+	devId := devProxy.name
+
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[devProxy] controlsList for device %s", devId)
+	}
+
+	var c []wbgong.Control
+	devProxy.owner.Driver().Access(func(tx wbgong.DriverTx) error {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return nil // TODO: careful with error here, some rules want control spec without control itself
+		}
+		c = dev.ControlsList()
+		return nil
+	})
+
+	return c
+}
+
+func (devProxy *DeviceProxy) isVirtual() (isLocal bool, err error) {
+	devId := devProxy.name
+
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[devProxy] isVirtual for device %s", devId)
+	}
+
+	err = devProxy.owner.Driver().Access(func(tx wbgong.DriverTx) error {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError // TODO: careful with error here, some rules want control spec without control itself
+		}
+		_, isLocal = dev.(wbgong.LocalDevice)
+		return nil
+	})
+
+	return
+}
+
 func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgong.Control, value interface{}, tx wbgong.DriverTx) error {
 	ctrlProxy.Lock()
 	defer ctrlProxy.Unlock()
@@ -1248,6 +1287,181 @@ func (engine *RuleEngine) Publish(topic, payload string, qos byte, retain bool) 
 	})
 }
 
+func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.ControlArgs) error {
+	// fill in control args
+	//
+	// try to get type
+	ctrlType, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_TYPE]
+	if !ok {
+		return fmt.Errorf("%s/%s: no control type", devId, ctrlId)
+	}
+	args.SetType(ctrlType.(string))
+
+	// get 'forceDefault' metaproperty
+	forceDefault := false
+	forceDefaultRaw, hasForceDefault := ctrlDef[VDEV_CONTROL_DESCR_PROP_FORCEDEFAULT]
+	if hasForceDefault {
+		ok := false
+		forceDefault, ok = forceDefaultRaw.(bool)
+		if !ok {
+			return fmt.Errorf("%s/%s: non-boolean value of forceDefault propery",
+				devId, ctrlId)
+		}
+	}
+	args.SetDoLoadPrevious(!forceDefault)
+
+	// get 'lazyInit' metaproperty
+	lazyInit := false
+	lazyInitRaw, hasLazyInit := ctrlDef[VDEV_CONTROL_DESCR_PROP_LAZYINIT]
+	if hasLazyInit {
+		ok := false
+		lazyInit, ok = lazyInitRaw.(bool)
+		if !ok {
+			return fmt.Errorf("%s/%s: non-boolean value of lazyInit propery",
+				devId, ctrlId)
+		}
+	}
+	args.SetLazyInit(lazyInit)
+
+	ctrlValue, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_VALUE]
+	if !ok && ctrlType != "pushbutton" { // FIXME: awful, need some special checkers
+		return fmt.Errorf("%s/%s: control value required for control type %s",
+			devId, ctrlId, ctrlType)
+	}
+
+	// set control value itself
+	args.SetValue(ctrlValue)
+
+	_, hasWritable := ctrlDef[VDEV_CONTROL_DESCR_PROP_WRITEABLE]
+	if hasWritable {
+		return fmt.Errorf("writeable flag is deprecated, use readonly instead: https://github.com/contactless/wb-rules/blob/master/README-readonly.md")
+	}
+
+	// get readonly/writeable flag
+	ctrlReadonly := VDEV_CONTROL_READONLY_DEFAULT
+
+	ctrlReadonlyRaw, hasReadonly := ctrlDef[VDEV_CONTROL_DESCR_PROP_READONLY]
+	if hasReadonly {
+		ctrlReadonly, ok = ctrlReadonlyRaw.(bool)
+		if !ok {
+			return fmt.Errorf("%s/%s: non-boolean value of 'readonly' property",
+				devId, ctrlId)
+		}
+	}
+
+	// set readonly flag
+	if hasReadonly {
+		args.SetReadonly(ctrlReadonly)
+		// switch, pushbutton,range, rgb are writable by default
+	} else if ctrlType == wbgong.CONV_TYPE_SWITCH {
+		args.SetReadonly(false)
+	} else if ctrlType == wbgong.CONV_TYPE_PUSHBUTTON {
+		args.SetReadonly(false)
+	} else if ctrlType == wbgong.CONV_TYPE_RANGE {
+		args.SetReadonly(false)
+	} else if ctrlType == wbgong.CONV_TYPE_RGB {
+		args.SetReadonly(false)
+	} else { // all other types is readonly by default
+		args.SetReadonly(ctrlReadonly)
+	}
+
+	// get properties for 'range' type
+	// FIXME: deprecated
+	if ctrlType == wbgong.CONV_TYPE_RANGE {
+		fmax := VDEV_CONTROL_RANGE_MAX_DEFAULT
+		max, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_MAX]
+		if ok {
+			fmax, ok = max.(float64)
+			if !ok {
+				return fmt.Errorf("%s/%s: non-numeric value of max property",
+					devId, ctrlId)
+			}
+		}
+
+		// set argument
+		args.SetMax(int(fmax))
+	}
+	if descr, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_DESCRIPTION]; ok {
+		if fdescr, okString := descr.(string); okString {
+			args.SetDescription(fdescr)
+		} else {
+			return fmt.Errorf("%s/%s: non-string value of description property",
+				devId, ctrlId)
+		}
+	}
+	return nil
+}
+
+func (engine *RuleEngine) RemoveControl(devID, ctrlID string) error {
+	errAccess := engine.driver.Access(func(tx wbgong.DriverTx) (err error) {
+		dev := tx.GetDevice(devID)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		localDevice, isLocal := dev.(wbgong.LocalDevice)
+		if !isLocal {
+			return wbgong.ExternalDeviceError
+		}
+
+		err = localDevice.RemoveControl(ctrlID)()
+
+		return
+	})
+
+	if errAccess != nil {
+		return errAccess
+	}
+	return nil
+}
+
+func (engine *RuleEngine) AddControl(devID, ctrlID string, ctrlDef objx.Map) error {
+	args := wbgong.NewControlArgs().SetId(ctrlID)
+
+	// fill in control args
+	errFill := fillControlArgs(devID, ctrlID, ctrlDef, args)
+	if errFill != nil {
+		return errFill
+	}
+	// create virtual device using collected descriptions
+
+	errAccess := engine.driver.Access(func(tx wbgong.DriverTx) (err error) {
+		dev := tx.GetDevice(devID)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		localDevice, isLocal := dev.(wbgong.LocalDevice)
+		if !isLocal {
+			return wbgong.ExternalDeviceError
+		}
+
+		_, err = localDevice.CreateControl(args)()
+
+		return
+	})
+
+	if errAccess != nil {
+		return errAccess
+	}
+	return nil
+}
+
+func (engine *RuleEngine) GetDevice(devId string) error {
+	// create virtual device using collected descriptions
+	errAccess := engine.driver.Access(func(tx wbgong.DriverTx) (err error) {
+		// create device by device description
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		return
+	})
+
+	if errAccess != nil {
+		return errAccess
+	}
+	return nil
+}
+
 func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error {
 	// if device description has no controls (cells), skip this
 	if !obj.Has(VDEV_DESCR_PROP_CELLS) && !obj.Has(VDEV_DESCR_PROP_CONTROLS) {
@@ -1313,99 +1527,9 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		controlsArgs = append(controlsArgs, args)
 
 		// fill in control args
-		//
-		// try to get type
-		ctrlType, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_TYPE]
-		if !ok {
-			return fmt.Errorf("%s/%s: no control type", devId, ctrlId)
-		}
-		args.SetType(ctrlType.(string))
-
-		// get 'forceDefault' metaproperty
-		forceDefault := false
-		forceDefaultRaw, hasForceDefault := ctrlDef[VDEV_CONTROL_DESCR_PROP_FORCEDEFAULT]
-		if hasForceDefault {
-			ok := false
-			forceDefault, ok = forceDefaultRaw.(bool)
-			if !ok {
-				return fmt.Errorf("%s/%s: non-boolean value of forceDefault propery",
-					devId, ctrlId)
-			}
-		}
-		args.SetDoLoadPrevious(!forceDefault)
-
-		// get 'lazyInit' metaproperty
-		lazyInit := false
-		lazyInitRaw, hasLazyInit := ctrlDef[VDEV_CONTROL_DESCR_PROP_LAZYINIT]
-		if hasLazyInit {
-			ok := false
-			lazyInit, ok = lazyInitRaw.(bool)
-			if !ok {
-				return fmt.Errorf("%s/%s: non-boolean value of lazyInit propery",
-					devId, ctrlId)
-			}
-		}
-		args.SetLazyInit(lazyInit)
-
-		ctrlValue, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_VALUE]
-		if !ok && ctrlType != "pushbutton" && !lazyInit { // FIXME: awful, need some special checkers
-			return fmt.Errorf("%s/%s: control value required for control type %s",
-				devId, ctrlId, ctrlType)
-		}
-
-		// set control value itself
-		if !lazyInit {
-			args.SetValue(ctrlValue)
-		}
-
-		_, hasWritable := ctrlDef[VDEV_CONTROL_DESCR_PROP_WRITEABLE]
-		if hasWritable {
-			return fmt.Errorf("writeable flag is deprecated, use readonly instead: https://github.com/contactless/wb-rules/blob/master/README-readonly.md")
-		}
-
-		// get readonly/writeable flag
-		ctrlReadonly := VDEV_CONTROL_READONLY_DEFAULT
-
-		ctrlReadonlyRaw, hasReadonly := ctrlDef[VDEV_CONTROL_DESCR_PROP_READONLY]
-		if hasReadonly {
-			ctrlReadonly, ok = ctrlReadonlyRaw.(bool)
-			if !ok {
-				return fmt.Errorf("%s/%s: non-boolean value of 'readonly' property",
-					devId, ctrlId)
-			}
-		}
-
-		// set readonly flag
-		if hasReadonly {
-			args.SetReadonly(ctrlReadonly)
-			// switch, pushbutton,range, rgb are writable by default
-		} else if ctrlType == wbgong.CONV_TYPE_SWITCH {
-			args.SetReadonly(false)
-		} else if ctrlType == wbgong.CONV_TYPE_PUSHBUTTON {
-			args.SetReadonly(false)
-		} else if ctrlType == wbgong.CONV_TYPE_RANGE {
-			args.SetReadonly(false)
-		} else if ctrlType == wbgong.CONV_TYPE_RGB {
-			args.SetReadonly(false)
-		} else { // all other types is readonly by default
-			args.SetReadonly(ctrlReadonly)
-		}
-
-		// get properties for 'range' type
-		// FIXME: deprecated
-		if ctrlType == wbgong.CONV_TYPE_RANGE {
-			fmax := VDEV_CONTROL_RANGE_MAX_DEFAULT
-			max, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_MAX]
-			if ok {
-				fmax, ok = max.(float64)
-				if !ok {
-					return fmt.Errorf("%s/%s: non-numeric value of max property",
-						devId, ctrlId)
-				}
-			}
-
-			// set argument
-			args.SetMax(int(fmax))
+		errFill := fillControlArgs(devId, ctrlId, ctrlDef, args)
+		if errFill != nil {
+			return errFill
 		}
 	}
 
