@@ -298,10 +298,11 @@ func (ctrlProxy *ControlProxy) Value() (v interface{}) {
 		ctrlProxy.Unlock()
 		err := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) (err error) {
 			ctrl.SetTx(tx)
-			v, err = ctrl.GetValue()
-			if err != nil {
-				return
+			val, errGet := ctrl.GetValue()
+			if errGet != nil && errGet != wbgong.IncompleteControlError {
+				return errGet
 			}
+			v = val
 
 			_, isLocal = ctrl.GetDevice().(wbgong.LocalDevice)
 			// set update value handler to keep cache clear and fresh

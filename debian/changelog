@@ -1,3 +1,9 @@
+wb-rules (2.5.1) stable; urgency=medium
+
+  * fix no value on control when control defined in another file then rule
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Thu, 16 Jul 2020 23:20:25 +0300
+
 wb-rules (2.5.0) stable; urgency=medium
 
   * added global function getControl()
