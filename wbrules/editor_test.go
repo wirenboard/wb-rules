@@ -249,9 +249,9 @@ func (s *EditorSuite) TestSaveFile() {
 	})
 
 	s.VerifyRpcError("Save", objx.Map{"path": "../foo/bar.js", "content": "evilfile"},
-		EDITOR_ERROR_INVALID_PATH, "EditorError", "Invalid path")
+		EDITOR_ERROR_INVALID_PATH, "EditorError", invalidPathError.Error())
 	s.VerifyRpcError("Save", objx.Map{"path": "qqq/$$$rrr.js", "content": "lamefile"},
-		EDITOR_ERROR_INVALID_PATH, "EditorError", "Invalid path")
+		EDITOR_ERROR_INVALID_PATH, "EditorError", invalidPathError.Error())
 	s.verifySources(map[string]string{
 		"sample1.js":          "// sample1 (changed)",
 		"sample2.js":          "// sample2",
