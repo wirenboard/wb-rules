@@ -1648,7 +1648,9 @@ func (engine *RuleEngine) trackHandler(msg wbgong.MQTTMessage) {
 				"topic": msg.Topic,
 				"value": msg.Payload,
 			})
-			tracker.Callback(args)
+			engine.CallSync(func() {
+				tracker.Callback(args)
+			})
 		}
 	}
 }
