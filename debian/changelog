@@ -1,3 +1,9 @@
+wb-rules (2.6.0) stable; urgency=medium
+
+  * added ability to subscribe to any mqtt-topic with custom handler
+
+ -- Roman Kubar <r.kubar@wirenboard.ru>  Wed, 22 Jul 2020 01:31:14 +0300
+
 wb-rules (2.5.0) stable; urgency=medium
 
   * added global function getControl()
