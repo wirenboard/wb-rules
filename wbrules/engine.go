@@ -1586,6 +1586,9 @@ func (engine *RuleEngine) DefineRule(rule *Rule, ctx *ESContext) (id RuleId, err
 		return
 	}
 
+	// needed for rules defined after initial file load, for instance in timers or other rules
+	rule.MaybeAddToCron(engine.cron);
+
 	engine.ruleList = append(engine.ruleList, rule.id)
 
 	engine.ruleMap[rule.id] = rule
