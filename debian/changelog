@@ -1,3 +1,9 @@
+wb-rules (2.6.1) stable; urgency=medium
+
+  * properly initialize rules defined in timer callbacks
+
+ -- Evgeny Boger <boger@contactless.ru>  Tue, 20 Oct 2020 18:21:14 +0300
+
 wb-rules (2.6.0) stable; urgency=medium
 
   * added ability to subscribe to any mqtt-topic with custom handler
