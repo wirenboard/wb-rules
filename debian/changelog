@@ -1,3 +1,9 @@
+wb-rules (2.6.2) stable; urgency=medium
+
+  * alarms schema for wb-mqtt-homeui is updated to allow correct expectedValue property editing
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Wed, 27 Jan 2021 11:41:00 +0500
+
 wb-rules (2.6.1) stable; urgency=medium
 
   * properly initialize rules defined in timer callbacks

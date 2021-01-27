@@ -211,16 +211,14 @@
     },
     "recipient": {
       "options": {
-        "remove_empty_properties": true
+        "remove_empty_properties": true,
+        "disable_collapse" : true
       },
       "title" : "Recipient",
       "oneOf": [
         { "$ref": "#/definitions/emailRecipient" },
         { "$ref": "#/definitions/smsRecipient" }
-      ],
-      "options": {
-        "disable_collapse" : true
-      }
+      ]
     },
     "alarm": {
       "headerTemplate": "Alarm{{: |self.name}}",
@@ -232,7 +230,7 @@
       ],
       "options": {
         "disable_collapse" : true,
-        "remove_empty_properties": true
+        "remove_empty_properties": false
       }
 
     }
