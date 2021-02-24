@@ -383,7 +383,10 @@ func (ctx *ESContext) removeCallbackSync(key ESCallback) {
 }
 
 func (ctx *ESContext) RemoveCallback(key ESCallback) {
-	ctx.mustBeValid()
+	if !ctx.IsValid() {
+		return
+	}
+
 	defer ctx.assertStackClean(ctx.GetTop())
 
 	ctx.PushHeapStash()
