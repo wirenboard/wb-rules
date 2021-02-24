@@ -1,3 +1,10 @@
+wb-rules (2.6.3) stable; urgency=high
+
+  * fixed dirty stack in RemoveCallback which led to crashes on garbage
+    collection when many temporary objects were created
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.com>  Wed, 24 Feb 2021 16:33:52 +0300
+
 wb-rules (2.6.2) stable; urgency=medium
 
   * alarms schema for wb-mqtt-homeui is updated to allow correct expectedValue property editing

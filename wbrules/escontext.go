@@ -104,6 +104,12 @@ func (ctx *ESContext) invalidate() {
 	ctx.valid = false
 }
 
+func (ctx *ESContext) assertStackClean(stack_top int) {
+	if ctx.GetTop() != stack_top {
+		wbgong.Error.Panicf("stack top assertion failed: expected %d, got %d", stack_top, ctx.GetTop())
+	}
+}
+
 func (ctx *ESContext) IsValid() bool {
 	return ctx.valid
 }
@@ -378,10 +384,12 @@ func (ctx *ESContext) removeCallbackSync(key ESCallback) {
 
 func (ctx *ESContext) RemoveCallback(key ESCallback) {
 	ctx.mustBeValid()
+	defer ctx.assertStackClean(ctx.GetTop())
+
 	ctx.PushHeapStash()
 	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
 	ctx.DelPropString(-1, ctx.callbackKey(key))
-	ctx.Pop()
+	ctx.Pop2()
 }
 
 func (ctx *ESContext) EvalScript(code string) error {
