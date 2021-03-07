@@ -579,6 +579,15 @@ MQTT-сообщения в топике `/wbrules/log/debug`, `/wbrules/log/info
 
 `debug(fmt, [arg1 [, ...]])` - сокращение для `log.debug(...)`
 
+`trackMqtt(topic, callback())`
+Подписывается на MQTT с указанным topic'ом, допустимы символы `#` и `+` значения передаются в функцию объектом состоящим из: .topic и .value.
+Пример:
+```js
+trackMqtt("/devices/wb-adc/controls/5Vout", function(message){
+  log.info("name: {}, value: {}".format(message.topic, message.value))
+});
+```
+
 `publish(topic, payload, [QoS [, retain]])`
 публикует MQTT-сообщение с указанными topic'ом, содержимым, QoS и значением флага retained.
 
