@@ -284,8 +284,60 @@ func (s *RuleReloadSuite) TestDisableScript() {
 	s.VerifyEmpty()
 }
 
+type RuleReloadForceDefaultSuite struct {
+	RuleSuiteBase
+
+	reloadTmpDir string
+}
+
+func (s *RuleReloadForceDefaultSuite) SetupTest() {
+	var err error
+	s.reloadTmpDir, err = ioutil.TempDir(os.TempDir(), "wbrulestest")
+	if err != nil {
+		s.FailNow("can't create temp directory")
+	}
+	wbgong.Debug.Printf("created temp dir %s for reload tests", s.reloadTmpDir)
+
+	s.VdevStorageFile = s.reloadTmpDir + "/test_vdev.db"
+	s.PersistentDBFile = s.reloadTmpDir + "/test_persistent.db"
+
+	s.SetupSkippingDefs("testrules_reload_3.js")
+}
+
+// checking bug #29350
+func (s *RuleReloadForceDefaultSuite) TestForceEmptyControlReloadScript() {
+	s.publish("/devices/testNulledControl/controls/trigger/on", "1", "testNulledControl/trigger", "testNulledControl/pers_text")
+
+	s.VerifyUnordered(
+		"tst -> /devices/testNulledControl/controls/trigger/on: [1] (QoS 1)",
+		"driver -> /devices/testNulledControl/controls/trigger: [1] (QoS 1)",
+		"[info] before: null",
+		"driver -> /devices/testNulledControl/controls/pers_text: [someTextString] (QoS 1, retained)",
+		"[info] after: someTextString",
+	)
+
+	s.ReplaceScript("testrules_reload_3.js", "testrules_reload_3_changed.js")
+	s.SkipTill("[changed] testrules_reload_3.js")
+
+	s.publish("/devices/testNulledControl/controls/trigger/on", "1", "testNulledControl/trigger", "testNulledControl/pers_text")
+
+	s.VerifyUnordered(
+		"tst -> /devices/testNulledControl/controls/trigger/on: [1] (QoS 1)",
+		"driver -> /devices/testNulledControl/controls/trigger: [1] (QoS 1)",
+		"[info] before: null",
+		"driver -> /devices/testNulledControl/controls/pers_text: [someTextString] (QoS 1, retained)",
+		"[info] after: someTextString",
+	)
+}
+
 func TestRuleReloadSuite(t *testing.T) {
 	testutils.RunSuites(t,
 		new(RuleReloadSuite),
+	)
+}
+
+func TestRuleReloadForceDefaultSuite(t *testing.T) {
+	testutils.RunSuites(t,
+		new(RuleReloadForceDefaultSuite),
 	)
 }
