@@ -1,3 +1,9 @@
+wb-rules (2.6.4) stable; urgency=medium
+
+  * fixed control write when empty string is forced default value
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Mon, 19 Apr 2021 19:25:09 +0300
+
 wb-rules (2.6.3) stable; urgency=high
 
   * fixed dirty stack in RemoveCallback which led to crashes on garbage
