@@ -7,12 +7,14 @@ defineVirtualDevice("testDevice", {
   cells: {
     switchControl: {
       type: "switch",
-      value: false
+      value: false,
+      order: 4
     },
     rangeControl: {
       type: "range",
       max: 100,
-      value: 50
+      value: 50,
+      order: 3
     },
     textControl: {
       type: "text",
@@ -20,6 +22,10 @@ defineVirtualDevice("testDevice", {
       readonly: false
     },
     startControl: {
+      type: "switch",
+      value: false
+    },
+    vDevWithOrder: {
       type: "switch",
       value: false
     }
@@ -78,5 +84,27 @@ defineRule("asSoonAsExtError", {
   },
   then: function (newValue, devName, cellName) {
     log(devName + "/" + cellName + " = " + newValue);
+  }
+});
+
+defineRule("makeVdevWithOrder", {
+  whenChanged: "testDevice/vDevWithOrder",
+  then: function() {
+    defineVirtualDevice("vDevWithOrder", {
+      cells: {
+        test1: {
+          type: "text",
+          value: "hello",
+          readonly: true,
+          order: 4
+        },
+        test2: {
+          type: "text",
+          value: "world",
+          readonly: true,
+          order: 3
+        }
+      }
+    });
   }
 });

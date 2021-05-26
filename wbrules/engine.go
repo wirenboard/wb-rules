@@ -1334,6 +1334,23 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 			devId, ctrlId, ctrlType)
 	}
 
+	// get 'order' property
+	orderValue, hasOrder := ctrlDef[VDEV_CONTROL_DESCR_PROP_ORDER]
+	if hasOrder {
+		order := 0.0
+		ok := false
+		order, ok = orderValue.(float64)
+		if !ok {
+			return fmt.Errorf("%s/%s: non-number value of order property, has %T",
+				devId, ctrlId, orderValue)
+		}
+		if order < 0 {
+			return fmt.Errorf("%s/%s: invalid order value, must be int >= 0",
+				devId, ctrlId)
+		}
+		args.SetOrder(int(order))
+	}
+
 	// set control value itself
 	args.SetValue(ctrlValue)
 
