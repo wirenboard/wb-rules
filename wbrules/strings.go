@@ -15,6 +15,7 @@ const (
 	VDEV_CONTROL_DESCR_PROP_READONLY     = "readonly"
 	VDEV_CONTROL_DESCR_PROP_WRITEABLE    = "writeable"
 	VDEV_CONTROL_DESCR_PROP_DESCRIPTION  = "description"
+	VDEV_CONTROL_DESCR_PROP_ORDER        = "order"
 	// FIXME: deprecated
 	VDEV_CONTROL_DESCR_PROP_MAX = "max"
 

@@ -7,12 +7,14 @@ defineVirtualDevice("testDevice", {
   cells: {
     switchControl: {
       type: "switch",
-      value: false
+      value: false,
+      order: 4
     },
     rangeControl: {
       type: "range",
       max: 100,
-      value: 50
+      value: 50,
+      order: 3
     },
     textControl: {
       type: "text",
@@ -24,6 +26,10 @@ defineVirtualDevice("testDevice", {
       value: false
     },
     checkUndefinedControl: {
+      type: "switch",
+      value: false
+    },
+    vDevWithOrder: {
       type: "switch",
       value: false
     }
@@ -90,5 +96,27 @@ defineRule("undefinedControlMeta", {
   then: function() {
     var m = dev["undefined_device/control#type"];
     log("Meta: " + m);
+  }
+});
+
+defineRule("makeVdevWithOrder", {
+  whenChanged: "testDevice/vDevWithOrder",
+  then: function() {
+    defineVirtualDevice("vDevWithOrder", {
+      cells: {
+        test1: {
+          type: "text",
+          value: "hello",
+          readonly: true,
+          order: 4
+        },
+        test2: {
+          type: "text",
+          value: "world",
+          readonly: true,
+          order: 3
+        }
+      }
+    });
   }
 });
