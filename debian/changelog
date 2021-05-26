@@ -1,3 +1,11 @@
+wb-rules (2.7.0) stable; urgency=medium
+
+  * use systemd service instead of initscript
+  * handle 'order' property in defineVirtualDevice
+  * wbgo: properly handle empty meta/max and meta/order values
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Thu, 27 May 2021 01:05:36 +0300
+
 wb-rules (2.6.4) stable; urgency=medium
 
   * fixed control write when empty string is forced default value
