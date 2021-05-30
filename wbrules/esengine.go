@@ -1725,6 +1725,8 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 	ctx.PushGoObject(controlProxy)
 	ctx.DefineFunctions(map[string]func(*ESContext) int{
 		JS_DEVPROXY_FUNC_RAWVALUE: func(ctx *ESContext) int {
+			defer ctx.assertStackCleanWithReturn(ctx.GetTop())
+
 			ctx.PushThis()
 			c := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
@@ -1733,6 +1735,8 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 			return 1
 		},
 		JS_DEVPROXY_FUNC_VALUE: func(ctx *ESContext) int {
+			defer ctx.assertStackCleanWithReturn(ctx.GetTop())
+
 			ctx.PushThis()
 			c := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
@@ -1744,6 +1748,8 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 			return 1
 		},
 		JS_DEVPROXY_FUNC_SETVALUE: func(ctx *ESContext) int {
+			defer ctx.assertStackClean(ctx.GetTop())
+
 			ctx.PushThis()
 			c := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
@@ -1760,6 +1766,8 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 			return 1
 		},
 		JS_DEVPROXY_FUNC_SETMETA: func(ctx *ESContext) int {
+			defer ctx.assertStackClean(ctx.GetTop())
+
 			ctx.PushThis()
 			c := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
@@ -1781,6 +1789,8 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 			return 1
 		},
 		JS_DEVPROXY_FUNC_ISCOMPLETE: func(ctx *ESContext) int {
+			defer ctx.assertStackCleanWithReturn(ctx.GetTop())
+
 			ctx.PushThis()
 			c := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
@@ -1789,6 +1799,8 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 			return 1
 		},
 		JS_DEVPROXY_FUNC_GETMETA: func(ctx *ESContext) int {
+			defer ctx.assertStackCleanWithReturn(ctx.GetTop())
+
 			ctx.PushThis()
 			c := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()

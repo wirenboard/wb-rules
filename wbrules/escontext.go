@@ -110,6 +110,10 @@ func (ctx *ESContext) assertStackClean(stack_top int) {
 	}
 }
 
+func (ctx *ESContext) assertStackCleanWithReturn(stack_top int) {
+	ctx.assertStackClean(stack_top + 1)
+}
+
 func (ctx *ESContext) IsValid() bool {
 	return ctx.valid
 }
@@ -295,6 +299,8 @@ func (ctx *ESContext) callbackKey(key ESCallback) string {
 }
 
 func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} {
+	defer ctx.assertStackClean(ctx.GetTop())
+
 	ctx.mustBeValid()
 	wbgong.Debug.Printf("trying to invoke callback %d in context %p\n", key, ctx)
 
