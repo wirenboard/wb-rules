@@ -305,27 +305,32 @@ func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} 
 	wbgong.Debug.Printf("trying to invoke callback %d in context %p\n", key, ctx)
 
 	ctx.PushHeapStash()
-
 	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
+	defer ctx.Pop2()
+
 	ctx.PushString(ctx.callbackKey(key))
+
 	argCount := 0
 	if args != nil {
 		ctx.PushJSObject(args)
 		argCount++
 	}
-	defer ctx.Pop3() // pop: result, callback list object, global stash
+
+	var ret interface{} = nil
 	if s := ctx.PcallProp(-2-argCount, argCount); s != 0 {
 		ctx.callbackErrorHandler(ctx.GetESError())
-		return nil
 	} else if ctx.IsBoolean(-1) {
-		return ctx.ToBoolean(-1)
+		ret = ctx.ToBoolean(-1)
 	} else if ctx.IsString(-1) {
-		return ctx.ToString(-1)
+		ret = ctx.ToString(-1)
 	} else if ctx.IsNumber(-1) {
-		return ctx.ToNumber(-1)
-	} else {
-		return nil
+		ret = ctx.ToNumber(-1)
 	}
+
+	// defer this before PcallProp is dangerous because callback
+	// may throw a panic and thus no values will be at stack
+	ctx.Pop()
+	return ret
 }
 
 // storeCallback stores the callback from the specified stack index
