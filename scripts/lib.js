@@ -90,8 +90,14 @@ var _WbRules = {
         var cell = ensureCell(dev, name);
         if (_WbRules.requireCompleteCells && !cell.isComplete())
           throw new _WbRules.IncompleteCellCaught(name);
-        if (metaField !== "")
-          return cell.getMeta()[metaField];
+        if (metaField !== "") {
+          var m = cell.getMeta();
+          if (m !== null) {
+            return m[metaField];
+          } else {
+            return null;
+          }
+        }
         return cell.value().v;
       },
       set: function (dev, name, value) {

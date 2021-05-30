@@ -65,6 +65,16 @@ func (s *RuleMetaSuite) TestMeta() {
 	s.VerifyEmpty()
 }
 
+func (s *RuleMetaSuite) TestUndefinedControlMeta() {
+	s.publish("/devices/testDevice/controls/checkUndefinedControl/on",
+		"1", "testDevice/checkUndefinedControl")
+	s.VerifyUnordered(
+		"driver -> /devices/testDevice/controls/checkUndefinedControl: [1] (QoS 1, retained)",
+		"tst -> /devices/testDevice/controls/checkUndefinedControl/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [Meta: null] (QoS 1)",
+	)
+}
+
 func TestRuleMetaSuite(t *testing.T) {
 	testutils.RunSuites(t,
 		new(RuleMetaSuite),
