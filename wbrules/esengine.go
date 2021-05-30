@@ -1805,7 +1805,12 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 			c := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
 
-			ctrlMeta := c.control.GetMeta()
+			ctrlMeta := c.GetMeta()
+			if ctrlMeta == nil {
+				ctx.PushNull()
+				return 1
+			}
+
 			dataMap := make(map[string]interface{})
 			for key, value := range ctrlMeta {
 				dataMap[key] = value

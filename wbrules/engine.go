@@ -276,6 +276,20 @@ func (ctrlProxy *ControlProxy) RawValue() (v string) {
 	return
 }
 
+func (ctrlProxy *ControlProxy) GetMeta() (m wbgong.MetaInfo) {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return nil
+	}
+
+	ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
+		ctrl.SetTx(tx)
+		m = ctrl.GetMeta()
+		return nil
+	})
+	return
+}
+
 // TODO: return error on non-existing/incomplete control
 func (ctrlProxy *ControlProxy) Value() (v interface{}) {
 	if wbgong.DebuggingEnabled() {
