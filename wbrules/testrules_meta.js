@@ -22,6 +22,10 @@ defineVirtualDevice("testDevice", {
     startControl: {
       type: "switch",
       value: false
+    },
+    checkUndefinedControl: {
+      type: "switch",
+      value: false
     }
   }
 });
@@ -78,5 +82,13 @@ defineRule("asSoonAsExtError", {
   },
   then: function (newValue, devName, cellName) {
     log(devName + "/" + cellName + " = " + newValue);
+  }
+});
+
+defineRule("undefinedControlMeta", {
+  whenChanged: "testDevice/checkUndefinedControl",
+  then: function() {
+    var m = dev["undefined_device/control#type"];
+    log("Meta: " + m);
   }
 });
