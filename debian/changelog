@@ -1,3 +1,11 @@
+wb-rules (2.7.0) stable; urgency=medium
+
+  * use systemd service instead of initscript
+  * handle 'order' property in defineVirtualDevice
+  * wbgo: properly handle empty meta/max and meta/order values
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Mon, 31 May 2021 09:45:53 +0300
+
 wb-rules (2.6.5) stable; urgency=medium
 
   * fix crash on meta read for unexisting control (#36086)

@@ -75,6 +75,29 @@ func (s *RuleMetaSuite) TestUndefinedControlMeta() {
 	)
 }
 
+func (s *RuleMetaSuite) TestVirtualDeviceOrder() {
+	s.publish("/devices/testDevice/controls/vDevWithOrder/on", "1", "testDevice/vDevWithOrder")
+	s.VerifyUnordered(
+		"driver -> /devices/testDevice/controls/vDevWithOrder: [1] (QoS 1, retained)",
+		"tst -> /devices/testDevice/controls/vDevWithOrder/on: [1] (QoS 1)",
+
+		"Subscribe -- driver: /devices/vDevWithOrder/controls/test1/on",
+		"Subscribe -- driver: /devices/vDevWithOrder/controls/test2/on",
+
+		"driver -> /devices/vDevWithOrder/meta/driver: [wbrules] (QoS 1, retained)",
+		"driver -> /devices/vDevWithOrder/meta/name: [] (QoS 1, retained)",
+
+		"driver -> /devices/vDevWithOrder/controls/test1: [hello] (QoS 1, retained)",
+		"driver -> /devices/vDevWithOrder/controls/test1/meta/type: [text] (QoS 1, retained)",
+		"driver -> /devices/vDevWithOrder/controls/test1/meta/readonly: [1] (QoS 1, retained)",
+		"driver -> /devices/vDevWithOrder/controls/test1/meta/order: [4] (QoS 1, retained)",
+		"driver -> /devices/vDevWithOrder/controls/test2: [world] (QoS 1, retained)",
+		"driver -> /devices/vDevWithOrder/controls/test2/meta/type: [text] (QoS 1, retained)",
+		"driver -> /devices/vDevWithOrder/controls/test2/meta/order: [3] (QoS 1, retained)",
+		"driver -> /devices/vDevWithOrder/controls/test2/meta/readonly: [1] (QoS 1, retained)",
+	)
+}
+
 func TestRuleMetaSuite(t *testing.T) {
 	testutils.RunSuites(t,
 		new(RuleMetaSuite),
