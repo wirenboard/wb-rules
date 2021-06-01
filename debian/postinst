@@ -1,11 +1,11 @@
 #!/bin/sh
+set -e
 
 if dpkg-maintscript-helper supports rm_conffile 2>/dev/null; then
     dpkg-maintscript-helper rm_conffile /etc/wb-rules/load_alarms.js 1.6.7 -- "$@"
     dpkg-maintscript-helper rm_conffile /etc/init.d/wb-rules 2.7.0~ -- "$@"
 fi
 
-update-rc.d wb-rules defaults
-invoke-rc.d wb-rules start
+#DEBHELPER#
 
-systemctl daemon-reload || true
+exit 0

@@ -8,5 +8,5 @@ Build-Depends: debhelper (>= 9), pkg-config
 Package: wb-rules
 Architecture: armel armhf amd64 i386
 Depends: libc6 (>= 2.13), ${misc:Depends}
-Breaks: wb-mqtt-confed (<< 1.0.2), wb-rules-system (<< 1.6.3)
+Breaks: wb-mqtt-confed (<< 1.0.2), wb-rules-system (<< 1.6.13), wb-mqtt-dac (<< 1.1.2)
 Description: Wiren Board Rule Engine
