@@ -1,3 +1,10 @@
+wb-rules (2.7.1) stable; urgency=medium
+
+  * fix systemd debhelper scripts
+  * use golang 1.15 to build sources
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Mon, 31 May 2021 22:39:49 +0300
+
 wb-rules (2.7.0) stable; urgency=medium
 
   * use systemd service instead of initscript
