@@ -2,11 +2,12 @@ Source: wb-rules
 Maintainer: Nikita webconn Maslov <n.maslov@contactless.ru>
 Section: misc
 Priority: optional
+Multi-Arch: foreign
 Standards-Version: 3.9.2
-Build-Depends: debhelper (>= 9), pkg-config
+Build-Depends: debhelper (>= 9), pkg-config, golang-go:native
 
 Package: wb-rules
-Architecture: armel armhf amd64 i386
+Architecture: any
 Depends: libc6 (>= 2.13), ${misc:Depends}
-Breaks: wb-mqtt-confed (<< 1.0.2), wb-rules-system (<< 1.6.3)
+Breaks: wb-mqtt-confed (<< 1.0.2), wb-rules-system (<< 1.6.13), wb-mqtt-dac (<< 1.1.2)
 Description: Wiren Board Rule Engine

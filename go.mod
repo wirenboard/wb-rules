@@ -1,6 +1,6 @@
 module github.com/contactless/wb-rules
 
-go 1.12
+go 1.15
 
 require (
 	github.com/DisposaBoy/JsonConfigReader v0.0.0-20130112093355-33a99fdf1d5e

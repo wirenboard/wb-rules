@@ -6,10 +6,6 @@ if dpkg-maintscript-helper supports rm_conffile 2>/dev/null; then
     dpkg-maintscript-helper rm_conffile /etc/init.d/wb-rules 2.7.0~ -- "$@"
 fi
 
-if [ "$1" = "purge" ] ; then
-	update-rc.d wb-rules remove >/dev/null
-fi
-
 #DEBHELPER#
 
 exit 0
