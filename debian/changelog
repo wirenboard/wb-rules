@@ -1,3 +1,9 @@
+wb-rules (2.7.2) stable; urgency=medium
+
+  * fix quotes in service unit description (thanks to imposibrus)
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Fri, 04 Jun 2021 18:30:35 +0300
+
 wb-rules (2.7.1) stable; urgency=medium
 
   * fix systemd debhelper scripts
