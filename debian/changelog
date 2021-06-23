@@ -1,3 +1,9 @@
+wb-rules (2.8.0) stable; urgency=medium
+
+  * wbgo: switch to upstream paho.mqtt.golang
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Wed, 23 Jun 2021 12:09:13 +0300
+
 wb-rules (2.7.2) stable; urgency=medium
 
   * fix quotes in service unit description (thanks to imposibrus)
