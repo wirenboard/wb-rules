@@ -1,3 +1,10 @@
+wb-rules (2.8.1) stable; urgency=medium
+
+  * better error handling
+  * service: use /etc/default/wb-rules env file
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Thu, 22 Jul 2021 19:00:38 +0300
+
 wb-rules (2.8.0) stable; urgency=medium
 
   * wbgo: switch to upstream paho.mqtt.golang
