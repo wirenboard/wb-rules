@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	duktape "github.com/contactless/go-duktape"
 	"github.com/contactless/wbgong"
 	"github.com/stretchr/objx"
+	duktape "github.com/wirenboard/go-duktape"
 )
 
 const (
