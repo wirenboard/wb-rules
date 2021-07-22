@@ -16,9 +16,9 @@ import (
 
 	"github.com/DisposaBoy/JsonConfigReader"
 	"github.com/boltdb/bolt"
-	"github.com/contactless/wbgong"
 	"github.com/stretchr/objx"
 	duktape "github.com/wirenboard/go-duktape"
+	"github.com/wirenboard/wbgong"
 )
 
 type itemType int

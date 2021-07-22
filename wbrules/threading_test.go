@@ -1,10 +1,9 @@
 package wbrules
 
 import (
-	// "github.com/contactless/wbgong"
 	"testing"
 
-	"github.com/contactless/wbgong/testutils"
+	"github.com/wirenboard/wbgong/testutils"
 )
 
 type JSThreadingTestSuite struct {
