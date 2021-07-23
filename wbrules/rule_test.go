@@ -349,7 +349,7 @@ func (s *RuleSuiteBase) SetCellValue(devId, ctrlId string, value interface{}) {
 	err := s.driver.Access(func(tx wbgong.DriverTx) (err error) {
 		dev := tx.GetDevice(devId)
 		ctrl := dev.GetControl(ctrlId)
-		err = ctrl.UpdateValue(value)()
+		err = ctrl.UpdateValue(value, true)()
 
 		return err
 	})
@@ -364,7 +364,7 @@ func (s *RuleSuiteBase) SetCellValueNoVerify(devID, ctrlID string, value interfa
 	err := s.driver.Access(func(tx wbgong.DriverTx) (err error) {
 		dev := tx.GetDevice(devID)
 		ctrl := dev.GetControl(ctrlID)
-		err = ctrl.UpdateValue(value)()
+		err = ctrl.UpdateValue(value, true)()
 
 		return err
 	})

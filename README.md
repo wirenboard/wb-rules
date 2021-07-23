@@ -380,6 +380,7 @@ Setters:
 * `setMax(string)`
 * `setError(string)`
 * `setOrder(string)`
+* `setValue(any)` или `setValue({ value: any, notify: bool })`
 
 Getters:
 * `getId() => string`
@@ -390,6 +391,7 @@ Getters:
 * `getMax() => number`
 * `getError() => string`
 * `getOrder() => number`
+* `getValue() => any`
 
 ### Просмотр и выполнение правил
 

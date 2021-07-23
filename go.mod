@@ -9,7 +9,7 @@ require (
 	github.com/stretchr/objx v0.3.0
 	github.com/stretchr/testify v1.7.0
 	github.com/wirenboard/go-duktape v0.0.0-20210723134114-881337fff8cb
-	github.com/wirenboard/wbgong v0.1.2-0.20210728091142-2e811e3e996d
-	golang.org/x/sys v0.0.0-20160516132347-d4feaf1a7e61 // indirect
+	github.com/wirenboard/wbgong v0.3.0
+	golang.org/x/sys v0.0.0-20210423082822-04245dca01da // indirect
 	gopkg.in/robfig/cron.v1 v1.2.0
 )
