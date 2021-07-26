@@ -351,7 +351,7 @@ func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
 
 	ctrl := ctrlProxy.getControl()
 	if ctrl == nil {
-		wbgong.Error.Printf("failed to SetValue for unexisting control")
+		wbgong.Error.Printf("failed to SetValue for unexisting control %s/%s: %v", ctrlProxy.devProxy.name, ctrlProxy.name, value)
 		return
 	}
 
@@ -1618,7 +1618,7 @@ func (engine *RuleEngine) DefineRule(rule *Rule, ctx *ESContext) (id RuleId, err
 	}
 
 	// needed for rules defined after initial file load, for instance in timers or other rules
-	rule.MaybeAddToCron(engine.cron);
+	rule.MaybeAddToCron(engine.cron)
 
 	engine.ruleList = append(engine.ruleList, rule.id)
 
