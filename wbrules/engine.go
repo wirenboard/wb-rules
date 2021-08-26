@@ -229,7 +229,8 @@ func (devProxy *DeviceProxy) isVirtual() (isLocal bool, err error) {
 	return
 }
 
-func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgong.Control, value interface{}, tx wbgong.DriverTx) error {
+func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgong.Control, value interface{},
+	prevValue interface{}, tx wbgong.DriverTx) error {
 	ctrlProxy.Lock()
 	defer ctrlProxy.Unlock()
 
@@ -344,7 +345,7 @@ func (ctrlProxy *ControlProxy) Value() (v interface{}) {
 	return
 }
 
-func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
+func (ctrlProxy *ControlProxy) SetValue(value interface{}, notifySubs bool) {
 	if wbgong.DebuggingEnabled() {
 		wbgong.Debug.Printf("[ctrlProxy %s/%s] SetValue(%v)", ctrlProxy.devProxy.name, ctrlProxy.name, value)
 	}
@@ -356,15 +357,22 @@ func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
 	}
 
 	isLocal := false
+	prevValue := ctrlProxy.Value()
+
 	err := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
 		ctrl.SetTx(tx)
+
 		_, isLocal = ctrl.GetDevice().(wbgong.LocalDevice)
-		return ctrl.SetValue(value)()
+		if isLocal {
+			return ctrl.UpdateValue(value, notifySubs)()
+		} else {
+			return ctrl.SetOnValue(value)()
+		}
 	})
 
-	if isLocal {
+	if isLocal && notifySubs {
 		// run update value handler immediately, don't wait for wbgong backend
-		ctrlProxy.updateValueHandler(nil, value, nil)
+		ctrlProxy.updateValueHandler(nil, value, prevValue, nil)
 	}
 
 	if err != nil {
@@ -372,10 +380,10 @@ func (ctrlProxy *ControlProxy) SetValue(value interface{}) {
 	}
 }
 
-// SetMeta sets meta field of controller
-func (ctrlProxy *ControlProxy) SetMeta(key, value string) (cce *ControlChangeEvent) {
+// SetMeta sets meta field of control
+func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChangeEvent) {
 	if wbgong.DebuggingEnabled() {
-		wbgong.Debug.Printf("[ctrlProxy %s/%s] SetMeta(%v=%v)", ctrlProxy.devProxy.name, ctrlProxy.name, key, value)
+		wbgong.Debug.Printf("[ctrlProxy %s/%s] SetMeta(%v=%v)", ctrlProxy.devProxy.name, ctrlProxy.name, key, metaValue)
 	}
 
 	ctrl := ctrlProxy.getControl()
@@ -387,6 +395,7 @@ func (ctrlProxy *ControlProxy) SetMeta(key, value string) (cce *ControlChangeEve
 	var spec ControlSpec
 	isComplete := false
 	isRetained := false
+	var prevMetaValue string
 
 	isLocal := false
 	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
@@ -397,48 +406,60 @@ func (ctrlProxy *ControlProxy) SetMeta(key, value string) (cce *ControlChangeEve
 		}
 		isComplete = ctrl.IsComplete()
 		isRetained = ctrl.IsRetained()
+
+		allMeta := ctrl.GetMeta()
+		var ok bool
+		if prevMetaValue, ok = allMeta[key]; !ok {
+			prevMetaValue = ""
+		}
+
 		ctrlID := fmt.Sprintf("%s#%s", ctrl.GetId(), key)
 		spec = ControlSpec{ctrl.GetDevice().GetId(), ctrlID}
 
 		switch key {
 		case wbgong.CONV_META_SUBTOPIC_DESCRIPTION:
-			err := ctrl.SetDescription(value)()
+			err := ctrl.SetDescription(metaValue)()
 			if err != nil {
 			}
 		case wbgong.CONV_META_SUBTOPIC_ERROR:
-			return ctrl.SetError(errors.New(value))()
+			return ctrl.SetError(errors.New(metaValue))()
 		case wbgong.CONV_META_SUBTOPIC_MAX:
-			if max, err := strconv.Atoi(value); err != nil {
+			if max, err := strconv.Atoi(metaValue); err != nil {
 				return err
 			} else {
 				return ctrl.SetMax(max)()
 			}
 		case wbgong.CONV_META_SUBTOPIC_ORDER:
-			if order, err := strconv.Atoi(value); err != nil {
+			if order, err := strconv.Atoi(metaValue); err != nil {
 				return err
 			} else {
 				return ctrl.SetOrder(order)()
 			}
 		case wbgong.CONV_META_SUBTOPIC_READONLY:
-			v := value == wbgong.CONV_META_BOOL_TRUE
-			return ctrl.SetReadonly(v)()
+			if v, err := wbgong.RawValueToDataTyped(metaValue, wbgong.CONV_DATATYPE_BOOLEAN); err != nil {
+				return err
+			} else {
+				return ctrl.SetReadonly(v.(bool))()
+			}
 		case wbgong.CONV_META_SUBTOPIC_TYPE:
-			return ctrl.SetType(value)()
+			return ctrl.SetType(metaValue)()
 		case wbgong.CONV_META_SUBTOPIC_UNITS:
-			return ctrl.SetUnits(value)()
+			return ctrl.SetUnits(metaValue)()
 		}
 		return nil
 	})
 
 	if errAccess != nil {
-		wbgong.Error.Printf("control %s/%s SetMeta(%s=%s) error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, key, value, errAccess)
+		wbgong.Error.Printf("control %s/%s SetMeta(%s=%s) error: %s", ctrlProxy.devProxy.name,
+			ctrlProxy.name, key, metaValue, errAccess)
 		return
 	}
 	cce = &ControlChangeEvent{
 		Spec:       spec,
 		IsComplete: isComplete,
 		IsRetained: isRetained,
-		Value:      value,
+		Value:      metaValue,
+		PrevValue:  prevMetaValue,
 	}
 	return
 }
@@ -481,6 +502,7 @@ type ControlChangeEvent struct {
 	IsComplete bool
 	IsRetained bool
 	Value      interface{}
+	PrevValue  interface{}
 }
 
 type RuleEngineOptions struct {
@@ -774,6 +796,7 @@ func (engine *RuleEngine) PushToEventBuffer(cce *ControlChangeEvent) {
 	engine.eventBuffer.PushEvent(cce)
 }
 
+// this method runs safely in driver loop
 func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 	if atomic.LoadUint32(&engine.active) == ENGINE_STOP {
 		return
@@ -783,35 +806,65 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 		wbgong.Debug.Printf("[engine] driverEventHandler(event %T(%v))", event, event)
 	}
 
-	var value interface{}
+	var value, prevValue interface{}
+
 	var spec ControlSpec
 	isComplete := false
 	isRetained := false
 
 	switch e := event.(type) {
 	case wbgong.ControlValueEvent:
-		value, _ = e.Control.GetValue()
-		spec = ControlSpec{e.Control.GetDevice().GetId(), e.Control.GetId()}
-		isComplete = e.Control.IsComplete()
-		isRetained = e.Control.IsRetained()
+		ctrl := e.Control
+		spec = ControlSpec{ctrl.GetDevice().GetId(), ctrl.GetId()}
+
+		var err error
+
+		value, err = ctrl.GetValue()
+		if err != nil {
+			wbgong.Info.Printf("%s: failed to convert value '%s', passing raw",
+				spec.String(), ctrl.GetRawValue())
+			value = ctrl.GetRawValue()
+		}
+
+		prevValue, err = wbgong.ToTypedValue(e.PrevRawValue, ctrl.GetType())
+		if err != nil {
+			wbgong.Info.Printf("%s: failed to convert previous value '%s', passing raw",
+				spec.String(), e.PrevRawValue)
+			prevValue = e.PrevRawValue
+		}
+
+		isComplete = ctrl.IsComplete()
+		isRetained = ctrl.IsRetained()
 	case wbgong.NewExternalDeviceControlMetaEvent:
-		value, _ = e.Control.GetValue()
-		spec = ControlSpec{e.Control.GetDevice().GetId(), e.Control.GetId()}
-		isComplete = e.Control.IsComplete()
-		isRetained = e.Control.IsRetained()
+		ctrl := e.Control
+		spec = ControlSpec{ctrl.GetDevice().GetId(), ctrl.GetId()}
+
+		isComplete = ctrl.IsComplete()
+		isRetained = ctrl.IsRetained()
+
+		var err error
+
+		value, err = ctrl.GetValue()
+		if err != nil {
+			wbgong.Info.Printf("%s: failed to convert value '%s', passing raw",
+				spec.String(), ctrl.GetRawValue())
+			value = ctrl.GetRawValue()
+		}
+		prevValue = value
 
 		// here we need to invalidate controls/devices proxy
 		atomic.AddUint32(&engine.rev, 1)
 
 		// pushing event about new external meta received
-		ev := event.(wbgong.NewExternalDeviceControlMetaEvent)
-		metaCtrl := fmt.Sprintf("%s#%s", e.Control.GetId(), ev.Type)
+		metaCtrl := fmt.Sprintf("%s#%s", e.Control.GetId(), e.Type)
 		metaSpec := ControlSpec{e.Control.GetDevice().GetId(), metaCtrl}
+
 		metaCCE := &ControlChangeEvent{
 			Spec:       metaSpec,
-			IsComplete: true, //TODO: find if all controls complete
+			IsComplete: isComplete,
 			IsRetained: isRetained,
-			Value:      ev.Value,
+			Value:      e.Value,
+			PrevValue:  e.PrevValue,
 		}
 		engine.eventBuffer.PushEvent(metaCCE)
 	default:
@@ -823,6 +876,7 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 		IsComplete: isComplete,
 		IsRetained: isRetained,
 		Value:      value,
+		PrevValue:  prevValue,
 	}
 
 	engine.eventBuffer.PushEvent(cce)

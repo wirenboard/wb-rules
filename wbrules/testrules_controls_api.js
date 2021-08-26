@@ -29,6 +29,7 @@ defineRule({
                 log("ctrlID: {}, max: {}".format(ctrl.getId(), ctrl.getMax()));
                 log("ctrlID: {}, readonly: {}".format(ctrl.getId(), ctrl.getReadonly()));
                 log("ctrlID: {}, units: {}".format(ctrl.getId(), ctrl.getUnits()));
+                log("ctrlID: {}, value: {}".format(ctrl.getId(), ctrl.getValue()));
             }
         })
     }
@@ -40,12 +41,13 @@ defineRule({
         ctrl = getDevice("spawner").getControl(ctrlID);
         if (newValue) {
             ctrl.setDescription("true Description");
-            ctrl.setError("new Error");
             ctrl.setType("range");
             ctrl.setOrder(5);
             ctrl.setMax(255);
             ctrl.setReadonly(true);
             ctrl.setUnits("meters");
+            ctrl.setValue(42);
+            ctrl.setError("new Error");
         } else {
             ctrl.setDescription("new Description");
             ctrl.setError("");

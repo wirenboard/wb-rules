@@ -341,6 +341,8 @@ func (engine *ESEngine) initVdevCellPrototype(ctx *ESContext) {
 		"getError":       engine.esVdevCellGetError,
 		"setOrder":       engine.esVdevCellSetOrder,
 		"getOrder":       engine.esVdevCellGetOrder,
+		"setValue":       engine.esVdevCellSetValue,
+		"getValue":       engine.esVdevCellGetValue,
 	})
 
 	ctx.PutPropString(-2, "__wbVdevCellPrototype")
@@ -1419,9 +1421,9 @@ func (engine *ESEngine) esVdevAddControl(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esVdevCellGetDescription(ctx *ESContext) int {
-	ctrlProxy, err := engine.getControlFromCtx(ctx)
-	if err != 1 {
-		return err
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	ctx.PushString(ctrlProxy.getControl().GetDescription())
@@ -1430,9 +1432,9 @@ func (engine *ESEngine) esVdevCellGetDescription(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esVdevCellGetType(ctx *ESContext) int {
-	ctrlProxy, err := engine.getControlFromCtx(ctx)
-	if err != 1 {
-		return err
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	ctx.PushString(ctrlProxy.getControl().GetType())
@@ -1441,9 +1443,9 @@ func (engine *ESEngine) esVdevCellGetType(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esVdevCellGetUnits(ctx *ESContext) int {
-	ctrlProxy, err := engine.getControlFromCtx(ctx)
-	if err != 1 {
-		return err
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	ctx.PushString(ctrlProxy.getControl().GetUnits())
@@ -1452,9 +1454,9 @@ func (engine *ESEngine) esVdevCellGetUnits(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esVdevCellGetReadonly(ctx *ESContext) int {
-	ctrlProxy, err := engine.getControlFromCtx(ctx)
-	if err != 1 {
-		return err
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	ctx.PushBoolean(ctrlProxy.getControl().GetReadonly())
@@ -1463,9 +1465,9 @@ func (engine *ESEngine) esVdevCellGetReadonly(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esVdevCellGetMax(ctx *ESContext) int {
-	ctrlProxy, err := engine.getControlFromCtx(ctx)
-	if err != 1 {
-		return err
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	ctx.PushInt(ctrlProxy.getControl().GetMax())
@@ -1474,9 +1476,9 @@ func (engine *ESEngine) esVdevCellGetMax(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esVdevCellGetError(ctx *ESContext) int {
-	ctrlProxy, err := engine.getControlFromCtx(ctx)
-	if err != 1 {
-		return err
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 	var errString string
 	if ctrlProxy.getControl().GetError() != nil {
@@ -1487,9 +1489,9 @@ func (engine *ESEngine) esVdevCellGetError(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esVdevCellGetOrder(ctx *ESContext) int {
-	ctrlProxy, err := engine.getControlFromCtx(ctx)
-	if err != 1 {
-		return err
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	ctx.PushInt(ctrlProxy.getControl().GetOrder())
@@ -1498,12 +1500,29 @@ func (engine *ESEngine) esVdevCellGetOrder(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esVdevCellGetId(ctx *ESContext) int {
-	ctrlProxy, err := engine.getControlFromCtx(ctx)
-	if err != 1 {
-		return err
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	ctx.PushString(ctrlProxy.getControl().GetId())
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevCellGetValue(ctx *ESContext) int {
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
+	}
+
+	value, err := ctrlProxy.getControl().GetValue()
+	if err != nil {
+		wbgong.Error.Printf("getValue (%s/%s) failed: %v", ctrlProxy.devProxy.name, ctrlProxy.name, err)
+		return duktape.DUK_RET_ERROR
+	}
+
+	ctx.PushJSObject(value)
 
 	return 1
 }
@@ -1515,13 +1534,13 @@ func (engine *ESEngine) esVdevCellSetDescription(ctx *ESContext) int {
 	}
 	descr := ctx.GetString(0)
 
-	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
-	if errCtrl != 1 {
-		return errCtrl
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_DESCRIPTION, descr)
-	return 1
+	return 0
 }
 
 func (engine *ESEngine) esVdevCellSetType(ctx *ESContext) int {
@@ -1531,14 +1550,14 @@ func (engine *ESEngine) esVdevCellSetType(ctx *ESContext) int {
 	}
 	typeStr := ctx.GetString(0)
 
-	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
-	if errCtrl != 1 {
-		return errCtrl
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_TYPE, typeStr)
 
-	return 1
+	return 0
 }
 
 func (engine *ESEngine) esVdevCellSetUnits(ctx *ESContext) int {
@@ -1548,14 +1567,14 @@ func (engine *ESEngine) esVdevCellSetUnits(ctx *ESContext) int {
 	}
 	unitsStr := ctx.GetString(0)
 
-	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
-	if errCtrl != 1 {
-		return errCtrl
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_UNITS, unitsStr)
 
-	return 1
+	return 0
 }
 
 func (engine *ESEngine) esVdevCellSetReadonly(ctx *ESContext) int {
@@ -1565,9 +1584,9 @@ func (engine *ESEngine) esVdevCellSetReadonly(ctx *ESContext) int {
 	}
 	readonly := ctx.GetBoolean(0)
 
-	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
-	if errCtrl != 1 {
-		return errCtrl
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	readonlyStr := wbgong.CONV_META_BOOL_FALSE
@@ -1577,7 +1596,7 @@ func (engine *ESEngine) esVdevCellSetReadonly(ctx *ESContext) int {
 
 	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_READONLY, readonlyStr)
 
-	return 1
+	return 0
 }
 
 func (engine *ESEngine) esVdevCellSetMax(ctx *ESContext) int {
@@ -1587,14 +1606,14 @@ func (engine *ESEngine) esVdevCellSetMax(ctx *ESContext) int {
 	}
 	max := int(ctx.GetNumber(0))
 
-	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
-	if errCtrl != 1 {
-		return errCtrl
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MAX, fmt.Sprintf("%d", max))
 
-	return 1
+	return 0
 }
 
 func (engine *ESEngine) esVdevCellSetError(ctx *ESContext) int {
@@ -1604,14 +1623,14 @@ func (engine *ESEngine) esVdevCellSetError(ctx *ESContext) int {
 	}
 	errorStr := ctx.GetString(0)
 
-	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
-	if errCtrl != 1 {
-		return errCtrl
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_ERROR, errorStr)
 
-	return 1
+	return 0
 }
 
 func (engine *ESEngine) esVdevCellSetOrder(ctx *ESContext) int {
@@ -1621,14 +1640,50 @@ func (engine *ESEngine) esVdevCellSetOrder(ctx *ESContext) int {
 	}
 	order := int(ctx.GetNumber(0))
 
-	ctrlProxy, errCtrl := engine.getControlFromCtx(ctx)
-	if errCtrl != 1 {
-		return errCtrl
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
 	}
 
 	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_ORDER, fmt.Sprintf("%d", order))
 
-	return 1
+	return 0
+}
+
+func (engine *ESEngine) esVdevCellSetValue(ctx *ESContext) int {
+	var value interface{}
+	notifySubs := true
+
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
+	}
+
+	if ctx.IsObject(0) {
+		m := ctx.GetJSObject(0).(objx.Map)
+		if !m.Has(JS_CTRLPROXY_FUNC_SETVALUE_VALUE) {
+			wbgong.Error.Printf("setValue (%s/%s): no value parameter present", ctrlProxy.devProxy.name, ctrlProxy.name)
+			return duktape.DUK_RET_TYPE_ERROR
+		}
+		value = m[JS_CTRLPROXY_FUNC_SETVALUE_VALUE]
+
+		if m.Has(JS_CTRLPROXY_FUNC_SETVALUE_NOTIFY) {
+			var obj = m.Get(JS_CTRLPROXY_FUNC_SETVALUE_NOTIFY)
+
+			if !obj.IsBool() {
+				wbgong.Error.Printf("setValue (%s/%s): notify field must be bool", ctrlProxy.devProxy.name, ctrlProxy.name)
+				return duktape.DUK_RET_TYPE_ERROR
+			} else {
+				notifySubs = obj.Bool()
+			}
+		}
+	} else {
+		value = ctx.GetJSObject(0)
+	}
+
+	ctrlProxy.SetValue(value, notifySubs)
+
+	return 0
 }
 
 func (engine *ESEngine) getControlFromCtx(ctx *ESContext) (*ControlProxy, int) {
@@ -1756,7 +1811,8 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 				wbgong.Error.Printf("invalid control definition")
 				return duktape.DUK_RET_TYPE_ERROR
 			}
-			c.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG])
+
+			c.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG], true)
 			return 1
 		},
 		JS_DEVPROXY_FUNC_SETMETA: func(ctx *ESContext) int {

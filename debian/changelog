@@ -1,3 +1,11 @@
+wb-rules (2.10.0) stable; urgency=medium
+
+  * add notify flag to setValue() in new controls API
+    which allows to publish values to virtual devices  without triggering rules
+  * rule engine now checks converted values instead of raw ones
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Thu, 26 Aug 2021 23:17:47 +0300
+
 wb-rules (2.9.0) stable; urgency=medium
 
   * (internal) wbgo: rename module URLs from contactless to wirenboard

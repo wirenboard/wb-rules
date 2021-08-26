@@ -109,13 +109,11 @@ func (ruleCond *EdgeTriggeredRuleCondition) Check(e *ControlChangeEvent) (bool, 
 type CellChangedRuleCondition struct {
 	RuleConditionBase
 	ctrlSpec ControlSpec
-	oldValue interface{}
 }
 
 func NewCellChangedRuleCondition(ctrlSpec ControlSpec) (*CellChangedRuleCondition, error) {
 	return &CellChangedRuleCondition{
 		ctrlSpec: ctrlSpec,
-		oldValue: nil,
 	}, nil
 }
 
@@ -137,12 +135,10 @@ func (ruleCond *CellChangedRuleCondition) Check(e *ControlChangeEvent) (bool, in
 		return false, nil
 	}
 
-	v := e.Value
-	if e.IsRetained && ruleCond.oldValue == v {
+	if e.IsRetained && e.PrevValue == e.Value {
 		return false, nil
 	}
 
-	ruleCond.oldValue = v
 	return true, nil
 }
 
@@ -308,7 +304,7 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 			args = objx.New(map[string]interface{}{
 				"newValue": newValue,
 			})
-		case e != nil:
+		case e != nil: // newValue == nil
 			args = objx.New(map[string]interface{}{
 				"device":   e.Spec.DeviceId,
 				"cell":     e.Spec.ControlId,

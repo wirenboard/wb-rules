@@ -4,27 +4,33 @@ defineVirtualDevice("vdev", {
     cells: {
         write: {
             type: "switch",
-            value: false
+            value: false,
+            forceDefault: true
         },
         read: {
             type: "switch",
-            value: false
+            value: false,
+            forceDefault: true
         },
         localWrite1: {
             type: "switch",
-            value: false
+            value: false,
+            forceDefault: true
         },
         localRead1: {
             type: "switch",
-            value: false
+            value: false,
+            forceDefault: true
         },
         localWrite2: {
             type: "switch",
-            value: false
+            value: false,
+            forceDefault: true
         },
         localRead2: {
             type: "switch",
-            value: false
+            value: false,
+            forceDefault: true
         }
     }
 });

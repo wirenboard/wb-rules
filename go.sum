@@ -17,10 +17,10 @@ github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5Cc
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/wirenboard/go-duktape v0.0.0-20210723134114-881337fff8cb h1:JV1ktj/QSi3YNRLqGSUnB0CMmr78mvIy+PNzJ4YE3k4=
 github.com/wirenboard/go-duktape v0.0.0-20210723134114-881337fff8cb/go.mod h1:RBaIu9caMBuL6Xk32Ty04qAjl/5cVSfEdCQtbWzvMQ0=
-github.com/wirenboard/wbgong v0.1.2-0.20210728091142-2e811e3e996d h1:XCLN+gr8DImffOVDIYNoXQq2nxwGG7oNNkSn9GnZVOM=
-github.com/wirenboard/wbgong v0.1.2-0.20210728091142-2e811e3e996d/go.mod h1:XJWdTJOE6V6SxjgRXymItB+qTy1f0b3PbF9fC78JcTM=
-golang.org/x/sys v0.0.0-20160516132347-d4feaf1a7e61 h1:5wHhTD6KQrGlPwBCpZ7YPBr3Kw804JHcMfbh6jTqoXA=
-golang.org/x/sys v0.0.0-20160516132347-d4feaf1a7e61/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+github.com/wirenboard/wbgong v0.3.0 h1:B5IianFkmKGoa4HAc5NPPm3wTqJCxrh2W9UwsLhj6LI=
+github.com/wirenboard/wbgong v0.3.0/go.mod h1:XJWdTJOE6V6SxjgRXymItB+qTy1f0b3PbF9fC78JcTM=
+golang.org/x/sys v0.0.0-20210423082822-04245dca01da h1:b3NXsE2LusjYGGjL5bxEVZZORm/YEFFrWFjR8eFrw/c=
+golang.org/x/sys v0.0.0-20210423082822-04245dca01da/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
 gopkg.in/alexcesaro/statsd.v2 v2.0.0 h1:FXkZSCZIH17vLCO5sO2UucTHsH9pc+17F6pl3JVCwMc=
 gopkg.in/alexcesaro/statsd.v2 v2.0.0/go.mod h1:i0ubccKGzBVNBpdGV5MocxyA/XlLUJzA7SLonnE4drU=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405 h1:yhCVgyC4o1eVCa2tZl7eS0r+SDo693bJlVdllGtEeKM=

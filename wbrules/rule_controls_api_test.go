@@ -31,7 +31,7 @@ func (s *RuleControlsAPISuite) TestAPI() {
 	)
 
 	// change control metadata by API from script
-	s.publish("/devices/spawner/controls/change/on", "1", "spawner/change")
+	s.publish("/devices/spawner/controls/change/on", "1", "spawner/change", "spawner/wrCtrlID")
 	s.VerifyUnordered(
 		"driver -> /devices/spawner/controls/change: [1] (QoS 1, retained)",
 		"tst -> /devices/spawner/controls/change/on: [1] (QoS 1)",
@@ -42,6 +42,7 @@ func (s *RuleControlsAPISuite) TestAPI() {
 		"driver -> /devices/spawner/controls/wrCtrlID/meta/readonly: [1] (QoS 1, retained)",
 		"driver -> /devices/spawner/controls/wrCtrlID/meta/max: [255] (QoS 1, retained)",
 		"driver -> /devices/spawner/controls/wrCtrlID/meta/units: [meters] (QoS 1, retained)",
+		"driver -> /devices/spawner/controls/wrCtrlID: [42] (QoS 1, retained)",
 	)
 
 	// check getters API inside script
@@ -57,6 +58,7 @@ func (s *RuleControlsAPISuite) TestAPI() {
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, readonly: true] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, max: 255] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, units: meters] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, value: 42] (QoS 1)",
 	)
 
 	// change control metadata by API from script
@@ -86,6 +88,7 @@ func (s *RuleControlsAPISuite) TestAPI() {
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, readonly: false] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, max: 0] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, units: chars] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, value: 42] (QoS 1)",
 	)
 
 	s.VerifyEmpty()
