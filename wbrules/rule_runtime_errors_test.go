@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/contactless/wbgong/testutils"
+	"github.com/wirenboard/wbgong/testutils"
 )
 
 type RuleRuntimeErrorsSuite struct {

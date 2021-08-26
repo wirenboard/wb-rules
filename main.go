@@ -9,8 +9,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/contactless/wb-rules/wbrules"
-	"github.com/contactless/wbgong"
+	"github.com/wirenboard/wb-rules/wbrules"
+	"github.com/wirenboard/wbgong"
 
 	"github.com/alexcesaro/statsd"
 )

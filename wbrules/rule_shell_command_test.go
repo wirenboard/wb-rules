@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/contactless/wbgong/testutils"
+	"github.com/wirenboard/wbgong/testutils"
 )
 
 type RuleShellCommandSuite struct {

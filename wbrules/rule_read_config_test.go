@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/contactless/wbgong/testutils"
+	"github.com/wirenboard/wbgong/testutils"
 )
 
 type RuleReadConfigSuite struct {

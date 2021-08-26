@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/contactless/wbgong/testutils"
 	"github.com/stretchr/objx"
+	"github.com/wirenboard/wbgong/testutils"
 )
 
 type EditorSuite struct {

@@ -1,3 +1,9 @@
+wb-rules (2.9.0) stable; urgency=medium
+
+  * (internal) wbgo: rename module URLs from contactless to wirenboard
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Thu, 26 Aug 2021 17:30:47 +0300
+
 wb-rules (2.8.1) stable; urgency=medium
 
   * better error handling

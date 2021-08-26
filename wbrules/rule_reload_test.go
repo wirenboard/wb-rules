@@ -6,8 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/contactless/wbgong"
-	"github.com/contactless/wbgong/testutils"
+	"github.com/wirenboard/wbgong"
+	"github.com/wirenboard/wbgong/testutils"
 )
 
 type RuleReloadSuite struct {

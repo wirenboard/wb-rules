@@ -1,8 +1,8 @@
 package wbrules
 
 import (
-	wbgong "github.com/contactless/wbgong"
 	"github.com/stretchr/objx"
+	wbgong "github.com/wirenboard/wbgong"
 )
 
 const (

@@ -1,7 +1,7 @@
 package wbrules
 
 import (
-	"github.com/contactless/wbgong/testutils"
+	"github.com/wirenboard/wbgong/testutils"
 	"testing"
 )
 
