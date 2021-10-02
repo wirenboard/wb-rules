@@ -1,3 +1,9 @@
+wb-rules (2.10.1) stable; urgency=medium
+
+* Added a channel to send messages to telegram chat with the bot
+
+ -- Alexander Degtyarev <a.degtyarev@wirenboard.com>  Sat, 02 Oct 2021 14:45:43 +0400
+
 wb-rules (2.10.0) stable; urgency=medium
 
   * add notify flag to setValue() in new controls API
