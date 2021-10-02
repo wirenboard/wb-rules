@@ -114,6 +114,7 @@ func (s *AlarmSuite) verifyNotificationMsgs(text string) {
 		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/log: [%s] (QoS 1, retained)", text),
 		fmt.Sprintf("[info] EMAIL TO: someone@example.com SUBJ: alarm! TEXT: %s", text),
 		fmt.Sprintf("[info] EMAIL TO: anotherone@example.com SUBJ: Alarm: %s TEXT: %s", text, text),
+		fmt.Sprintf("[info] TELEGRAM MESSAGE TO: BOT_API CHAT_ID TEXT: %s", text),
 		fmt.Sprintf("[info] SMS TO: +78122128506 TEXT: %s", text),
 	)
 }

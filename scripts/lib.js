@@ -369,6 +369,18 @@ var Notify = (function (){
         }
       });
     },
+	
+	sendTelegramMessage: function sendTelegramMessage (token, chatId, text) {
+      log("sending telegram message to {}", chatId);
+      runShellCommand("curl -s -X POST https://api.telegram.org/bot{}/sendMessage -d chat_id={} -d text='{}'".format(token, chatId, text), {
+        captureErrorOutput: true,
+        captureOutput: true,
+        exitCallback: function exitCallback (exitCode, capturedOutput, capturedErrorOutput) {
+          if (exitCode != 0)
+            log.error("error sending telegram message to {}:\n{}\n{}", chatId, capturedOutput, capturedErrorOutput);
+        }
+      });
+    },
 
     sendSMS: function sendSMS (to, text, command) {
       var doSend = function () {
@@ -418,6 +430,14 @@ var Alarms = (function () {
         Notify.sendEmail(src.to, maybeFormat(subject, text), text);
       };
     },
+	
+    telegram: function getTelegramSendFunc (src) {
+      if (!src.hasOwnProperty("chatId"))
+        throw new Error("telegram message recipient without 'chatId'");
+      return function sendTelegramWrapper (text) {
+        Notify.sendTelegramMessage(src.token, src.chatId, text);
+      };
+    },	
 
     sms: function getSMSSendFunc (src) {
       if (!src.hasOwnProperty("to"))
