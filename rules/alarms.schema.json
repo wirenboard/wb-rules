@@ -106,8 +106,8 @@
                 },
                 "alarmDelayMs": {
                     "type": "integer",
-                    "title": "Alarm Activation Delay",
-                    "description": "If set, the alarm condition must be violated for the specified time interval (in ms) for the alarm to be triggered",
+                    "title": "Alarm Activation Delay (ms)",
+                    "description": "alarmDelayMs_description",
                     "minimum": 0,
                     "default": 0,
                     "propertyOrder": 7
@@ -286,6 +286,7 @@
         "deviceTitle": {
             "type": "string",
             "title": "Alarm device title",
+            "description": "Device title to be used in web-interface",
             "propertyOrder": 2
         },
         "recipients": {
@@ -315,9 +316,50 @@
     },
 
     "translations": {
+        "en": {
+            "alarmDelayMs_description": "If set, the alarm condition must be violated for the specified time interval for the alarm to be triggered"
+        },
         "ru": {
             "Alarm Configuration": "Модуль уведомлений",
-            "Sending notifications configuration": "Настройка отправки уведомлений"
+            "Sending notifications configuration": "Настройка отправки уведомлений",
+            "E-mail recipient": "Получатель электронной почты",
+            "Type": "Тип",
+            "E-mail address": "Адрес электронной почты",
+            "Subject": "Тема письма",
+            "{} will be replaced with alarm message text": "{} будет заменено на текст уведомления",
+            "SMS recipient": "Получатель SMS сообщения",
+            "Phone number": "Номер телефона",
+            "Command": "Команда",
+            "Alarm name": "Название уведомления",
+            "Cell": "Отслеживаемый параметр",
+            "Alarm activation message": "Сообщение при активации уведомления",
+            "Use the following format: device/control": "Используется формат: устройство/канал",
+            "{} will be replaced by target cell value": "{} будет заменено на значение отслеживаемого параметра",
+            "Alarm deactivation message": "Сообщение при деактивации уведомления",
+            "Alarm interval in seconds": "Интервал отправки уведомлений",
+            "If specified, alarm messages will be repeated while the alarm is active": "Если задан, то при выполнении условия активации уведомления будут отправляться через заданный интервал",
+            "Maximum number of messages": "Максимально количество сообщений",
+            "Maximum number of messages to send while the alarm is active": "Максимальное количество отправляемых сообщений при выполнении условия активации уведомления",
+            "Alarm Activation Delay (ms)": "Задержка отправки уведомления (мс)",
+            "alarmDelayMs_description": "Для отправки уведомления условие активации должно оставаться выполненным в течение заданного времени",
+            "Minimum value": "Минимальное значение",
+            "Alarm activates when cell value is less than the minimum value": "Уведомление активируется, если значение параметра меньше минимального",
+            "Maximum value": "Максимальное значение",
+            "Alarm activates when cell value is greater than the maximum value": "Уведомление активируется, если значение параметра больше максимального",
+            "Expected Value Alarm": "Значение не равно заданному",
+            "Expected value": "Заданное значение",
+            "Alarm activates when cell value differs from the expected value": "Уведомление активируется, если значение параметра отличается от заданного",
+            "Minimum Value Alarm": "Значение меньше заданного",
+            "Maximum Value Alarm": "Значение больше заданного",
+            "Minimum&Maximum Value Alarm": "Значение вне диапазона",
+            "Recipient": "Получатель",
+            "Alarm device name": "Название устройства уведомления",
+            "Device name to be used in MQTT topics for logging & alarm cells": "Название устройства для каналов MQTT",
+            "Device title to be used in web-interface": "Заголовок окна устройства уведомлений в веб-интерфейсе",
+            "Alarm device title": "Заголовок устройства уведомления",
+            "Recipients": "Получатели уведомлений",
+            "Alarms": "Уведомления",
+            "Alarm{{: |self.name}}": "Уведомление{{: |self.name}}"
         }
     }
 }
