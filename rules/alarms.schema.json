@@ -114,8 +114,8 @@
                 },
                 "noAlarmDelayMs": {
                     "type": "integer",
-                    "title": "Alarm Deactivation Delay",
-                    "description": "If set, the alarm condition must be met for the specified time interval (in ms) for the alarm to be cleared",
+                    "title": "Alarm Deactivation Delay (ms)",
+                    "description": "noAlarmDelayMs_description",
                     "minimum": 0,
                     "default": 0,
                     "propertyOrder": 8
@@ -147,15 +147,12 @@
                 {
                     "properties": {
                         "expectedValue": {
+                            "type": "number",
                             "title": "Expected value",
                             "description": "Alarm activates when cell value differs from the expected value"
                         }
                     },
-                    "required": [
-                        "name",
-                        "cell",
-                        "expectedValue"
-                    ]
+                    "required": ["name", "cell", "expectedValue"]
                 }
             ]
         },
@@ -175,6 +172,7 @@
                     "properties": {
                         "minValue": {
                             "$ref": "#/definitions/minValue",
+                            "title": "Minimum value",
                             "propertyOrder": 10
                         }
                     },
@@ -203,6 +201,7 @@
                     "properties": {
                         "maxValue": {
                             "$ref": "#/definitions/maxValue",
+                            "title": "Maximum value",
                             "propertyOrder": 10
                         }
                     },
@@ -226,24 +225,24 @@
                 "maxValue"
             ],
             "allOf": [
-                { "$ref": "#/definitions/alarmBase" },
+                {
+                    "$ref": "#/definitions/alarmBase",
+                    "title": "Expected value"
+                },
                 {
                     "properties": {
                         "minValue": {
                             "$ref": "#/definitions/minValue",
+                            "title": "Minimum value",
                             "propertyOrder": 10
                         },
                         "maxValue": {
                             "$ref": "#/definitions/maxValue",
+                            "title": "Maximum value",
                             "propertyOrder": 11
                         }
                     },
-                    "required": [
-                        "name",
-                        "cell",
-                        "minValue",
-                        "maxValue"
-                    ]
+                    "required": ["name", "cell", "minValue", "maxValue"]
                 }
             ]
         },
@@ -317,47 +316,50 @@
 
     "translations": {
         "en": {
-            "alarmDelayMs_description": "If set, the alarm condition must be violated for the specified time interval for the alarm to be triggered"
+            "alarmDelayMs_description": "If set, the alarm condition must be violated for the specified time interval for the alarm to be triggered",
+            "noAlarmDelayMs_description": "If set, the alarm condition must be met for the specified time interval for the alarm to be cleared"
         },
         "ru": {
             "Alarm Configuration": "Модуль уведомлений",
             "Sending notifications configuration": "Настройка отправки уведомлений",
-            "E-mail recipient": "Получатель электронной почты",
+            "E-mail recipient": "Электронная почта",
             "Type": "Тип",
             "E-mail address": "Адрес электронной почты",
             "Subject": "Тема письма",
-            "{} will be replaced with alarm message text": "{} будет заменено на текст уведомления",
-            "SMS recipient": "Получатель SMS сообщения",
+            "{} will be replaced with alarm message text": "{} будет заменено на текст сообщения",
+            "SMS recipient": "SMS-сообщение",
             "Phone number": "Номер телефона",
             "Command": "Команда",
             "Alarm name": "Название уведомления",
             "Cell": "Отслеживаемый параметр",
             "Alarm activation message": "Сообщение при активации уведомления",
-            "Use the following format: device/control": "Используется формат: устройство/канал",
+            "Use the following format: device/control": "Используйте формат: устройство/канал",
             "{} will be replaced by target cell value": "{} будет заменено на значение отслеживаемого параметра",
             "Alarm deactivation message": "Сообщение при деактивации уведомления",
-            "Alarm interval in seconds": "Интервал отправки уведомлений",
+            "Alarm interval in seconds": "Интервал отправки уведомлений (c)",
             "If specified, alarm messages will be repeated while the alarm is active": "Если задан, то при выполнении условия активации уведомления будут отправляться через заданный интервал",
-            "Maximum number of messages": "Максимально количество сообщений",
-            "Maximum number of messages to send while the alarm is active": "Максимальное количество отправляемых сообщений при выполнении условия активации уведомления",
-            "Alarm Activation Delay (ms)": "Задержка отправки уведомления (мс)",
-            "alarmDelayMs_description": "Для отправки уведомления условие активации должно оставаться выполненным в течение заданного времени",
+            "Maximum number of messages": "Количество сообщений",
+            "Maximum number of messages to send while the alarm is active": "Количество отправляемых сообщений при активации уведомления",
+            "Alarm Activation Delay (ms)": "Задержка активации уведомления (мс)",
+            "alarmDelayMs_description": "Отправить сообщение, если уведомление активировано в течение указанного времени",
+            "Alarm Deactivation Delay (ms)": "Задержка деактивации уведомления (мс)",
+            "noAlarmDelayMs_description": "Отправить сообщение, если уведомление деактивировано в течение указанного времени",
             "Minimum value": "Минимальное значение",
-            "Alarm activates when cell value is less than the minimum value": "Уведомление активируется, если значение параметра меньше минимального",
+            "Alarm activates when cell value is less than the minimum value": "Активировать уведомление, если значение параметра меньше указанного",
             "Maximum value": "Максимальное значение",
-            "Alarm activates when cell value is greater than the maximum value": "Уведомление активируется, если значение параметра больше максимального",
+            "Alarm activates when cell value is greater than the maximum value": "Активировать уведомление, если значение параметра больше указанного",
             "Expected Value Alarm": "Значение не равно заданному",
             "Expected value": "Заданное значение",
-            "Alarm activates when cell value differs from the expected value": "Уведомление активируется, если значение параметра отличается от заданного",
-            "Minimum Value Alarm": "Значение меньше заданного",
-            "Maximum Value Alarm": "Значение больше заданного",
+            "Alarm activates when cell value differs from the expected value": "Активировать уведомление, если значение параметра отличается от указанного",
+            "Minimum Value Alarm": "Значение меньше минимального",
+            "Maximum Value Alarm": "Значение больше максимального",
             "Minimum&Maximum Value Alarm": "Значение вне диапазона",
             "Recipient": "Получатель",
-            "Alarm device name": "Название устройства уведомления",
-            "Device name to be used in MQTT topics for logging & alarm cells": "Название устройства для каналов MQTT",
-            "Device title to be used in web-interface": "Заголовок окна устройства уведомлений в веб-интерфейсе",
-            "Alarm device title": "Заголовок устройства уведомления",
-            "Recipients": "Получатели уведомлений",
+            "Alarm device name": "Имя устройства MQTT",
+            "Device name to be used in MQTT topics for logging & alarm cells": "Имя устройства MQTT для каналов уведомления",
+            "Device title to be used in web-interface": "Название уведомления в окне веб-интерфейса",
+            "Alarm device title": "Название уведомления",
+            "Recipients": "Получатели сообщений",
             "Alarms": "Уведомления",
             "Alarm{{: |self.name}}": "Уведомление{{: |self.name}}"
         }
