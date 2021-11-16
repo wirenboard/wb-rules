@@ -1,3 +1,9 @@
+wb-rules (2.10.3) stable; urgency=medium
+
+  * Alarms schema translation to Russian
+
+ -- Dmitry Vorobjev <d.vorobjev@wirenboard.ru>  Tue, 16 Nov 2021 16:03:32 +0300
+
 wb-rules (2.10.2) stable; urgency=medium
 
   * Alarms schema title translation to Russian
