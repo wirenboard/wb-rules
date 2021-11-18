@@ -339,7 +339,7 @@
             "{} will be replaced by target cell value": "{} будет заменено на значение отслеживаемого параметра",
             "Alarm deactivation message": "Сообщение при деактивации уведомления",
             "Alarm interval in seconds": "Интервал отправки уведомлений (c)",
-            "Alarm messages will be repeated in specified interval while the alarm is active": "При выполненном условии активации уведомления сообщения будут отправляться через заданный интервал",
+            "Alarm messages will be repeated in specified interval while the alarm is active": "При активированном уведомлении сообщения будут отправляться через заданный интервал",
             "Maximum number of messages": "Количество сообщений",
             "Maximum number of messages to send while the alarm is active": "Количество отправляемых сообщений при активации уведомления",
             "Alarm Activation Delay (ms)": "Задержка активации уведомления (мс)",
