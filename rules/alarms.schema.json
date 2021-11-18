@@ -96,6 +96,8 @@
                     "type": "integer",
                     "title": "Alarm interval in seconds",
                     "description": "If specified, alarm messages will be repeated while the alarm is active",
+                    "minimum": 1,
+                    "default": 30,
                     "propertyOrder": 5
                 },
                 "maxCount": {
