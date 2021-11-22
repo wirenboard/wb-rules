@@ -97,7 +97,7 @@
                     "title": "Alarm interval in seconds",
                     "description": "Alarm messages will be repeated in specified interval while the alarm is active",
                     "minimum": 1,
-                    "default": 30,
+                    "default": 60,
                     "propertyOrder": 5
                 },
                 "maxCount": {
@@ -338,7 +338,7 @@
             "Use the following format: device/control": "Используйте формат: устройство/канал",
             "{} will be replaced by target cell value": "{} будет заменено на значение отслеживаемого параметра",
             "Alarm deactivation message": "Сообщение при деактивации уведомления",
-            "Alarm interval in seconds": "Интервал отправки уведомлений (c)",
+            "Alarm interval in seconds": "Интервал отправки сообщений (c)",
             "Alarm messages will be repeated in specified interval while the alarm is active": "При активированном уведомлении сообщения будут отправляться через заданный интервал",
             "Maximum number of messages": "Количество сообщений",
             "Maximum number of messages to send while the alarm is active": "Количество отправляемых сообщений при активации уведомления",
