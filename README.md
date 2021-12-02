@@ -16,7 +16,7 @@ Rule engine for Wiren Board, version 2.0
   - [API создания/управления устройств](#API-созданияуправления-устройств)
   - [Просмотр и выполнение правил](#Просмотр-и-выполнение-правил)
   - [Управление правилами](#Управление-правилами)
-  - [Примеры](#Примеры)
+  - [Пример скрипта](#Пример-скрипта)
 - [Встроенные функции и переменные](#Встроенные-функции-и-переменные)
   - [Алиасы](#Алиасы)
   - [Форматирование строки](#Форматирование-строки)
@@ -495,7 +495,7 @@ enableRule(myRule); // разрешить выполнение правила
 runRule(myRule); // принудительно запустить тело правила (функцию then)
 // на текущий момент не поддерживается передача аргументов в then
 ```
-## Примеры
+## Пример скрипта
 
 Пример файла с правилами (`sample1.js`):
 ```js
@@ -659,8 +659,8 @@ JSON, находящийся по указанному пути. Генерир�
 
 Для сообщений типа log и debug доступны сокращения:
 ```js
-log(fmt, [arg1 [, ...]]) # сокращение для log.info(...)
-debug(fmt, [arg1 [, ...]]) # сокращение для log.debug(...)
+log(fmt, [arg1 [, ...]]) // сокращение для log.info(...)
+debug(fmt, [arg1 [, ...]]) // сокращение для log.debug(...)
 ```
 
 ### Подписка на MQTT-топики
@@ -699,6 +699,36 @@ publish("/abc/def/ghi", "0", 2, true);
 
 Таймер становится доступным как `timers.<name>`. При срабатывании таймера происходит просмотр правил, при этом `timers.<name>.firing` для этого таймера становится истинным на время этого просмотра.
 
+```js
+defineVirtualDevice("test_buzzer", {
+  title: "Test Buzzer",
+  cells: {
+    enabled: {
+      type: "switch",
+      value: false
+    }
+  }
+});
+
+defineRule("1",{
+  asSoonAs: function () {
+    return dev["test_buzzer"]["enabled"] ;
+  },
+  then: function () {
+    startTimer("one_second", 1000);
+    dev["buzzer"]["enabled"] = true;//включаем пищалку
+  }
+});
+
+defineRule("2",{
+  when: function () { return timers.one_second.firing; },
+  then: function () {
+    dev["buzzer"]["enabled"] = false;//выключаем пищалку
+    dev["test_buzzer"]["enabled"] = false;
+  }
+});
+```
+
 `startTicker(name, milliseconds)`
 запускает периодический таймер с указанным интервалом, который также становится доступным как `timers.<name>`.
 
@@ -709,11 +739,63 @@ publish("/abc/def/ghi", "0", 2, true);
 `stop()` и свойством `firing`. Для неактивных таймеров `firing` всегда содержит
 `false`, а метод `stop()` ничего не делает.
 
+```js
+defineVirtualDevice("test_buzzer", {
+  title: "Test Buzzer",
+  cells: {
+    enabled: {
+      type: "switch",
+      value: false
+    }
+  }
+});
+
+defineRule("1",{
+  asSoonAs: function () {
+    return dev["test_buzzer"]["enabled"] ;
+  },
+  then: function () {
+    startTicker("one_second", 1000);
+  }
+});
+defineRule("2",{
+  when: function () { return timers.one_second.firing; },
+  then: function () {
+    dev["buzzer"]["enabled"] = !dev["buzzer"]["enabled"];
+    if (dev["test_buzzer"]["enabled"] == false){
+      timers.one_second.stop();
+    }
+  }
+});
+```
+
 `setTimeout(callback, milliseconds)` запускает однократный таймер,
 вызывающий при срабатывании функцию, переданную в качестве аргумента
 `callback`. Возвращает положительный целочисленный идентификатор
 таймера, который может быть использован в качестве аргумента функции
 `clearTimeout()`.
+
+```js
+defineVirtualDevice("test_buzzer", {
+title: "Test Buzzer",
+  cells: {
+    enabled: {
+      type: "pushbutton",
+      value: false
+    }
+  }
+});
+
+defineRule({
+  whenChanged: "test_buzzer/enabled",
+    then: function (newValue, devName, cellName) {
+    dev["buzzer"]["enabled"] = true;
+    setTimeout(function () {
+      dev["buzzer"]["enabled"] = false;
+    }, 2000);
+  }
+});
+```
 
 `setInterval(callback, milliseconds)` запускает периодический таймер,
 вызывающий при срабатывании функцию, переданную в качестве аргумента
@@ -723,6 +805,37 @@ publish("/abc/def/ghi", "0", 2, true);
 
 `clearTimeout(id)` останавливает таймер с указанным идентификатором.
 Функция `clearInterval(id)` является alias'ом `clearTimeout()`.
+
+```js
+defineVirtualDevice("test_buzzer", {
+  title: "Test Buzzer",
+  cells: {
+    enabled: {
+      type: "pushbutton",
+      value: false
+    }
+  }
+});
+
+
+var test_interval = null;
+
+defineRule({                                              
+  whenChanged: "test_buzzer/enabled",
+  then: function (newValue, devName, cellName) {
+    var n = 0;
+    if (dev["test_buzzer"]["enabled"]){
+      test_interval = setInterval(function () {
+ 	dev["buzzer"]["enabled"] = !dev["buzzer"]["enabled"];
+        n = n+1;
+        if (n >= 10){
+          clearInterval(test_interval);
+        }
+      }, 500); 
+    }
+  }
+});
+```
 
 ### Запуск внешних процессов
 `spawn(cmd, args, options)` запускает внешний процесс, определяемый
@@ -745,6 +858,26 @@ publish("/abc/def/ghi", "0", 2, true);
 
 `runShellCommand(cmd, options)` вызывает `/bin/sh` с указанной
 командой следующим образом: `spawn("/bin/sh", ["-c", cmd], options)`.
+
+```js
+defineRule({
+ asSoonAs: function() {
+   return true
+ },
+  then: function () {
+      runShellCommand("uname -a", {
+          captureOutput: true,
+          exitCallback: function(exitCode, capturedOutput) {
+              log(exitCode)
+              if (exitCode === 0) {
+                  log(capturedOutput)
+                  return;
+              }
+          }
+      });
+  }
+});
+```
 
 ## Сервис оповещений
 
