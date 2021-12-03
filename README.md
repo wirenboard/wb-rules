@@ -75,7 +75,10 @@ wbdev gdeb
 
 Правила пишутся на языке ECMAScript 5 (диалектом которого является Javascript) и загружаются из папку `/etc/wb-rules`.
 
-Если вы не писали на этом языке, вам поможет учебник https://learn.javascript.ru, бОльшая часть примеров будет работать на контроллере.
+Если вы не писали на этом языке, вам поможет учебник https://learn.javascript.ru, отличия синтаксиса:
+* вместо *alert()* используйте *log()*;
+* вместо *let* используйте *var*;
+* не поддерживаются функции-стрелки — это когда пишут `var sum = (a, b) => a + b;` вместо `var sum = function(a, b) {return a + b;};`, второй вариант будет работать.
 
 ### Определение правил
 
@@ -694,6 +697,7 @@ publish("/abc/def/ghi", "0", 2, true);
 ```
 
 ### Таймеры
+#### Однократные
 `startTimer(name, milliseconds)`
 запускает однократный таймер с указанным именем.
 
@@ -729,6 +733,35 @@ defineRule("2",{
 });
 ```
 
+`setTimeout(callback, milliseconds)` запускает однократный таймер,
+вызывающий при срабатывании функцию, переданную в качестве аргумента
+`callback`. Возвращает положительный целочисленный идентификатор
+таймера, который может быть использован в качестве аргумента функции
+`clearTimeout()`.
+
+```js
+defineVirtualDevice("test_buzzer", {
+title: "Test Buzzer",
+  cells: {
+    enabled: {
+      type: "pushbutton",
+      value: false
+    }
+  }
+});
+
+defineRule({
+  whenChanged: "test_buzzer/enabled",
+    then: function (newValue, devName, cellName) {
+    dev["buzzer"]["enabled"] = true;
+    setTimeout(function () {
+      dev["buzzer"]["enabled"] = false;
+    }, 2000);
+  }
+});
+```
+
+#### Периодические
 `startTicker(name, milliseconds)`
 запускает периодический таймер с указанным интервалом, который также становится доступным как `timers.<name>`.
 
@@ -765,34 +798,6 @@ defineRule("2",{
     if (dev["test_buzzer"]["enabled"] == false){
       timers.one_second.stop();
     }
-  }
-});
-```
-
-`setTimeout(callback, milliseconds)` запускает однократный таймер,
-вызывающий при срабатывании функцию, переданную в качестве аргумента
-`callback`. Возвращает положительный целочисленный идентификатор
-таймера, который может быть использован в качестве аргумента функции
-`clearTimeout()`.
-
-```js
-defineVirtualDevice("test_buzzer", {
-title: "Test Buzzer",
-  cells: {
-    enabled: {
-      type: "pushbutton",
-      value: false
-    }
-  }
-});
-
-defineRule({
-  whenChanged: "test_buzzer/enabled",
-    then: function (newValue, devName, cellName) {
-    dev["buzzer"]["enabled"] = true;
-    setTimeout(function () {
-      dev["buzzer"]["enabled"] = false;
-    }, 2000);
   }
 });
 ```
