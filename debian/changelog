@@ -1,3 +1,9 @@
+wb-rules (2.10.4) stable; urgency=medium
+
+  * Updated documentation
+
+ -- Alexandr Degtyarev <a.degtyarev@wirenboard.com>  Fri, 03 Dec 2021 14:13:00 +0400
+
 wb-rules (2.10.3) stable; urgency=medium
 
   * Alarms schema translation to Russian
