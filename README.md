@@ -262,10 +262,18 @@ defineRule("anotherRule", {
 
 Виртуальное устройство задаётся так:
 ```js
-defineVirtualDevice(name, {
-    title: < название > ,
+defineVirtualDevice('my-virtual-device', {
+    title: 'MyVirtualDeviceTitle' ,
     cells: {
-        описание параметров...
+      ControlName1: {
+	    type: "switch",
+	    value: false
+	    },
+      ControlName2: {
+	    type: "range",
+	    value: 25,
+      max: 100
+	    },
     }
 })
 ```
