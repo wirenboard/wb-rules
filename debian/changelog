@@ -1,3 +1,9 @@
+wb-rules (2.11.1) stable; urgency=medium
+
+  * Updated documentation
+
+ -- Alexandr Degtyarev <a.degtyarev@wirenboard.com>  Wed, 29 Dec 2021 16:07:00 +0400
+ 
 wb-rules (2.11.0) stable; urgency=medium
 
   * Add support for Wiren Board 7 (wbgo-related)
