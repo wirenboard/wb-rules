@@ -1,3 +1,9 @@
+wb-rules (2.10.2-wb1) stable; urgency=medium
+
+  * Testing version-check in dummy pr
+
+ -- Vladimir Romanov <v.romanov@wirenboard.ru>  Tue, 02 Nov 2021 19:27:03 +0300
+
 wb-rules (2.10.2) stable; urgency=medium
 
   * Alarms schema title translation to Russian
@@ -232,7 +238,7 @@ wb-rules (2.1~alpha1) stable; urgency=medium
 
 wb-rules (2.0~beta3) stable; urgency=medium
 
-  * Fix: hang on boot on high load 
+  * Fix: hang on boot on high load
 
  -- Nikita Maslov <n.maslov@contactless.ru>  Wed, 15 Mar 2017 19:00:07 +0300
 
@@ -267,11 +273,11 @@ wb-rules (1.6.8) stable; urgency=medium
  -- Evgeny Boger <boger@contactless.ru>  Fri, 19 Aug 2016 17:54:47 +0300
 
 wb-rules (1.6.7) stable; urgency=medium
-  
+
   * adds support for delays to alarm engine:
       alarmDelayMs: if set, the alarm condition must be violated for
           the specified time interval (in ms) for the alarm to be triggered
-      noAlarmDelayMs: if set,  the alarm condition must be met for the 
+      noAlarmDelayMs: if set,  the alarm condition must be met for the
           specified time interval (in ms) for the alarm to be cleared
 
  -- Evgeny Boger <boger@contactless.ru>  Tue, 24 May 2016 20:27:21 +0300
@@ -365,5 +371,3 @@ wb-rules (1.0) wheezy; urgency=low
   * Initial package version
 
  -- Ivan Shvedunov <ivan4th@gmail.com>  Tue, 03 Feb 2015 17:20:00 +0300
-
-
