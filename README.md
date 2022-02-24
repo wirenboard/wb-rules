@@ -206,12 +206,10 @@ defineRule("crontest_hourly", {
 `dev["abc"]["def"]` (или, что в данном случае то же самое,
 dev.abc.def).
 
-Значение параметра зависит от его типа: `switch`, `wo-switch`, `alarm` -
+Значение параметра зависит от его типа: `switch`, `alarm` -
 булевский тип, "text" - строковой, остальные известные типы параметров,
 кроме уставок диммеров (тип rgb), считаются числовыми, уставки диммеров (тип rgb)
-и неизвестные типы параметров - строковыми. Список допустимых типов
-параметров см.
-[по ссылке](https://github.com/contactless/homeui/blob/master/conventions.md).
+и неизвестные типы параметров - строковыми. Смотрите полный список в [Wiren Board MQTT Conventions](https://github.com/wirenboard/conventions/blob/main/README.md).
 
 Не следует использовать объект `dev` вне кода правил. Не следует
 присваивать значения параметрам через `dev` вне `then`-функций правил
@@ -276,7 +274,7 @@ defineVirtualDevice('my-virtual-device', {
 а значениями — описания параметров.
 
 Поля объекта:
-* `type` — тип, публикуемый в MQTT-топике `/devices/.../controls/.../meta/type` для данного параметра. Список доступных типов смотрите в [Wiren Board MQTT Conventions](https://github.com/wirenboard/homeui/blob/master/conventions.md).
+* `type` — тип, публикуемый в MQTT-топике `/devices/.../controls/.../meta/type` для данного параметра. Список доступных типов смотрите в [Wiren Board MQTT Conventions](https://github.com/wirenboard/conventions/blob/main/README.md).
 * `value` — значение параметра по умолчанию (топик `/devices/.../controls/...`).
 * `forceDefault` — когда задано истинное значение, при запуске контроллера параметр всегда
 устанавливается в значение по умолчанию. Иначе он будет установлен в последнее сохранённое значение.
