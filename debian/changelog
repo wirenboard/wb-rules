@@ -1,3 +1,9 @@
+wb-rules (2.11.2) stable; urgency=medium
+
+  * wbgo: fix crashes in support.go file
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Thu, 31 Mar 2022 15:17:46 +0300
+
 wb-rules (2.11.1) stable; urgency=medium
 
   * Updated documentation
