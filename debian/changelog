@@ -1,3 +1,9 @@
+wb-rules (2.11.3) stable; urgency=medium
+
+  * An error causing system reboot is fixed
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.ru>  Thu, 14 Apr 2022 13:01:13 +0500
+
 wb-rules (2.11.2) stable; urgency=medium
 
   * wbgo: fix crashes in support.go file
