@@ -1,3 +1,9 @@
+wb-rules (2.11.1+wb1) stable; urgency=medium
+
+  * wbgo: fix error causing system reboot on WB6
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Fri, 15 Apr 2022 18:06:19 +0300
+
 wb-rules (2.11.1) stable; urgency=medium
 
   * Updated documentation
