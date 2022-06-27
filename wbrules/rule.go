@@ -321,7 +321,9 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 func (rule *Rule) MaybeAddToCron(cron Cron) {
 	var err error
 	rule.isIndependent, err = rule.cond.MaybeAddToCron(cron, func() {
-		rule.then(nil)
+		if rule.then != nil {
+			rule.then(nil)
+		}
 	})
 	if err != nil {
 		wbgong.Error.Printf("rule %s: invalid cron spec: %s", rule.name, err)
