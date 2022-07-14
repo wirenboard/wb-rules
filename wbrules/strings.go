@@ -18,6 +18,7 @@ const (
 	VDEV_CONTROL_DESCR_PROP_ORDER        = "order"
 	// FIXME: deprecated
 	VDEV_CONTROL_DESCR_PROP_MAX = "max"
+	VDEV_CONTROL_DESCR_PROP_MIN = "min"
 
 	// default value for 'readonly'
 	VDEV_CONTROL_READONLY_DEFAULT = true
@@ -25,6 +26,7 @@ const (
 	// default 'max' value for 'range' type
 	// FIXME: deprecated
 	VDEV_CONTROL_RANGE_MAX_DEFAULT = 255.0
+	VDEV_CONTROL_RANGE_MIN_DEFAULT = 0.0
 
 	JS_DEVPROXY_FUNC_SETVALUE     = "setValue"
 	JS_DEVPROXY_FUNC_SETMETA      = "setMeta"
