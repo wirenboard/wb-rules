@@ -337,6 +337,8 @@ func (engine *ESEngine) initVdevCellPrototype(ctx *ESContext) {
 		"getReadonly":    engine.esVdevCellGetReadonly,
 		"setMax":         engine.esVdevCellSetMax,
 		"getMax":         engine.esVdevCellGetMax,
+		"setMin":         engine.esVdevCellSetMin,
+		"getMin":         engine.esVdevCellGetMin,
 		"setError":       engine.esVdevCellSetError,
 		"getError":       engine.esVdevCellGetError,
 		"setOrder":       engine.esVdevCellSetOrder,
