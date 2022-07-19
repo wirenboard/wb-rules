@@ -27,6 +27,7 @@ defineRule({
                 log("ctrlID: {}, type: {}".format(ctrl.getId(), ctrl.getType()));
                 log("ctrlID: {}, order: {}".format(ctrl.getId(), ctrl.getOrder()));
                 log("ctrlID: {}, max: {}".format(ctrl.getId(), ctrl.getMax()));
+                log("ctrlID: {}, min: {}".format(ctrl.getId(), ctrl.getMin()));
                 log("ctrlID: {}, readonly: {}".format(ctrl.getId(), ctrl.getReadonly()));
                 log("ctrlID: {}, units: {}".format(ctrl.getId(), ctrl.getUnits()));
                 log("ctrlID: {}, value: {}".format(ctrl.getId(), ctrl.getValue()));
@@ -44,6 +45,7 @@ defineRule({
             ctrl.setType("range");
             ctrl.setOrder(5);
             ctrl.setMax(255);
+            ctrl.setMin(5)
             ctrl.setReadonly(true);
             ctrl.setUnits("meters");
             ctrl.setValue(42);
@@ -54,6 +56,7 @@ defineRule({
             ctrl.setType("text");
             ctrl.setOrder(4);
             ctrl.setMax(0);
+            ctrl.setMin(0);
             ctrl.setReadonly(false);
             ctrl.setUnits("chars");
         }

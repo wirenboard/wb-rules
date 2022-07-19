@@ -265,7 +265,8 @@ defineVirtualDevice('my-virtual-device', {
       ControlName2: {
 	    type: "range",
 	    value: 25,
-      max: 100
+        max: 100,
+        min: 1
 	    },
     }
 })
@@ -282,6 +283,7 @@ defineVirtualDevice('my-virtual-device', {
 в mqtt происходить не будет до тех пор, пока этому контролу не будет присвоено какое-то значение
 (например `dev[deviceID][controlID] = "string"`)
 * `max` для параметра типа `range` может задавать его максимально допустимое значение.
+* `min` для параметра типа `range` может задавать его минимально допустимое значение.
 * `readonly` — когда задано истинное значение, параметр объявляется read-only
   (публикуется `1` в `/devices/.../controls/.../meta/readonly`).
 
@@ -376,6 +378,7 @@ Setters:
 * `setUnits(string)`
 * `setReadonly(string)`
 * `setMax(string)`
+* `setMin(string)`
 * `setError(string)`
 * `setOrder(string)`
 * `setValue(any)` или `setValue({ value: any, notify: bool })`
@@ -387,6 +390,7 @@ Getters:
 * `getUnits() => string`
 * `getReadonly() => boolean`
 * `getMax() => number`
+* `getMin() => number`
 * `getError() => string`
 * `getOrder() => number`
 * `getValue() => any`
