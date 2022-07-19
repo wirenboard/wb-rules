@@ -337,6 +337,8 @@ func (engine *ESEngine) initVdevCellPrototype(ctx *ESContext) {
 		"getReadonly":    engine.esVdevCellGetReadonly,
 		"setMax":         engine.esVdevCellSetMax,
 		"getMax":         engine.esVdevCellGetMax,
+		"setMin":         engine.esVdevCellSetMin,
+		"getMin":         engine.esVdevCellGetMin,
 		"setError":       engine.esVdevCellSetError,
 		"getError":       engine.esVdevCellGetError,
 		"setOrder":       engine.esVdevCellSetOrder,
@@ -1475,6 +1477,17 @@ func (engine *ESEngine) esVdevCellGetMax(ctx *ESContext) int {
 	return 1
 }
 
+func (engine *ESEngine) esVdevCellGetMin(ctx *ESContext) int {
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
+	}
+
+	ctx.PushInt(ctrlProxy.getControl().GetMin())
+
+	return 1
+}
+
 func (engine *ESEngine) esVdevCellGetError(ctx *ESContext) int {
 	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
 	if duk_ret < 0 {
@@ -1612,6 +1625,23 @@ func (engine *ESEngine) esVdevCellSetMax(ctx *ESContext) int {
 	}
 
 	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MAX, fmt.Sprintf("%d", max))
+
+	return 0
+}
+
+func (engine *ESEngine) esVdevCellSetMin(ctx *ESContext) int {
+	if !ctx.IsNumber(0) {
+		wbgong.Error.Printf("setMin(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	min := int(ctx.GetNumber(0))
+
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
+	}
+
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MIN, fmt.Sprintf("%d", min))
 
 	return 0
 }

@@ -46,6 +46,7 @@ defineRule("onChangeStartControl", {
       dev["testDevice/textControl#description"] = "new description";
       dev["testDevice/textControl#type"] = "range";
       dev["testDevice/textControl#max"] = "255";
+      dev["testDevice/textControl#min"] = "5";
       dev["testDevice/textControl#order"] = "4";
       dev["testDevice/textControl#units"] = "meters";
       dev["testDevice/textControl#readonly"] = "1";
@@ -54,6 +55,7 @@ defineRule("onChangeStartControl", {
       dev["testDevice/textControl#description"] = "old description";
       dev["testDevice/textControl#type"] = "text";
       dev["testDevice/textControl#max"] = "0";
+      dev["testDevice/textControl#min"] = "0";
       dev["testDevice/textControl#order"] = "5";
       dev["testDevice/textControl#units"] = "chars";
       dev["testDevice/textControl#readonly"] = "0";
