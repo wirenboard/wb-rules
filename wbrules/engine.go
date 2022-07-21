@@ -421,6 +421,10 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 			err := ctrl.SetDescription(metaValue)()
 			if err != nil {
 			}
+		case wbgong.CONV_META_SUBTOPIC_CONTROL_TITLE:
+			err := ctrl.SetTitle(metaValue)()
+			if err != nil {
+			}
 		case wbgong.CONV_META_SUBTOPIC_ERROR:
 			return ctrl.SetError(errors.New(metaValue))()
 		case wbgong.CONV_META_SUBTOPIC_MAX:
@@ -1493,6 +1497,14 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 	if descr, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_DESCRIPTION]; ok {
 		if fdescr, okString := descr.(string); okString {
 			args.SetDescription(fdescr)
+		} else {
+			return fmt.Errorf("%s/%s: non-string value of description property",
+				devId, ctrlId)
+		}
+	}
+	if title, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_TITLE]; ok {
+		if ftitle, okString := title.(string); okString {
+			args.SetTitle(ftitle)
 		} else {
 			return fmt.Errorf("%s/%s: non-string value of description property",
 				devId, ctrlId)

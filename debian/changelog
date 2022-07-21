@@ -1,3 +1,9 @@
+wb-rules (2.13.0) stable; urgency=medium
+
+  * Added support for title field in controls
+
+ -- Roman Kochkin <roman.kochkin@wirenboard.ru>  Tue, 19 Jul 2022 23:47:00 +0400
+
 wb-rules (2.12.0) stable; urgency=medium
 
   * Added support for min field in controls

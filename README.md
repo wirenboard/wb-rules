@@ -259,10 +259,12 @@ defineVirtualDevice('my-virtual-device', {
     title: 'MyVirtualDeviceTitle' ,
     cells: {
       ControlName1: {
+        title: "Name 1",
 	    type: "switch",
 	    value: false
 	    },
       ControlName2: {
+        title: "Name 2",
 	    type: "range",
 	    value: 25,
         max: 100,
@@ -275,6 +277,7 @@ defineVirtualDevice('my-virtual-device', {
 а значениями — описания параметров.
 
 Поля объекта:
+* `title` — имя, публикуемое в MQTT-топике `/devices/.../controls/.../meta/title` для данного параметра.
 * `type` — тип, публикуемый в MQTT-топике `/devices/.../controls/.../meta/type` для данного параметра. Список доступных типов смотрите в [Wiren Board MQTT Conventions](https://github.com/wirenboard/conventions/blob/main/README.md).
 * `value` — значение параметра по умолчанию (топик `/devices/.../controls/...`).
 * `forceDefault` — когда задано истинное значение, при запуске контроллера параметр всегда
@@ -373,6 +376,7 @@ getDevice("deviceID").controlsList().forEach(function(ctrl) {
 Полный список методов объекта контрола смотрите ниже.
 
 Setters:
+* `setTitle(string)`
 * `setDescription(string)`
 * `setType(string)`
 * `setUnits(string)`
@@ -385,6 +389,7 @@ Setters:
 
 Getters:
 * `getId() => string`
+* `getTitle() => string`
 * `getDescription() => string`
 * `getType() => string`
 * `getUnits() => string`

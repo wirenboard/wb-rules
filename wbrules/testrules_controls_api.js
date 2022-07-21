@@ -23,6 +23,7 @@ defineRule({
 
         getDevice("spawner").controlsList().forEach(function (ctrl) {
             if (ctrl.getId() === ctrlID) {
+                log("ctrlID: {}, title: {}".format(ctrl.getId(), ctrl.getTitle()));
                 log("ctrlID: {}, error: {}".format(ctrl.getId(), ctrl.getError()));
                 log("ctrlID: {}, type: {}".format(ctrl.getId(), ctrl.getType()));
                 log("ctrlID: {}, order: {}".format(ctrl.getId(), ctrl.getOrder()));
@@ -42,6 +43,7 @@ defineRule({
         ctrl = getDevice("spawner").getControl(ctrlID);
         if (newValue) {
             ctrl.setDescription("true Description");
+            ctrl.setTitle("newTitle");
             ctrl.setType("range");
             ctrl.setOrder(5);
             ctrl.setMax(255);
@@ -52,6 +54,7 @@ defineRule({
             ctrl.setError("new Error");
         } else {
             ctrl.setDescription("new Description");
+            ctrl.setTitle("oldTitle");
             ctrl.setError("");
             ctrl.setType("text");
             ctrl.setOrder(4);

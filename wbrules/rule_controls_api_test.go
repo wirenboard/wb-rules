@@ -40,6 +40,7 @@ func (s *RuleControlsAPISuite) TestAPI() {
 		"driver -> /devices/spawner/controls/wrCtrlID/meta/order: [5] (QoS 1, retained)",
 		"driver -> /devices/spawner/controls/wrCtrlID/meta/type: [range] (QoS 1, retained)",
 		"driver -> /devices/spawner/controls/wrCtrlID/meta/readonly: [1] (QoS 1, retained)",
+		"driver -> /devices/spawner/controls/wrCtrlID/meta/title: [newTitle] (QoS 1, retained)",
 		"driver -> /devices/spawner/controls/wrCtrlID/meta/max: [255] (QoS 1, retained)",
 		"driver -> /devices/spawner/controls/wrCtrlID/meta/min: [5] (QoS 1, retained)",
 		"driver -> /devices/spawner/controls/wrCtrlID/meta/units: [meters] (QoS 1, retained)",
@@ -54,6 +55,7 @@ func (s *RuleControlsAPISuite) TestAPI() {
 		"wbrules-log -> /wbrules/log/info: [ctrlID: somedev, isVirtual: false] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: spawner, isVirtual: true] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, error: new Error] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, title: newTitle] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, order: 5] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, type: range] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, readonly: true] (QoS 1)",
@@ -76,6 +78,7 @@ func (s *RuleControlsAPISuite) TestAPI() {
 		"driver -> /devices/spawner/controls/wrCtrlID/meta/min: [0] (QoS 1, retained)",
 		"driver -> /devices/spawner/controls/wrCtrlID/meta/units: [chars] (QoS 1, retained)",
 		"driver -> /devices/spawner/controls/wrCtrlID/meta/readonly: [0] (QoS 1, retained)",
+		"driver -> /devices/spawner/controls/wrCtrlID/meta/title: [oldTitle] (QoS 1, retained)",
 	)
 
 	// check getters API inside script
@@ -89,6 +92,7 @@ func (s *RuleControlsAPISuite) TestAPI() {
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, order: 4] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, type: text] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, readonly: false] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, title: oldTitle] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, max: 0] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, min: 0] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [ctrlID: wrCtrlID, units: chars] (QoS 1)",

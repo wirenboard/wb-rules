@@ -329,6 +329,8 @@ func (engine *ESEngine) initVdevCellPrototype(ctx *ESContext) {
 		"getId":          engine.esVdevCellGetId,
 		"setDescription": engine.esVdevCellSetDescription,
 		"getDescription": engine.esVdevCellGetDescription,
+		"setTitle":       engine.esVdevCellSetTitle,
+		"getTitle":       engine.esVdevCellGetTitle,
 		"setType":        engine.esVdevCellSetType,
 		"getType":        engine.esVdevCellGetType,
 		"setUnits":       engine.esVdevCellSetUnits,
@@ -1433,6 +1435,17 @@ func (engine *ESEngine) esVdevCellGetDescription(ctx *ESContext) int {
 	return 1
 }
 
+func (engine *ESEngine) esVdevCellGetTitle(ctx *ESContext) int {
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
+	}
+
+	ctx.PushString(ctrlProxy.getControl().GetTitle())
+
+	return 1
+}
+
 func (engine *ESEngine) esVdevCellGetType(ctx *ESContext) int {
 	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
 	if duk_ret < 0 {
@@ -1553,6 +1566,22 @@ func (engine *ESEngine) esVdevCellSetDescription(ctx *ESContext) int {
 	}
 
 	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_DESCRIPTION, descr)
+	return 0
+}
+
+func (engine *ESEngine) esVdevCellSetTitle(ctx *ESContext) int {
+	if !ctx.IsString(0) {
+		wbgong.Error.Printf("setTitle(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	descr := ctx.GetString(0)
+
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
+	}
+
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_CONTROL_TITLE, descr)
 	return 0
 }
 
