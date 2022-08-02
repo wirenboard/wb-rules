@@ -3,6 +3,7 @@ package wbrules
 import (
 	"crypto/md5"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -1441,7 +1442,15 @@ func (engine *ESEngine) esVdevCellGetTitle(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushString(ctrlProxy.getControl().GetTitle())
+	var titleStr string
+
+	title := ctrlProxy.getControl().GetTitle()
+
+	if val, ok := title["en"]; ok {
+		titleStr = val
+	}
+
+	ctx.PushString(titleStr)
 
 	return 1
 }
@@ -1574,14 +1583,18 @@ func (engine *ESEngine) esVdevCellSetTitle(ctx *ESContext) int {
 		wbgong.Error.Printf("setTitle(): bad parameters")
 		return duktape.DUK_RET_ERROR
 	}
-	descr := ctx.GetString(0)
+	title := ctx.GetString(0)
+
+	m := make(wbgong.Title)
+	m["en"] = title
+	jsonTitle, _ := json.Marshal(m)
 
 	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
 	if duk_ret < 0 {
 		return duk_ret
 	}
 
-	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_CONTROL_TITLE, descr)
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_CONTROL_TITLE, string(jsonTitle))
 	return 0
 }
 

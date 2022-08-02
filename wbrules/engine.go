@@ -1,6 +1,7 @@
 package wbrules
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -395,7 +396,7 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 	var spec ControlSpec
 	isComplete := false
 	isRetained := false
-	var prevMetaValue string
+	var prevMetaValue interface{}
 
 	isLocal := false
 	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
@@ -422,7 +423,10 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 			if err != nil {
 			}
 		case wbgong.CONV_META_SUBTOPIC_CONTROL_TITLE:
-			err := ctrl.SetTitle(metaValue)()
+			var t wbgong.Title
+			if err := json.Unmarshal([]byte(metaValue), &t); err != nil {
+			}
+			err := ctrl.SetTitle(t)()
 			if err != nil {
 			}
 		case wbgong.CONV_META_SUBTOPIC_ERROR:
@@ -1503,7 +1507,7 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 		}
 	}
 	if title, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_TITLE]; ok {
-		if ftitle, okString := title.(string); okString {
+		if ftitle, ok := title.(wbgong.Title); ok {
 			args.SetTitle(ftitle)
 		} else {
 			return fmt.Errorf("%s/%s: non-string value of description property",
