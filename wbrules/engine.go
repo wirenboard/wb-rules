@@ -1506,12 +1506,14 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 				devId, ctrlId)
 		}
 	}
-	if title, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_TITLE]; ok {
-		if ftitle, ok := title.(wbgong.Title); ok {
-			args.SetTitle(ftitle)
+	if titleStr, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_TITLE]; ok {
+		if ftitle, ok := titleStr.(string); ok {
+			title := make(wbgong.Title)
+			title["en"] = ftitle
+			args.SetTitle(title)
 		} else {
 			return fmt.Errorf("%s/%s: non-string value %v of title property",
-				devId, ctrlId, title)
+				devId, ctrlId, titleStr)
 		}
 	}
 	return nil
