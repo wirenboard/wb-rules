@@ -1510,8 +1510,8 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 		if ftitle, ok := title.(wbgong.Title); ok {
 			args.SetTitle(ftitle)
 		} else {
-			return fmt.Errorf("%s/%s: non-string value of description property",
-				devId, ctrlId)
+			return fmt.Errorf("%s/%s: non-string value %v of title property",
+				devId, ctrlId, title)
 		}
 	}
 	return nil
