@@ -1469,6 +1469,18 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 		args.SetReadonly(ctrlReadonly)
 	}
 
+	if ctrlType == wbgong.CONV_TYPE_VALUE {
+		units, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_UNITS]
+		if ok {
+			funits, ok := units.(string)
+			if !ok {
+				return fmt.Errorf("%s/%s: non-string value of units property",
+					devId, ctrlId)
+			}
+			args.SetUnits(funits)
+		}
+	}
+
 	// get properties for 'range' type
 	// FIXME: deprecated
 	if ctrlType == wbgong.CONV_TYPE_RANGE {

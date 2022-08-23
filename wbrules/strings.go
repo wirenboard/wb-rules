@@ -17,6 +17,7 @@ const (
 	VDEV_CONTROL_DESCR_PROP_DESCRIPTION  = "description"
 	VDEV_CONTROL_DESCR_PROP_TITLE        = "title"
 	VDEV_CONTROL_DESCR_PROP_ORDER        = "order"
+	VDEV_CONTROL_DESCR_PROP_UNITS        = "units"
 	// FIXME: deprecated
 	VDEV_CONTROL_DESCR_PROP_MAX = "max"
 	VDEV_CONTROL_DESCR_PROP_MIN = "min"
