@@ -32,6 +32,14 @@ defineVirtualDevice("testDevice", {
     vDevWithOrder: {
       type: "switch",
       value: false
+    },
+    createVDevWithControlMetaTitle: {
+      type: "switch",
+      value: false
+    },
+    createVDevWithControlMetaUnits: {
+      type: "switch",
+      value: false
     }
   }
 });
@@ -117,6 +125,36 @@ defineRule("makeVdevWithOrder", {
           value: "world",
           readonly: true,
           order: 3
+        }
+      }
+    });
+  }
+});
+
+defineRule("makeVdevWithControlMetaTitle", {
+  whenChanged: "testDevice/createVDevWithControlMetaTitle",
+  then: function() {
+    defineVirtualDevice("vDevWithControlMetaTitle", {
+      cells: {
+        test1: {
+          title: "ControlMetaTitleOne",
+          type: "value",
+          value: 1,
+        }
+      }
+    });
+  }
+});
+
+defineRule("makeVdevWithControlMetaUnits", {
+  whenChanged: "testDevice/createVDevWithControlMetaUnits",
+  then: function() {
+    defineVirtualDevice("vDevWithControlMetaUnits", {
+      cells: {
+        test1: {
+          units: "W",
+          type: "value",
+          value: 1,
         }
       }
     });

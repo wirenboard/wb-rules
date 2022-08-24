@@ -115,6 +115,42 @@ func (s *RuleMetaSuite) TestVirtualDeviceOrder() {
 	)
 }
 
+func (s *RuleMetaSuite) TestVirtualDeviceControlMetaTitle() {
+	s.publish("/devices/testDevice/controls/createVDevWithControlMetaTitle/on", "1", "testDevice/createVDevWithControlMetaTitle")
+	s.VerifyUnordered(
+		"Subscribe -- driver: /devices/vDevWithControlMetaTitle/controls/test1/on",
+		"driver -> /devices/testDevice/controls/createVDevWithControlMetaTitle: [1] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaTitle/controls/test1/meta/order: [1] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaTitle/controls/test1/meta/readonly: [1] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaTitle/controls/test1/meta/title: [{\"en\":\"ControlMetaTitleOne\"}] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaTitle/controls/test1/meta/type: [value] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaTitle/controls/test1/meta: [{\"order\":1,\"readonly\":true,\"title\":{\"en\":\"ControlMetaTitleOne\"},\"type\":\"value\"}] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaTitle/controls/test1: [1] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaTitle/meta/driver: [wbrules] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaTitle/meta/name: [] (QoS 1, retained)",
+		"tst -> /devices/testDevice/controls/createVDevWithControlMetaTitle/on: [1] (QoS 1)",
+	)
+	s.VerifyEmpty()
+}
+
+func (s *RuleMetaSuite) TestVirtualDeviceControlMetaUnits() {
+	s.publish("/devices/testDevice/controls/createVDevWithControlMetaUnits/on", "1", "testDevice/createVDevWithControlMetaUnits")
+	s.VerifyUnordered(
+		"Subscribe -- driver: /devices/vDevWithControlMetaUnits/controls/test1/on",
+		"driver -> /devices/testDevice/controls/createVDevWithControlMetaUnits: [1] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaUnits/controls/test1/meta/order: [1] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaUnits/controls/test1/meta/readonly: [1] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaUnits/controls/test1/meta/type: [value] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaUnits/controls/test1/meta/units: [W] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaUnits/controls/test1/meta: [{\"order\":1,\"readonly\":true,\"type\":\"value\",\"units\":\"W\"}] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaUnits/controls/test1: [1] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaUnits/meta/driver: [wbrules] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaUnits/meta/name: [] (QoS 1, retained)",
+		"tst -> /devices/testDevice/controls/createVDevWithControlMetaUnits/on: [1] (QoS 1)",
+	)
+	s.VerifyEmpty()
+}
+
 func TestRuleMetaSuite(t *testing.T) {
 	testutils.RunSuites(t,
 		new(RuleMetaSuite),
