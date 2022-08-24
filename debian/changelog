@@ -1,3 +1,9 @@
+wb-rules (2.14.0) stable; urgency=medium
+
+  * Added support for units when declaring a virtual device
+
+ -- Roman Kochkin <roman.kochkin@wirenboard.ru>  Wed, 24 Aug 2022 11:36:35 +0400
+
 wb-rules (2.13.0) stable; urgency=medium
 
   * Added support for title field in controls
