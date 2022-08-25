@@ -122,7 +122,6 @@ func (s *RuleMetaSuite) TestVirtualDeviceControlMetaTitle() {
 		"driver -> /devices/testDevice/controls/createVDevWithControlMetaTitle: [1] (QoS 1, retained)",
 		"driver -> /devices/vDevWithControlMetaTitle/controls/test1/meta/order: [1] (QoS 1, retained)",
 		"driver -> /devices/vDevWithControlMetaTitle/controls/test1/meta/readonly: [1] (QoS 1, retained)",
-		"driver -> /devices/vDevWithControlMetaTitle/controls/test1/meta/title: [{\"en\":\"ControlMetaTitleOne\"}] (QoS 1, retained)",
 		"driver -> /devices/vDevWithControlMetaTitle/controls/test1/meta/type: [value] (QoS 1, retained)",
 		"driver -> /devices/vDevWithControlMetaTitle/controls/test1/meta: [{\"order\":1,\"readonly\":true,\"title\":{\"en\":\"ControlMetaTitleOne\"},\"type\":\"value\"}] (QoS 1, retained)",
 		"driver -> /devices/vDevWithControlMetaTitle/controls/test1: [1] (QoS 1, retained)",
