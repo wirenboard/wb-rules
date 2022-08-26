@@ -1,6 +1,7 @@
 package wbrules
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -395,7 +396,7 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 	var spec ControlSpec
 	isComplete := false
 	isRetained := false
-	var prevMetaValue string
+	var prevMetaValue interface{}
 
 	isLocal := false
 	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
@@ -418,12 +419,16 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 
 		switch key {
 		case wbgong.CONV_META_SUBTOPIC_DESCRIPTION:
-			err := ctrl.SetDescription(metaValue)()
-			if err != nil {
+			if err := ctrl.SetDescription(metaValue)(); err != nil {
+				return err
 			}
 		case wbgong.CONV_META_SUBTOPIC_CONTROL_TITLE:
-			err := ctrl.SetTitle(metaValue)()
-			if err != nil {
+			var t wbgong.Title
+			if err := json.Unmarshal([]byte(metaValue), &t); err != nil {
+				return err
+			}
+			if err := ctrl.SetTitle(t)(); err != nil {
+				return err
 			}
 		case wbgong.CONV_META_SUBTOPIC_ERROR:
 			return ctrl.SetError(errors.New(metaValue))()
@@ -1465,6 +1470,18 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 		args.SetReadonly(ctrlReadonly)
 	}
 
+	if ctrlType == wbgong.CONV_TYPE_VALUE {
+		units, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_UNITS]
+		if ok {
+			funits, ok := units.(string)
+			if !ok {
+				return fmt.Errorf("%s/%s: non-string value of units property",
+					devId, ctrlId)
+			}
+			args.SetUnits(funits)
+		}
+	}
+
 	// get properties for 'range' type
 	// FIXME: deprecated
 	if ctrlType == wbgong.CONV_TYPE_RANGE {
@@ -1502,12 +1519,14 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 				devId, ctrlId)
 		}
 	}
-	if title, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_TITLE]; ok {
-		if ftitle, okString := title.(string); okString {
-			args.SetTitle(ftitle)
+	if titleStr, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_TITLE]; ok {
+		if ftitle, ok := titleStr.(string); ok {
+			title := make(wbgong.Title)
+			title["en"] = ftitle
+			args.SetTitle(title)
 		} else {
-			return fmt.Errorf("%s/%s: non-string value of description property",
-				devId, ctrlId)
+			return fmt.Errorf("%s/%s: non-string value %v of title property",
+				devId, ctrlId, titleStr)
 		}
 	}
 	return nil
