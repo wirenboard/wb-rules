@@ -1,6 +1,5 @@
 [Unit]
 Description=MQTT Rule engine for Wiren Board
-Requires=mosquitto.service
 Wants=wb-hwconf-manager.service wb-modules.service
 After=wb-hwconf-manager.service wb-modules.service mosquitto.service
 

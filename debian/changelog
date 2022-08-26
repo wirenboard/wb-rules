@@ -1,8 +1,14 @@
-wb-rules (2.14.0) stable; urgency=medium
+wb-rules (2.15.0) stable; urgency=medium
 
   * Added support for units when declaring a virtual device
 
  -- Roman Kochkin <roman.kochkin@wirenboard.ru>  Wed, 24 Aug 2022 11:36:35 +0400
+
+wb-rules (2.14.0) stable; urgency=medium
+
+  * add mosquitto UNIX socket connection by default (if it is detected)
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Wed, 17 Aug 2022 10:55:31 +0300
 
 wb-rules (2.13.0) stable; urgency=medium
 

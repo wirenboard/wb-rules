@@ -26,7 +26,18 @@ const (
 	VIRTUAL_DEVICES_DB_FILE = "/var/lib/wirenboard/wbrules-vdev.db"
 
 	WBRULES_MODULES_ENV = "WB_RULES_MODULES"
+
+	MOSQUITTO_SOCK_FILE = "/var/run/mosquitto/mosquitto.sock"
+	DEFAULT_BROKER_URL  = "tcp://localhost:1883"
 )
+
+func isSocket(path string) bool {
+	info, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return info.Mode()&os.ModeSocket != 0
+}
 
 func main() {
 
@@ -37,7 +48,7 @@ func main() {
 
 	var err error
 
-	brokerAddress := flag.String("broker", "tcp://localhost:1883", "MQTT broker url")
+	brokerAddress := flag.String("broker", DEFAULT_BROKER_URL, "MQTT broker url")
 	editDir := flag.String("editdir", "", "Editable script directory")
 	debug := flag.Bool("debug", false, "Enable debugging")
 	noQueues := flag.Bool("debug-queues", false, "Don't use queues in wbgo driver (debugging)")
@@ -98,6 +109,11 @@ func main() {
 	// prepare exit signal channel
 	exitCh := make(chan os.Signal, 1)
 	signal.Notify(exitCh, syscall.SIGINT, syscall.SIGTERM)
+
+	if *brokerAddress == DEFAULT_BROKER_URL && isSocket(MOSQUITTO_SOCK_FILE) {
+		wbgong.Info.Println("broker URL is default and mosquitto socket detected, trying to connect via it")
+		*brokerAddress = "unix://" + MOSQUITTO_SOCK_FILE
+	}
 
 	driverMqttClient := wbgong.NewPahoMQTTClient(*brokerAddress, DRIVER_CLIENT_ID)
 	driverArgs := wbgong.NewDriverArgs().
