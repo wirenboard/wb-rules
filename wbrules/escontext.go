@@ -427,7 +427,13 @@ func (ctx *ESContext) LoadScenario(path string) error {
 
 	err, src := util.WrapWbScriptToJSFunction(string(srcRaw))
 	if err != nil {
-		return err
+		r := ESError{
+			err.Error(),
+			ESTraceback{
+				{filename: path, line: 0},
+			},
+		}
+		return r
 	}
 
 	// compile function
