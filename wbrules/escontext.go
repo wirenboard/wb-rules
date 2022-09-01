@@ -413,7 +413,9 @@ func (ctx *ESContext) LoadScenario(path string) error {
 
 	err, src := util.WrapWbScriptToJSFunction(string(srcRaw))
 	if err != nil {
-		return err
+		eserr := err.(ESError)
+		eserr.Traceback[0].Filename = path
+		return eserr
 	}
 
 	// compile function
