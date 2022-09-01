@@ -3,6 +3,7 @@ package wbrules
 import (
 	"bytes"
 	"fmt"
+	"github.com/wirenboard/wb-rules/wbrules/util"
 	"io/ioutil"
 	"log"
 	"reflect"
@@ -424,8 +425,10 @@ func (ctx *ESContext) LoadScenario(path string) error {
 		return err
 	}
 
-	// wrap source code
-	src := "function(module){" + string(srcRaw) + "}"
+	err, src := util.WrapWbScriptToJSFunction(string(srcRaw))
+	if err != nil {
+		return err
+	}
 
 	// compile function
 	if err = ctx.LoadFunctionFromString(path, src); err != nil {
@@ -437,7 +440,7 @@ func (ctx *ESContext) LoadScenario(path string) error {
 
 	// set module prototype
 	ctx.PushGlobalObject()
-	ctx.GetPropString(-1, "__wbModulePrototype")
+	ctx.GetPropString(-1, MODULE_OBJ_PROTO_NAME)
 	ctx.SetPrototype(-3)
 	ctx.Pop()
 
