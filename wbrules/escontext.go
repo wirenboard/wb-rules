@@ -3,6 +3,7 @@ package wbrules
 import (
 	"bytes"
 	"fmt"
+	. "github.com/wirenboard/wb-rules/wbrules/eserror"
 	"github.com/wirenboard/wb-rules/wbrules/util"
 	"io/ioutil"
 	"log"
@@ -22,12 +23,6 @@ const (
 	FILENAME_PROP_NAME   = "__filename"
 )
 
-type ESLocation struct {
-	filename string
-	line     int
-}
-
-type ESTraceback []ESLocation
 type ESCallback uint64
 type ESCallbackFunc func(args objx.Map) interface{}
 type ESCallbackErrorHandler func(err ESError)
@@ -47,11 +42,6 @@ type ESContext struct {
 	valid bool
 }
 
-type ESError struct {
-	Message   string
-	Traceback ESTraceback
-}
-
 // ESContextFactory creates ESContexts and  stores properties which are
 // common for related ESContexts (in one application).
 // ESContextFactory is logically binded to Duktape heap.
@@ -65,10 +55,6 @@ func newESContextFactory() *ESContextFactory {
 		duktapeToESContextMap: make(map[duktape.Context]*ESContext),
 		callbackIndex:         1,
 	}
-}
-
-func (err ESError) Error() string {
-	return err.Message
 }
 
 func (f *ESContextFactory) newESContext(syncFunc ESSyncFunc, filename string) *ESContext {
@@ -427,13 +413,7 @@ func (ctx *ESContext) LoadScenario(path string) error {
 
 	err, src := util.WrapWbScriptToJSFunction(string(srcRaw))
 	if err != nil {
-		r := ESError{
-			err.Error(),
-			ESTraceback{
-				{filename: path, line: 0},
-			},
-		}
-		return r
+		return err
 	}
 
 	// compile function
@@ -586,7 +566,7 @@ func (ctx *ESContext) GetESErrorAugmentingSyntaxErrors(path string) (r ESError) 
 	r = ESError{
 		r.Message,
 		ESTraceback{
-			{filename: path, line: lineNumber},
+			{Filename: path, Line: lineNumber},
 		},
 	}
 	return

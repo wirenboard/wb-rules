@@ -2,14 +2,16 @@ package util
 
 import (
 	"fmt"
+	"github.com/wirenboard/wb-rules/wbrules/eserror"
 )
 
 type ContextType int
 
 const (
 	Code ContextType = iota
-	SingleQuotes
-	DoubleQuotes
+	SingleQuotesString
+	DoubleQuotesString
+	TemplateString
 	SingleLineComment
 	MiltiLineComment
 )
@@ -21,8 +23,18 @@ func CheckWbScript(src string) error {
 	var col int = 0
 	var contextType = Code
 
-	var printRowCol = func() string {
+	var printCursorPosition = func() string {
 		return fmt.Sprintf("(%d:%d)", row, col)
+	}
+
+	var createEsError = func(errorStr string) eserror.ESError {
+		err := eserror.ESError{
+			errorStr,
+			eserror.ESTraceback{
+				{Filename: "", Line: row},
+			},
+		}
+		return err
 	}
 
 	for _, ch := range src {
@@ -42,11 +54,11 @@ func CheckWbScript(src string) error {
 			switch contextType {
 			case SingleLineComment:
 				contextType = Code
-			case SingleQuotes:
+			case SingleQuotesString:
 				fallthrough
-			case DoubleQuotes:
+			case DoubleQuotesString:
 				if prevCh != '\\' {
-					return fmt.Errorf("String format error")
+					return createEsError(fmt.Sprintf("%s String format error", printCursorPosition()))
 				}
 			}
 			col = 0
@@ -63,31 +75,39 @@ func CheckWbScript(src string) error {
 		case '"':
 			switch contextType {
 			case Code:
-				contextType = DoubleQuotes
-			case DoubleQuotes:
+				contextType = DoubleQuotesString
+			case DoubleQuotesString:
 				contextType = Code
 			}
 		case '\'':
 			switch contextType {
 			case Code:
-				contextType = SingleQuotes
-			case SingleQuotes:
+				contextType = SingleQuotesString
+			case SingleQuotesString:
+				contextType = Code
+			}
+		case '`':
+			switch contextType {
+			case Code:
+				contextType = TemplateString
+			case TemplateString:
 				contextType = Code
 			}
 		}
 		if braceCounter < 0 {
-			return fmt.Errorf("%s Missing opening bracket", printRowCol())
+			return createEsError(fmt.Sprintf("%s Missing opening bracket", printCursorPosition()))
 		}
 		prevCh = ch
 	}
+
 	if braceCounter > 0 {
-		return fmt.Errorf("Missing closed bracket")
+		return createEsError(fmt.Sprintf("Missing closed bracket"))
 	}
 	if contextType == MiltiLineComment {
-		return fmt.Errorf("Multiline comment is not closed")
+		return createEsError(fmt.Sprintf("Multiline comment is not closed"))
 	}
-	if contextType == SingleQuotes || contextType == DoubleQuotes {
-		return fmt.Errorf("String is not closed")
+	if contextType == SingleQuotesString || contextType == DoubleQuotesString {
+		return createEsError(fmt.Sprintf("String is not closed"))
 	}
 	return nil
 }

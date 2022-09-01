@@ -19,6 +19,7 @@ import (
 	"github.com/boltdb/bolt"
 	"github.com/stretchr/objx"
 	duktape "github.com/wirenboard/go-duktape"
+	. "github.com/wirenboard/wb-rules/wbrules/eserror"
 	"github.com/wirenboard/wbgong"
 )
 
@@ -589,8 +590,8 @@ func (engine *ESEngine) registerSourceItem(ctx *ESContext, typ itemType, name st
 	for _, loc := range ctx.GetTraceback() {
 		// Here we depend upon the fact that duktape displays
 		// unmodified source paths in the backtrace
-		if loc.filename == currentPath {
-			line = loc.line
+		if loc.Filename == currentPath {
+			line = loc.Line
 		}
 	}
 	if line == -1 {
@@ -807,9 +808,9 @@ func (engine *ESEngine) trackESError(path string, err error) error {
 	traceback := make([]LocItem, 0, len(esError.Traceback))
 	for _, esLoc := range esError.Traceback {
 		_, virtualPath, underSourceRoot, _, err :=
-			engine.checkSourcePath(esLoc.filename)
+			engine.checkSourcePath(esLoc.Filename)
 		if err == nil && underSourceRoot {
-			traceback = append(traceback, LocItem{esLoc.line, virtualPath})
+			traceback = append(traceback, LocItem{esLoc.Line, virtualPath})
 		}
 	}
 

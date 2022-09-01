@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/objx"
 	"github.com/stretchr/testify/assert"
+	. "github.com/wirenboard/wb-rules/wbrules/eserror"
 )
 
 var objTests = []string{
