@@ -23,13 +23,9 @@ func CheckWbScript(src string) error {
 	var col int = 0
 	var contextType = Code
 
-	var printCursorPosition = func() string {
-		return fmt.Sprintf("(%d:%d)", row, col)
-	}
-
 	var createEsError = func(errorStr string) eserror.ESError {
 		err := eserror.ESError{
-			errorStr,
+			errorStr + fmt.Sprintf(" (line: %d column: %d)", row, col),
 			eserror.ESTraceback{
 				{Filename: "", Line: row},
 			},
@@ -49,7 +45,6 @@ func CheckWbScript(src string) error {
 				braceCounter--
 			}
 		case '\n':
-			row++
 			prevCh = ' '
 			switch contextType {
 			case SingleLineComment:
@@ -58,9 +53,10 @@ func CheckWbScript(src string) error {
 				fallthrough
 			case DoubleQuotesString:
 				if prevCh != '\\' {
-					return createEsError(fmt.Sprintf("%s String format error", printCursorPosition()))
+					return createEsError(fmt.Sprintf("String format error"))
 				}
 			}
+			row++
 			col = 0
 		case '/':
 			if prevCh == '/' && contextType == Code {
@@ -95,7 +91,7 @@ func CheckWbScript(src string) error {
 			}
 		}
 		if braceCounter < 0 {
-			return createEsError(fmt.Sprintf("%s Missing opening bracket", printCursorPosition()))
+			return createEsError(fmt.Sprintf("Missing opening bracket"))
 		}
 		prevCh = ch
 	}
