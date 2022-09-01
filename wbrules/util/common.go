@@ -33,6 +33,18 @@ func CheckWbScript(src string) error {
 		return err
 	}
 
+	var quotesStringSwitcher = func(ctTarget ContextType, ct ContextType) ContextType {
+		switch ct {
+		case Code:
+			return ctTarget
+		case ctTarget:
+			if prevCh != '\\' {
+				return Code
+			}
+		}
+		return ct
+	}
+
 	for _, ch := range src {
 		col++
 		switch ch {
@@ -69,26 +81,11 @@ func CheckWbScript(src string) error {
 				contextType = MiltiLineComment
 			}
 		case '"':
-			switch contextType {
-			case Code:
-				contextType = DoubleQuotesString
-			case DoubleQuotesString:
-				contextType = Code
-			}
+			contextType = quotesStringSwitcher(DoubleQuotesString, contextType)
 		case '\'':
-			switch contextType {
-			case Code:
-				contextType = SingleQuotesString
-			case SingleQuotesString:
-				contextType = Code
-			}
+			contextType = quotesStringSwitcher(SingleQuotesString, contextType)
 		case '`':
-			switch contextType {
-			case Code:
-				contextType = TemplateString
-			case TemplateString:
-				contextType = Code
-			}
+			contextType = quotesStringSwitcher(TemplateString, contextType)
 		}
 		if braceCounter < 0 {
 			return createEsError(fmt.Sprintf("Missing opening bracket"))
