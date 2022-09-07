@@ -425,7 +425,15 @@ func (ctx *ESContext) LoadScenario(path string) error {
 	}
 
 	// wrap source code
-	src := "function(module){" + string(srcRaw) + "}"
+	src := "function F(module){" + string(srcRaw) + "\n}"
+
+	// Source code evaluation.
+	// Checking if there are extra curly braces
+	if err := ctx.PevalString(src); err != 0 {
+		defer ctx.Pop()
+		return ctx.GetESErrorAugmentingSyntaxErrors(path)
+	}
+	ctx.Pop()
 
 	// compile function
 	if err = ctx.LoadFunctionFromString(path, src); err != nil {
