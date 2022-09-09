@@ -25,6 +25,7 @@ func (s *RuleOptimizationSuite) TestRuleCheckOptimization() {
 	s.publish("/devices/somedev/controls/countIt", "0", "somedev/countIt")
 	s.Verify(
 		"tst -> /devices/somedev/controls/countIt/meta/type: [text] (QoS 1, retained)",
+		"[info] condCount: asSoonAs()",
 		"tst -> /devices/somedev/controls/countIt: [0] (QoS 1, retained)",
 		// here the value of the cell changes, so the rule is invoked
 		"[info] condCount: asSoonAs()")
@@ -38,7 +39,7 @@ func (s *RuleOptimizationSuite) TestRuleCheckOptimization() {
 		"[info] condCount: asSoonAs()",
 		// asSoonAs function called during the first run + when countIt
 		// value changed to 42
-		"[info] condCount fired, count=3",
+		"[info] condCount fired, count=4",
 		// ruleWithoutCells follows condCount rule in testrules.js
 		// and doesn't utilize any cells. It's run just once when condCount
 		// rule sets a global variable to true.
@@ -52,15 +53,16 @@ func (s *RuleOptimizationSuite) TestRuleCheckOptimization() {
 	s.Verify(
 		"tst -> /devices/somedev/controls/countIt: [42] (QoS 1, retained)",
 		"[info] condCount: asSoonAs()",
-		"[info] condCount fired, count=5")
+		"[info] condCount fired, count=6")
 
 	// now check optimization of level-triggered rules
 	s.publish("/devices/somedev/controls/countItLT/meta/type", "text", "somedev/countItLT")
 	s.publish("/devices/somedev/controls/countItLT", "0", "somedev/countItLT")
 	s.Verify(
 		"tst -> /devices/somedev/controls/countItLT/meta/type: [text] (QoS 1, retained)",
-		"tst -> /devices/somedev/controls/countItLT: [0] (QoS 1, retained)",
 		// here the value of the cell changes, so the rule is invoked
+		"[info] condCountLT: when()",
+		"tst -> /devices/somedev/controls/countItLT: [0] (QoS 1, retained)",
 		"[info] condCountLT: when()")
 
 	s.publish("/devices/somedev/controls/countItLT", "42", "somedev/countItLT")
@@ -69,13 +71,13 @@ func (s *RuleOptimizationSuite) TestRuleCheckOptimization() {
 		"[info] condCountLT: when()",
 		// when function called during the first run + when countItLT
 		// value changed to 42
-		"[info] condCountLT fired, count=3")
+		"[info] condCountLT fired, count=4")
 
 	s.publish("/devices/somedev/controls/countItLT", "43", "somedev/countItLT")
 	s.Verify(
 		"tst -> /devices/somedev/controls/countItLT: [43] (QoS 1, retained)",
 		"[info] condCountLT: when()",
-		"[info] condCountLT fired, count=4")
+		"[info] condCountLT fired, count=5")
 
 	s.publish("/devices/somedev/controls/countItLT", "0", "somedev/countItLT")
 	s.Verify(
