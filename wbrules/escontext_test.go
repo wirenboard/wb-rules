@@ -146,3 +146,22 @@ func TestCallLocation(t *testing.T) {
 		assert.Equal(t, loc.tracebacks, storedTracebacks)
 	}
 }
+
+func TestLoadScenario(t *testing.T) {
+	f := newESContextFactory()
+	ctx := f.newESContext(nil, "")
+	err := ctx.LoadScenario("testrules_load_scenario.js")
+	assert.Equal(t, err, nil)
+}
+
+func TestLoadScenarioNeg(t *testing.T) {
+	f := newESContextFactory()
+	ctx := f.newESContext(nil, "")
+	err := ctx.LoadScenario("testrules_load_scenario_bad.js")
+	if assert.NotEqual(t, err, nil) {
+		eserror, ok := err.(ESError)
+		if assert.Equal(t, true, ok) && assert.NotZero(t, len(eserror.Traceback)) {
+			assert.Equal(t, 5, eserror.Traceback[0].line)
+		}
+	}
+}
