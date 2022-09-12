@@ -836,7 +836,7 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 
 		value, err = ctrl.GetValue()
 		if err != nil {
-			wbgong.Info.Printf("%s: failed to convert value '%s', passing raw, error:%s",
+			wbgong.Warn.Printf("%s: failed to convert value '%s', passing raw, error: %s",
 				spec.String(), ctrl.GetRawValue(), err.Error())
 			value = ctrl.GetRawValue()
 		}
