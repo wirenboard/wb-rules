@@ -429,7 +429,7 @@ func (ctx *ESContext) LoadScenario(path string) error {
 
 	// Source code evaluation.
 	// Checking if there are extra curly braces
-	if err := ctx.PcompileString(0, src); err != 0 {
+	if err := ctx.PcompileString(duktape.DUK_COMPILE_EVAL, src); err != 0 {
 		defer ctx.Pop()
 		return ctx.GetESErrorAugmentingSyntaxErrors(path)
 	}
