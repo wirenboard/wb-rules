@@ -1,3 +1,9 @@
+wb-rules (2.16.1) stable; urgency=medium
+
+  * Add an error message on SetValue for an unexisting control
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Wed, 14 Sep 2022 12:06:40 +0300
+
 wb-rules (2.16.0) stable; urgency=medium
 
   * Fixed behavior that occurred when adding an extra closing curly brace to a script
