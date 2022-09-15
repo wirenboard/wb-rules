@@ -353,7 +353,7 @@ func (ctrlProxy *ControlProxy) SetValue(value interface{}, notifySubs bool) erro
 
 	ctrl := ctrlProxy.getControl()
 	if ctrl == nil {
-		return errors.New(fmt.Sprintf("failed to SetValue for unexisting control %s/%s: %v", ctrlProxy.devProxy.name, ctrlProxy.name))
+		return fmt.Errorf("failed to SetValue for unexisting control %s/%s: %v", ctrlProxy.devProxy.name, ctrlProxy.name, value)
 	}
 
 	isLocal := false
