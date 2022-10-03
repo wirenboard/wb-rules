@@ -1,3 +1,10 @@
+wb-rules (2.16.0) stable; urgency=medium
+
+  * Fixed behavior that occurred when adding an extra closing curly brace to a script
+  * Fixed a bug that occurred if there was no line break after a comment in the last line
+
+ -- Roman Kochkin <roman.kochkin@wirenboard.ru>  Wed, 07 Sep 2022 19:52:58 +0400
+
 wb-rules (2.15.0) stable; urgency=medium
 
   * Added support for units when declaring a virtual device
