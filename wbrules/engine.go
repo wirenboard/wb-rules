@@ -859,10 +859,14 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 
 		var err error
 
-		value, err = ctrl.GetValue()
-		if err != nil {
-			wbgong.Info.Printf("%s: failed to convert value '%s', passing raw, error: %s",
-				spec.String(), ctrl.GetRawValue(), err.Error())
+		if !ctrl.GetDevice().IsDeleted() {
+			value, err = ctrl.GetValue()
+			if err != nil {
+				wbgong.Info.Printf("%s: failed to convert value '%s', passing raw, error: %s",
+					spec.String(), ctrl.GetRawValue(), err.Error())
+				value = ctrl.GetRawValue()
+			}
+		} else {
 			value = ctrl.GetRawValue()
 		}
 		prevValue = value
