@@ -1,6 +1,7 @@
 wb-rules (2.17.0) stable; urgency=medium
 
   * Adapted for the new wbgo.so library
+  * Reducing the number of warnings when removing a device
 
  -- Roman Kochkin <roman.kochkin@wirenboard.ru>  Tue, 04 Oct 2022 09:22:37 +0400
 
