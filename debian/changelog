@@ -1,3 +1,9 @@
+wb-rules (2.17.1) stable; urgency=medium
+
+  * Add an error message on SetValue for an unexisting control
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Mon, 17 Oct 2022 17:15:43 +0600
+
 wb-rules (2.17.0) stable; urgency=medium
 
   * Adapted for the new wbgo.so library
