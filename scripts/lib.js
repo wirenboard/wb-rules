@@ -317,6 +317,14 @@ function spawn(cmd, args, options) {
       options.captureOutput = false;
     if (!options.hasOwnProperty("captureErrorOutput"))
       options.captureErrorOutput = false;
+
+    var keys = Object.keys(options);
+    var knownOptions = ["captureOutput", "captureErrorOutput", "input", "exitCallback"];
+    for (var i = 0; i < keys.length; i++) {
+      if (knownOptions.indexOf(keys[i]) < 0) {
+        log.warning("spawn: unknown option: " + keys[i]);
+      }
+    }
   }
 
   if (options.input != null)
