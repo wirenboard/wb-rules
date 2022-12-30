@@ -208,7 +208,8 @@
     },
     "recipient": {
       "options": {
-        "remove_empty_properties": true
+        "remove_empty_properties": true,
+        "keep_oneof_values": false
       },
       "title" : "Recipient",
       "oneOf": [
