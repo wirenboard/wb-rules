@@ -1,3 +1,9 @@
+wb-rules (2.17.3) stable; urgency=medium
+
+  * Fix alerts schemas issue with email/sms recipient type switching
+
+ -- Aleksandr Kazadaev <aleksandr.kazadaev@wirenboard.com>  Fri, 30 Dec 2022 13:02:00 +0300
+
 wb-rules (2.17.2) stable; urgency=medium
 
   * Add warnings about unknown spawn() options
