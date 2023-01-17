@@ -364,6 +364,63 @@ var Notify = (function (){
     next();
   }
 
+  function _sendSMSGammuLike (to, text, command, doneCallback) {
+    log("sending sms (gammu-like) to {}: {}", to, text);
+    command = command || "wb-gsm restart_if_broken && gammu sendsms TEXT '{}' -unicode";
+
+    var input = null;
+    var maxPlaceholders = 2;
+    var count = (command.match(/\{\}/g) || []).length;
+
+    if (count == maxPlaceholders) {
+      command = command.format(to, text);
+    } else {
+      command = command.format(to);
+      input = text;
+    }
+
+    debug("sms command: {}".format(command));
+
+    runShellCommand(command, {
+      captureErrorOutput: true,
+      captureOutput: true,
+      input: input,
+      exitCallback: doneCallback
+    });
+  }
+
+  function _sendSMSModemManager(to, text, doneCallback) {
+    log("sending sms (via ModemManager) to {}: {}", to, text);
+    var command = 'mmcli -m any --messaging-create-sms="number={},text={}" | sed -n \'s#^Success.*/SMS/\\([0-9]\\+\\).*$#\\1#p\' | xargs mmcli --send -s'
+
+    if (text.indexOf('"') >= 0) {
+      // can't send messages with all types of quotes via mmcli,
+      // see https://gitlab.freedesktop.org/mobile-broadband/ModemManager/-/issues/275
+      log.warning("ModemManager can't handle SMS with double quotes now, auto replaced with single ones")
+      text = text.replace(/"/g, "'")
+    }
+    text = '\\"' + text + '\\"'
+
+    command = command.format(to, text);
+    debug("sms command: {}".format(command));
+
+    runShellCommand(command, {
+      captureErrorOutput: true,
+      captureOutput: true,
+      exitCallback: doneCallback
+    });
+  }
+
+  function _checkHasModemManager(doneCallback) {
+    runShellCommand("mmcli --version", {
+      captureOutput: true,
+      captureErrorOutput: true,
+      exitCallback: function(exitCode) {
+        doneCallback(exitCode === 0);
+      }
+    });
+  }
+
   return {
     sendEmail: function sendEmail (to, subject, text) {
       log("sending email to {}: {}", to, subject);
@@ -379,39 +436,34 @@ var Notify = (function (){
     },
 
     sendSMS: function sendSMS (to, text, command) {
-      var doSend = function () {
-        _smsBusy = true;
-        log("sending sms to {}: {}", to, text);
-        command = command || "wb-gsm restart_if_broken && gammu sendsms TEXT '{}' -unicode";
-
-        var input = null;
-        var maxPlaceholders = 2;
-        var count = (command.match(/\{\}/g) || []).length;
-
-        if (count == maxPlaceholders) {
-            command = command.format(to, text);
-        } else {
-            command = command.format(to);
-            input = text;
-        }
-        runShellCommand(command, {
-          captureErrorOutput: true,
-          captureOutput: true,
-          input: input,
-          exitCallback: function (exitCode, capturedOutput, capturedErrorOutput) {
-            _smsBusy = false;
-            if (exitCode != 0)
-              log.error("error sending sms to {}:\n{}\n{}", to, capturedOutput, capturedErrorOutput);
-            _advanceSmsQueue();
-          }
-        });
+      var doneCallback = function(exitCode, capturedOutput, capturedErrorOutput) {
+        _smsBusy = false;
+        if (exitCode != 0)
+          log.error("error sending sms to {}:\n{}\n{}", to, capturedOutput, capturedErrorOutput);
+        _advanceSmsQueue();
       };
 
-      if (_smsBusy) {
-        debug("queueing sms to {}: {}", to, text);
-        _smsQueue.push(doSend);
-      } else
-        doSend();
+      var sendOrEnqueue = function(doSend) {
+        if (_smsBusy) {
+          debug("queueing sms to {}: {}", to, text);
+          _smsQueue.push(doSend);
+        } else {
+          _smsBusy = true;
+          doSend();
+        }
+      };
+
+      if (command) {
+        sendOrEnqueue(function() { _sendSMSGammuLike(to, text, command, doneCallback); });
+      } else {
+        _checkHasModemManager(function(hasModemManager) {
+          if (hasModemManager) {
+            sendOrEnqueue(function() { _sendSMSModemManager(to, text, doneCallback); });
+          } else {
+            sendOrEnqueue(function() { _sendSMSGammuLike(to, text, "", doneCallback); });
+          }
+        });
+      }
     }
   };
 })();
