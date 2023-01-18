@@ -1080,6 +1080,8 @@ var myModule = require("path/to/myModule");
 `Notify.sendSMS(to, text, command)` отправляет SMS на указанный номер (`to`)
 с указанным содержимым (`text`), используя команду (`command`) (необязательный аргумент).
 
+Для отправки SMS используется ModemManager, а если он не установлен, то `gammu`.
+
 ## Сервис алармов
 
 Основная функция:
