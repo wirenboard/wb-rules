@@ -767,7 +767,7 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 			delete(engine.editableSources, virtualPath)
 		})
 	} else {
-		wbgong.Info.Printf("%s is NOT under source root %s", path, engine.sourceRoot)
+		wbgong.Debug.Printf("%s is NOT under source root %s", path, engine.sourceRoot)
 	}
 
 	// remove file entry from list on cleanup
@@ -2229,14 +2229,33 @@ func (engine *ESEngine) esWbRunRule(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esReadConfig(ctx *ESContext) int {
-	if ctx.GetTop() != 1 || !ctx.IsString(0) {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("invalid readConfig call"))
+	numArgs := ctx.GetTop()
+	logErrorOnNoFile := true
+
+	argsValid := (numArgs == 1 || numArgs == 2) && ctx.IsString(0)
+	if numArgs == 2 {
+		argsValid = argsValid && ctx.IsObject(1)
+	}
+
+	if !argsValid {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("invalid readConfig call, should be readConfig(path [, params])"))
 		return duktape.DUK_RET_ERROR
 	}
+
+	if numArgs == 2 {
+		params := ctx.GetJSObject(1).(objx.Map)
+		if params.Has("logErrorOnNoFile") {
+			logErrorOnNoFile, _ = params["logErrorOnNoFile"].(bool)
+		}
+	}
+
 	path := ctx.GetString(0)
 	in, err := os.Open(path)
+
 	if err != nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("failed to open config file: %s", path))
+		if logErrorOnNoFile {
+			engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("failed to open config file: %s", path))
+		}
 		return duktape.DUK_RET_ERROR
 	}
 	defer in.Close()
