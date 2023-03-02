@@ -1,4 +1,4 @@
-wb-rules (2.12.0) stable; urgency=medium
+wb-rules (2.11.4-wb100-70549e24-001) stable; urgency=medium
 
   * Added support for min field in controls
 
