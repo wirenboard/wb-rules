@@ -429,6 +429,12 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 			} else {
 				return ctrl.SetMax(max)()
 			}
+		case wbgong.CONV_META_SUBTOPIC_MIN:
+			if min, err := strconv.Atoi(metaValue); err != nil {
+				return err
+			} else {
+				return ctrl.SetMin(min)()
+			}
 		case wbgong.CONV_META_SUBTOPIC_ORDER:
 			if order, err := strconv.Atoi(metaValue); err != nil {
 				return err
@@ -1470,6 +1476,19 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 
 		// set argument
 		args.SetMax(int(fmax))
+
+		fmin := VDEV_CONTROL_RANGE_MIN_DEFAULT
+		min, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_MIN]
+		if ok {
+			fmin, ok = min.(float64)
+			if !ok {
+				return fmt.Errorf("%s/%s: non-numeric value of min property",
+					devId, ctrlId)
+			}
+		}
+
+		// set argument
+		args.SetMin(int(fmin))
 	}
 	if descr, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_DESCRIPTION]; ok {
 		if fdescr, okString := descr.(string); okString {
