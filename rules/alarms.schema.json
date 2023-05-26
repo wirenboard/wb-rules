@@ -272,7 +272,8 @@
             ],
             "options": {
                 "disable_collapse": true,
-                "remove_empty_properties": false
+                "remove_empty_properties": false,
+                "keep_oneof_values": false
             }
         }
     },

@@ -1,9 +1,14 @@
+wb-rules (2.18.2) stable; urgency=medium
+
+  * Fix alarm.schema.json
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 26 May 2023 13:32:00 +0400
+
 wb-rules (2.18.1) stable; urgency=medium
 
   * esengine: print "file is NOT under source root" messages in debug
   * esengine: add parameters for readConfig to suppress errors
     when file does not exist and it's OK
-
 
  -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Mon, 30 Jan 2023 15:26:03 +0600
 
@@ -23,7 +28,7 @@ wb-rules (2.17.2) stable; urgency=medium
 
   * Add warnings about unknown spawn() options
 
- -- Nikolay Korotki <nikolay.korotkiy@wirenboard.com>  Tue, 22 Nov 2022 02:13:00 +0400
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 22 Nov 2022 02:13:00 +0400
 
 wb-rules (2.17.1) stable; urgency=medium
 
