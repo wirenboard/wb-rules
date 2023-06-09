@@ -6,25 +6,25 @@
 // rules or devices.
 
 global.__proto__.defineSomeRule = function defineSomeRule(name) {
-  var ruleName = name + "Rule";
+  var ruleName = name + 'Rule';
   defineRule(ruleName, {
     asSoonAs: function () {
       return !!dev.somedev[name];
     },
     then: function () {
-      log("{} fired", ruleName);
-    }
+      log('{} fired', ruleName);
+    },
   });
-}
+};
 
 global.__proto__.defineSomeDevice = function defineSomeDevice(name) {
   defineVirtualDevice(name, {
     title: name,
     cells: {
       sw: {
-        type: "switch",
-        value: false
-      }
-    }
+        type: 'switch',
+        value: false,
+      },
+    },
   });
-}
+};
