@@ -1,10 +1,10 @@
-defineVirtualDevice("roCells", {
-  title: "Readonly Cell Test",
+defineVirtualDevice('roCells', {
+  title: 'Readonly Cell Test',
   cells: {
     rocell: {
-      type: "switch",
+      type: 'switch',
       value: false,
-      readonly: true
-    }
-  }
+      readonly: true,
+    },
+  },
 });

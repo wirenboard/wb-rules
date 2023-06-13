@@ -1,10 +1,10 @@
-exports.count = function() {
-    if (module.static.counter == undefined) {
-        module.static.counter = 0;
-    }
+exports.count = function () {
+  if (module.static.counter == undefined) {
+    module.static.counter = 0;
+  }
 
-    module.static.counter++;
-    log("Value: {}", module.static.counter)
+  module.static.counter++;
+  log('Value: {}', module.static.counter);
 };
 
-log("Module static init");
+log('Module static init');

@@ -1,1 +1,1 @@
-Alarms.load("/etc/wb-rules/alarms.conf");
+Alarms.load('/etc/wb-rules/alarms.conf');

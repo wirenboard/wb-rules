@@ -1,13 +1,13 @@
 // -*- mode: js2-mode -*-
 
-log("topleveltimers");
+log('topleveltimers');
 
 var timerId = setTimeout(function () {
-  log("this one should never fire");
+  log('this one should never fire');
 }, 999);
 
 clearTimeout(timerId); // remove timeout before the engine is ready
 
 setTimeout(function () {
-  log("timer fired");
+  log('timer fired');
 }, 1000);

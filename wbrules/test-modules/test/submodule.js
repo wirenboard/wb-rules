@@ -1,3 +1,3 @@
-require("./with_require");
+require('./with_require');
 
-log("Module submodule init");
+log('Module submodule init');
