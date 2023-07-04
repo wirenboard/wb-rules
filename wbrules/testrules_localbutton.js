@@ -1,15 +1,15 @@
-defineVirtualDevice("buttons", {
-  title: "Button Test",
+defineVirtualDevice('buttons', {
+  title: 'Button Test',
   cells: {
     somebutton: {
-      type: "pushbutton"
-    }
-  }
+      type: 'pushbutton',
+    },
+  },
 });
 
-defineRule("buttontest", {
-  whenChanged: "buttons/somebutton",
+defineRule('buttontest', {
+  whenChanged: 'buttons/somebutton',
   then: function () {
-    log("button pressed!");
-  }
+    log('button pressed!');
+  },
 });

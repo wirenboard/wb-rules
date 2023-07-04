@@ -1,8 +1,20 @@
-wb-rules (2.18.2) stable; urgency=medium
+wb-rules (2.18.4) stable; urgency=medium
 
   * Bump golang.org/x/sys
 
- -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Sat, 25 Feb 2023 10:59:00 +0400
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Sat, 01 Jul 2023 10:59:00 +0400
+
+wb-rules (2.18.3) stable; urgency=medium
+
+  * Format source code. No functional changes
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 09 Jun 2023 17:30:00 +0400
+
+wb-rules (2.18.2) stable; urgency=medium
+
+  * Fix alarm.schema.json
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 26 May 2023 13:32:00 +0400
 
 wb-rules (2.18.1) stable; urgency=medium
 

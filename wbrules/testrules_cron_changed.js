@@ -1,13 +1,13 @@
-defineRule("crontest_hourly", {
-  when: cron("@hourly"),
+defineRule('crontest_hourly', {
+  when: cron('@hourly'),
   then: function () {
-    log("@hourly rule fired (new)");
-  }
+    log('@hourly rule fired (new)');
+  },
 });
 
-defineRule("crontest_daily", {
-  when: cron("@daily"),
+defineRule('crontest_daily', {
+  when: cron('@daily'),
   then: function () {
-    log("@daily rule fired (new)");
-  }
+    log('@daily rule fired (new)');
+  },
 });
