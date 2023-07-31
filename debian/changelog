@@ -1,3 +1,9 @@
+wb-rules (2.18.5) stable; urgency=medium
+
+  * Replace warning to debug log level of uncomplete control message
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.ru>  Mon, 31 Jul 2023 10:31:52 +0300
+
 wb-rules (2.18.4) stable; urgency=medium
 
   * Add homepage to deb package info. No functional changes
