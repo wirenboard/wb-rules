@@ -836,15 +836,11 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 
 		value, err = ctrl.GetValue()
 		if err != nil {
-			wbgong.Warn.Printf("%s: failed to convert value '%s', passing raw, error: %s",
-				spec.String(), ctrl.GetRawValue(), err.Error())
 			value = ctrl.GetRawValue()
 		}
 
 		prevValue, err = wbgong.ToTypedValue(e.PrevRawValue, ctrl.GetType())
 		if err != nil {
-			wbgong.Info.Printf("%s: failed to convert previous value '%s', passing raw",
-				spec.String(), e.PrevRawValue)
 			prevValue = e.PrevRawValue
 		}
 
@@ -862,8 +858,6 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 		if !ctrl.IsDeleted() {
 			value, err = ctrl.GetValue()
 			if err != nil {
-				wbgong.Info.Printf("%s: failed to convert value '%s', passing raw, error: %s",
-					spec.String(), ctrl.GetRawValue(), err.Error())
 				value = ctrl.GetRawValue()
 			}
 		} else {

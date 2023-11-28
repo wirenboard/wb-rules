@@ -1,8 +1,26 @@
+wb-rules (2.18.7) stable; urgency=medium
+
+  * Bump golang.org/x/sys, no functional changes
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Tue, 28 Nov 2023 15:59:35 +0600
+
+wb-rules (2.18.6) stable; urgency=medium
+
+  * Remove uncomplete contol messages
+
+ -- Ekaterina Volkova <ekaterina@ekateluv>  Tue, 03 Oct 2023 12:05:23 +0300
+
+wb-rules (2.18.5) stable; urgency=medium
+
+  * Replace warning to debug log level of uncomplete control message
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.ru>  Mon, 31 Jul 2023 10:31:52 +0300
+
 wb-rules (2.18.4) stable; urgency=medium
 
-  * Bump golang.org/x/sys
+  * Add homepage to deb package info. No functional changes
 
- -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Sat, 01 Jul 2023 10:59:00 +0400
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 25 Jul 2023 16:34:00 +0400
 
 wb-rules (2.18.3) stable; urgency=medium
 
