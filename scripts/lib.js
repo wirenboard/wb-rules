@@ -646,7 +646,10 @@ var Alarms = (function () {
 
             if (!wasActive) {
               if (alarmSrc.alarmDelayMs > 0)
-                activateTimerId = setTimeout(activateAlarm, alarmSrc.alarmDelayMs);
+                activateTimerId = setTimeout(function() {
+                  activateTimerId = null;
+                  activateAlarm();
+                }, alarmSrc.alarmDelayMs);
               else activateAlarm();
             }
 
@@ -679,7 +682,10 @@ var Alarms = (function () {
 
             if (wasActive) {
               if (alarmSrc.noAlarmDelayMs > 0) {
-                deactivateTimerId = setTimeout(deactivateAlarm, alarmSrc.noAlarmDelayMs);
+                deactivateTimerId = setTimeout(function() {
+                  deactivateTimerId = null;
+                  deactivateAlarm();
+                }, alarmSrc.noAlarmDelayMs);
               } else deactivateAlarm();
             }
 

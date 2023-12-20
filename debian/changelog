@@ -1,3 +1,9 @@
+wb-rules (2.18.8) stable; urgency=medium
+
+  * Fix timer error message after deferred alarm returns back to normal
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.ru>  Wed, 20 Dec 2023 17:31:38 +0600
+
 wb-rules (2.18.7) stable; urgency=medium
 
   * Bump golang.org/x/sys, no functional changes
