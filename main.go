@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"strings"
 	"syscall"
 
@@ -56,6 +57,7 @@ func main() {
 	mqttDebug := flag.Bool("mqttdebug", false, "Enable MQTT debugging")
 	precise := flag.Bool("precise", false, "Don't reown devices without driver")
 	cleanup := flag.Bool("cleanup", false, "Clean up MQTT data on unload")
+	profile := flag.String("profile", "", "Enable profiling to file")
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -82,6 +84,15 @@ func main() {
 	}
 	if *debug {
 		wbgong.SetDebuggingEnabled(true)
+	}
+
+	if *profile != "" {
+		f, err := os.Create(*profile)
+		if err != nil {
+			wbgong.Error.Fatalf("failed to create profile file: %s", err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
 	}
 
 	errInit := wbgong.Init(*wbgoso)
