@@ -8,6 +8,9 @@ endif
 ifeq ($(DEB_TARGET_ARCH),armhf)
 GO_ENV := GOARCH=arm GOARM=6 CC_FOR_TARGET=arm-linux-gnueabihf-gcc CC=$$CC_FOR_TARGET CGO_ENABLED=1
 endif
+ifeq ($(DEB_TARGET_ARCH),arm64)
+GO_ENV := GOARCH=arm64 GOARM=6 CC_FOR_TARGET=aarch64-linux-gnu-gcc CC=$$CC_FOR_TARGET CGO_ENABLED=1
+endif
 ifeq ($(DEB_TARGET_ARCH),amd64)
 GO_ENV := GOARCH=amd64 CC=x86_64-linux-gnu-gcc
 endif

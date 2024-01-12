@@ -323,7 +323,6 @@ func (s *RuleSuiteBase) SetupSkippingDefs(ruleFiles ...string) {
 		s.FailNow("engine is not ready for such a long time")
 	case <-s.engine.ReadyCh():
 	}
-	return
 }
 
 func (s *RuleSuiteBase) newFakeTimer(id TimerId, d time.Duration, periodic bool) wbgong.Timer {
