@@ -1,3 +1,9 @@
+wb-rules (2.18.8+broken) UNRELEASED; urgency=medium
+
+  * broken test
+
+ -- Evgeny Boger <boger@wirenboard.com>  Wed, 17 Jan 2024 00:15:59 +0300
+
 wb-rules (2.18.8) stable; urgency=medium
 
   * Fix timer error message after deferred alarm returns back to normal

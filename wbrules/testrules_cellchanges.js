@@ -20,7 +20,7 @@ defineRule('startCellChange', {
   then: function () {
     dev.cellch.sw = !dev.cellch.sw;
     dev.cellch.misc = '1';
-    log('startCellChange: sw <- {}', dev.cellch.sw);
+    log('1startCellChange: sw <- {}', dev.cellch.sw);
   },
 });
 
