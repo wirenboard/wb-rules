@@ -1,1 +1,2 @@
-buildDebGolangWbgo defaultTargets: 'bullseye-armhf bullseye-arm64'
+buildDebGolangWbgo defaultTargets: 'bullseye-armhf bullseye-arm64',
+                   defaultRunLintian: true
