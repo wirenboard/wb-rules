@@ -33,7 +33,7 @@ amd64:
 
 test:
 	cp amd64.wbgo.so wbrules/wbgo.so
-	CC=x86_64-linux-gnu-gcc go test -trimpath -ldflags="-s -w" ./wbrules
+	CC=x86_64-linux-gnu-gcc go test -v -trimpath -ldflags="-s -w" ./wbrules
 
 wb-rules: main.go wbrules/*.go
 	$(GO_ENV) go build -trimpath -ldflags "-w -X main.version=`git describe --tags --always --dirty`"
