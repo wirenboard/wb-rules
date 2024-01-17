@@ -17,7 +17,8 @@ endif
 
 GO_ENV := GO111MODULE=on $(GO_ENV)
 
-GO_FLAGS=-ldflags "-w"
+GO ?= go
+GO_FLAGS = -ldflags "-w -X main.version=`git describe --tags --always --dirty`"
 
 all: clean wb-rules
 
@@ -32,7 +33,7 @@ test:
 	CC=x86_64-linux-gnu-gcc go test -trimpath -ldflags="-s -w" ./wbrules
 
 wb-rules: main.go wbrules/*.go
-	$(GO_ENV) go build -trimpath -ldflags "-w -X main.version=`git describe --tags --always --dirty`"
+	$(GO_ENV) $(GO) build -trimpath $(GO_FLAGS)
 
 install:
 	mkdir -p $(DESTDIR)/usr/bin/ $(DESTDIR)/etc/init.d/ $(DESTDIR)/etc/wb-rules/ $(DESTDIR)/usr/share/wb-mqtt-confed/schemas $(DESTDIR)/etc/wb-configs.d $(DESTDIR)/usr/share/wb-rules-system/scripts/ $(DESTDIR)/usr/share/wb-rules/

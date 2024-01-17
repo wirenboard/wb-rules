@@ -181,8 +181,9 @@ func main() {
 	}
 	wbgong.Info.Println("all rule files are loaded")
 
+	var rpc wbgong.MQTTRPCServer
 	if *editDir != "" {
-		rpc := wbgong.NewMQTTRPCServer("wbrules", engineMqttClient)
+		rpc = wbgong.NewMQTTRPCServer("wbrules", engineMqttClient)
 		rpc.Register(wbrules.NewEditor(engine))
 		rpc.Start()
 	}
@@ -190,6 +191,9 @@ func main() {
 	// wait for quit signal
 	<-exitCh
 
+	if rpc != nil {
+		rpc.Stop()
+	}
 	engine.Stop()
 	driver.StopLoop()
 	driver.Close()
