@@ -536,7 +536,7 @@ var Alarms = (function () {
 
     var ref = _WbRules.parseCellRef(alarmSrc.cell);
     var namePrefix = '__alarm{}__{}__'.format(seq++, alarmSrc.cell),
-      cellName = alarmSrc.hasOwnProperty('name') ? 'alarm_' + alarmSrc.name : namePrefix + 'cell', //
+      cellName = alarmSrc.hasOwnProperty('name') ? 'alarm_' + alarmSrc.name : namePrefix + 'cell',
       hasExpectedValue = alarmSrc.hasOwnProperty('expectedValue'),
       hasMinValue = checkHasNumKey('minValue'),
       hasMaxValue = checkHasNumKey('maxValue'),
