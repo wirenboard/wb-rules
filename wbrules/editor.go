@@ -52,7 +52,6 @@ var writeError = &EditorError{EDITOR_ERROR_WRITE, "Error writing the file"}
 var fileNotFoundError = &EditorError{EDITOR_ERROR_FILE_NOT_FOUND, "File not found"}
 var rmError = &EditorError{EDITOR_ERROR_REMOVE, "Error removing the file"}
 var renameError = &EditorError{EDITOR_ERROR_RENAME, "Error renaming the file"}
-// var readError = &EditorError{EDITOR_ERROR_READ, "Error reading the file"}
 var overwriteError = &EditorError{EDITOR_ERROR_OVERWRITE, "New-state file already exists"}
 
 func NewEditor(locFileManager LocFileManager) *Editor {
