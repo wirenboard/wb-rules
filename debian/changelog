@@ -1,3 +1,9 @@
+wb-rules (2.18.9) stable; urgency=medium
+
+  * Add arm64 build, no functional changes
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 11 Jan 2024 19:00:00 +0400
+
 wb-rules (2.18.8) stable; urgency=medium
 
   * Fix timer error message after deferred alarm returns back to normal
@@ -519,5 +525,3 @@ wb-rules (1.0) wheezy; urgency=low
   * Initial package version
 
  -- Ivan Shvedunov <ivan4th@gmail.com>  Tue, 03 Feb 2015 17:20:00 +0300
-
-

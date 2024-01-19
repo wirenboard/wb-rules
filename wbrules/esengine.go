@@ -1005,7 +1005,7 @@ func (engine *ESEngine) getStringPropFromObject(ctx *ESContext, objIndex int, pr
 
 func (engine *ESEngine) esGetDevice(ctx *ESContext) int {
 	if ctx.GetTop() != 1 || !ctx.IsString(0) {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("getDevice(): bad parameters"))
+		engine.Log(ENGINE_LOG_ERROR, "getDevice(): bad parameters")
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1053,7 +1053,7 @@ func (engine *ESEngine) esGetDevice(ctx *ESContext) int {
 
 func (engine *ESEngine) esGetControl(ctx *ESContext) int {
 	if ctx.GetTop() != 1 || !ctx.IsString(0) {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("getDevice(): bad parameters"))
+		engine.Log(ENGINE_LOG_ERROR, "getDevice(): bad parameters")
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1061,7 +1061,7 @@ func (engine *ESEngine) esGetControl(ctx *ESContext) int {
 
 	ids := strings.Split(name, "/")
 	if len(ids) != 2 {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("getDevice(): bad parameters: should be 'devID/cellID'"))
+		engine.Log(ENGINE_LOG_ERROR, "getDevice(): bad parameters: should be 'devID/cellID'")
 		return duktape.DUK_RET_ERROR
 	}
 	devID := ids[0]
@@ -2097,7 +2097,7 @@ func (engine *ESEngine) esWbDefineRule(ctx *ESContext) int {
 		}
 	}
 	if !ok {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad rule definition"))
+		engine.Log(ENGINE_LOG_ERROR, "bad rule definition")
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -2133,7 +2133,7 @@ func (engine *ESEngine) esWbDefineRule(ctx *ESContext) int {
 
 func (engine *ESEngine) trackMqtt(ctx *ESContext) int {
 	if !(ctx.IsString(0) && ctx.IsFunction(1)) {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad track definition"))
+		engine.Log(ENGINE_LOG_ERROR, "bad track definition")
 		return duktape.DUK_RET_ERROR
 	}
 	topic := ctx.GetString(0)
@@ -2212,7 +2212,7 @@ func (engine *ESEngine) esWbCtrlRule(ctx *ESContext, state bool) int {
 // esWbRunRule force runs rule 'then' function from JS
 func (engine *ESEngine) esWbRunRule(ctx *ESContext) int {
 	if ctx.GetTop() != 1 || !ctx.IsNumber(0) {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("invalid runRule call"))
+		engine.Log(ENGINE_LOG_ERROR, "invalid runRule call")
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -2238,7 +2238,7 @@ func (engine *ESEngine) esReadConfig(ctx *ESContext) int {
 	}
 
 	if !argsValid {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("invalid readConfig call, should be readConfig(path [, params])"))
+		engine.Log(ENGINE_LOG_ERROR, "invalid readConfig call, should be readConfig(path [, params])")
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -2299,7 +2299,7 @@ func (engine *ESEngine) SetPersistentDB(filename string) error {
 
 func (engine *ESEngine) SetPersistentDBMode(filename string, mode os.FileMode) (err error) {
 	if engine.persistentDB != nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage DB is already opened"))
+		engine.Log(ENGINE_LOG_ERROR, "persistent storage DB is already opened")
 		err = fmt.Errorf("persistent storage DB is already opened")
 		return
 	}
@@ -2318,7 +2318,7 @@ func (engine *ESEngine) SetPersistentDBMode(filename string, mode os.FileMode) (
 // Force close DB
 func (engine *ESEngine) ClosePersistentDB() (err error) {
 	if engine.persistentDB == nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("DB is not opened, nothing to close"))
+		engine.Log(ENGINE_LOG_ERROR, "DB is not opened, nothing to close")
 		err = fmt.Errorf("nothing to close")
 		return
 	}
@@ -2333,7 +2333,7 @@ func (engine *ESEngine) ClosePersistentDB() (err error) {
 func (engine *ESEngine) esPersistentName(ctx *ESContext) int {
 
 	if engine.persistentDB == nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
+		engine.Log(ENGINE_LOG_ERROR, "persistent DB is not initialized")
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -2344,13 +2344,13 @@ func (engine *ESEngine) esPersistentName(ctx *ESContext) int {
 	numArgs := ctx.GetTop()
 
 	if numArgs < 1 || numArgs > 2 {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad persistent storage definition"))
+		engine.Log(ENGINE_LOG_ERROR, "bad persistent storage definition")
 		return duktape.DUK_RET_ERROR
 	}
 
 	// parse name
 	if !ctx.IsString(0) {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage name must be string"))
+		engine.Log(ENGINE_LOG_ERROR, "persistent storage name must be string")
 		return duktape.DUK_RET_ERROR
 	}
 	name = ctx.GetString(0)
@@ -2358,7 +2358,7 @@ func (engine *ESEngine) esPersistentName(ctx *ESContext) int {
 	// parse options object
 	if numArgs == 2 && !ctx.IsUndefined(1) {
 		if !ctx.IsObject(1) {
-			engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage options must be object"))
+			engine.Log(ENGINE_LOG_ERROR, "persistent storage options must be object")
 			return duktape.DUK_RET_ERROR
 		}
 
@@ -2384,7 +2384,7 @@ func (engine *ESEngine) esPersistentName(ctx *ESContext) int {
 // Writes new value down to persistent DB
 func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 	if engine.persistentDB == nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
+		engine.Log(ENGINE_LOG_ERROR, "persistent DB is not initialized")
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -2392,20 +2392,20 @@ func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 	var bucket, key, value string
 
 	if ctx.GetTop() != 3 {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad persistentSet request, arg number mismatch"))
+		engine.Log(ENGINE_LOG_ERROR, "bad persistentSet request, arg number mismatch")
 		return duktape.DUK_RET_ERROR
 	}
 
 	// parse bucket name
 	if !ctx.IsString(0) {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage bucket name must be string"))
+		engine.Log(ENGINE_LOG_ERROR, "persistent storage bucket name must be string")
 		return duktape.DUK_RET_ERROR
 	}
 	bucket = ctx.GetString(0)
 
 	// parse key
 	if !ctx.IsString(1) {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage key must be string"))
+		engine.Log(ENGINE_LOG_ERROR, "persistent storage key must be string")
 		return duktape.DUK_RET_ERROR
 	}
 	key = ctx.GetString(1)
@@ -2434,7 +2434,7 @@ func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 // Gets a value from persitent DB
 func (engine *ESEngine) esPersistentGet(ctx *ESContext) int {
 	if engine.persistentDB == nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent DB is not initialized"))
+		engine.Log(ENGINE_LOG_ERROR, "persistent DB is not initialized")
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -2442,20 +2442,20 @@ func (engine *ESEngine) esPersistentGet(ctx *ESContext) int {
 	var bucket, key, value string
 
 	if ctx.GetTop() != 2 {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("bad persistentGet request, arg number mismatch"))
+		engine.Log(ENGINE_LOG_ERROR, "bad persistentGet request, arg number mismatch")
 		return duktape.DUK_RET_ERROR
 	}
 
 	// parse bucket name
 	if !ctx.IsString(0) {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage bucket name must be string"))
+		engine.Log(ENGINE_LOG_ERROR, "persistent storage bucket name must be string")
 		return duktape.DUK_RET_ERROR
 	}
 	bucket = ctx.GetString(0)
 
 	// parse key
 	if !ctx.IsString(1) {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("persistent storage key must be string"))
+		engine.Log(ENGINE_LOG_ERROR, "persistent storage key must be string")
 		return duktape.DUK_RET_ERROR
 	}
 	key = ctx.GetString(1)
