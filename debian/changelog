@@ -1,3 +1,9 @@
+wb-rules (2.18.10) stable; urgency=medium
+
+  * Stop rpc server on quit
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 17 Jan 2023 10:34:00 +0400
+
 wb-rules (2.18.9) stable; urgency=medium
 
   * Add arm64 build, no functional changes

@@ -21,7 +21,8 @@ endif
 
 GO_ENV := GO111MODULE=on $(GO_ENV)
 
-GO_FLAGS=-ldflags "-w"
+GO ?= go
+GO_FLAGS = -ldflags "-w -X main.version=`git describe --tags --always --dirty`"
 
 all: clean wb-rules
 
@@ -36,7 +37,7 @@ test:
 	CC=x86_64-linux-gnu-gcc go test -v -trimpath -ldflags="-s -w" ./wbrules
 
 wb-rules: main.go wbrules/*.go
-	$(GO_ENV) go build -trimpath -ldflags "-w -X main.version=`git describe --tags --always --dirty`"
+	$(GO_ENV) $(GO) build -trimpath $(GO_FLAGS)
 
 install:
 	mkdir -p $(DESTDIR)/etc/init.d/

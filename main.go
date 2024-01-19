@@ -146,6 +146,8 @@ func main() {
 	wbgong.Info.Println("wait for driver to become ready")
 	driver.WaitForReady()
 	wbgong.Info.Println("driver is ready")
+	defer driver.Close()
+	defer driver.StopLoop()
 
 	engineOptions := wbrules.NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(*persistentDbFile)
@@ -163,6 +165,7 @@ func main() {
 		wbgong.Error.Fatalf("error creating engine: %s", err)
 	}
 	engine.Start()
+	defer engine.Stop()
 
 	gotSome := false
 	watcher := wbgong.NewDirWatcher("\\.js(\\"+wbrules.FILE_DISABLED_SUFFIX+")?$", engine)
@@ -185,12 +188,9 @@ func main() {
 		rpc := wbgong.NewMQTTRPCServer("wbrules", engineMqttClient)
 		rpc.Register(wbrules.NewEditor(engine))
 		rpc.Start()
+		defer rpc.Stop()
 	}
 
 	// wait for quit signal
 	<-exitCh
-
-	engine.Stop()
-	driver.StopLoop()
-	driver.Close()
 }
