@@ -38,3 +38,7 @@ debian/wb-rules*
 ~*
 .*.swp
 debian/.debhelper
+
+### direnv ###
+.direnv
+.envrc

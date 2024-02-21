@@ -1,5 +1,5 @@
-github.com/DisposaBoy/JsonConfigReader v0.0.0-20130112093355-33a99fdf1d5e h1:rv5qJCfIzQhhefHp8MO98hoGRI3mdps2iiGA3o4nm8A=
-github.com/DisposaBoy/JsonConfigReader v0.0.0-20130112093355-33a99fdf1d5e/go.mod h1:GCzqZQHydohgVLSIqRKZeTt8IGb1Y4NaFfim3H40uUI=
+github.com/DisposaBoy/JsonConfigReader v0.0.0-20201129172854-99cf318d67e7 h1:AJKJCKcb/psppPl/9CUiQQnTG+Bce0/cIweD5w5Q7aQ=
+github.com/DisposaBoy/JsonConfigReader v0.0.0-20201129172854-99cf318d67e7/go.mod h1:GCzqZQHydohgVLSIqRKZeTt8IGb1Y4NaFfim3H40uUI=
 github.com/alexcesaro/statsd v2.0.0+incompatible h1:HG17k1Qk8V1F4UOoq6tx+IUoAbOcI5PHzzEUGeDD72w=
 github.com/alexcesaro/statsd v2.0.0+incompatible/go.mod h1:vNepIbQAiyLe1j480173M6NYYaAsGwEcvuDTU3OCUGY=
 github.com/boltdb/bolt v0.0.0-20161223174454-2e25e3bb4285 h1:EROEheZarnka03RF04n/06GDpsqGKUXkUv4kWP4r8aw=

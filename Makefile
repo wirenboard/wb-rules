@@ -41,7 +41,7 @@ wb-rules: main.go wbrules/*.go
 
 install:
 	mkdir -p $(DESTDIR)/etc/init.d/
-	mkdir -p $(DESTDIR)/usr/share/wb-rules-modules/ $(DESTDIR)/etc/wb-rules-modules/
+	mkdir -p $(DESTDIR)$(PREFIX)/share/wb-rules-modules/ $(DESTDIR)/etc/wb-rules-modules/
 	install -Dm0755 wb-rules -t $(DESTDIR)$(PREFIX)/bin
 	install -Dm0644 rules/rules.js -t $(DESTDIR)/etc/wb-rules
 	install -Dm0644 wb-rules.wbconfigs $(DESTDIR)/etc/wb-configs.d/13wb-rules

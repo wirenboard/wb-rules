@@ -3,7 +3,7 @@ module github.com/wirenboard/wb-rules
 go 1.15
 
 require (
-	github.com/DisposaBoy/JsonConfigReader v0.0.0-20130112093355-33a99fdf1d5e
+	github.com/DisposaBoy/JsonConfigReader v0.0.0-20201129172854-99cf318d67e7
 	github.com/alexcesaro/statsd v2.0.0+incompatible
 	github.com/boltdb/bolt v0.0.0-20161223174454-2e25e3bb4285
 	github.com/stretchr/objx v0.3.0
