@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strings"
@@ -56,6 +58,7 @@ func main() {
 	mqttDebug := flag.Bool("mqttdebug", false, "Enable MQTT debugging")
 	precise := flag.Bool("precise", false, "Don't reown devices without driver")
 	cleanup := flag.Bool("cleanup", false, "Clean up MQTT data on unload")
+	profile := flag.String("profile", "", "Run pprof server")
 
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -82,6 +85,12 @@ func main() {
 	}
 	if *debug {
 		wbgong.SetDebuggingEnabled(true)
+	}
+
+	if *profile != "" {
+		go func() {
+			log.Println(http.ListenAndServe(*profile, nil))
+		}()
 	}
 
 	errInit := wbgong.Init(*wbgoso)

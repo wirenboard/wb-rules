@@ -50,7 +50,7 @@ func (s *RuleReadConfigSuite) verifyReadConfRuleLog(configPath string, msgs ...i
 }
 
 func (s *RuleReadConfigSuite) TestReadConfig() {
-	configPath := s.WriteConfig("conf.json", "{ // whatever! \n\"xyz\": 42 }")
+	configPath := s.WriteConfig("conf.json", "{ // whatever! \n/*\nmultiline\ncomment!\n*/\n\"xyz\": 42 }")
 	s.TryReadingConfig(configPath)
 	s.verifyReadConfRuleLog(configPath, "[info] config: {\"xyz\":42}")
 }

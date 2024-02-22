@@ -897,9 +897,13 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 
 func (engine *RuleEngine) CallSync(thunk func()) {
 	if atomic.LoadUint32(&engine.debugEnabled) == ATOMIC_TRUE {
+		delay := time.NewTimer(ENGINE_CALLSYNC_TIMEOUT)
 		select {
 		case engine.syncQueue <- thunk:
-		case <-time.After(ENGINE_CALLSYNC_TIMEOUT):
+			if !delay.Stop() {
+				<-delay.C
+			}
+		case <-delay.C:
 			panic("[engine] CallSync stuck!")
 		}
 	} else {
