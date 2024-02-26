@@ -172,7 +172,7 @@ defineRule("crontest_hourly", {
 
 Альтернативный синтаксис:
 
-`dev["device"]["control"]` или, что то же самое, `dev.abc.def`.
+`dev["device"]["control"]` или, что то же самое, `dev.device.control`.
 
 Значение параметра зависит от его типа: `switch`, `alarm` —
 булевский тип, `text` — строковый, остальные известные типы параметров,
