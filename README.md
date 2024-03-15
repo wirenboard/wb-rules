@@ -228,16 +228,16 @@ defineVirtualDevice('my-virtual-device', {
     cells: {
       ControlName1: {
         title: "Name 1",
-	    type: "switch",
-	    value: false
-	    },
+        type: "switch",
+        value: false
+      },
       ControlName2: {
         title: "Name 2",
-	    type: "range",
-	    value: 25,
+        type: "range",
+        value: 25,
         max: 100,
         min: 1
-	    },
+      },
     }
 })
 ```
@@ -355,16 +355,15 @@ defineVirtualDevice("test_buzzer", {
   }
 });
 
-
 var test_interval = null;
 
-defineRule({                                              
+defineRule({
   whenChanged: "test_buzzer/enabled",
   then: function (newValue, devName, cellName) {
     var n = 0;
     if (dev["test_buzzer/enabled"]){
       test_interval = setInterval(function () {
-  dev["buzzer/enabled"] = !dev["buzzer/enabled"];
+        dev["buzzer/enabled"] = !dev["buzzer/enabled"];
         n = n+1;
         if (n >= 10){
           clearInterval(test_interval);
@@ -407,12 +406,12 @@ defineRule("1",{
 defineRule("2",{
   when: function () { return timers.one_second.firing; },
   then: function () {
-  if (dev["test_buzzer/enabled"] == true){
-   dev["buzzer/enabled"] = !dev["buzzer/enabled"];} 
-   else {
-   timers.one_second.stop();
-   dev["buzzer/enabled"] = false
-}
+    if (dev["test_buzzer/enabled"] == true) {
+      dev["buzzer/enabled"] = !dev["buzzer/enabled"];
+    } else {
+      timers.one_second.stop();
+      dev["buzzer/enabled"] = false
+    }
   }
 });
 ```
@@ -695,9 +694,9 @@ defineRule("onChange", {
     whenChanged: "wb-mr3_48/K1#error",
     then: function (newValue, devName, cellName) {
         if(newValue !== "") {
-          Notify.sendSMS("...", "relay is broken");
+            Notify.sendSMS("...", "relay is broken");
         } else {
-          Notify.sendSMS("...", "relay is OK");
+            Notify.sendSMS("...", "relay is OK");
         }
     }
 });
@@ -742,7 +741,7 @@ getDevice("deviceID").controlsList().forEach(function(ctrl) {
 Полный список методов объекта контрола смотрите ниже.
 
 Setters:
-* `setTitle(string)`
+* `setTitle(string)` или `setTitle({ "en": string, "ru": string })`
 * `setDescription(string)`
 * `setType(string)`
 * `setUnits(string)`
@@ -917,9 +916,9 @@ publish("/abc/def/ghi", "0", 2, true);
 
 ```js
 defineRule({
- asSoonAs: function() {
-   return true
- },
+  asSoonAs: function() {
+    return true
+  },
   then: function () {
       runShellCommand("uname -a", {
           captureOutput: true,
@@ -1147,7 +1146,7 @@ var myModule = require("path/to/myModule");
 
       // Номер телефона получателя
       "to": "+78122128506",
-      
+
       // Команда для отправки SMS. Поле можно оставить пустым, чтобы использовать
       // gammu. В команде нужно указать как минимум один плейсхолдер {} - для номера. Тогда 
       // текст будет отправлен в stdin. Если указать 2 плейсхолдера - то в первый запишется
@@ -1211,7 +1210,7 @@ var myModule = require("path/to/myModule");
       // аларм деактивируется.
       "minValue": 10,
       "maxValue": 15,
-      
+
       // Сообщение, отправляемое при срабатываении аларма. {} Заменяется
       // на текущее значение контрола. Возможно использование {{ expr }}
       // для вычисления произвольного JS-выражения (см. "...".xformat(...)).
@@ -1340,7 +1339,7 @@ setTimeout(function myFuncTwo() {
     log("myFuncTwo called");
     log("test1: {}, test2: {}", test1, test2);
     // раньше: test1: [либо 42, либо 84], test2: Hello
-   }, 1000);
+}, 1000);
 ```
 В версии 1.7 для изоляции правил рекомендовалось использовать рекомендовалось использовать замыкание, т.е. оборачивание кода сценария в конструкцию:
 
@@ -1452,4 +1451,3 @@ wbdev hmake clean && wbdev hmake amd64
 ```
 wbdev gdeb
 ```
-

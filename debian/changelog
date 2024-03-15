@@ -1,3 +1,9 @@
+wb-rules (2.19.0) stable; urgency=medium
+
+  * Add title translation support
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 21 Feb 2024 14:04:00 +0400
+
 wb-rules (2.18.11) stable; urgency=medium
 
   * Add -profile flag to enable profiling with pprof
