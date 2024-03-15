@@ -45,12 +45,12 @@ Rule engine for Wiren Board, version 2.0
 Правила определяются при помощи функции defineRule:
 ```js
 defineRule(name,{
-    Тип_правила: function() {
-        ...
-    },
-    then: function() {
-        ...
-    }
+  Тип_правила: function() {
+    ...
+  },
+  then: function() {
+    ...
+  }
 });
 ```
 
@@ -58,10 +58,10 @@ defineRule(name,{
 Например:
 ```js
 defineRule("Examle_rule", {
-    whenChanged: "mydev/test",
-    then: function() {
-        log("mydev/test changed");
-    }
+  whenChanged: "mydev/test",
+  then: function() {
+    log("mydev/test changed");
+  }
 });
 ```
 
@@ -73,7 +73,7 @@ defineRule("Examle_rule", {
 defineRule("test_whenChanged", { 
   whenChanged: ["wb-gpio/A1_OUT", "wb-gpio/A2_OUT"], // топики, при изменении которых сработает правило
   then: function (newValue, devName, cellName) {
-    log("devName:{}, cellName:{}, newValue:{}", devName, cellName, newValue) // вывод сообщения в лог   
+    log("devName:{}, cellName:{}, newValue:{}", devName, cellName, newValue); // вывод сообщения в лог
   }
 });
 ```
@@ -84,7 +84,7 @@ defineRule("test_whenChanged", {
 defineRule("test_whenChanged", { 
   whenChanged: "wb-gpio/A1_OUT", // топик, при изменении которого сработает правило
   then: function (newValue, devName, cellName) {
-    log("devName:{}, cellName:{}, newValue:{}", devName, cellName, newValue) // вывод сообщения в лог   
+    log("devName:{}, cellName:{}, newValue:{}", devName, cellName, newValue); // вывод сообщения в лог
   }
 });
 ```
@@ -165,8 +165,7 @@ defineRule("crontest_hourly", {
 
 `dev["device/control"]`
 
-где, device — имя устройства в MQTT-топике,
-     control — название контрола.
+где, device — имя устройства в MQTT-топике, control — название контрола.
 
 Параметры **device** и **control** содерджатся в полном адресе топика, который имеет вид `/devices/device/controls/control`.
 
@@ -228,18 +227,18 @@ defineVirtualDevice('my-virtual-device', {
     cells: {
       ControlName1: {
         title: "Name 1",
-	    type: "switch",
-	    value: false
-	    },
+        type: "switch",
+        value: false
+      },
       ControlName2: {
         title: "Name 2",
-	    type: "range",
-	    value: 25,
+        type: "range",
+        value: 25,
         max: 100,
         min: 1
-	    },
+      },
     }
-})
+});
 ```
 Описание параметров — ECMAScript-объект, ключами которого являются имена параметров,
 а значениями — описания параметров.
@@ -317,18 +316,20 @@ defineVirtualDevice("test_buzzer", {
 
 defineRule("1",{
   asSoonAs: function () {
-    return dev["test_buzzer/enabled"] ;
+    return dev["test_buzzer/enabled"];
   },
   then: function () {
     startTimer("one_second", 1000);
-    dev["buzzer/enabled"] = true;//включаем пищалку
+    dev["buzzer/enabled"] = true; // включаем пищалку
   }
 });
 
 defineRule("2",{
-  when: function () { return timers.one_second.firing; },
+  when: function () {
+    return timers.one_second.firing;
+  },
   then: function () {
-    dev["buzzer/enabled"] = false;//выключаем пищалку
+    dev["buzzer/enabled"] = false; // выключаем пищалку
     dev["test_buzzer/enabled"] = false;
   }
 });
@@ -355,17 +356,16 @@ defineVirtualDevice("test_buzzer", {
   }
 });
 
-
 var test_interval = null;
 
-defineRule({                                              
+defineRule({
   whenChanged: "test_buzzer/enabled",
   then: function (newValue, devName, cellName) {
     var n = 0;
-    if (dev["test_buzzer/enabled"]){
+    if (dev["test_buzzer/enabled"]) {
       test_interval = setInterval(function () {
-  dev["buzzer/enabled"] = !dev["buzzer/enabled"];
-        n = n+1;
+        dev["buzzer/enabled"] = !dev["buzzer/enabled"];
+        n = n + 1;
         if (n >= 10){
           clearInterval(test_interval);
         }
@@ -398,7 +398,7 @@ defineVirtualDevice("test_buzzer", {
 
 defineRule("1",{
   asSoonAs: function () {
-    return dev["test_buzzer/enabled"] ;
+    return dev["test_buzzer/enabled"];
   },
   then: function () {
     startTicker("one_second", 1000);
@@ -407,12 +407,12 @@ defineRule("1",{
 defineRule("2",{
   when: function () { return timers.one_second.firing; },
   then: function () {
-  if (dev["test_buzzer/enabled"] == true){
-   dev["buzzer/enabled"] = !dev["buzzer/enabled"];} 
-   else {
-   timers.one_second.stop();
-   dev["buzzer/enabled"] = false
-}
+    if (dev["test_buzzer/enabled"] == true) {
+      dev["buzzer/enabled"] = !dev["buzzer/enabled"];
+    } else {
+      timers.one_second.stop();
+      dev["buzzer/enabled"] = false;
+    }
   }
 });
 ```
@@ -548,10 +548,10 @@ cron-выражению.
 
 ```js
 var myRule = defineRule({
-    whenChanged: "mydev/test",
-    then: function() {
-        log("mydev/test changed");
-    }
+  whenChanged: "mydev/test",
+  then: function() {
+    log("mydev/test changed");
+  }
 });
 
 // ...
@@ -678,13 +678,13 @@ defineRule("funcValueChange2", {
 ```js
 // отправим смс каждый раз, когда первое реле на модуле WB-MR3 станет недоступно
 defineRule("onRelayLost", {
-    asSoonAs: function () { // также возможно использовать параметр when
-        return (dev["wb-mr3_48/K1#error"]);
-    },
-    then: function () {
-        log("ERROR: " + dev["wb-mr3_48/K1#error"]);
-        Notify.sendSMS(...);
-    }
+  asSoonAs: function () { // также возможно использовать параметр when
+    return (dev["wb-mr3_48/K1#error"]);
+  },
+  then: function () {
+    log("ERROR: " + dev["wb-mr3_48/K1#error"]);
+    Notify.sendSMS(...);
+  }
 });
 ```
 
@@ -692,14 +692,14 @@ defineRule("onRelayLost", {
 ```js
 // отправим смс как при потере так и восстановлении связи с реле
 defineRule("onChange", {
-    whenChanged: "wb-mr3_48/K1#error",
-    then: function (newValue, devName, cellName) {
-        if(newValue !== "") {
-          Notify.sendSMS("...", "relay is broken");
-        } else {
-          Notify.sendSMS("...", "relay is OK");
-        }
+  whenChanged: "wb-mr3_48/K1#error",
+  then: function (newValue, devName, cellName) {
+    if(newValue !== "") {
+      Notify.sendSMS("...", "relay is broken");
+    } else {
+      Notify.sendSMS("...", "relay is OK");
     }
+  }
 });
 ```
 
@@ -720,7 +720,7 @@ defineRule("onChange", {
 
 ```js
 getDevice("deviceID").controlsList().forEach(function(ctrl) {
-    ...
+  ...
 });
 ```
 
@@ -742,7 +742,7 @@ getDevice("deviceID").controlsList().forEach(function(ctrl) {
 Полный список методов объекта контрола смотрите ниже.
 
 Setters:
-* `setTitle(string)`
+* `setTitle(string)` или `setTitle({ "en": string, "ru": string })`
 * `setDescription(string)`
 * `setType(string)`
 * `setUnits(string)`
@@ -867,8 +867,8 @@ debug(fmt, [arg1 [, ...]]) // сокращение для log.debug(...)
 
 `trackMqtt(topic, callback())` подписывается на MQTT с указанным topic'ом, допустимы символы `#` и `+` значения передаются в функцию объектом *message* состоящим из: *.topic* — путь к топику, значение которого изменилось и *.value* — новое значение топика:
 ```js
-trackMqtt("/devices/wb-adc/controls/Vin", function(message){
-  log.info("name: {}, value: {}".format(message.topic, message.value))
+trackMqtt("/devices/wb-adc/controls/Vin", function(message) {
+  log.info("name: {}, value: {}".format(message.topic, message.value));
 });
 ```
 
@@ -917,20 +917,20 @@ publish("/abc/def/ghi", "0", 2, true);
 
 ```js
 defineRule({
- asSoonAs: function() {
-   return true
- },
+  asSoonAs: function() {
+    return true;
+  },
   then: function () {
-      runShellCommand("uname -a", {
-          captureOutput: true,
-          exitCallback: function(exitCode, capturedOutput) {
-              log(exitCode)
-              if (exitCode === 0) {
-                  log(capturedOutput)
-                  return;
-              }
-          }
-      });
+    runShellCommand("uname -a", {
+      captureOutput: true,
+      exitCallback: function(exitCode, capturedOutput) {
+        log(exitCode);
+        if (exitCode === 0) {
+          log(capturedOutput);
+          return;
+        }
+      }
+    });
   }
 });
 ```
@@ -962,9 +962,8 @@ WB_RULES_MODULES="/etc/wb-rules-modules:/usr/share/wb-rules-modules"
 
 Файл модуля:
 ```js
-
 exports.hello = function(text) {
-    log("Hello from module, {}", text);
+  log("Hello from module, {}", text);
 };
 
 exports.answer = 42;
@@ -980,7 +979,7 @@ log("The answer is {}", m.answer); // выведет в лог "The answer is 42
 **Важно!** Объект exports можно только дополнять значениями, но не переопределять:
 ```js
 exports = function(text) {
-    log("Hello from module, {}", text);
+  log("Hello from module, {}", text);
 };
 
 // Ожидание:
@@ -990,10 +989,10 @@ m("world"); // не работает
 // На практике m будет пустым объектом.
 // Та же проблема произойдёт при использовании такой конструкции:
 exports = {
-    hello: function(text) {
-        log("Hello from module, {}", world);
-    },
-    answer: 42
+  hello: function(text) {
+    log("Hello from module, {}", world);
+  },
+  answer: 42
 };
 ```
 
@@ -1009,11 +1008,11 @@ log(module.filename); // выведет /etc/wb-rules-modules/myModule.js
 Файл модуля `/etc/wb-rules-modules/myModule.js`:
 ```js
 exports.counter = function() {
-    if (module.static.count === undefined) {
-        module.static.count = 1;
-    }
-    log("Number of calls: {}", module.static.count);
-    module.static.count++;
+  if (module.static.count === undefined) {
+    module.static.count = 1;
+  }
+  log("Number of calls: {}", module.static.count);
+  module.static.count++;
 };
 ```
 Файл сценария `scenario1.js`:
@@ -1047,7 +1046,7 @@ Number of calls: 5
 Файл `/etc/wb-rules-modules/myModule.js`:
 ```js
 exports.hello = function() {
-    log(__filename);
+  log(__filename);
 };
 ```
 Файл сценария `/etc/wb-rules/scenario1.js`:
@@ -1121,7 +1120,7 @@ var myModule = require("path/to/myModule");
 
   // Описание получателей
   "recipients": [
-  {
+    {
       // Тип получателя - e-mail
       "type": "email",
 
@@ -1147,7 +1146,7 @@ var myModule = require("path/to/myModule");
 
       // Номер телефона получателя
       "to": "+78122128506",
-      
+
       // Команда для отправки SMS. Поле можно оставить пустым, чтобы использовать
       // gammu. В команде нужно указать как минимум один плейсхолдер {} - для номера. Тогда 
       // текст будет отправлен в stdin. Если указать 2 плейсхолдера - то в первый запишется
@@ -1182,7 +1181,7 @@ var myModule = require("path/to/myModule");
       // Если сообщение не указано, оно генерируется автоматически на основе
       // текущего значения контрола.
       "noAlarmMessage": "Important device is back on",
-    
+
       // Интервал (в секундах) отправки сообщений во время активности аларма.
       // Если это поле не указано, то сообщения отправляются только
       // при активации и деактивации аларма.
@@ -1211,7 +1210,7 @@ var myModule = require("path/to/myModule");
       // аларм деактивируется.
       "minValue": 10,
       "maxValue": 15,
-      
+
       // Сообщение, отправляемое при срабатываении аларма. {} Заменяется
       // на текущее значение контрола. Возможно использование {{ expr }}
       // для вычисления произвольного JS-выражения (см. "...".xformat(...)).
@@ -1244,19 +1243,19 @@ var myModule = require("path/to/myModule");
 
 ```js
 defineRule("myRule", {
-    ...
-    then: function() {
-        // здесь "my-storage" - имя хранилища
-        var ps = new PersistentStorage("my-storage", {global: true});
+  ...
+  then: function() {
+    // здесь "my-storage" - имя хранилища
+    var ps = new PersistentStorage("my-storage", {global: true});
 
-        // в постоянное хранилище можно записывать значения любого типа
-        ps["var1"] = 42;
-        ps["var2"] = "foo";
-        ps["var3"] = { name: "Temperature", value: 26.3 };
+    // в постоянное хранилище можно записывать значения любого типа
+    ps["var1"] = 42;
+    ps["var2"] = "foo";
+    ps["var3"] = { name: "Temperature", value: 26.3 };
 
-        // чтение из хранилища
-        log("Value of var1: " + ps["var1"])
-    }
+    // чтение из хранилища
+    log("Value of var1: " + ps["var1"]);
+  }
 }
 
 ```
@@ -1324,10 +1323,10 @@ log(ps["foo"]);
 test1 = 42;
 
 setTimeout(function myFuncOne() {
-    log("myFuncOne called");
-    log("test1: {}, test2: {}", test1, test2);
-    test1: 42, test2: (undefined)
-    // (будет выведена ошибка выполнения: ReferenceError: identifier 'test2' undefined)
+  log("myFuncOne called");
+  log("test1: {}, test2: {}", test1, test2);
+  test1: 42, test2: (undefined)
+  // (будет выведена ошибка выполнения: ReferenceError: identifier 'test2' undefined)
 }, 1000);
 ```
 
@@ -1337,16 +1336,16 @@ test1 = 84;
 test2 = "Hello";
 
 setTimeout(function myFuncTwo() {
-    log("myFuncTwo called");
-    log("test1: {}, test2: {}", test1, test2);
-    // раньше: test1: [либо 42, либо 84], test2: Hello
-   }, 1000);
+  log("myFuncTwo called");
+  log("test1: {}, test2: {}", test1, test2);
+  // раньше: test1: [либо 42, либо 84], test2: Hello
+}, 1000);
 ```
 В версии 1.7 для изоляции правил рекомендовалось использовать рекомендовалось использовать замыкание, т.е. оборачивание кода сценария в конструкцию:
 
 ```js
 (function() {
-    // код сценария идёт здесь
+  // код сценария идёт здесь
 })();
 ```
 Начиная с версии 2.0, в подобной конструкции нет необходимости. Тем не менее, старые сценарии, использующие эту конструкцию, продолжат работу без изменений в поведении.
@@ -1452,4 +1451,3 @@ wbdev hmake clean && wbdev hmake amd64
 ```
 wbdev gdeb
 ```
-

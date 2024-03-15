@@ -1579,14 +1579,19 @@ func (engine *ESEngine) esVdevCellSetDescription(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esVdevCellSetTitle(ctx *ESContext) int {
-	if !ctx.IsString(0) {
+	if !ctx.IsString(0) && !ctx.IsObject(0) {
 		wbgong.Error.Printf("setTitle(): bad parameters")
 		return duktape.DUK_RET_ERROR
 	}
-	title := ctx.GetString(0)
-
 	m := make(wbgong.Title)
-	m["en"] = title
+	if ctx.IsObject(0) {
+		for k, v := range ctx.GetJSObject(0).(objx.Map) {
+			m[k] = v.(string)
+		}
+	} else if ctx.IsString(0) {
+		m["en"] = ctx.GetString(0)
+	}
+
 	jsonTitle, _ := json.Marshal(m)
 
 	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
