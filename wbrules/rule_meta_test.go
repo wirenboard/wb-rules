@@ -111,6 +111,7 @@ func (s *RuleMetaSuite) TestVirtualDeviceOrder() {
 		"driver -> /devices/vDevWithOrder/controls/test2: [world] (QoS 1, retained)",
 		"driver -> /devices/vDevWithOrder/meta/driver: [wbrules] (QoS 1, retained)",
 		"driver -> /devices/vDevWithOrder/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/vDevWithOrder/meta: [{\"driver\":\"wbrules\"}] (QoS 1, retained)",
 		"tst -> /devices/testDevice/controls/vDevWithOrder/on: [1] (QoS 1)",
 	)
 }
@@ -127,6 +128,7 @@ func (s *RuleMetaSuite) TestVirtualDeviceControlMetaTitle() {
 		"driver -> /devices/vDevWithControlMetaTitle/controls/test1: [1] (QoS 1, retained)",
 		"driver -> /devices/vDevWithControlMetaTitle/meta/driver: [wbrules] (QoS 1, retained)",
 		"driver -> /devices/vDevWithControlMetaTitle/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaTitle/meta: [{\"driver\":\"wbrules\"}] (QoS 1, retained)",
 		"tst -> /devices/testDevice/controls/createVDevWithControlMetaTitle/on: [1] (QoS 1)",
 	)
 	s.VerifyEmpty()
@@ -145,6 +147,7 @@ func (s *RuleMetaSuite) TestVirtualDeviceControlMetaUnits() {
 		"driver -> /devices/vDevWithControlMetaUnits/controls/test1: [1] (QoS 1, retained)",
 		"driver -> /devices/vDevWithControlMetaUnits/meta/driver: [wbrules] (QoS 1, retained)",
 		"driver -> /devices/vDevWithControlMetaUnits/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaUnits/meta: [{\"driver\":\"wbrules\"}] (QoS 1, retained)",
 		"tst -> /devices/testDevice/controls/createVDevWithControlMetaUnits/on: [1] (QoS 1)",
 	)
 	s.VerifyEmpty()

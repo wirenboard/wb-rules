@@ -4,6 +4,7 @@
 *.so
 
 # Folders
+.DS_Store
 _obj
 _test
 

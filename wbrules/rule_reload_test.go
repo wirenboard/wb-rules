@@ -86,6 +86,7 @@ func (s *RuleReloadSuite) TestReload() {
 		"driver -> /devices/vdev/controls/someCell/meta: [{\"order\":1,\"readonly\":false,\"type\":\"switch\"}] (QoS 1, retained)",
 		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
 		"driver -> /devices/vdev/controls/someCell: [] (QoS 1, retained)",
+		"driver -> /devices/vdev/meta: [{\"driver\":\"wbrules\",\"title\":{\"en\":\"VDev\"}}] (QoS 1, retained)",
 		"driver -> /devices/vdev/meta/driver: [] (QoS 1, retained)",
 		"driver -> /devices/vdev/meta/driver: [wbrules] (QoS 1, retained)",
 		"driver -> /devices/vdev/meta/name: [VDev] (QoS 1, retained)",

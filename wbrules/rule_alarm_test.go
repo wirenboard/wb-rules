@@ -49,6 +49,7 @@ func (s *AlarmSuite) loadAlarmsSkipping(skipLine string) {
 	s.engine.Refresh()
 
 	s.VerifyUnordered(
+		"driver -> /devices/sampleAlarms/meta: [{\"driver\":\"wbrules\",\"title\":{\"en\":\"Sample Alarms\"}}] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/meta/name: [Sample Alarms] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/meta/driver: [wbrules] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta/type: [alarm] (QoS 1, retained)",

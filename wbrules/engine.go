@@ -1522,7 +1522,7 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 		}
 	}
 	if title, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_TITLE]; ok {
-		if ftitle, ok := title.(map[string]interface {}); ok {
+		if ftitle, ok := title.(map[string]interface{}); ok {
 			titleMap := make(wbgong.Title)
 			for key, value := range ftitle {
 				if str, ok := value.(string); ok {
@@ -1628,8 +1628,23 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	devArgs := wbgong.NewLocalDeviceArgs().SetId(devId).SetVirtual(true)
 
 	// try to get title
-	if obj.Has(VDEV_DESCR_PROP_TITLE) {
-		devArgs.SetTitle(obj.Get(VDEV_DESCR_PROP_TITLE).Str(devId))
+	if title, ok := obj[VDEV_DESCR_PROP_TITLE]; ok {
+		if ftitle, ok := title.(map[string]interface{}); ok {
+			titleMap := make(wbgong.Title)
+			for key, value := range ftitle {
+				if str, ok := value.(string); ok {
+					titleMap[key] = str
+				}
+			}
+			devArgs.SetTitle(titleMap)
+		} else if ftitle, ok := title.(string); ok {
+			titleMap := make(wbgong.Title)
+			titleMap["en"] = ftitle
+			devArgs.SetTitle(titleMap)
+		} else {
+			return fmt.Errorf("%s: non-string/non-map value %v of title property",
+				devId, title)
+		}
 	}
 
 	// get controls list

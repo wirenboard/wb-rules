@@ -1,3 +1,9 @@
+wb-rules (2.19.1) stable; urgency=medium
+
+  * Add device title translation support
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 20 Mar 2024 10:15:00 +0400
+
 wb-rules (2.19.0) stable; urgency=medium
 
   * Add title translation support
