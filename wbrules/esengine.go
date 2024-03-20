@@ -1442,11 +1442,16 @@ func (engine *ESEngine) esVdevCellGetTitle(ctx *ESContext) int {
 		return duk_ret
 	}
 
+	lang := "en"
+	if ctx.IsString(0) {
+		lang = ctx.GetString(0)
+	}
+
 	var titleStr string
 
 	title := ctrlProxy.getControl().GetTitle()
 
-	if val, ok := title["en"]; ok {
+	if val, ok := title[lang]; ok {
 		titleStr = val
 	}
 
