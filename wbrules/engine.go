@@ -26,6 +26,7 @@ const (
 	NO_CALLBACK                   = ESCallback(0)
 	RULE_ENGINE_SETTINGS_DEV_NAME = "wbrules"
 	RULE_DEBUG_CELL_NAME          = "Rule debugging"
+	RULE_DEBUG_CELL_NAME_RU       = "Отладка правил"
 
 	SYNC_QUEUE_LEN = 32
 
@@ -929,9 +930,16 @@ func (engine *RuleEngine) WhenEngineReady(thunk func()) {
 
 func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
 	err := engine.DefineVirtualDevice(RULE_ENGINE_SETTINGS_DEV_NAME, objx.Map{
-		"title": "Rule Engine Settings",
+		"title": objx.Map{
+			"en": "Rule Engine Settings",
+			"ru": "Настройки движка правил",
+		},
 		"cells": objx.Map{
 			RULE_DEBUG_CELL_NAME: objx.Map{
+				"title": objx.Map{
+					"en": RULE_DEBUG_CELL_NAME,
+					"ru": RULE_DEBUG_CELL_NAME_RU,
+				},
 				"type":  "switch",
 				"value": atomic.LoadUint32(&engine.debugEnabled),
 			},
