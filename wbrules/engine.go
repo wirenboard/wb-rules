@@ -1546,7 +1546,7 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 			titleMap = make(wbgong.Title)
 			titleMap["en"] = t
 		default:
-			return fmt.Errorf("%s: non-string/non-map value type %T of title property", devId, title)
+			return fmt.Errorf("%s/%s: non-string/non-map value type %T of title property", devId, ctrlId, title)
 		}
 
 		args.SetTitle(titleMap)
