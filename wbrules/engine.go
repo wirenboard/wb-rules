@@ -1535,6 +1535,13 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 		var titleMap wbgong.Title
 
 		switch t := title.(type) {
+		case map[string]interface{}:
+			titleMap = make(wbgong.Title)
+			for key, value := range t {
+				if str, ok := value.(string); ok {
+					titleMap[key] = str
+				}
+			}
 		case objx.Map:
 			titleMap = make(wbgong.Title)
 			for key, value := range t {
@@ -1644,6 +1651,13 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		var titleMap wbgong.Title
 
 		switch t := title.(type) {
+		case map[string]interface{}:
+			titleMap = make(wbgong.Title)
+			for key, value := range t {
+				if str, ok := value.(string); ok {
+					titleMap[key] = str
+				}
+			}
 		case objx.Map:
 			titleMap = make(wbgong.Title)
 			for key, value := range t {
