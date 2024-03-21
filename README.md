@@ -755,7 +755,7 @@ Setters:
 
 Getters:
 * `getId() => string`
-* `getTitle() => string`
+* `getTitle(string?) => string` (опциональный параметр - язык заголовка, "en" по умолчанию)
 * `getDescription() => string`
 * `getType() => string`
 * `getUnits() => string`
