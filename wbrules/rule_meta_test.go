@@ -27,13 +27,13 @@ func (s *RuleMetaSuite) TestMeta() {
 		"driver -> /devices/testDevice/controls/textControl/meta/readonly: [1] (QoS 1, retained)",
 		"driver -> /devices/testDevice/controls/textControl/meta/type: [range] (QoS 1, retained)",
 		"driver -> /devices/testDevice/controls/textControl/meta/units: [meters] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"error\":\"error text\",\"max\":255,\"min\":5,\"order\":4,\"readonly\":false,\"type\":\"range\",\"units\":\"meters\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"error\":\"error text\",\"max\":255,\"min\":5,\"order\":4,\"readonly\":false,\"type\":\"range\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"error\":\"error text\",\"max\":255,\"min\":5,\"order\":5,\"readonly\":false,\"type\":\"range\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"error\":\"error text\",\"max\":255,\"order\":5,\"readonly\":false,\"type\":\"range\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"error\":\"error text\",\"order\":5,\"readonly\":false,\"type\":\"range\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"error\":\"error text\",\"order\":5,\"readonly\":false,\"type\":\"text\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"error\":\"error text\",\"order\":5,\"readonly\":false,\"type\":\"text\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"error text\",\"max\":255,\"min\":5,\"order\":4,\"readonly\":false,\"type\":\"range\",\"units\":\"meters\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"error text\",\"max\":255,\"min\":5,\"order\":4,\"readonly\":false,\"type\":\"range\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"error text\",\"max\":255,\"min\":5,\"order\":5,\"readonly\":false,\"type\":\"range\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"error text\",\"max\":255,\"order\":5,\"readonly\":false,\"type\":\"range\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"error text\",\"order\":5,\"readonly\":false,\"type\":\"range\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"error text\",\"order\":5,\"readonly\":false,\"type\":\"text\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"error text\",\"order\":5,\"readonly\":false,\"type\":\"text\"}] (QoS 1, retained)",
 		"tst -> /devices/testDevice/controls/startControl/on: [1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [got startControl, changed: testDevice/startControl -> true] (QoS 1)",
 	)
@@ -50,14 +50,14 @@ func (s *RuleMetaSuite) TestMeta() {
 		"driver -> /devices/testDevice/controls/textControl/meta/readonly: [0] (QoS 1, retained)",
 		"driver -> /devices/testDevice/controls/textControl/meta/type: [text] (QoS 1, retained)",
 		"driver -> /devices/testDevice/controls/textControl/meta/units: [chars] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"error\":\"\",\"max\":255,\"min\":5,\"order\":4,\"readonly\":true,\"type\":\"range\",\"units\":\"meters\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"error\":\"error text\",\"max\":255,\"min\":5,\"order\":4,\"readonly\":true,\"type\":\"range\",\"units\":\"meters\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"error\":\"\",\"max\":255,\"min\":5,\"order\":4,\"readonly\":true,\"type\":\"range\",\"units\":\"meters\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"error\":\"\",\"max\":255,\"min\":5,\"order\":4,\"readonly\":true,\"type\":\"text\",\"units\":\"meters\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"error\":\"\",\"min\":5,\"order\":4,\"readonly\":true,\"type\":\"text\",\"units\":\"meters\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"error\":\"\",\"order\":4,\"readonly\":true,\"type\":\"text\",\"units\":\"meters\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"error\":\"\",\"order\":5,\"readonly\":true,\"type\":\"text\",\"units\":\"chars\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"error\":\"\",\"order\":5,\"readonly\":true,\"type\":\"text\",\"units\":\"meters\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"\",\"max\":255,\"min\":5,\"order\":4,\"readonly\":true,\"type\":\"range\",\"units\":\"meters\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"error text\",\"max\":255,\"min\":5,\"order\":4,\"readonly\":true,\"type\":\"range\",\"units\":\"meters\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"\",\"max\":255,\"min\":5,\"order\":4,\"readonly\":true,\"type\":\"range\",\"units\":\"meters\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"\",\"max\":255,\"min\":5,\"order\":4,\"readonly\":true,\"type\":\"text\",\"units\":\"meters\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"\",\"min\":5,\"order\":4,\"readonly\":true,\"type\":\"text\",\"units\":\"meters\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"\",\"order\":4,\"readonly\":true,\"type\":\"text\",\"units\":\"meters\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"\",\"order\":5,\"readonly\":true,\"type\":\"text\",\"units\":\"chars\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"\",\"order\":5,\"readonly\":true,\"type\":\"text\",\"units\":\"meters\"}] (QoS 1, retained)",
 		"tst -> /devices/testDevice/controls/startControl/on: [0] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [got startControl, changed: testDevice/startControl -> false] (QoS 1)",
 	)
@@ -66,7 +66,7 @@ func (s *RuleMetaSuite) TestMeta() {
 	s.publish("/devices/somedev/controls/sw/meta/error", "another error", "somedev/sw", "testDevice/switchControl")
 	s.VerifyUnordered(
 		"driver -> /devices/testDevice/controls/switchControl: [1] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"error\":\"\",\"order\":5,\"readonly\":false,\"type\":\"text\",\"units\":\"chars\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"\",\"order\":5,\"readonly\":false,\"type\":\"text\",\"units\":\"chars\"}] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw/meta/error: [another error] (QoS 1, retained)",
 		"wbrules-log -> /wbrules/log/info: [got sw, changed: somedev/sw#error -> another error] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [somedev/sw = false] (QoS 1)",
@@ -111,6 +111,7 @@ func (s *RuleMetaSuite) TestVirtualDeviceOrder() {
 		"driver -> /devices/vDevWithOrder/controls/test2: [world] (QoS 1, retained)",
 		"driver -> /devices/vDevWithOrder/meta/driver: [wbrules] (QoS 1, retained)",
 		"driver -> /devices/vDevWithOrder/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/vDevWithOrder/meta: [{\"driver\":\"wbrules\"}] (QoS 1, retained)",
 		"tst -> /devices/testDevice/controls/vDevWithOrder/on: [1] (QoS 1)",
 	)
 }
@@ -127,6 +128,7 @@ func (s *RuleMetaSuite) TestVirtualDeviceControlMetaTitle() {
 		"driver -> /devices/vDevWithControlMetaTitle/controls/test1: [1] (QoS 1, retained)",
 		"driver -> /devices/vDevWithControlMetaTitle/meta/driver: [wbrules] (QoS 1, retained)",
 		"driver -> /devices/vDevWithControlMetaTitle/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaTitle/meta: [{\"driver\":\"wbrules\"}] (QoS 1, retained)",
 		"tst -> /devices/testDevice/controls/createVDevWithControlMetaTitle/on: [1] (QoS 1)",
 	)
 	s.VerifyEmpty()
@@ -145,6 +147,7 @@ func (s *RuleMetaSuite) TestVirtualDeviceControlMetaUnits() {
 		"driver -> /devices/vDevWithControlMetaUnits/controls/test1: [1] (QoS 1, retained)",
 		"driver -> /devices/vDevWithControlMetaUnits/meta/driver: [wbrules] (QoS 1, retained)",
 		"driver -> /devices/vDevWithControlMetaUnits/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/vDevWithControlMetaUnits/meta: [{\"driver\":\"wbrules\"}] (QoS 1, retained)",
 		"tst -> /devices/testDevice/controls/createVDevWithControlMetaUnits/on: [1] (QoS 1)",
 	)
 	s.VerifyEmpty()

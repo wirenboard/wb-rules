@@ -743,6 +743,7 @@ getDevice("deviceID").controlsList().forEach(function(ctrl) {
 
 Setters:
 * `setTitle(string)` или `setTitle({ "en": string, "ru": string })`
+* `setEnumTitles(object)` (параметр вида `{'val1': {'en': 'Title1', 'ru': 'Заголовок1'}, ...}`)
 * `setDescription(string)`
 * `setType(string)`
 * `setUnits(string)`
@@ -755,7 +756,7 @@ Setters:
 
 Getters:
 * `getId() => string`
-* `getTitle() => string`
+* `getTitle(string?) => string` (опциональный параметр - язык заголовка, "en" по умолчанию)
 * `getDescription() => string`
 * `getType() => string`
 * `getUnits() => string`

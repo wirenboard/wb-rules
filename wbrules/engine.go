@@ -21,11 +21,14 @@ type EngineLogLevel int
 type TimerId uint64
 
 const (
-	NO_TIMER_NAME                 = ""
-	RULES_CAPACITY                = 256
-	NO_CALLBACK                   = ESCallback(0)
-	RULE_ENGINE_SETTINGS_DEV_NAME = "wbrules"
-	RULE_DEBUG_CELL_NAME          = "Rule debugging"
+	NO_TIMER_NAME                     = ""
+	RULES_CAPACITY                    = 256
+	NO_CALLBACK                       = ESCallback(0)
+	RULE_ENGINE_SETTINGS_DEV_NAME     = "wbrules"
+	RULE_ENGINE_SETTINGS_DEV_TITLE    = "Rule engine settings"
+	RULE_ENGINE_SETTINGS_DEV_TITLE_RU = "Настройки движка правил"
+	RULE_DEBUG_CELL_NAME              = "Rule debugging"
+	RULE_DEBUG_CELL_NAME_RU           = "Отладка правил"
 
 	SYNC_QUEUE_LEN = 32
 
@@ -428,6 +431,14 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 				return err
 			}
 			if err := ctrl.SetTitle(t)(); err != nil {
+				return err
+			}
+		case wbgong.CONV_META_SUBTOPIC_CONTROL_ENUM:
+			var t map[string]wbgong.Title
+			if err := json.Unmarshal([]byte(metaValue), &t); err != nil {
+				return err
+			}
+			if err := ctrl.SetEnumTitles(t)(); err != nil {
 				return err
 			}
 		case wbgong.CONV_META_SUBTOPIC_ERROR:
@@ -929,9 +940,16 @@ func (engine *RuleEngine) WhenEngineReady(thunk func()) {
 
 func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
 	err := engine.DefineVirtualDevice(RULE_ENGINE_SETTINGS_DEV_NAME, objx.Map{
-		"title": "Rule Engine Settings",
+		"title": objx.Map{
+			"en": RULE_ENGINE_SETTINGS_DEV_TITLE,
+			"ru": RULE_ENGINE_SETTINGS_DEV_TITLE_RU,
+		},
 		"cells": objx.Map{
 			RULE_DEBUG_CELL_NAME: objx.Map{
+				"title": objx.Map{
+					"en": RULE_DEBUG_CELL_NAME,
+					"ru": RULE_DEBUG_CELL_NAME_RU,
+				},
 				"type":  "switch",
 				"value": atomic.LoadUint32(&engine.debugEnabled),
 			},
@@ -1522,22 +1540,31 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 		}
 	}
 	if title, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_TITLE]; ok {
-		if ftitle, ok := title.(map[string]interface {}); ok {
-			titleMap := make(wbgong.Title)
-			for key, value := range ftitle {
+		var titleMap wbgong.Title
+
+		switch t := title.(type) {
+		case map[string]interface{}:
+			titleMap = make(wbgong.Title)
+			for key, value := range t {
 				if str, ok := value.(string); ok {
 					titleMap[key] = str
 				}
 			}
-			args.SetTitle(titleMap)
-		} else if ftitle, ok := title.(string); ok {
-			titleMap := make(wbgong.Title)
-			titleMap["en"] = ftitle
-			args.SetTitle(titleMap)
-		} else {
-			return fmt.Errorf("%s/%s: non-string/non-map value %v of title property",
-				devId, ctrlId, title)
+		case objx.Map:
+			titleMap = make(wbgong.Title)
+			for key, value := range t {
+				if str, ok := value.(string); ok {
+					titleMap[key] = str
+				}
+			}
+		case string:
+			titleMap = make(wbgong.Title)
+			titleMap["en"] = t
+		default:
+			return fmt.Errorf("%s/%s: non-string/non-map value type %T of title property", devId, ctrlId, title)
 		}
+
+		args.SetTitle(titleMap)
 	}
 	return nil
 }
@@ -1628,8 +1655,32 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	devArgs := wbgong.NewLocalDeviceArgs().SetId(devId).SetVirtual(true)
 
 	// try to get title
-	if obj.Has(VDEV_DESCR_PROP_TITLE) {
-		devArgs.SetTitle(obj.Get(VDEV_DESCR_PROP_TITLE).Str(devId))
+	if title, ok := obj[VDEV_DESCR_PROP_TITLE]; ok {
+		var titleMap wbgong.Title
+
+		switch t := title.(type) {
+		case map[string]interface{}:
+			titleMap = make(wbgong.Title)
+			for key, value := range t {
+				if str, ok := value.(string); ok {
+					titleMap[key] = str
+				}
+			}
+		case objx.Map:
+			titleMap = make(wbgong.Title)
+			for key, value := range t {
+				if str, ok := value.(string); ok {
+					titleMap[key] = str
+				}
+			}
+		case string:
+			titleMap = make(wbgong.Title)
+			titleMap["en"] = t
+		default:
+			return fmt.Errorf("%s: non-string/non-map value type %T of title property", devId, title)
+		}
+
+		devArgs.SetTitle(titleMap)
 	}
 
 	// get controls list

@@ -44,6 +44,10 @@ defineVirtualDevice('testDevice', {
   },
 });
 
+getDevice('testDevice')
+  .getControl('textControl')
+  .setEnumTitles({ txt0: { en: 'zero' }, txt1: { en: 'one' } });
+
 defineRule('onChangeStartControl', {
   whenChanged: 'testDevice/startControl',
   then: function (newValue, devName, cellName) {
