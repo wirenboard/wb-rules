@@ -1,6 +1,7 @@
 wb-rules (2.20.0) stable; urgency=medium
 
   * Add device title translation support
+  * Add setEnumTitles() to js API
 
  -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 20 Mar 2024 10:15:00 +0400
 

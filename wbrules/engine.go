@@ -433,6 +433,14 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 			if err := ctrl.SetTitle(t)(); err != nil {
 				return err
 			}
+		case wbgong.CONV_META_SUBTOPIC_CONTROL_ENUM:
+			var t map[string]wbgong.Title
+			if err := json.Unmarshal([]byte(metaValue), &t); err != nil {
+				return err
+			}
+			if err := ctrl.SetEnumTitles(t)(); err != nil {
+				return err
+			}
 		case wbgong.CONV_META_SUBTOPIC_ERROR:
 			return ctrl.SetError(errors.New(metaValue))()
 		case wbgong.CONV_META_SUBTOPIC_MAX:

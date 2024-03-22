@@ -331,6 +331,7 @@ func (engine *ESEngine) initVdevCellPrototype(ctx *ESContext) {
 		"setDescription": engine.esVdevCellSetDescription,
 		"getDescription": engine.esVdevCellGetDescription,
 		"setTitle":       engine.esVdevCellSetTitle,
+		"setEnumTitles":  engine.esVdevCellSetEnumTitles,
 		"getTitle":       engine.esVdevCellGetTitle,
 		"setType":        engine.esVdevCellSetType,
 		"getType":        engine.esVdevCellGetType,
@@ -1605,6 +1606,31 @@ func (engine *ESEngine) esVdevCellSetTitle(ctx *ESContext) int {
 	}
 
 	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_CONTROL_TITLE, string(jsonTitle))
+	return 0
+}
+
+func (engine *ESEngine) esVdevCellSetEnumTitles(ctx *ESContext) int {
+	if !ctx.IsObject(0) {
+		wbgong.Error.Printf("setEnumTitles(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+
+	m := make(map[string]wbgong.Title)
+	for value, title := range ctx.GetJSObject(0).(objx.Map) {
+		m[value] = make(wbgong.Title)
+		for k, v := range title.(map[string]interface{}) {
+			m[value][k] = v.(string)
+		}
+	}
+
+	jsonEnumTitles, _ := json.Marshal(m)
+
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
+	}
+
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_CONTROL_ENUM, string(jsonEnumTitles))
 	return 0
 }
 
