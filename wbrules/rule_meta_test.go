@@ -66,7 +66,7 @@ func (s *RuleMetaSuite) TestMeta() {
 	s.publish("/devices/somedev/controls/sw/meta/error", "another error", "somedev/sw", "testDevice/switchControl")
 	s.VerifyUnordered(
 		"driver -> /devices/testDevice/controls/switchControl: [1] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"error\":\"\",\"order\":5,\"readonly\":false,\"type\":\"text\",\"units\":\"chars\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"old description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"\",\"order\":5,\"readonly\":false,\"type\":\"text\",\"units\":\"chars\"}] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/sw/meta/error: [another error] (QoS 1, retained)",
 		"wbrules-log -> /wbrules/log/info: [got sw, changed: somedev/sw#error -> another error] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [somedev/sw = false] (QoS 1)",
