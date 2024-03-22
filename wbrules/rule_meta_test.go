@@ -33,7 +33,7 @@ func (s *RuleMetaSuite) TestMeta() {
 		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"error text\",\"max\":255,\"order\":5,\"readonly\":false,\"type\":\"range\"}] (QoS 1, retained)",
 		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"error text\",\"order\":5,\"readonly\":false,\"type\":\"range\"}] (QoS 1, retained)",
 		"driver -> /devices/testDevice/controls/textControl/meta: [{\"description\":\"new description\",\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"error text\",\"order\":5,\"readonly\":false,\"type\":\"text\"}] (QoS 1, retained)",
-		"driver -> /devices/testDevice/controls/textControl/meta: [{\"error\":\"error text\",\"order\":5,\"readonly\":false,\"type\":\"text\"}] (QoS 1, retained)",
+		"driver -> /devices/testDevice/controls/textControl/meta: [{\"enum\":{\"txt0\":{\"en\":\"zero\"},\"txt1\":{\"en\":\"one\"}},\"error\":\"error text\",\"order\":5,\"readonly\":false,\"type\":\"text\"}] (QoS 1, retained)",
 		"tst -> /devices/testDevice/controls/startControl/on: [1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [got startControl, changed: testDevice/startControl -> true] (QoS 1)",
 	)
