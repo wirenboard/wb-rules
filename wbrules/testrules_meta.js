@@ -20,14 +20,9 @@ defineVirtualDevice('testDevice', {
       type: 'text',
       value: 'some text',
       readonly: false,
-    },
-    valueControl: {
-      type: 'value',
-      value: 10,
-      readonly: true,
       enum: {
-        0: { en: 'Off' },
-        1: { en: 'On' },
+        txt0: { en: 'zero' },
+        txt1: { en: 'one' },
       },
     },
     startControl: {
@@ -52,10 +47,6 @@ defineVirtualDevice('testDevice', {
     },
   },
 });
-
-getDevice('testDevice')
-  .getControl('textControl')
-  .setEnumTitles({ txt0: { en: 'zero' }, txt1: { en: 'one' } });
 
 defineRule('onChangeStartControl', {
   whenChanged: 'testDevice/startControl',
@@ -83,18 +74,11 @@ defineRule('onChangeStartControl', {
       dev['testDevice/textControl#order'] = '5';
       dev['testDevice/textControl#units'] = 'chars';
       dev['testDevice/textControl#readonly'] = '0';
-    }
-  },
-});
 
-defineRule('onChangeValueControl', {
-  whenChanged: 'testDevice/valueControl',
-  then: function (newValue, devName, cellName) {
-    log(
-      'got valueControl, changed: {} -> {}',
-      cellSpec(devName, cellName),
-      newValue === undefined ? '(none)' : newValue
-    );
+      getDevice('testDevice')
+        .getControl('textControl')
+        .setEnumTitles({ str0: { en: 'Off' }, str1: { en: 'On' } });
+    }
   },
 });
 
