@@ -87,6 +87,17 @@ defineRule('onChangeStartControl', {
   },
 });
 
+defineRule('onChangeValueControl', {
+  whenChanged: 'testDevice/valueControl',
+  then: function (newValue, devName, cellName) {
+    log(
+      'got valueControl, changed: {} -> {}',
+      cellSpec(devName, cellName),
+      newValue === undefined ? '(none)' : newValue
+    );
+  },
+});
+
 defineRule('onChangeSwitchControl', {
   whenChanged: 'testDevice/switchControl#error',
   then: function (newValue, devName, cellName) {
