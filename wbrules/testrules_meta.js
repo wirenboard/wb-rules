@@ -23,6 +23,7 @@ defineVirtualDevice('testDevice', {
     },
     valueControl: {
       type: 'value',
+      value: 10,
       readonly: true,
       enum: {
         0: { en: 'Off' },
