@@ -1,3 +1,9 @@
+wb-rules (2.20.1) stable; urgency=medium
+
+  * Allow specifying enum titles in virtual device definition
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 22 Mar 2024 17:15:00 +0400
+
 wb-rules (2.20.0) stable; urgency=medium
 
   * Add device title translation support
@@ -166,7 +172,7 @@ wb-rules (2.11.1) stable; urgency=medium
   * Updated documentation
 
  -- Alexandr Degtyarev <a.degtyarev@wirenboard.com>  Wed, 29 Dec 2021 16:07:00 +0400
- 
+
 wb-rules (2.11.0) stable; urgency=medium
 
   * Add support for Wiren Board 7 (wbgo-related)
@@ -419,7 +425,7 @@ wb-rules (2.1~alpha1) stable; urgency=medium
 
 wb-rules (2.0~beta3) stable; urgency=medium
 
-  * Fix: hang on boot on high load 
+  * Fix: hang on boot on high load
 
  -- Nikita Maslov <n.maslov@contactless.ru>  Wed, 15 Mar 2017 19:00:07 +0300
 
@@ -454,11 +460,11 @@ wb-rules (1.6.8) stable; urgency=medium
  -- Evgeny Boger <boger@contactless.ru>  Fri, 19 Aug 2016 17:54:47 +0300
 
 wb-rules (1.6.7) stable; urgency=medium
-  
+
   * adds support for delays to alarm engine:
       alarmDelayMs: if set, the alarm condition must be violated for
           the specified time interval (in ms) for the alarm to be triggered
-      noAlarmDelayMs: if set,  the alarm condition must be met for the 
+      noAlarmDelayMs: if set, the alarm condition must be met for the
           specified time interval (in ms) for the alarm to be cleared
 
  -- Evgeny Boger <boger@contactless.ru>  Tue, 24 May 2016 20:27:21 +0300

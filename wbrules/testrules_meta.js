@@ -20,6 +20,10 @@ defineVirtualDevice('testDevice', {
       type: 'text',
       value: 'some text',
       readonly: false,
+      enum: {
+        txt0: { en: 'zero' },
+        txt1: { en: 'one' },
+      },
     },
     startControl: {
       type: 'switch',
@@ -43,10 +47,6 @@ defineVirtualDevice('testDevice', {
     },
   },
 });
-
-getDevice('testDevice')
-  .getControl('textControl')
-  .setEnumTitles({ txt0: { en: 'zero' }, txt1: { en: 'one' } });
 
 defineRule('onChangeStartControl', {
   whenChanged: 'testDevice/startControl',
@@ -74,6 +74,10 @@ defineRule('onChangeStartControl', {
       dev['testDevice/textControl#order'] = '5';
       dev['testDevice/textControl#units'] = 'chars';
       dev['testDevice/textControl#readonly'] = '0';
+
+      getDevice('testDevice')
+        .getControl('textControl')
+        .setEnumTitles({ str0: { en: 'Off' }, str1: { en: 'On' } });
     }
   },
 });

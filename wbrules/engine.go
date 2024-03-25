@@ -1502,6 +1502,33 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 		}
 	}
 
+	if ctrlType == wbgong.CONV_TYPE_VALUE || ctrlType == wbgong.CONV_TYPE_TEXT {
+		enum, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_ENUM]
+		if ok {
+			var enumTitlesMap map[string]wbgong.Title
+
+			switch t := enum.(type) {
+			case map[string]interface{}:
+				enumTitlesMap = make(map[string]wbgong.Title)
+				for key, value := range t {
+					if submap, ok := value.(map[string]interface{}); ok {
+						titleMap := make(wbgong.Title)
+						for lang, title := range submap {
+							if str, ok := title.(string); ok {
+								titleMap[lang] = str
+							}
+						}
+						enumTitlesMap[key] = titleMap
+					}
+				}
+			default:
+				return fmt.Errorf("%s/%s: non-map value type %T of enum property", devId, ctrlId, enum)
+			}
+
+			args.SetEnumTitles(enumTitlesMap)
+		}
+	}
+
 	// get properties for 'range' type
 	// FIXME: deprecated
 	if ctrlType == wbgong.CONV_TYPE_RANGE {
