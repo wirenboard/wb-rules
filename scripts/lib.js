@@ -581,9 +581,10 @@ var Alarms = (function () {
       return d[ref.control];
     }
 
-    function setAlarmActiveCell(active) {
+    function setAlarmActiveCell(active, title) {
       active = !!active;
       if (dev[alarmDeviceName][cellName] !== active) dev[alarmDeviceName][cellName] = active;
+      getDevice(alarmDeviceName).getControl(cellName).setTitle(title);
     }
 
     var wasActive = false,
@@ -607,7 +608,7 @@ var Alarms = (function () {
     }
 
     function activateAlarm() {
-      setAlarmActiveCell(true);
+      setAlarmActiveCell(true, maybeFormat(alarmMessage, cellValue()));
 
       remainingCount = maxCount;
 
@@ -620,7 +621,7 @@ var Alarms = (function () {
     }
 
     function deactivateAlarm() {
-      setAlarmActiveCell(false);
+      setAlarmActiveCell(false, maybeFormat(noAlarmMessage, cellValue()));
       stopRepeating();
       notify(maybeFormat(noAlarmMessage, cellValue()));
       wasActive = false;
@@ -646,7 +647,7 @@ var Alarms = (function () {
 
             if (!wasActive) {
               if (alarmSrc.alarmDelayMs > 0)
-                activateTimerId = setTimeout(function() {
+                activateTimerId = setTimeout(function () {
                   activateTimerId = null;
                   activateAlarm();
                 }, alarmSrc.alarmDelayMs);
@@ -674,7 +675,7 @@ var Alarms = (function () {
             // alarms remaining from before wb-rules startup /
             // loading of this rule file.
             if (!wasTriggered) {
-              setAlarmActiveCell(false);
+              setAlarmActiveCell(false, maybeFormat(noAlarmMessage, cellValue()));
               return;
             }
 
@@ -682,7 +683,7 @@ var Alarms = (function () {
 
             if (wasActive) {
               if (alarmSrc.noAlarmDelayMs > 0) {
-                deactivateTimerId = setTimeout(function() {
+                deactivateTimerId = setTimeout(function () {
                   deactivateTimerId = null;
                   deactivateAlarm();
                 }, alarmSrc.noAlarmDelayMs);
@@ -723,6 +724,7 @@ var Alarms = (function () {
     var deviceDef = {
       cells: {
         log: {
+          title: { en: 'Log', ru: 'Лог' },
           type: 'text',
           value: '',
           readonly: true,

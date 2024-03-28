@@ -1,3 +1,9 @@
+wb-rules (2.20.2) stable; urgency=medium
+
+  * Show alarm titles
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 28 Mar 2024 17:33:00 +0400
+
 wb-rules (2.20.1) stable; urgency=medium
 
   * Allow specifying enum titles in virtual device definition
