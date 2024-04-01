@@ -55,7 +55,7 @@ func (s *AlarmSuite) loadAlarmsSkipping(skipLine string) {
 		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta/type: [alarm] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta/readonly: [1] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta/order: [1] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta: [{\"order\":1,\"readonly\":true,\"title\":{\"en\":\"Important device is back on\"},\"type\":\"alarm\"}] (QoS 1, retained)",
+		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta: [{\"order\":1,\"readonly\":true,\"type\":\"alarm\"}] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff: [0] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/on",
 		"driver -> /devices/sampleAlarms/controls/alarm_temperatureOutOfBounds/meta/type: [alarm] (QoS 1, retained)",
