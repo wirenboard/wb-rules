@@ -89,7 +89,8 @@ func (s *AlarmSuite) publishControl(dev, ctl, typ, value string) {
 	s.publish(topicBase, value, controlRef)
 	s.Verify(
 		fmt.Sprintf("tst -> %s/meta/type: [%s] (QoS 1, retained)", topicBase, typ),
-		fmt.Sprintf("tst -> %s: [%s] (QoS 1, retained)", topicBase, value))
+		fmt.Sprintf("tst -> %s: [%s] (QoS 1, retained)", topicBase, value),
+	)
 }
 
 func (s *AlarmSuite) publishTestDev() {
@@ -109,9 +110,9 @@ func (s *AlarmSuite) verifyAlarmControlChange(name string, active bool) {
 	if active {
 		activeStr = "1"
 	}
-	s.Verify(fmt.Sprintf(
-		"driver -> /devices/sampleAlarms/controls/alarm_%s: [%s] (QoS 1, retained)",
-		name, activeStr))
+	s.Verify(
+		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s: [%s] (QoS 1, retained)", name, activeStr),
+	)
 }
 
 func (s *AlarmSuite) verifyNotificationMsgs(text string) {

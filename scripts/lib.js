@@ -583,8 +583,12 @@ var Alarms = (function () {
 
     function setAlarmActiveCell(active, title) {
       active = !!active;
-      if (dev[alarmDeviceName][cellName] !== active) dev[alarmDeviceName][cellName] = active;
-      getDevice(alarmDeviceName).getControl(cellName).setTitle(title);
+      if (dev[alarmDeviceName][cellName] !== active) {
+        dev[alarmDeviceName][cellName] = active;
+        if (title != null) {
+          getDevice(alarmDeviceName).getControl(cellName).setTitle(title);
+        }
+      }
     }
 
     var wasActive = false,
@@ -675,7 +679,10 @@ var Alarms = (function () {
             // alarms remaining from before wb-rules startup /
             // loading of this rule file.
             if (!wasTriggered) {
-              setAlarmActiveCell(false, maybeFormat(noAlarmMessage, cellValue()));
+              setAlarmActiveCell(false, null);
+              getDevice(alarmDeviceName)
+                .getControl(cellName)
+                .setTitle(maybeFormat(noAlarmMessage, cellValue()));
               return;
             }
 
