@@ -111,7 +111,7 @@ func (s *RuleReloadSuite) TestReload() {
 	s.publish("/devices/vdev/controls/anotherCell/on", "11")
 	s.publish("/devices/vdev/controls/someCell/on", "0", "vdev/someCell")
 
-	s.VerifyUnordered(
+	s.Verify(
 		"tst -> /devices/vdev/controls/anotherCell/on: [11] (QoS 1)",
 		"tst -> /devices/vdev/controls/someCell/on: [0] (QoS 1)",
 		"driver -> /devices/vdev/controls/someCell: [0] (QoS 1, retained)",
