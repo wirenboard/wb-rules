@@ -24,6 +24,7 @@ _testmain.go
 *.exe
 *.test
 *.prof
+*.log
 
 # Tern port file
 .tern-port

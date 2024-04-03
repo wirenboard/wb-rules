@@ -22,12 +22,12 @@ func (s *AlarmSuite) SetupTest() {
 
 }
 
-func (s *AlarmSuite) loadAlarms() {
-	s.loadAlarmsSkipping("")
+func (s *AlarmSuite) loadAlarms(config string, alarm string) {
+	s.loadAlarmsSkipping(config, "", alarm)
 }
 
-func (s *AlarmSuite) loadAlarmsSkipping(skipLine string) {
-	confPath := s.CopyModifiedDataFileToTempDir("alarms.conf", "alarms.conf", func(text string) string {
+func (s *AlarmSuite) loadAlarmsSkipping(config string, skipLine string, alarm string) {
+	confPath := s.CopyModifiedDataFileToTempDir(config, config, func(text string) string {
 		if skipLine == "" {
 			return text
 		}
@@ -52,28 +52,16 @@ func (s *AlarmSuite) loadAlarmsSkipping(skipLine string) {
 		"driver -> /devices/sampleAlarms/meta: [{\"driver\":\"wbrules\",\"title\":{\"en\":\"Sample Alarms\"}}] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/meta/name: [Sample Alarms] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/meta/driver: [wbrules] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta/type: [alarm] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta/readonly: [1] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta/order: [1] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/meta: [{\"order\":1,\"readonly\":true,\"type\":\"alarm\"}] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_importantDeviceIsOff: [0] (QoS 1, retained)",
-		"Subscribe -- driver: /devices/sampleAlarms/controls/alarm_importantDeviceIsOff/on",
-		"driver -> /devices/sampleAlarms/controls/alarm_temperatureOutOfBounds/meta/type: [alarm] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_temperatureOutOfBounds/meta/readonly: [1] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_temperatureOutOfBounds/meta/order: [2] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_temperatureOutOfBounds/meta: [{\"order\":2,\"readonly\":true,\"type\":\"alarm\"}] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_temperatureOutOfBounds: [0] (QoS 1, retained)",
-		"Subscribe -- driver: /devices/sampleAlarms/controls/alarm_temperatureOutOfBounds/on",
-		"driver -> /devices/sampleAlarms/controls/alarm_unnecessaryDeviceIsOn/meta/type: [alarm] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_unnecessaryDeviceIsOn/meta/readonly: [1] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_unnecessaryDeviceIsOn/meta/order: [3] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_unnecessaryDeviceIsOn/meta: [{\"order\":3,\"readonly\":true,\"type\":\"alarm\"}] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/alarm_unnecessaryDeviceIsOn: [0] (QoS 1, retained)",
-		"Subscribe -- driver: /devices/sampleAlarms/controls/alarm_unnecessaryDeviceIsOn/on",
+		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta/type: [alarm] (QoS 1, retained)", alarm),
+		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta/readonly: [1] (QoS 1, retained)", alarm),
+		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta/order: [1] (QoS 1, retained)", alarm),
+		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta: [{\"order\":1,\"readonly\":true,\"type\":\"alarm\"}] (QoS 1, retained)", alarm),
+		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s: [0] (QoS 1, retained)", alarm),
+		fmt.Sprintf("Subscribe -- driver: /devices/sampleAlarms/controls/alarm_%s/on", alarm),
 		"driver -> /devices/sampleAlarms/controls/log/meta/type: [text] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/log/meta/readonly: [1] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/log/meta/order: [4] (QoS 1, retained)",
-		"driver -> /devices/sampleAlarms/controls/log/meta: [{\"order\":4,\"readonly\":true,\"title\":{\"en\":\"Log\",\"ru\":\"Лог\"},\"type\":\"text\"}] (QoS 1, retained)",
+		"driver -> /devices/sampleAlarms/controls/log/meta/order: [2] (QoS 1, retained)",
+		"driver -> /devices/sampleAlarms/controls/log/meta: [{\"order\":2,\"readonly\":true,\"title\":{\"en\":\"Log\",\"ru\":\"Лог\"},\"type\":\"text\"}] (QoS 1, retained)",
 		"driver -> /devices/sampleAlarms/controls/log: [] (QoS 1, retained)",
 		"Subscribe -- driver: /devices/sampleAlarms/controls/log/on",
 	)
@@ -115,8 +103,9 @@ func (s *AlarmSuite) verifyAlarmControlChange(name string, active bool) {
 	)
 }
 
-func (s *AlarmSuite) verifyNotificationMsgs(text string) {
+func (s *AlarmSuite) verifyNotificationMsgs(alarm string, text string) {
 	s.Verify(
+		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta: [{\"order\":1,\"readonly\":true,\"title\":{\"en\":\"%s\"},\"type\":\"alarm\"}] (QoS 1, retained)", alarm, text),
 		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/log: [%s] (QoS 1, retained)", text),
 		fmt.Sprintf("[info] EMAIL TO: someone@example.com SUBJ: alarm! TEXT: %s", text),
 		fmt.Sprintf("[info] EMAIL TO: anotherone@example.com SUBJ: Alarm: %s TEXT: %s", text, text),
@@ -125,12 +114,12 @@ func (s *AlarmSuite) verifyNotificationMsgs(text string) {
 }
 
 func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
-	s.loadAlarms()
+	s.loadAlarms("alarms.conf", "importantDeviceIsOff")
 	for i := 0; i < 3; i++ {
 		s.publishControlValue("somedev", "importantDevicePower", "0",
 			"sampleAlarms/alarm_importantDeviceIsOff", "sampleAlarms/log")
 		s.verifyAlarmControlChange("importantDeviceIsOff", true)
-		s.verifyNotificationMsgs("Important device is off")
+		s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is off")
 		var timerId int
 		s.Verify(testutils.RegexpCaptureMatcher(
 			`^new fake ticker: (\d+), 200000`, func(m []string) bool {
@@ -149,14 +138,14 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 			s.FireTimer(uint64(timerId), ts)
 			s.Verify(fmt.Sprintf("timer.fire(): %d", timerId))
 			s.expectControlChange("sampleAlarms/log")
-			s.verifyNotificationMsgs("Important device is off")
+			s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is off")
 		}
 
 		s.publishControlValue("somedev", "importantDevicePower", "1",
 			"sampleAlarms/alarm_importantDeviceIsOff", "sampleAlarms/log")
 		s.verifyAlarmControlChange("importantDeviceIsOff", false)
 		s.Verify(fmt.Sprintf("timer.Stop(): %d", timerId))
-		s.verifyNotificationMsgs("Important device is back on")
+		s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is back on")
 
 		// alarm stays off
 		s.publishControlValue("somedev", "importantDevicePower", "1")
@@ -165,12 +154,12 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 }
 
 func (s *AlarmSuite) TestNonRepeatedExpectedValueAlarm() {
-	s.loadAlarms()
+	s.loadAlarms("alarms1.conf", "unnecessaryDeviceIsOn")
 	for i := 0; i < 3; i++ {
 		s.publishControlValue("somedev", "unnecessaryDevicePower", "1",
 			"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
 		s.verifyAlarmControlChange("unnecessaryDeviceIsOn", true)
-		s.verifyNotificationMsgs("Unnecessary device is on")
+		s.verifyNotificationMsgs("unnecessaryDeviceIsOn", "Unnecessary device is on")
 
 		// no repeated alarm upon the same value
 		s.publishControlValue("somedev", "unnecessaryDevicePower", "1")
@@ -179,7 +168,7 @@ func (s *AlarmSuite) TestNonRepeatedExpectedValueAlarm() {
 		s.publishControlValue("somedev", "unnecessaryDevicePower", "0",
 			"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
 		s.verifyAlarmControlChange("unnecessaryDeviceIsOn", false)
-		s.verifyNotificationMsgs("somedev/unnecessaryDevicePower is back to normal, value = false")
+		s.verifyNotificationMsgs("unnecessaryDeviceIsOn", "somedev/unnecessaryDevicePower is back to normal, value = false")
 		s.VerifyEmpty()
 
 		s.publishControlValue("somedev", "unnecessaryDevicePower", "0")
@@ -191,7 +180,7 @@ func (s *AlarmSuite) setOutOfRangeTemp(temp int) {
 	s.publishControlValue("somedev", "devTemp", strconv.Itoa(temp),
 		"sampleAlarms/alarm_temperatureOutOfBounds", "sampleAlarms/log")
 	s.verifyAlarmControlChange("temperatureOutOfBounds", true)
-	s.verifyNotificationMsgs(fmt.Sprintf("Temperature out of bounds, value = %d", temp))
+	s.verifyNotificationMsgs("temperatureOutOfBounds", fmt.Sprintf("Temperature out of bounds, value = %d", temp))
 	s.Verify(regexp.MustCompile(`^new fake ticker: \d+, 10000$`))
 }
 
@@ -202,12 +191,12 @@ func (s *AlarmSuite) setOkTemp(temp int, stopTimer bool) {
 	if stopTimer {
 		s.Verify(regexp.MustCompile(`^timer\.Stop\(\): \d+`))
 	}
-	s.verifyNotificationMsgs(fmt.Sprintf("Temperature is within bounds again, value = %d", temp))
+	s.verifyNotificationMsgs("temperatureOutOfBounds", fmt.Sprintf("Temperature is within bounds again, value = %d", temp))
 	s.VerifyEmpty()
 }
 
 func (s *AlarmSuite) TestRepeatedMinMaxAlarmWithMaxCount() {
-	s.loadAlarms()
+	s.loadAlarms("alarms2.conf", "temperatureOutOfBounds")
 
 	// go below min
 	s.setOutOfRangeTemp(9)
@@ -220,7 +209,7 @@ func (s *AlarmSuite) TestRepeatedMinMaxAlarmWithMaxCount() {
 		s.FireTimer(1, ts)
 		s.Verify("timer.fire(): 1")
 		s.expectControlChange("sampleAlarms/log")
-		s.verifyNotificationMsgs("Temperature out of bounds, value = 8")
+		s.verifyNotificationMsgs("temperatureOutOfBounds", "Temperature out of bounds, value = 8")
 	}
 	s.Verify("timer.Stop(): 1")
 
@@ -232,13 +221,13 @@ func (s *AlarmSuite) TestRepeatedMinMaxAlarmWithMaxCount() {
 }
 
 func (s *AlarmSuite) TestMinAlarm() {
-	s.loadAlarmsSkipping("**maxtemp**")
+	s.loadAlarmsSkipping("alarms2.conf", "**maxtemp**", "temperatureOutOfBounds")
 	s.setOutOfRangeTemp(9)
 	s.setOkTemp(16, true) // maxValue removed, 16 must be ok
 }
 
 func (s *AlarmSuite) TestMaxAlarm() {
-	s.loadAlarmsSkipping("**mintemp**")
+	s.loadAlarmsSkipping("alarms2.conf", "**mintemp**", "temperatureOutOfBounds")
 	s.setOutOfRangeTemp(16)
 	s.setOkTemp(9, true) // minValue removed, 9 must be ok
 }
