@@ -103,10 +103,12 @@ func (s *AlarmSuite) verifyAlarmControlChange(name string, active bool) {
 	)
 }
 
-func (s *AlarmSuite) verifyNotificationMsgs(alarm string, text string, stopTimer bool) {
-	s.Verify(
-		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta: [{\"order\":1,\"readonly\":true,\"title\":{\"en\":\"%s\"},\"type\":\"alarm\"}] (QoS 1, retained)", alarm, text),
-	)
+func (s *AlarmSuite) verifyNotificationMsgs(alarm string, text string, stopTimer bool, updateMeta bool) {
+	if updateMeta {
+		s.Verify(
+			fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta: [{\"order\":1,\"readonly\":true,\"title\":{\"en\":\"%s\"},\"type\":\"alarm\"}] (QoS 1, retained)", alarm, text),
+		)
+	}
 	if stopTimer {
 		s.Verify(regexp.MustCompile(`^timer\.Stop\(\): \d+`))
 	}
@@ -124,7 +126,7 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 		s.publishControlValue("somedev", "importantDevicePower", "0",
 			"sampleAlarms/alarm_importantDeviceIsOff", "sampleAlarms/log")
 		s.verifyAlarmControlChange("importantDeviceIsOff", true)
-		s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is off", false)
+		s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is off", false, true)
 		var timerId int
 		s.Verify(testutils.RegexpCaptureMatcher(
 			`^new fake ticker: (\d+), 200000`, func(m []string) bool {
@@ -143,13 +145,13 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 			s.FireTimer(uint64(timerId), ts)
 			s.Verify(fmt.Sprintf("timer.fire(): %d", timerId))
 			s.expectControlChange("sampleAlarms/log")
-			s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is off", false)
+			s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is off", false, true)
 		}
 
 		s.publishControlValue("somedev", "importantDevicePower", "1",
 			"sampleAlarms/alarm_importantDeviceIsOff", "sampleAlarms/log")
 		s.verifyAlarmControlChange("importantDeviceIsOff", false)
-		s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is back on", true)
+		s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is back on", true, true)
 
 		// alarm stays off
 		s.publishControlValue("somedev", "importantDevicePower", "1")
@@ -163,7 +165,7 @@ func (s *AlarmSuite) TestNonRepeatedExpectedValueAlarm() {
 		s.publishControlValue("somedev", "unnecessaryDevicePower", "1",
 			"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
 		s.verifyAlarmControlChange("unnecessaryDeviceIsOn", true)
-		s.verifyNotificationMsgs("unnecessaryDeviceIsOn", "Unnecessary device is on", false)
+		s.verifyNotificationMsgs("unnecessaryDeviceIsOn", "Unnecessary device is on", false, true)
 
 		// no repeated alarm upon the same value
 		s.publishControlValue("somedev", "unnecessaryDevicePower", "1")
@@ -172,7 +174,7 @@ func (s *AlarmSuite) TestNonRepeatedExpectedValueAlarm() {
 		s.publishControlValue("somedev", "unnecessaryDevicePower", "0",
 			"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
 		s.verifyAlarmControlChange("unnecessaryDeviceIsOn", false)
-		s.verifyNotificationMsgs("unnecessaryDeviceIsOn", "somedev/unnecessaryDevicePower is back to normal, value = false", false)
+		s.verifyNotificationMsgs("unnecessaryDeviceIsOn", "somedev/unnecessaryDevicePower is back to normal, value = false", false, true)
 		s.VerifyEmpty()
 
 		s.publishControlValue("somedev", "unnecessaryDevicePower", "0")
@@ -184,7 +186,7 @@ func (s *AlarmSuite) setOutOfRangeTemp(temp int) {
 	s.publishControlValue("somedev", "devTemp", strconv.Itoa(temp),
 		"sampleAlarms/alarm_temperatureOutOfBounds", "sampleAlarms/log")
 	s.verifyAlarmControlChange("temperatureOutOfBounds", true)
-	s.verifyNotificationMsgs("temperatureOutOfBounds", fmt.Sprintf("Temperature out of bounds, value = %d", temp), false)
+	s.verifyNotificationMsgs("temperatureOutOfBounds", fmt.Sprintf("Temperature out of bounds, value = %d", temp), false, true)
 	s.Verify(regexp.MustCompile(`^new fake ticker: \d+, 10000$`))
 }
 
@@ -192,7 +194,7 @@ func (s *AlarmSuite) setOkTemp(temp int, stopTimer bool) {
 	s.publishControlValue("somedev", "devTemp", strconv.Itoa(temp),
 		"sampleAlarms/alarm_temperatureOutOfBounds", "sampleAlarms/log")
 	s.verifyAlarmControlChange("temperatureOutOfBounds", false)
-	s.verifyNotificationMsgs("temperatureOutOfBounds", fmt.Sprintf("Temperature is within bounds again, value = %d", temp), stopTimer)
+	s.verifyNotificationMsgs("temperatureOutOfBounds", fmt.Sprintf("Temperature is within bounds again, value = %d", temp), stopTimer, true)
 	s.VerifyEmpty()
 }
 
@@ -210,7 +212,7 @@ func (s *AlarmSuite) TestRepeatedMinMaxAlarmWithMaxCount() {
 		s.FireTimer(1, ts)
 		s.Verify("timer.fire(): 1")
 		s.expectControlChange("sampleAlarms/log")
-		s.verifyNotificationMsgs("temperatureOutOfBounds", "Temperature out of bounds, value = 8", false)
+		s.verifyNotificationMsgs("temperatureOutOfBounds", "Temperature out of bounds, value = 8", false, false)
 	}
 	s.Verify("timer.Stop(): 1")
 
