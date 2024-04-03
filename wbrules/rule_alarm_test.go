@@ -145,7 +145,7 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 			s.FireTimer(uint64(timerId), ts)
 			s.Verify(fmt.Sprintf("timer.fire(): %d", timerId))
 			s.expectControlChange("sampleAlarms/log")
-			s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is off", false, true)
+			s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is off", false, false)
 		}
 
 		s.publishControlValue("somedev", "importantDevicePower", "1",
