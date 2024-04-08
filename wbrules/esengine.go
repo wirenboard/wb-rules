@@ -889,7 +889,7 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 		// LiveLoadFile for the file, but as the new content
 		// will be already registered with the contentTracker,
 		// duplicate reload will not happen
-		err = ioutil.WriteFile(cleanPath, []byte(content), 0777)
+		err = ioutil.WriteFile(cleanPath, []byte(content), 0644)
 		if err != nil {
 			r <- err
 			return
