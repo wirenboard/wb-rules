@@ -1,8 +1,14 @@
-wb-rules (2.20.3) stable; urgency=medium
+wb-rules (2.20.4) stable; urgency=medium
 
   * Remove restriction on rule file name
 
- -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 08 Apr 2024 14:28:00 +0400
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 09 Apr 2024 11:28:00 +0400
+
+wb-rules (2.20.3) stable; urgency=medium
+
+  * Move wbgo.so plugin to /usr/lib, no functional changes
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 08 Apr 2024 15:26:00 +0400
 
 wb-rules (2.20.2) stable; urgency=medium
 

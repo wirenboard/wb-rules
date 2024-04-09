@@ -73,7 +73,7 @@ func main() {
 	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
 
-	wbgoso := flag.String("wbgo", "/usr/share/wb-rules/wbgo.so", "Location to wbgo.so file")
+	wbgoso := flag.String("wbgo", "/usr/lib/wb-rules/wbgo.so", "Location to wbgo.so file")
 
 	flag.Parse()
 
