@@ -4,13 +4,10 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-	"regexp"
 	"strings"
 
 	"github.com/wirenboard/wbgong"
 )
-
-var editorPathRx = regexp.MustCompile(`^[\w /-]{0,256}[\w -]{1,253}\.js$`)
 
 type Editor struct {
 	locFileManager LocFileManager
@@ -44,7 +41,6 @@ const (
 	EDITOR_ERROR_INVALID_LEN    = 1009
 )
 
-var invalidPathError = &EditorError{EDITOR_ERROR_INVALID_PATH, "File path should contains only digits, letters, whitespaces, '_' and '-' chars"}
 var invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should ends with .js"}
 var invalidLenError = &EditorError{EDITOR_ERROR_INVALID_LEN, "File path should be shorter than or equal to 512 chars"}
 var listDirError = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
@@ -85,8 +81,6 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 		return invalidExtensionError
 	} else if len(args.Path) > 512 {
 		return invalidLenError
-	} else if !editorPathRx.MatchString(pth) {
-		return invalidPathError
 	}
 
 	*reply = EditorSaveResponse{nil, pth, nil}
