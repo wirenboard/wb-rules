@@ -1,6 +1,7 @@
 wb-rules (2.20.5) stable; urgency=medium
 
   * Don't create meta/units topic
+  * Fix getting units from external devices
 
  -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 10 Apr 2024 09:15:00 +0400
 
