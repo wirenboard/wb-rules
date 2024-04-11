@@ -194,41 +194,53 @@ func (ctx *ESContext) PushJSObject(obj interface{}) {
 		ctx.PushNull()
 		return
 	}
-	switch obj.(type) {
+	switch t := obj.(type) {
 	case string:
-		ctx.PushString(obj.(string))
+		ctx.PushString(t)
 	case objx.Map:
-		ctx.PushJSObject(map[string]interface{}(obj.(objx.Map)))
+		ctx.PushJSObject(map[string]interface{}(t))
+	case wbgong.Title:
+		ctx.PushObject()
+		for k, v := range t {
+			ctx.PushJSObject(v)
+			ctx.PutPropString(-2, k)
+		}
+	case map[string]wbgong.Title:
+		ctx.PushObject()
+		for k, v := range t {
+			ctx.PushJSObject(v)
+			ctx.PutPropString(-2, k)
+		}
 	case map[string]interface{}:
 		ctx.PushObject()
-		for k, v := range obj.(map[string]interface{}) {
+		for k, v := range t {
 			ctx.PushJSObject(v)
 			ctx.PutPropString(-2, k)
 		}
 	case bool:
-		ctx.PushBoolean(obj.(bool))
+		ctx.PushBoolean(t)
 	case float32:
-		ctx.PushNumber(float64(obj.(float32)))
+		ctx.PushNumber(float64(t))
 	case float64:
-		ctx.PushNumber(obj.(float64))
+		ctx.PushNumber(t)
 	case int:
-		ctx.PushNumber(float64(obj.(int)))
+		ctx.PushNumber(float64(t))
 	case uint8:
-		ctx.PushNumber(float64(obj.(uint8)))
+		ctx.PushNumber(float64(t))
 	case uint16:
-		ctx.PushNumber(float64(obj.(uint16)))
+		ctx.PushNumber(float64(t))
 	case uint32:
-		ctx.PushNumber(float64(obj.(uint32)))
+		ctx.PushNumber(float64(t))
 	case uint64:
-		ctx.PushNumber(float64(obj.(uint64)))
+		ctx.PushNumber(float64(t))
 	case int8:
-		ctx.PushNumber(float64(obj.(int8)))
+		ctx.PushNumber(float64(t))
 	case int16:
-		ctx.PushNumber(float64(obj.(int16)))
+		ctx.PushNumber(float64(t))
 	case int32:
-		ctx.PushNumber(float64(obj.(int32)))
+		ctx.PushNumber(float64(t))
 	case int64:
-		ctx.PushNumber(float64(obj.(int64)))
+		ctx.PushNumber(float64(t))
 	default:
 		ctx.pushJSObjectUsingReflection(obj)
 	}

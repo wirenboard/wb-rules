@@ -289,7 +289,7 @@ func (ctrlProxy *ControlProxy) GetMeta() (m wbgong.MetaInfo) {
 
 	ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
 		ctrl.SetTx(tx)
-		m = ctrl.GetMeta()
+		m = ctrl.GetMetaJson()
 		return nil
 	})
 	return
