@@ -1,3 +1,9 @@
+wb-rules (2.20.6) stable; urgency=medium
+
+  * Fix getting units from external devices, update wbgo.so library
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 12 Apr 2024 14:15:00 +0400
+
 wb-rules (2.20.5) stable; urgency=medium
 
   * Don't create meta/units topic
