@@ -1,3 +1,9 @@
+wb-rules (2.20.8) stable; urgency=medium
+
+  * Wiren Board 8 support
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 24 Apr 2024 15:40:00 +0400
+
 wb-rules (2.20.7) stable; urgency=medium
 
   * Clear meta on empty json, update wbgo.so library
