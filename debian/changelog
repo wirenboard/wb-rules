@@ -1,3 +1,9 @@
+wb-rules (2.20.9) stable; urgency=medium
+
+  * Add json editor autocomplete for devices
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 25 Apr 2024 18:00:00 +0400
+
 wb-rules (2.20.8) stable; urgency=medium
 
   * Wiren Board 8 support

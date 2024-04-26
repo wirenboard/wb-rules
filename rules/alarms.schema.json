@@ -78,7 +78,13 @@
                     "description": "Use the following format: device/control",
                     "pattern": "^[^/+#]+/[^/+#]+$",
                     "minLength": 3,
-                    "propertyOrder": 2
+                    "propertyOrder": 2,
+                    "options": {
+                        "wb": {
+                            "data": "devices"
+                        }
+                    },
+                    "format": "wb-autocomplete"
                 },
                 "alarmMessage": {
                     "type": "string",
