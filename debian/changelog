@@ -1,3 +1,9 @@
+wb-rules (2.20.10) stable; urgency=medium
+
+  * Add missed control types, update wbgo.so library
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 08 May 2024 19:00:00 +0400
+
 wb-rules (2.20.9) stable; urgency=medium
 
   * Add json editor autocomplete for devices
