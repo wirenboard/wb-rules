@@ -246,13 +246,14 @@ defineVirtualDevice('my-virtual-device', {
         min: 1
       },
       state: {
-        title: {'en': 'State', 'ru': 'Состояние'},
+        title: {en: 'State', ru: 'Состояние'},
         type: "value",
         value: 1,
-        enum:{
-          1: {'en': 'Normal', 'ru': 'В норме'},
-          2: {'en': 'Warning', 'ru': 'Внимание'},
-          3: {'en': 'Crash', 'ru': 'Авария'}}   
+        enum: {
+          1: {en: 'Normal', ru: 'В норме'},
+          2: {en: 'Warning', ru: 'Внимание'},
+          3: {en: 'Crash', ru: 'Авария'}
+        }   
       },
     }
 });
