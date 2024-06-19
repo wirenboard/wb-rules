@@ -231,7 +231,7 @@ defineRule("anotherRule", {
 Виртуальное устройство задаётся так:
 ```js
 defineVirtualDevice('my-virtual-device', {
-    title: {'en': 'My Virtual Device', 'ru': 'Мое виртуальное устройство'} ,
+    title: {en: 'My Virtual Device', ru: 'Мое виртуальное устройство'} ,
     cells: {
       ControlName1: {
         title: "Name 1",
