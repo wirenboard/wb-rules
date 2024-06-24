@@ -1,6 +1,6 @@
 module github.com/wirenboard/wb-rules
 
-go 1.15
+go 1.18
 
 require (
 	github.com/DisposaBoy/JsonConfigReader v0.0.0-20201129172854-99cf318d67e7
