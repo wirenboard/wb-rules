@@ -1,3 +1,11 @@
+wb-rules (2.20.12) stable; urgency=medium
+
+  * Fix stuck on reboot/stop, when multiple virtual devices update their meta
+  * update wbgo.so library
+  * bump PahoMQTT dep: v1.4.1 -> v1.4.2
+
+ -- Vladimir Romanov <v.romanov@wirenboard.com>  Fri, 12 Jul 2024 10:42:39 +0300
+
 wb-rules (2.20.11) stable; urgency=medium
 
   * Fix control meta handling, update wbgo.so library
