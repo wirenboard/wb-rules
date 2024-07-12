@@ -1,3 +1,9 @@
+wb-rules (2.20.13) stable; urgency=medium
+
+  * update wbgo.so library: fix go.sum
+
+ -- Vladimir Romanov <v.romanov@wirenboard.com>  Fri, 12 Jul 2024 14:22:47 +0300
+
 wb-rules (2.20.12) stable; urgency=medium
 
   * Fix stuck on reboot/stop, when multiple virtual devices update their meta
