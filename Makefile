@@ -22,7 +22,7 @@ endif
 GO_ENV := GO111MODULE=on $(GO_ENV)
 
 GO ?= go
-GO_FLAGS = -ldflags "-w -X main.version=`git describe --tags --always --dirty`"
+GO_FLAGS = -ldflags "-s -w -X main.version=`git describe --tags --always --dirty`"
 
 all: clean wb-rules
 
@@ -40,7 +40,6 @@ wb-rules: main.go wbrules/*.go
 	$(GO_ENV) $(GO) build -trimpath $(GO_FLAGS)
 
 install:
-	mkdir -p $(DESTDIR)/etc/init.d/
 	mkdir -p $(DESTDIR)$(PREFIX)/share/wb-rules-modules/ $(DESTDIR)/etc/wb-rules-modules/
 	install -Dm0755 wb-rules -t $(DESTDIR)$(PREFIX)/bin
 	install -Dm0644 rules/rules.js -t $(DESTDIR)/etc/wb-rules

@@ -1,0 +1,2 @@
+rm_conffile /etc/wb-rules/load_alarms.js 1.6.7
+rm_conffile /etc/init.d/wb-rules 2.7.0~
