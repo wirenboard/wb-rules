@@ -332,7 +332,12 @@ func (s *RuleSuiteBase) newFakeTimer(id TimerId, d time.Duration, periodic bool)
 func (s *RuleSuiteBase) publish(topic, value string, expectedCellNames ...string) {
 	retained := !strings.HasSuffix(topic, "/on")
 	wbgong.Debug.Printf("publishing %s to %s, expecting change of %v", value, topic, expectedCellNames)
-	s.client.Publish(wbgong.MQTTMessage{topic, value, 1, retained})
+	s.client.Publish(wbgong.MQTTMessage{
+		Topic:    topic,
+		Payload:  value,
+		QoS:      1,
+		Retained: retained,
+	})
 	s.expectControlChange(expectedCellNames...)
 }
 

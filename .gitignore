@@ -34,12 +34,13 @@ _testmain.go
 vendor
 
 debian/files
-debian/wb-rules*
 
 # Temp files
 ~*
 .*.swp
 debian/.debhelper
+
+.devcontainer
 
 ### direnv ###
 .direnv

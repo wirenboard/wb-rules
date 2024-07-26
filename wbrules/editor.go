@@ -65,7 +65,7 @@ type EditorSaveArgs struct {
 }
 
 type EditorSaveResponse struct {
-	Error     interface{} `json:"error,omitempty",`
+	Error     interface{} `json:"error,omitempty"`
 	Path      string      `json:"path"`
 	Traceback []LocItem   `json:"traceback,omitempty"`
 }
