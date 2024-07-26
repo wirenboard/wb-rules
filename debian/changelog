@@ -134,7 +134,7 @@ wb-rules (2.18.6) stable; urgency=medium
 
   * Remove uncomplete contol messages
 
- -- Ekaterina Volkova <ekaterina.volkova@wirenboard.ru>  Tue, 03 Oct 2023 12:05:23 +0300
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Tue, 03 Oct 2023 12:05:23 +0300
 
 wb-rules (2.18.5) stable; urgency=medium
 
