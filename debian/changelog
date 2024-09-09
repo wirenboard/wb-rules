@@ -1,3 +1,9 @@
+wb-rules (2.20.16) stable; urgency=medium
+
+  * update wbgo.so library
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.com>  Mon, 09 Sep 2024 11:06:57 +0500
+
 wb-rules (2.20.15) stable; urgency=medium
 
   * Fix parseInt() explicit radix 16 handling for leading zero
