@@ -1,3 +1,9 @@
+wb-rules (2.20.17) stable; urgency=medium
+
+  * update wbgo.so library, improve stability on Wiren Board 8 in wbgo.so
+
+ -- Nikita Maslov <nikita.maslov@wirenboard.com>  Tue, 10 Sep 2024 11:08:37 +0500
+
 wb-rules (2.20.16) stable; urgency=medium
 
   * update wbgo.so library
