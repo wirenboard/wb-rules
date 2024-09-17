@@ -1,3 +1,9 @@
+wb-rules (2.20.18) stable; urgency=medium
+
+  * update wbgo.so library, republish retained messages on reconnect to mqtt broker
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 17 Sep 2024 13:45:00 +0400
+
 wb-rules (2.20.17) stable; urgency=medium
 
   * update wbgo.so library, improve stability on Wiren Board 8 in wbgo.so
