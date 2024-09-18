@@ -154,6 +154,7 @@ func (s *RuleReloadSuite) TestRemoveScript() {
 		"driver -> /devices/vdev/controls/someCell: [] (QoS 1, retained)",
 		"driver -> /devices/vdev/meta/driver: [] (QoS 1, retained)",
 		"driver -> /devices/vdev/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/vdev/meta: [] (QoS 1, retained)",
 		"driver -> /devices/vdev1/controls/qqq/meta/order: [] (QoS 1, retained)",
 		"driver -> /devices/vdev1/controls/qqq/meta/readonly: [] (QoS 1, retained)",
 		"driver -> /devices/vdev1/controls/qqq/meta/type: [] (QoS 1, retained)",
@@ -161,6 +162,7 @@ func (s *RuleReloadSuite) TestRemoveScript() {
 		"driver -> /devices/vdev1/controls/qqq: [] (QoS 1, retained)",
 		"driver -> /devices/vdev1/meta/driver: [] (QoS 1, retained)",
 		"driver -> /devices/vdev1/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/vdev1/meta: [] (QoS 1, retained)",
 		"wbrules-log -> /wbrules/updates/removed: [testrules_reload_2.js] (QoS 1)",
 	)
 
@@ -235,6 +237,7 @@ func (s *RuleReloadSuite) TestRemoveRestore() {
 		"driver -> /devices/vdev/controls/someCell: [] (QoS 1, retained)",
 		"driver -> /devices/vdev/meta/driver: [] (QoS 1, retained)",
 		"driver -> /devices/vdev/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/vdev/meta: [] (QoS 1, retained)",
 		"driver -> /devices/vdev1/controls/qqq/meta/order: [] (QoS 1, retained)",
 		"driver -> /devices/vdev1/controls/qqq/meta/readonly: [] (QoS 1, retained)",
 		"driver -> /devices/vdev1/controls/qqq/meta/type: [] (QoS 1, retained)",
@@ -242,6 +245,7 @@ func (s *RuleReloadSuite) TestRemoveRestore() {
 		"driver -> /devices/vdev1/controls/qqq: [] (QoS 1, retained)",
 		"driver -> /devices/vdev1/meta/driver: [] (QoS 1, retained)",
 		"driver -> /devices/vdev1/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/vdev1/meta: [] (QoS 1, retained)",
 		"wbrules-log -> /wbrules/updates/removed: [testrules_reload_2.js] (QoS 1)")
 
 	// load script and expect vdev definition at least
@@ -313,6 +317,7 @@ func (s *RuleReloadSuite) TestDisableScript() {
 		"driver -> /devices/vdev0/controls/someCell: [] (QoS 1, retained)",
 		"driver -> /devices/vdev0/meta/driver: [] (QoS 1, retained)",
 		"driver -> /devices/vdev0/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/vdev0/meta: [] (QoS 1, retained)",
 		"timer.Stop(): 1",
 		"wbrules-log -> /wbrules/updates/removed: [testrules_reload_1.js] (QoS 1)",
 	)
