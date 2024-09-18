@@ -87,6 +87,7 @@ func (s *RuleReloadSuite) TestReload() {
 		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
 		"driver -> /devices/vdev/controls/someCell: [] (QoS 1, retained)",
 		"driver -> /devices/vdev/meta: [{\"driver\":\"wbrules\",\"title\":{\"en\":\"VDev\"}}] (QoS 1, retained)",
+		"driver -> /devices/vdev/meta: [] (QoS 1, retained)",
 		"driver -> /devices/vdev/meta/driver: [] (QoS 1, retained)",
 		"driver -> /devices/vdev/meta/driver: [wbrules] (QoS 1, retained)",
 		"driver -> /devices/vdev/meta/name: [VDev] (QoS 1, retained)",
@@ -98,6 +99,7 @@ func (s *RuleReloadSuite) TestReload() {
 		"driver -> /devices/vdev1/controls/qqq: [] (QoS 1, retained)",
 		"driver -> /devices/vdev1/meta/driver: [] (QoS 1, retained)",
 		"driver -> /devices/vdev1/meta/name: [] (QoS 1, retained)",
+		"driver -> /devices/vdev1/meta: [] (QoS 1, retained)",
 		"wbrules-log -> /wbrules/updates/changed: [testrules_reload_2.js] (QoS 1)",
 	)
 	// rules are run after reload
