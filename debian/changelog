@@ -1,3 +1,9 @@
+wb-rules (2.21.0) stable; urgency=medium
+
+  * update wbgo.so library, fix log priority
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 14 Oct 2024 18:45:00 +0400
+
 wb-rules (2.20.19) stable; urgency=medium
 
   * update wbgo.so library, fix device meta cleanup
