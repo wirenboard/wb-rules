@@ -799,6 +799,9 @@ ReadyWaitLoop:
 	close(engine.readyCh)
 
 	wbgong.Info.Printf("the engine is ready")
+
+	engine.updateDebugEnabled()
+
 	// wbgong.Info.Printf("******** READY ********")
 	for {
 		select {

@@ -1,3 +1,9 @@
+wb-rules (2.21.1) stable; urgency=medium
+
+  * Restore rule debugging switch state on restart
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 17 Oct 2024 21:35:00 +0400
+
 wb-rules (2.21.0) stable; urgency=medium
 
   * update wbgo.so library, fix log priority
