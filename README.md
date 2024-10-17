@@ -253,7 +253,7 @@ defineVirtualDevice('my-virtual-device', {
           1: {en: 'Normal', ru: 'В норме'},
           2: {en: 'Warning', ru: 'Внимание'},
           3: {en: 'Crash', ru: 'Авария'}
-        }   
+        }
       },
     }
 });
@@ -1270,7 +1270,7 @@ defineRule("myRule", {
     // в постоянное хранилище можно записывать значения любого типа
     ps["var1"] = 42;
     ps["var2"] = "foo";
-    ps["var3"] = { name: "Temperature", value: 26.3 };
+    ps["var3"] = StorableObject({ name: "Temperature", value: 26.3 });
 
     // чтение из хранилища
     log("Value of var1: " + ps["var1"]);

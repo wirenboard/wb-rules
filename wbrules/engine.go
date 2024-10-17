@@ -799,6 +799,9 @@ ReadyWaitLoop:
 	close(engine.readyCh)
 
 	wbgong.Info.Printf("the engine is ready")
+
+	engine.updateDebugEnabled()
+
 	// wbgong.Info.Printf("******** READY ********")
 	for {
 		select {
@@ -1239,12 +1242,14 @@ func (engine *RuleEngine) updateDebugEnabled() {
 			}
 
 			i, err := ctrl.GetValue()
-			val = i.(bool)
+			if err == nil {
+				val = i.(bool)
+			}
 			return err
 		})
 
 		if err != nil {
-			panic("No debug control in rule engine service device")
+			return
 		}
 
 		var set uint32 = ATOMIC_FALSE
