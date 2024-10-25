@@ -49,6 +49,7 @@ func (s *VirtualCellsStorageSuite) TestStorage1() {
 	s.publish("/devices/test-trigger/controls/change1/on", "1", "test-trigger/change1",
 		"test-vdev/cell1", "test-vdev/cell3", "test-vdev/cellText")
 	s.Verify(
+		"tst -> /devices/test-trigger/controls/change1: [0] (QoS 1, retained)",
 		"tst -> /devices/test-trigger/controls/change1/on: [1] (QoS 1)",
 		"driver -> /devices/test-trigger/controls/change1: [1] (QoS 1)",
 		"driver -> /devices/test-vdev/controls/cell1: [1] (QoS 1, retained)",
@@ -62,6 +63,7 @@ func (s *VirtualCellsStorageSuite) TestStorage2() {
 	s.publish("/devices/test-trigger/controls/echo", "0")
 	s.publish("/devices/test-trigger/controls/echo/on", "1", "test-trigger/echo")
 	s.Verify(
+		"tst -> /devices/test-trigger/controls/echo: [0] (QoS 1, retained)",
 		"tst -> /devices/test-trigger/controls/echo/on: [1] (QoS 1)",
 		"driver -> /devices/test-trigger/controls/echo: [1] (QoS 1)",
 		"[info] vdev true, true, false, bar",
