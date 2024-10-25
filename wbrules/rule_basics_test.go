@@ -116,6 +116,7 @@ func (s *RuleBasicsSuite) TestCellChange() {
 	s.publish("/devices/somedev/controls/tempx", "42", "somedev/tempx")
 	s.Verify(
 		"tst -> /devices/somedev/controls/tempx/meta/type: [temperature] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/tempx: [0] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/tempx: [42] (QoS 1, retained)",
 		"[info] cellChange2: somedev/tempx=42 (number)",
 	)

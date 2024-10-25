@@ -125,6 +125,7 @@ func (s *RuleShellCommandSuite) TestCallbackCleanup() {
 	s.Verify(
 		"tst -> /devices/somedev/controls/cmd/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmdNoCallback/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/cmd: [initial_text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmd: [until [ -f fflag ]; do sleep 0.1; done] (QoS 1, retained)",
 		"[info] cmd: until [ -f fflag ]; do sleep 0.1; done",
 	)
