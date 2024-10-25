@@ -43,8 +43,8 @@ func (s *RuleReadConfigSuite) TryReadingConfig(configPath string) {
 
 func (s *RuleReadConfigSuite) verifyReadConfRuleLog(configPath string, msgs ...interface{}) {
 	msgs = append([]interface{}{
+		"tst -> /devices/somedev/controls/readSampleConfig: [initial_text] (QoS 1, retained)",
 		fmt.Sprintf(
-			"tst -> /devices/somedev/controls/readSampleConfig: [initial_text] (QoS 1, retained)",
 			"tst -> /devices/somedev/controls/readSampleConfig: [%s] (QoS 1, retained)",
 			configPath),
 	}, msgs...)
