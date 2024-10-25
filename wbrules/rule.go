@@ -135,7 +135,7 @@ func (ruleCond *CellChangedRuleCondition) Check(e *ControlChangeEvent) (bool, in
 		return false, nil
 	}
 
-	if e.IsRetained && e.PrevValue == e.Value {
+	if e.PrevValue == nil || (e.IsRetained && e.PrevValue == e.Value) {
 		return false, nil
 	}
 
