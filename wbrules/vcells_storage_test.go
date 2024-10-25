@@ -45,6 +45,7 @@ func (s *VirtualCellsStorageSuite) TestStorage1() {
 	// )
 	// s.VerifyEmpty()
 
+	s.publish("/devices/test-trigger/controls/change1", "0")
 	s.publish("/devices/test-trigger/controls/change1/on", "1", "test-trigger/change1",
 		"test-vdev/cell1", "test-vdev/cell3", "test-vdev/cellText")
 	s.Verify(
@@ -58,6 +59,7 @@ func (s *VirtualCellsStorageSuite) TestStorage1() {
 }
 
 func (s *VirtualCellsStorageSuite) TestStorage2() {
+	s.publish("/devices/test-trigger/controls/echo", "0")
 	s.publish("/devices/test-trigger/controls/echo/on", "1", "test-trigger/echo")
 	s.Verify(
 		"tst -> /devices/test-trigger/controls/echo/on: [1] (QoS 1)",
