@@ -399,6 +399,7 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 	var spec ControlSpec
 	isComplete := false
 	isRetained := false
+	var controlType string
 	var prevMetaValue interface{}
 
 	isLocal := false
@@ -472,6 +473,7 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 		case wbgong.CONV_META_SUBTOPIC_UNITS:
 			return ctrl.SetUnits(metaValue)()
 		}
+		controlType = ctrl.GetType()
 		return nil
 	})
 
@@ -481,11 +483,12 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 		return
 	}
 	cce = &ControlChangeEvent{
-		Spec:       spec,
-		IsComplete: isComplete,
-		IsRetained: isRetained,
-		Value:      metaValue,
-		PrevValue:  prevMetaValue,
+		Spec:        spec,
+		ControlType: controlType,
+		IsComplete:  isComplete,
+		IsRetained:  isRetained,
+		Value:       metaValue,
+		PrevValue:   prevMetaValue,
 	}
 	return
 }
@@ -524,11 +527,12 @@ func (cp cronProxy) AddFunc(spec string, cmd func()) error {
 
 // ControlChangeEvent
 type ControlChangeEvent struct {
-	Spec       ControlSpec
-	IsComplete bool
-	IsRetained bool
-	Value      interface{}
-	PrevValue  interface{}
+	Spec        ControlSpec
+	ControlType string
+	IsComplete  bool
+	IsRetained  bool
+	Value       interface{}
+	PrevValue   interface{}
 }
 
 type RuleEngineOptions struct {
@@ -840,6 +844,7 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 	var spec ControlSpec
 	isComplete := false
 	isRetained := false
+	var controlType string
 
 	switch e := event.(type) {
 	case wbgong.ControlValueEvent:
@@ -860,12 +865,14 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 
 		isComplete = ctrl.IsComplete()
 		isRetained = ctrl.IsRetained()
+		controlType = ctrl.GetType()
 	case wbgong.NewExternalDeviceControlMetaEvent:
 		ctrl := e.Control
 		spec = ControlSpec{ctrl.GetDevice().GetId(), ctrl.GetId()}
 
 		isComplete = ctrl.IsComplete()
 		isRetained = ctrl.IsRetained()
+		controlType = ctrl.GetType()
 
 		var err error
 
@@ -887,11 +894,12 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 		metaSpec := ControlSpec{e.Control.GetDevice().GetId(), metaCtrl}
 
 		metaCCE := &ControlChangeEvent{
-			Spec:       metaSpec,
-			IsComplete: isComplete,
-			IsRetained: isRetained,
-			Value:      e.Value,
-			PrevValue:  e.PrevValue,
+			Spec:        metaSpec,
+			ControlType: controlType,
+			IsComplete:  isComplete,
+			IsRetained:  isRetained,
+			Value:       e.Value,
+			PrevValue:   e.PrevValue,
 		}
 		engine.eventBuffer.PushEvent(metaCCE)
 	default:
@@ -899,11 +907,12 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 	}
 
 	cce := &ControlChangeEvent{
-		Spec:       spec,
-		IsComplete: isComplete,
-		IsRetained: isRetained,
-		Value:      value,
-		PrevValue:  prevValue,
+		Spec:        spec,
+		ControlType: controlType,
+		IsComplete:  isComplete,
+		IsRetained:  isRetained,
+		Value:       value,
+		PrevValue:   prevValue,
 	}
 
 	engine.eventBuffer.PushEvent(cce)
