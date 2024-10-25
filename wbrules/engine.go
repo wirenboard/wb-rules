@@ -411,6 +411,7 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 		}
 		isComplete = ctrl.IsComplete()
 		isRetained = ctrl.IsRetained()
+		controlType = ctrl.GetType()
 
 		allMeta := ctrl.GetMeta()
 		var ok bool
@@ -473,7 +474,6 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 		case wbgong.CONV_META_SUBTOPIC_UNITS:
 			return ctrl.SetUnits(metaValue)()
 		}
-		controlType = ctrl.GetType()
 		return nil
 	})
 
