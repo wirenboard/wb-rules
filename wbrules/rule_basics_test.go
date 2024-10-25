@@ -112,6 +112,7 @@ func (s *RuleBasicsSuite) TestCellChange() {
 	)
 
 	s.publish("/devices/somedev/controls/tempx/meta/type", "temperature", "somedev/tempx")
+	s.publish("/devices/somedev/controls/tempx", "0", "somedev/tempx")
 	s.publish("/devices/somedev/controls/tempx", "42", "somedev/tempx")
 	s.Verify(
 		"tst -> /devices/somedev/controls/tempx/meta/type: [temperature] (QoS 1, retained)",

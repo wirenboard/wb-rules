@@ -41,6 +41,7 @@ func (s *RuleShellCommandSuite) TestRunShellCommand() {
 	s.publish("/devices/somedev/controls/cmd/meta/type", "text", "somedev/cmd")
 	s.publish("/devices/somedev/controls/cmdNoCallback/meta/type", "text",
 		"somedev/cmdNoCallback")
+	s.publish("/devices/somedev/controls/cmd", "initial_text", "somedev/cmd")
 	s.publish("/devices/somedev/controls/cmd", "touch samplefile.txt", "somedev/cmd")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cmd/meta/type: [text] (QoS 1, retained)",
@@ -74,6 +75,9 @@ func (s *RuleShellCommandSuite) TestRunShellCommand() {
 
 func (s *RuleShellCommandSuite) TestRunShellCommandIO() {
 	s.publish("/devices/somedev/controls/cmdWithOutput/meta/type", "text",
+		"somedev/cmdWithOutput")
+
+	s.publish("/devices/somedev/controls/cmdWithOutput", "initial_text",
 		"somedev/cmdWithOutput")
 	s.publish("/devices/somedev/controls/cmdWithOutput", "echo abc; echo qqq",
 		"somedev/cmdWithOutput")
@@ -115,6 +119,7 @@ func (s *RuleShellCommandSuite) TestCallbackCleanup() {
 	s.publish("/devices/somedev/controls/cmdNoCallback/meta/type", "text",
 		"somedev/cmdNoCallback")
 
+	s.publish("/devices/somedev/controls/cmd", "initial_text", "somedev/cmd")
 	s.publish("/devices/somedev/controls/cmd", "until [ -f fflag ]; do sleep 0.1; done", "somedev/cmd")
 
 	s.Verify(

@@ -37,6 +37,7 @@ func (s *RuleReadConfigSuite) WriteConfig(filename, text string) (configPath str
 }
 
 func (s *RuleReadConfigSuite) TryReadingConfig(configPath string) {
+	s.publish("/devices/somedev/controls/readSampleConfig", "initial_text", "somedev/readSampleConfig")
 	s.publish("/devices/somedev/controls/readSampleConfig", configPath, "somedev/readSampleConfig")
 }
 
