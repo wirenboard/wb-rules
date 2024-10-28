@@ -42,7 +42,6 @@ func (s *RuleReadConfigSuite) TryReadingConfig(configPath string) {
 
 func (s *RuleReadConfigSuite) verifyReadConfRuleLog(configPath string, msgs ...interface{}) {
 	msgs = append([]interface{}{
-		"tst -> /devices/somedev/controls/readSampleConfig: [initial_text] (QoS 1, retained)",
 		fmt.Sprintf(
 			"tst -> /devices/somedev/controls/readSampleConfig: [%s] (QoS 1, retained)",
 			configPath),
@@ -54,6 +53,7 @@ func (s *RuleReadConfigSuite) TestReadConfig() {
 	configPath := s.WriteConfig("conf.json", "{ // whatever! \n/*\nmultiline\ncomment!\n*/\n\"xyz\": 42 }")
 	s.publish("/devices/somedev/controls/readSampleConfig", "initial_text", "somedev/readSampleConfig")
 	s.TryReadingConfig(configPath)
+	s.Verify("tst -> /devices/somedev/controls/readSampleConfig: [initial_text] (QoS 1, retained)")
 	s.verifyReadConfRuleLog(configPath, "[info] config: {\"xyz\":42}")
 }
 
@@ -61,6 +61,7 @@ func (s *RuleReadConfigSuite) TestReadConfigErrors() {
 	configPath := filepath.Join(s.configDir, "nosuchconf.json")
 	s.publish("/devices/somedev/controls/readSampleConfig", "initial_text", "somedev/readSampleConfig")
 	s.TryReadingConfig(configPath)
+	s.Verify("tst -> /devices/somedev/controls/readSampleConfig: [initial_text] (QoS 1, retained)")
 	s.verifyReadConfRuleLog(
 		configPath,
 		fmt.Sprintf("[error] failed to open config file: %s", configPath),
