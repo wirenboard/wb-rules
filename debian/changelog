@@ -1,3 +1,9 @@
+wb-rules (2.22.0) stable; urgency=medium
+
+  * Do not trigger whenChanged on first published value, except for pushbutton control type
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Thu, 24 Oct 2024 19:33:59 +0500
+
 wb-rules (2.21.1) stable; urgency=medium
 
   * Restore rule debugging switch state on restart
