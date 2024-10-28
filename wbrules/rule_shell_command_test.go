@@ -46,6 +46,7 @@ func (s *RuleShellCommandSuite) TestRunShellCommand() {
 	s.Verify(
 		"tst -> /devices/somedev/controls/cmd/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmdNoCallback/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/cmd: [initial_text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmd: [touch samplefile.txt] (QoS 1, retained)",
 		"[info] cmd: touch samplefile.txt",
 		"[info] exit(0): touch samplefile.txt",
@@ -83,6 +84,7 @@ func (s *RuleShellCommandSuite) TestRunShellCommandIO() {
 		"somedev/cmdWithOutput")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cmdWithOutput/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/cmdWithOutput: [initial_text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmdWithOutput: [echo abc; echo qqq] (QoS 1, retained)",
 		"[info] cmdWithOutput: echo abc; echo qqq",
 		"[info] exit(0): echo abc; echo qqq",

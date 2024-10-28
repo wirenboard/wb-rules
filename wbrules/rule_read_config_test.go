@@ -37,7 +37,6 @@ func (s *RuleReadConfigSuite) WriteConfig(filename, text string) (configPath str
 }
 
 func (s *RuleReadConfigSuite) TryReadingConfig(configPath string) {
-	s.publish("/devices/somedev/controls/readSampleConfig", "initial_text", "somedev/readSampleConfig")
 	s.publish("/devices/somedev/controls/readSampleConfig", configPath, "somedev/readSampleConfig")
 }
 
@@ -53,12 +52,14 @@ func (s *RuleReadConfigSuite) verifyReadConfRuleLog(configPath string, msgs ...i
 
 func (s *RuleReadConfigSuite) TestReadConfig() {
 	configPath := s.WriteConfig("conf.json", "{ // whatever! \n/*\nmultiline\ncomment!\n*/\n\"xyz\": 42 }")
+	s.publish("/devices/somedev/controls/readSampleConfig", "initial_text", "somedev/readSampleConfig")
 	s.TryReadingConfig(configPath)
 	s.verifyReadConfRuleLog(configPath, "[info] config: {\"xyz\":42}")
 }
 
 func (s *RuleReadConfigSuite) TestReadConfigErrors() {
 	configPath := filepath.Join(s.configDir, "nosuchconf.json")
+	s.publish("/devices/somedev/controls/readSampleConfig", "initial_text", "somedev/readSampleConfig")
 	s.TryReadingConfig(configPath)
 	s.verifyReadConfRuleLog(
 		configPath,
