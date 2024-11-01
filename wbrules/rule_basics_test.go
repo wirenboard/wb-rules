@@ -101,18 +101,22 @@ func (s *RuleBasicsSuite) TestDirectMQTTMessages() {
 
 func (s *RuleBasicsSuite) TestCellChange() {
 	s.publish("/devices/somedev/controls/foobarbaz/meta/type", "text", "somedev/foobarbaz")
+	s.publish("/devices/somedev/controls/foobarbaz", "initial_text", "somedev/foobarbaz")
 	s.publish("/devices/somedev/controls/foobarbaz", "abc", "somedev/foobarbaz")
 	s.Verify(
 		"tst -> /devices/somedev/controls/foobarbaz/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/foobarbaz: [initial_text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/foobarbaz: [abc] (QoS 1, retained)",
 		"[info] cellChange1: somedev/foobarbaz=abc (string)",
 		"[info] cellChange2: somedev/foobarbaz=abc (string)",
 	)
 
 	s.publish("/devices/somedev/controls/tempx/meta/type", "temperature", "somedev/tempx")
+	s.publish("/devices/somedev/controls/tempx", "0", "somedev/tempx")
 	s.publish("/devices/somedev/controls/tempx", "42", "somedev/tempx")
 	s.Verify(
 		"tst -> /devices/somedev/controls/tempx/meta/type: [temperature] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/tempx: [0] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/tempx: [42] (QoS 1, retained)",
 		"[info] cellChange2: somedev/tempx=42 (number)",
 	)

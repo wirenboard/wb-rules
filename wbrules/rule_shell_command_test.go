@@ -41,10 +41,12 @@ func (s *RuleShellCommandSuite) TestRunShellCommand() {
 	s.publish("/devices/somedev/controls/cmd/meta/type", "text", "somedev/cmd")
 	s.publish("/devices/somedev/controls/cmdNoCallback/meta/type", "text",
 		"somedev/cmdNoCallback")
+	s.publish("/devices/somedev/controls/cmd", "initial_text", "somedev/cmd")
 	s.publish("/devices/somedev/controls/cmd", "touch samplefile.txt", "somedev/cmd")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cmd/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmdNoCallback/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/cmd: [initial_text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmd: [touch samplefile.txt] (QoS 1, retained)",
 		"[info] cmd: touch samplefile.txt",
 		"[info] exit(0): touch samplefile.txt",
@@ -75,10 +77,13 @@ func (s *RuleShellCommandSuite) TestRunShellCommand() {
 func (s *RuleShellCommandSuite) TestRunShellCommandIO() {
 	s.publish("/devices/somedev/controls/cmdWithOutput/meta/type", "text",
 		"somedev/cmdWithOutput")
+	s.publish("/devices/somedev/controls/cmdWithOutput", "initial_text",
+		"somedev/cmdWithOutput")
 	s.publish("/devices/somedev/controls/cmdWithOutput", "echo abc; echo qqq",
 		"somedev/cmdWithOutput")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cmdWithOutput/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/cmdWithOutput: [initial_text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmdWithOutput: [echo abc; echo qqq] (QoS 1, retained)",
 		"[info] cmdWithOutput: echo abc; echo qqq",
 		"[info] exit(0): echo abc; echo qqq",
@@ -115,11 +120,13 @@ func (s *RuleShellCommandSuite) TestCallbackCleanup() {
 	s.publish("/devices/somedev/controls/cmdNoCallback/meta/type", "text",
 		"somedev/cmdNoCallback")
 
+	s.publish("/devices/somedev/controls/cmd", "initial_text", "somedev/cmd")
 	s.publish("/devices/somedev/controls/cmd", "until [ -f fflag ]; do sleep 0.1; done", "somedev/cmd")
 
 	s.Verify(
 		"tst -> /devices/somedev/controls/cmd/meta/type: [text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmdNoCallback/meta/type: [text] (QoS 1, retained)",
+		"tst -> /devices/somedev/controls/cmd: [initial_text] (QoS 1, retained)",
 		"tst -> /devices/somedev/controls/cmd: [until [ -f fflag ]; do sleep 0.1; done] (QoS 1, retained)",
 		"[info] cmd: until [ -f fflag ]; do sleep 0.1; done",
 	)
