@@ -431,7 +431,7 @@ var Notify = (function () {
   return {
     sendEmail: function sendEmail(to, subject, text) {
       log('sending email to {}: {}', to, subject);
-      base64subject = Buffer.from(subject).toString('base64');
+      var base64subject = Buffer.from(subject).toString('base64');
       runShellCommand("/usr/sbin/sendmail '{}'".format(to), {
         captureErrorOutput: true,
         captureOutput: true,
