@@ -1,3 +1,9 @@
+wb-rules (2.22.1) stable; urgency=medium
+
+  * 
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Wed, 06 Nov 2024 18:48:31 +0500
+
 wb-rules (2.22.0) stable; urgency=medium
 
   * Do not trigger whenChanged on first published value, except for pushbutton control type
