@@ -431,10 +431,11 @@ var Notify = (function () {
   return {
     sendEmail: function sendEmail(to, subject, text) {
       log('sending email to {}: {}', to, subject);
+      var base64subject = Duktape.enc('base64', subject);
       runShellCommand("/usr/sbin/sendmail '{}'".format(to), {
         captureErrorOutput: true,
         captureOutput: true,
-        input: 'Subject: {}\n\n{}'.format(subject, text),
+        input: 'Subject: =?utf-8?B?{}?=\r\nContent-Type: text/plain; charset=utf-8\n\n{}'.format(base64subject, text),
         exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
           if (exitCode != 0)
             log.error(
