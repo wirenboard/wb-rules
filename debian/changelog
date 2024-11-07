@@ -1,6 +1,6 @@
 wb-rules (2.22.1) stable; urgency=medium
 
-  * 
+  * Fix e-mail encoding in alarms
 
  -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Wed, 06 Nov 2024 18:48:31 +0500
 
