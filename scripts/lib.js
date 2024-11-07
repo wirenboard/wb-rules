@@ -435,7 +435,7 @@ var Notify = (function () {
       runShellCommand("/usr/sbin/sendmail '{}'".format(to), {
         captureErrorOutput: true,
         captureOutput: true,
-        input: 'Subject: =?utf-8?B?{}?=\r\nContent-Type: text/plain; charset=utf-8\r\n{}'.format(base64subject, text),
+        input: 'Subject: =?utf-8?B?{}?=\r\nContent-Type: text/plain; charset=utf-8\n\n{}'.format(base64subject, text),
         exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
           if (exitCode != 0)
             log.error(
