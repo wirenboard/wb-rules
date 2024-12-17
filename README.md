@@ -267,6 +267,7 @@ defineVirtualDevice('my-virtual-device', {
 (например `dev[deviceID][controlID] = "string"`)
 * `max` для параметра типа `range` может задавать его максимально допустимое значение.
 * `min` для параметра типа `range` может задавать его минимально допустимое значение.
+* `precision` для параметра типа `value` может задавать количество знаков после запятой.
 * `readonly` — когда задано истинное значение, параметр объявляется read-only
   (публикуется `1` в `/devices/.../controls/.../meta/readonly`).
 
@@ -757,10 +758,11 @@ Setters:
 * `setType(string)`
 * `setUnits(string)`
 * `setReadonly(string)`
-* `setMax(string)`
-* `setMin(string)`
+* `setMax(number)`
+* `setMin(number)`
+* `setPrecision(number)`
 * `setError(string)`
-* `setOrder(string)`
+* `setOrder(number)`
 * `setValue(any)` или `setValue({ value: any, notify: bool })`
 
 Getters:
@@ -772,6 +774,7 @@ Getters:
 * `getReadonly() => boolean`
 * `getMax() => number`
 * `getMin() => number`
+* `getPrecision() => number`
 * `getError() => string`
 * `getOrder() => number`
 * `getValue() => any`

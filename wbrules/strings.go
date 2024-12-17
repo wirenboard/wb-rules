@@ -20,8 +20,9 @@ const (
 	VDEV_CONTROL_DESCR_PROP_UNITS        = "units"
 	VDEV_CONTROL_DESCR_PROP_ENUM         = "enum"
 	// FIXME: deprecated
-	VDEV_CONTROL_DESCR_PROP_MAX = "max"
-	VDEV_CONTROL_DESCR_PROP_MIN = "min"
+	VDEV_CONTROL_DESCR_PROP_MAX       = "max"
+	VDEV_CONTROL_DESCR_PROP_MIN       = "min"
+	VDEV_CONTROL_DESCR_PROP_PRECISION = "precision"
 
 	// default value for 'readonly'
 	VDEV_CONTROL_READONLY_DEFAULT = true
