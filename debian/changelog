@@ -1,8 +1,14 @@
-wb-rules (2.22.2) stable; urgency=medium
+wb-rules (2.22.3) stable; urgency=medium
 
   * Support precision
 
  -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 17 Dec 2024 21:35:00 +0400
+
+wb-rules (2.22.2) stable; urgency=medium
+
+  * Check range value for min/max, update wbgo.so library
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 09 Dec 2024 14:30:00 +0400
 
 wb-rules (2.22.1) stable; urgency=medium
 
