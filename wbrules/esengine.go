@@ -1502,7 +1502,7 @@ func (engine *ESEngine) esVdevCellGetMax(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushInt(ctrlProxy.getControl().GetMax())
+	ctx.PushNumber(ctrlProxy.getControl().GetMax())
 
 	return 1
 }
@@ -1513,7 +1513,7 @@ func (engine *ESEngine) esVdevCellGetMin(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushInt(ctrlProxy.getControl().GetMin())
+	ctx.PushNumber(ctrlProxy.getControl().GetMin())
 
 	return 1
 }
