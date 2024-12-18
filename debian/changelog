@@ -1,3 +1,9 @@
+wb-rules (2.22.2) stable; urgency=medium
+
+  * Check range value for min/max, update wbgo.so library
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 09 Dec 2024 14:30:00 +0400
+
 wb-rules (2.22.1) stable; urgency=medium
 
   * Fix e-mail encoding in alarms
