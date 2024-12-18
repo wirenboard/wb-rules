@@ -343,6 +343,8 @@ func (engine *ESEngine) initVdevCellPrototype(ctx *ESContext) {
 		"getMax":         engine.esVdevCellGetMax,
 		"setMin":         engine.esVdevCellSetMin,
 		"getMin":         engine.esVdevCellGetMin,
+		"setPrecision":   engine.esVdevCellSetPrecision,
+		"getPrecision":   engine.esVdevCellGetPrecision,
 		"setError":       engine.esVdevCellSetError,
 		"getError":       engine.esVdevCellGetError,
 		"setOrder":       engine.esVdevCellSetOrder,
@@ -1516,6 +1518,17 @@ func (engine *ESEngine) esVdevCellGetMin(ctx *ESContext) int {
 	return 1
 }
 
+func (engine *ESEngine) esVdevCellGetPrecision(ctx *ESContext) int {
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
+	}
+
+	ctx.PushNumber(ctrlProxy.getControl().GetPrecision())
+
+	return 1
+}
+
 func (engine *ESEngine) esVdevCellGetError(ctx *ESContext) int {
 	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
 	if duk_ret < 0 {
@@ -1720,6 +1733,23 @@ func (engine *ESEngine) esVdevCellSetMin(ctx *ESContext) int {
 	}
 
 	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MIN, fmt.Sprintf("%d", min))
+
+	return 0
+}
+
+func (engine *ESEngine) esVdevCellSetPrecision(ctx *ESContext) int {
+	if !ctx.IsNumber(0) {
+		wbgong.Error.Printf("setPrecision(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	prec := float64(ctx.GetNumber(0))
+
+	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
+	if duk_ret < 0 {
+		return duk_ret
+	}
+
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_PRECISION, fmt.Sprintf("%f", prec))
 
 	return 0
 }

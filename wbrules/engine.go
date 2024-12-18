@@ -457,6 +457,12 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 			} else {
 				return ctrl.SetMin(min)()
 			}
+		case wbgong.CONV_META_SUBTOPIC_PRECISION:
+			if prec, err := strconv.ParseFloat(metaValue, 64); err != nil {
+				return err
+			} else {
+				return ctrl.SetPrecision(prec)()
+			}
 		case wbgong.CONV_META_SUBTOPIC_ORDER:
 			if order, err := strconv.Atoi(metaValue); err != nil {
 				return err
@@ -1513,6 +1519,15 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 					devId, ctrlId)
 			}
 			args.SetUnits(funits)
+		}
+		prec, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_PRECISION]
+		if ok {
+			fprec, ok := prec.(float64)
+			if !ok {
+				return fmt.Errorf("%s/%s: non-numeric value of precision property",
+					devId, ctrlId)
+			}
+			args.SetPrecision(fprec)
 		}
 	}
 
