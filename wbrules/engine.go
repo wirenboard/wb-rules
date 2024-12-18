@@ -1520,6 +1520,9 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 			}
 			args.SetUnits(funits)
 		}
+	}
+
+	if ctrlType == wbgong.CONV_TYPE_VALUE || ctrlType == wbgong.CONV_TYPE_RANGE {
 		prec, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_PRECISION]
 		if ok {
 			fprec, ok := prec.(float64)
