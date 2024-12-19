@@ -1,5 +1,7 @@
 package wbrules
 
+import "github.com/wirenboard/wbgong"
+
 const (
 	SCOPE_STACK_CAPACITY  = 10
 	CLEANUP_LIST_CAPACITY = 10
@@ -43,7 +45,7 @@ func (sc *ScopedCleanup) PopCleanupScope(scope string) string {
 
 func (sc *ScopedCleanup) AddCleanup(cleanupFn CleanupFunc) {
 	if len(sc.scopeStack) == 0 {
-		// global scope, cleanup will not run
+		wbgong.Debug.Printf("global scope, cleanup will not run")
 		return
 	}
 	scope := sc.scopeStack[len(sc.scopeStack)-1]

@@ -236,6 +236,10 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	engine.globalCtx.Pop()
 	// []
 
+	engine.cleanup.PushCleanupScope("__setup__")
+	defer engine.cleanup.PopCleanupScope("__setup__")
+	engine.RuleEngine.setupRuleEngineSettingsDevice()
+
 	return
 }
 
@@ -2038,7 +2042,14 @@ func (engine *ESEngine) esWbStartTimer(ctx *ESContext) int {
 	var callback func()
 	if name == NO_TIMER_NAME {
 		f := ctx.WrapCallback(0)
-		callback = func() { f(nil) }
+		callback = func() {
+			currentFilename := ctx.GetCurrentFilename()
+			if currentFilename != "" {
+				engine.cleanup.PushCleanupScope(currentFilename)
+				defer engine.cleanup.PopCleanupScope(currentFilename)
+			}
+			f(nil)
+		}
 	}
 
 	interval := time.Duration(ms * float64(time.Millisecond))
@@ -2123,6 +2134,12 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 				if !ctx.IsValid() {
 					wbgong.Info.Println("ignore runShellCommand callback without Duktape context (maybe script is reloaded or removed)")
 					return
+				}
+
+				currentFilename := ctx.GetCurrentFilename()
+				if currentFilename != "" {
+					engine.cleanup.PushCleanupScope(currentFilename)
+					defer engine.cleanup.PopCleanupScope(currentFilename)
 				}
 
 				args := objx.New(map[string]interface{}{
