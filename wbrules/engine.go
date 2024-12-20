@@ -446,13 +446,13 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 		case wbgong.CONV_META_SUBTOPIC_ERROR:
 			return ctrl.SetError(errors.New(metaValue))()
 		case wbgong.CONV_META_SUBTOPIC_MAX:
-			if max, err := strconv.Atoi(metaValue); err != nil {
+			if max, err := strconv.ParseFloat(metaValue, 64); err != nil {
 				return err
 			} else {
 				return ctrl.SetMax(max)()
 			}
 		case wbgong.CONV_META_SUBTOPIC_MIN:
-			if min, err := strconv.Atoi(metaValue); err != nil {
+			if min, err := strconv.ParseFloat(metaValue, 64); err != nil {
 				return err
 			} else {
 				return ctrl.SetMin(min)()
@@ -1520,6 +1520,9 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 			}
 			args.SetUnits(funits)
 		}
+	}
+
+	if ctrlType == wbgong.CONV_TYPE_VALUE || ctrlType == wbgong.CONV_TYPE_RANGE {
 		prec, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_PRECISION]
 		if ok {
 			fprec, ok := prec.(float64)
@@ -1558,34 +1561,30 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 		}
 	}
 
-	// get properties for 'range' type
-	// FIXME: deprecated
 	if ctrlType == wbgong.CONV_TYPE_RANGE {
-		fmax := VDEV_CONTROL_RANGE_MAX_DEFAULT
+		args.SetMax(VDEV_CONTROL_RANGE_MAX_DEFAULT)
+		args.SetMin(VDEV_CONTROL_RANGE_MIN_DEFAULT)
+	}
+	if ctrlType == wbgong.CONV_TYPE_RANGE || ctrlType == wbgong.CONV_TYPE_VALUE {
 		max, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_MAX]
 		if ok {
-			fmax, ok = max.(float64)
+			fmax, ok := max.(float64)
 			if !ok {
 				return fmt.Errorf("%s/%s: non-numeric value of max property",
 					devId, ctrlId)
 			}
+			args.SetMax(fmax)
 		}
 
-		// set argument
-		args.SetMax(int(fmax))
-
-		fmin := VDEV_CONTROL_RANGE_MIN_DEFAULT
 		min, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_MIN]
 		if ok {
-			fmin, ok = min.(float64)
+			fmin, ok := min.(float64)
 			if !ok {
 				return fmt.Errorf("%s/%s: non-numeric value of min property",
 					devId, ctrlId)
 			}
+			args.SetMin(fmin)
 		}
-
-		// set argument
-		args.SetMin(int(fmin))
 	}
 	if descr, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_DESCRIPTION]; ok {
 		if fdescr, okString := descr.(string); okString {
