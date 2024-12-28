@@ -1,4 +1,4 @@
-wb-rules (2.22.5) stable; urgency=medium
+wb-rules (2.23.0) stable; urgency=medium
 
   * Clean up MQTT data on unload
 
