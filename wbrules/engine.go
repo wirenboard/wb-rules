@@ -673,8 +673,6 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 	engine.readyQueue = wbgong.NewDeferredList(engine.CallSync)
 	engine.timerDeferQueue = wbgong.NewDeferredList(engine.CallHere)
 
-	engine.setupRuleEngineSettingsDevice()
-
 	if options.Statsd != nil {
 		engine.statsdClient = options.Statsd.Clone(ENGINE_STATSD_PREFIX)
 		engine.statsdClient.SetCallback(engine.collectStats)
