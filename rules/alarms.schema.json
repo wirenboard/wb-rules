@@ -76,13 +76,14 @@
                     "type": "string",
                     "title": "Cell",
                     "description": "Use the following format: device/control",
-                    "pattern": "^[^/+#]+/[^/+#]+$",
+                    "pattern": "^[^\\/\\+#]+/[^\\/\\+#]+$",
                     "minLength": 3,
                     "propertyOrder": 2,
                     "options": {
                         "wb": {
                             "data": "devices"
-                        }
+                        },
+                        "patternmessage": "Invalid format"
                     },
                     "format": "wb-autocomplete"
                 },
@@ -290,9 +291,12 @@
             "type": "string",
             "title": "Alarm device name",
             "description": "Device name to be used in MQTT topics for logging & alarm cells",
-            "pattern": "^[^\\s/]+$",
+            "pattern": "^[^\\s\\/]+$",
             "minLength": 1,
-            "propertyOrder": 1
+            "propertyOrder": 1,
+            "options": {
+                "patternmessage": "Invalid device name"
+            }
         },
         "deviceTitle": {
             "type": "string",
@@ -376,7 +380,9 @@
             "Alarm device title": "Название уведомления",
             "Recipients": "Получатели сообщений",
             "Alarms": "Уведомления",
-            "Alarm{{: |self.name}}": "Уведомление{{: |self.name}}"
+            "Alarm{{: |self.name}}": "Уведомление{{: |self.name}}",
+            "Invalid format": "Неверный формат",
+            "Invalid device name": "Неверное имя устройства"
         }
     }
 }
