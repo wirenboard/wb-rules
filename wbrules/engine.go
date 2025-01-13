@@ -233,6 +233,29 @@ func (devProxy *DeviceProxy) isVirtual() (isLocal bool, err error) {
 	return
 }
 
+func (devProxy *DeviceProxy) setError(e wbgong.DeviceError) (err error) {
+	devId := devProxy.name
+
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[devProxy] setError for device %s", devId)
+	}
+
+	err = devProxy.owner.Driver().Access(func(tx wbgong.DriverTx) error {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		localDevice, isLocal := dev.(wbgong.LocalDevice)
+		if !isLocal {
+			return wbgong.ExternalControlError
+		}
+		localDevice.SetError(e)
+		return nil
+	})
+
+	return
+}
+
 func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgong.Control, value interface{},
 	prevValue interface{}, tx wbgong.DriverTx) error {
 	ctrlProxy.Lock()

@@ -316,6 +316,7 @@ func (engine *ESEngine) initVdevPrototype(ctx *ESContext) {
 		"removeControl":   engine.esVdevRemoveControl,
 		"controlsList":    engine.esVdevControlsList,
 		"isVirtual":       engine.esVdevIsVirtual,
+		"setError":        engine.esVdevSetError,
 		// getCellValue and setCellValue are defined in lib.js
 	})
 
@@ -1166,6 +1167,32 @@ func (engine *ESEngine) esVdevIsVirtual(ctx *ESContext) int {
 
 	ctx.PushBoolean(isVirtual)
 
+	return 1
+}
+
+func (engine *ESEngine) esVdevSetError(ctx *ESContext) int {
+	if !ctx.IsString(0) {
+		wbgong.Error.Printf("setError(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	errorStr := ctx.GetString(0)
+
+	ctx.PushThis()
+
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	ctx.Pop()
+
+	devProxy := engine.GetDeviceProxy(devId)
+	errDevice := devProxy.setError(errors.New(errorStr))
+	if errDevice != nil {
+		wbgong.Error.Printf("Error in setting error on device %s: %s", devId, errDevice)
+	}
 	return 1
 }
 
