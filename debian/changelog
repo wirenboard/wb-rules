@@ -1,4 +1,4 @@
-wb-rules (2.23.2) stable; urgency=medium
+wb-rules (2.24.0) stable; urgency=medium
 
   * Add setError method to device object
 
