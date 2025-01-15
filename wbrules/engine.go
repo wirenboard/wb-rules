@@ -271,7 +271,7 @@ func (devProxy *DeviceProxy) GetMeta() (m wbgong.MetaInfo) {
 		if dev == nil {
 			return wbgong.DeviceNotExistError
 		}
-		m = dev.GetMetaJson()
+		m = dev.GetMeta()
 		return nil
 	})
 	return
