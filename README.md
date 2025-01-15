@@ -745,6 +745,7 @@ getDevice("deviceID").controlsList().forEach(function(ctrl) {
 * `controlsList() => []__wbVdevCellPrototype`
 * `isVirtual() => boolean`
 * `setError(string)`
+* `getError() => string`
 
 Контролам можно устанавливать значения мета-полей при помощи сеттеров.
 Например, установить `description` можно при помощи метода `setDescription(string)`, `units` — `setUnits(string)` и т.д.

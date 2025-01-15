@@ -233,14 +233,14 @@ func (devProxy *DeviceProxy) isVirtual() (isLocal bool, err error) {
 	return
 }
 
-func (devProxy *DeviceProxy) setError(e wbgong.DeviceError) (err error) {
+func (devProxy *DeviceProxy) SetMeta(key, metaValue string) {
 	devId := devProxy.name
 
 	if wbgong.DebuggingEnabled() {
-		wbgong.Debug.Printf("[devProxy] setError for device %s", devId)
+		wbgong.Debug.Printf("[devProxy %s] SetMeta(%v=%v)", devId, key, metaValue)
 	}
 
-	err = devProxy.owner.Driver().Access(func(tx wbgong.DriverTx) error {
+	errAccess := devProxy.owner.Driver().Access(func(tx wbgong.DriverTx) error {
 		dev := tx.GetDevice(devId)
 		if dev == nil {
 			return wbgong.DeviceNotExistError
@@ -249,10 +249,31 @@ func (devProxy *DeviceProxy) setError(e wbgong.DeviceError) (err error) {
 		if !isLocal {
 			return wbgong.ExternalControlError
 		}
-		localDevice.SetError(e)
+		switch key {
+		case wbgong.CONV_META_SUBTOPIC_ERROR:
+			return localDevice.SetError(errors.New(metaValue))()
+		}
 		return nil
 	})
 
+	if errAccess != nil {
+		wbgong.Error.Printf("device %s SetMeta(%s=%s) error: %s", devId, key, metaValue, errAccess)
+	}
+
+	return
+}
+
+func (devProxy *DeviceProxy) GetMeta() (m wbgong.MetaInfo) {
+	devId := devProxy.name
+
+	devProxy.owner.Driver().Access(func(tx wbgong.DriverTx) error {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		m = dev.GetMetaJson()
+		return nil
+	})
 	return
 }
 
