@@ -316,6 +316,8 @@ func (engine *ESEngine) initVdevPrototype(ctx *ESContext) {
 		"removeControl":   engine.esVdevRemoveControl,
 		"controlsList":    engine.esVdevControlsList,
 		"isVirtual":       engine.esVdevIsVirtual,
+		"setError":        engine.esVdevSetError,
+		"getError":        engine.esVdevGetError,
 		// getCellValue and setCellValue are defined in lib.js
 	})
 
@@ -1166,6 +1168,54 @@ func (engine *ESEngine) esVdevIsVirtual(ctx *ESContext) int {
 
 	ctx.PushBoolean(isVirtual)
 
+	return 1
+}
+
+func (engine *ESEngine) esVdevSetError(ctx *ESContext) int {
+	if !ctx.IsString(0) {
+		wbgong.Error.Printf("setError(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	errorStr := ctx.GetString(0)
+
+	ctx.PushThis()
+
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	ctx.Pop()
+
+	devProxy := engine.GetDeviceProxy(devId)
+	devProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_ERROR, errorStr)
+
+	return 1
+}
+
+func (engine *ESEngine) esVdevGetError(ctx *ESContext) int {
+	ctx.PushThis()
+
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	ctx.Pop()
+
+	var errString string
+	devProxy := engine.GetDeviceProxy(devId)
+	meta := devProxy.GetMeta()
+	if meta != nil {
+		if errStr, ok := meta[wbgong.CONV_META_SUBTOPIC_ERROR]; ok {
+			errString = errStr.(string)
+		}
+	}
+	ctx.PushString(errString)
 	return 1
 }
 

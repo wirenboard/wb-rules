@@ -233,6 +233,50 @@ func (devProxy *DeviceProxy) isVirtual() (isLocal bool, err error) {
 	return
 }
 
+func (devProxy *DeviceProxy) SetMeta(key, metaValue string) {
+	devId := devProxy.name
+
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[devProxy %s] SetMeta(%v=%v)", devId, key, metaValue)
+	}
+
+	errAccess := devProxy.owner.Driver().Access(func(tx wbgong.DriverTx) error {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		localDevice, isLocal := dev.(wbgong.LocalDevice)
+		if !isLocal {
+			return wbgong.ExternalControlError
+		}
+		switch key {
+		case wbgong.CONV_META_SUBTOPIC_ERROR:
+			return localDevice.SetError(errors.New(metaValue))()
+		}
+		return nil
+	})
+
+	if errAccess != nil {
+		wbgong.Error.Printf("device %s SetMeta(%s=%s) error: %s", devId, key, metaValue, errAccess)
+	}
+
+	return
+}
+
+func (devProxy *DeviceProxy) GetMeta() (m wbgong.MetaInfo) {
+	devId := devProxy.name
+
+	devProxy.owner.Driver().Access(func(tx wbgong.DriverTx) error {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		m = dev.GetMeta()
+		return nil
+	})
+	return
+}
+
 func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgong.Control, value interface{},
 	prevValue interface{}, tx wbgong.DriverTx) error {
 	ctrlProxy.Lock()

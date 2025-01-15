@@ -1,3 +1,9 @@
+wb-rules (2.24.0) stable; urgency=medium
+
+  * Add setError/getError methods to device object
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 09 Jan 2025 22:30:00 +0400
+
 wb-rules (2.23.1) stable; urgency=medium
 
   * Fix alarms schema
