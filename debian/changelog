@@ -1,6 +1,6 @@
 wb-rules (2.24.0) stable; urgency=medium
 
-  * Add setError method to device object
+  * Add setError/getError methods to device object
 
  -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 09 Jan 2025 22:30:00 +0400
 
