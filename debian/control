@@ -4,7 +4,7 @@ Section: misc
 Priority: optional
 Multi-Arch: foreign
 Standards-Version: 3.9.2
-Build-Depends: debhelper (>= 9), pkg-config, golang-go:native
+Build-Depends: debhelper (>= 9), pkg-config, golang-1.21-go:native
 Homepage: https://github.com/wirenboard/wb-rules
 
 Package: wb-rules

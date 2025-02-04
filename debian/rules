@@ -1,4 +1,7 @@
 #!/usr/bin/make -f
+
+MAKEFLAGS += GO=/usr/lib/go-1.21/bin/go
+
 %:
 	dh $@ --parallel
 
