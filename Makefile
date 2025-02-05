@@ -34,7 +34,7 @@ amd64:
 
 test:
 	cp amd64.wbgo.so wbrules/wbgo.so
-	CC=x86_64-linux-gnu-gcc go test -v -trimpath -ldflags="-s -w" -cover ./wbrules
+	CC=x86_64-linux-gnu-gcc $(GO) test -v -trimpath -ldflags="-s -w" -cover ./wbrules
 
 wb-rules: main.go wbrules/*.go
 	$(GO_ENV) $(GO) build -trimpath $(GO_FLAGS)
