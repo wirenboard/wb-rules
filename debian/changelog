@@ -1,3 +1,9 @@
+wb-rules (2.25.1) stable; urgency=medium
+
+  * Don't clean up MQTT data on unload
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 10 Feb 2025 12:50:00 +0400
+
 wb-rules (2.25.0) stable; urgency=medium
 
   * Upgrade paho.mqtt.golang to 1.5.0
