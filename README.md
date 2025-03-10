@@ -1291,6 +1291,14 @@ try {
 // Error: don't write pure objects to PersistentStorage, use new StorableObject(obj) instead
 ```
 
+`PersistentStorage` не является объектом, поэтому не поддерживается вывод всего хранилища `ps`.
+Рботать с сохраненными данными можно только после доступа через ключ `ps['key2']`:
+```
+ps['key2'].foo = 5;
+log(JSON.stringify(ps["key2"])); // выведет {"foo":5}
+log(JSON.stringify(ps)); // выведет пустоту
+```
+
 Можно создавать несколько постоянных хранилищ с разными именами;
 каждое из них будет иметь свой набор значений.
 
