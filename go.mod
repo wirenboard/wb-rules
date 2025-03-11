@@ -9,7 +9,7 @@ require (
 	github.com/stretchr/objx v0.3.0
 	github.com/stretchr/testify v1.7.0
 	github.com/wirenboard/go-duktape v0.0.0-20240729075045-b4150233e350
-	github.com/wirenboard/wbgong v0.5.9
+	github.com/wirenboard/wbgong v0.5.10-0.20250311190043-950e4badf87c
 	gopkg.in/robfig/cron.v1 v1.2.0
 )
 

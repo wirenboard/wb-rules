@@ -1,7 +1,6 @@
 package wbrules
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -19,7 +18,7 @@ func (s *PersistentStorageSuite) SetupFixture() {
 
 	// we need to create separated temp directory because persistent DB file
 	// should be keeped between tests
-	s.tmpDir, err = ioutil.TempDir(os.TempDir(), "wbrulestest")
+	s.tmpDir, err = os.MkdirTemp("", "wbrulestest")
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}

@@ -1,7 +1,6 @@
 package wbrules
 
 import (
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -16,7 +15,7 @@ type VirtualCellsStorageSuite struct {
 
 func (s *VirtualCellsStorageSuite) SetupFixture() {
 	var err error
-	s.tmpDir, err = ioutil.TempDir(os.TempDir(), "wbrulestest")
+	s.tmpDir, err = os.MkdirTemp("", "wbrulestest")
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}

@@ -1,7 +1,6 @@
 package wbrules
 
 import (
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
@@ -148,7 +147,7 @@ func (editor *Editor) Load(args *EditorPathArgs, reply *EditorContentResponse) e
 	if err != nil {
 		return err
 	}
-	content, err := ioutil.ReadFile(entry.PhysicalPath)
+	content, err := os.ReadFile(entry.PhysicalPath)
 	if err != nil {
 		wbgong.Error.Printf("error reading %s: %s", entry.PhysicalPath, err)
 		return writeError

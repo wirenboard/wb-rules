@@ -2,7 +2,6 @@ package wbrules
 
 import (
 	"errors"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,7 +134,7 @@ func (s *EditorSuite) addSampleFiles() {
 func (s *EditorSuite) verifySources(expected map[string]string) {
 	actual := make(map[string]string)
 	s.walkSources(func(virtualPath, physicalPath string) {
-		bs, err := ioutil.ReadFile(physicalPath)
+		bs, err := os.ReadFile(physicalPath)
 		s.Ck("ReadFile()", err)
 		actual[virtualPath] = string(bs)
 	})

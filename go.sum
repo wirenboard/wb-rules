@@ -17,8 +17,8 @@ github.com/stretchr/testify v1.7.0 h1:nwc3DEeHmmLAfoZucVR881uASk0Mfjw8xYJ99tb5Cc
 github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
 github.com/wirenboard/go-duktape v0.0.0-20240729075045-b4150233e350 h1:hjfTrSlSU/Mt2KGZXYMfWhkUJBW8/fmZP5dT4YepCts=
 github.com/wirenboard/go-duktape v0.0.0-20240729075045-b4150233e350/go.mod h1:RBaIu9caMBuL6Xk32Ty04qAjl/5cVSfEdCQtbWzvMQ0=
-github.com/wirenboard/wbgong v0.5.9 h1:N8NCcOq45gAREkaPlMnpYFNOdipSzm8i6Z+yEXUoUpw=
-github.com/wirenboard/wbgong v0.5.9/go.mod h1:XJWdTJOE6V6SxjgRXymItB+qTy1f0b3PbF9fC78JcTM=
+github.com/wirenboard/wbgong v0.5.10-0.20250311190043-950e4badf87c h1:VE1WTLw1ZHj4EwM0rCI9XS2dsq3JWVL6bNvSVp4KQE0=
+github.com/wirenboard/wbgong v0.5.10-0.20250311190043-950e4badf87c/go.mod h1:XJWdTJOE6V6SxjgRXymItB+qTy1f0b3PbF9fC78JcTM=
 golang.org/x/sys v0.1.0 h1:kunALQeHf1/185U1i0GOB/fy1IPRDDpuoOOqRReG57U=
 golang.org/x/sys v0.1.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
 gopkg.in/alexcesaro/statsd.v2 v2.0.0 h1:FXkZSCZIH17vLCO5sO2UucTHsH9pc+17F6pl3JVCwMc=
