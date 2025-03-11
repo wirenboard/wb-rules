@@ -1,3 +1,9 @@
+wb-rules (2.25.2) stable; urgency=medium
+
+  * Docs: add more specific info about persistant storage
+
+ -- Vitalii Gaponov <vitalii.gaponov@wirenboard.com>  Tue, 11 Mar 2025 10:00:00 +0300
+
 wb-rules (2.25.1) stable; urgency=medium
 
   * Don't clean up MQTT data on unload
