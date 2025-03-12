@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -897,7 +897,7 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 		// LiveLoadFile for the file, but as the new content
 		// will be already registered with the contentTracker,
 		// duplicate reload will not happen
-		err = ioutil.WriteFile(cleanPath, []byte(content), 0644)
+		err = os.WriteFile(cleanPath, []byte(content), 0644)
 		if err != nil {
 			r <- err
 			return
@@ -2394,7 +2394,7 @@ func (engine *ESEngine) esReadConfig(ctx *ESContext) int {
 	defer in.Close()
 
 	reader := JsonConfigReader.New(in)
-	preprocessedContent, err := ioutil.ReadAll(reader)
+	preprocessedContent, err := io.ReadAll(reader)
 	if err != nil {
 		// JsonConfigReader doesn't produce its own errors, thus
 		// any errors returned from it are I/O errors.
@@ -2642,7 +2642,7 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 
 		// TBD: something external to load scripts properly
 		// now just try to read file
-		src, err := ioutil.ReadFile(path)
+		src, err := os.ReadFile(path)
 
 		if err == nil {
 			wbgong.Debug.Printf("[modsearch] file found!")

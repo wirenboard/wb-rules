@@ -2,7 +2,6 @@ package wbrules
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"regexp"
 	"sort"
@@ -88,7 +87,7 @@ var updatesVerifyRx = regexp.MustCompile(`^\[(changed|removed)\] (.*)`)
 
 // creates necessary file paths if some are not defined already
 func (s *RuleSuiteBase) createTempFiles() {
-	tmpDir, err := ioutil.TempDir(os.TempDir(), "wbrulestest")
+	tmpDir, err := os.MkdirTemp("", "wbrulestest")
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}
@@ -306,7 +305,7 @@ func (s *RuleSuiteBase) LiveLoadScript(script string) error {
 func (s *RuleSuiteBase) LiveLoadScriptToDir(script, dir string) error {
 	data := s.ReadSourceDataFile(script)
 	path := dir + "/" + script
-	s.DataFileFixture.Ckf("WriteFile", ioutil.WriteFile(path, []byte(data), 0777))
+	s.DataFileFixture.Ckf("WriteFile", os.WriteFile(path, []byte(data), 0777))
 	return s.engine.LiveLoadFile(path)
 }
 

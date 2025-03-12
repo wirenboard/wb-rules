@@ -2,7 +2,6 @@ package wbrules
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -18,7 +17,7 @@ type RuleReloadSuite struct {
 
 func (s *RuleReloadSuite) SetupTest() {
 	var err error
-	s.reloadTmpDir, err = ioutil.TempDir(os.TempDir(), "wbrulestest")
+	s.reloadTmpDir, err = os.MkdirTemp("", "wbrulestest")
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}
@@ -338,7 +337,7 @@ type RuleReloadForceDefaultSuite struct {
 
 func (s *RuleReloadForceDefaultSuite) SetupTest() {
 	var err error
-	s.reloadTmpDir, err = ioutil.TempDir(os.TempDir(), "wbrulestest")
+	s.reloadTmpDir, err = os.MkdirTemp("", "wbrulestest")
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}

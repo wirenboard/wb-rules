@@ -1,3 +1,9 @@
+wb-rules (2.26.0) stable; urgency=medium
+
+  * Reload script on mtime changes
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 11 Mar 2025 17:30:00 +0400
+
 wb-rules (2.25.1) stable; urgency=medium
 
   * Don't clean up MQTT data on unload

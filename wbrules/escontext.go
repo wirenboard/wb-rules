@@ -3,8 +3,8 @@ package wbrules
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"reflect"
 	"regexp"
 	"runtime"
@@ -430,7 +430,7 @@ func (ctx *ESContext) LoadScript(path string) error {
 // about environment
 func (ctx *ESContext) LoadScenario(path string) error {
 	// load script file
-	srcRaw, err := ioutil.ReadFile(path)
+	srcRaw, err := os.ReadFile(path)
 
 	if err != nil {
 		return err
