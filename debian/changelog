@@ -1,4 +1,4 @@
-wb-rules (2.25.2) stable; urgency=medium
+wb-rules (2.26.0) stable; urgency=medium
 
   * Reload script on mtime changes
 
