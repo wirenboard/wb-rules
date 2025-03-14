@@ -1,3 +1,9 @@
+wb-rules (2.28.0) stable; urgency=medium
+
+  * 
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Fri, 14 Mar 2025 11:21:16 +0500
+
 wb-rules (2.27.0) stable; urgency=medium
 
   * Do not clean /meta/error after setting control value
