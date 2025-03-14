@@ -1,3 +1,9 @@
+wb-rules (2.27.0) stable; urgency=medium
+
+  * Do not clean /meta/error after setting control value
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Fri, 14 Mar 2025 09:15:21 +0500
+
 wb-rules (2.26.0) stable; urgency=medium
 
   * Reload script on mtime changes
