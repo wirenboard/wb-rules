@@ -1820,7 +1820,10 @@ func (engine *ESEngine) esVdevCellSetError(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_ERROR, errorStr)
+	cce := ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_ERROR, errorStr)
+	if cce != nil {
+		engine.PushToEventBuffer(cce)
+	}
 
 	return 0
 }
