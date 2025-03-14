@@ -1,8 +1,6 @@
 package wbrules
 
 import (
-	"strings"
-
 	"github.com/stretchr/objx"
 	wbgong "github.com/wirenboard/wbgong"
 )
@@ -137,10 +135,8 @@ func (ruleCond *CellChangedRuleCondition) Check(e *ControlChangeEvent) (bool, in
 		return false, nil
 	}
 
-	isMeta := strings.Contains(e.Spec.ControlId, "#")
-
 	// pass any change in meta cells and pushbuttons
-	if (!isMeta && e.ControlType != wbgong.CONV_TYPE_PUSHBUTTON && e.PrevValue == nil) || (e.IsRetained && e.PrevValue == e.Value) {
+	if (e.ControlType != wbgong.CONV_TYPE_PUSHBUTTON && e.PrevValue == nil) || (e.IsRetained && e.PrevValue == e.Value) {
 		return false, nil
 	}
 
