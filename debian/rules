@@ -5,5 +5,12 @@ MAKEFLAGS += GO=/usr/lib/go-1.21/bin/go
 %:
 	dh $@ --parallel
 
+override_dh_installinit:
+	dh_installinit --noscripts
+
 override_dh_builddeb:
 	dh_builddeb -- -Zgzip
+
+override_dh_installsystemd:
+	dh_installsystemd --name=wb-rules
+	dh_installsystemd --name=wb-rules-alarms-reloader --no-start --no-restart-after-upgrade --no-restart-on-upgrade

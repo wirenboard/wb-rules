@@ -3,7 +3,7 @@ Maintainer: Wiren Board team <info@wirenboard.com>
 Section: misc
 Priority: optional
 Multi-Arch: foreign
-Standards-Version: 3.9.2
+Standards-Version: 4.5.1
 Build-Depends: debhelper (>= 9), pkg-config, golang-1.21-go:native
 Homepage: https://github.com/wirenboard/wb-rules
 
@@ -12,3 +12,4 @@ Architecture: any
 Depends: libc6 (>= 2.13), ${misc:Depends}
 Breaks: wb-mqtt-confed (<< 1.0.2), wb-rules-system (<< 1.6.13), wb-mqtt-dac (<< 1.1.2)
 Description: Wiren Board Rule Engine
+ wb-rules allows you to create control scenarios using JavaScript-based rules.
