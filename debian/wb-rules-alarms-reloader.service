@@ -1,0 +1,7 @@
+[Unit]
+Description=One-shot service to reload alarms
+
+[Service]
+Type=oneshot
+ExecStart=touch /usr/share/wb-rules/load_alarms.js
+SyslogIdentifier=wb-rules-alarms-reloader

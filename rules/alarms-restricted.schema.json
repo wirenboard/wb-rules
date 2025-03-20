@@ -281,6 +281,6 @@
   "required": ["deviceName", "recipients", "alarms"],
   "configFile": {
     "path": "/etc/wb-rules/alarms.conf",
-    "service": "wb-rules"
+    "service": "wb-rules-alarms-reloader"
   }
 }

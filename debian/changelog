@@ -1,3 +1,10 @@
+wb-rules (2.28.1) stable; urgency=medium
+
+  * Add alarms reloader
+  * Fix lintian
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 19 Mar 2025 18:30:00 +0400
+
 wb-rules (2.28.0) stable; urgency=medium
 
   * Call whenChanged on error change initiated by setError
