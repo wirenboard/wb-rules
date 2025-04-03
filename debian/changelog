@@ -1,3 +1,9 @@
+wb-rules (2.28.2) stable; urgency=medium
+
+  * Update wbgo.so library
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 03 Apr 2025 16:30:00 +0400
+
 wb-rules (2.28.1) stable; urgency=medium
 
   * Add alarms reloader
