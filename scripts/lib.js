@@ -419,7 +419,9 @@ var Notify = (function () {
   }
 
   function _checkHasModemManager(doneCallback) {
-    runShellCommand('mmcli --version', {
+    // in case of using 4g modems with MM this service will be running
+    // in case of using 2G,3G modems this service will be stopped
+    runShellCommand('systemctl status wb-gsm', {
       captureOutput: true,
       captureErrorOutput: true,
       exitCallback: function (exitCode) {
