@@ -418,10 +418,11 @@ var Notify = (function () {
     });
   }
 
-  function _checkHasModemManager(doneCallback) {
-    // in case of using 4g modems with MM this service will be running
+  function _checkUse4gModem(doneCallback) {
+    // in case of using 4g modems wb-gsm.service must be started
+    // so check its ExecCondition
     // in case of using 2G,3G modems this service will be stopped
-    runShellCommand('systemctl status wb-gsm', {
+    runShellCommand('wb-gsm should_enable', {
       captureOutput: true,
       captureErrorOutput: true,
       exitCallback: function (exitCode) {
@@ -473,7 +474,7 @@ var Notify = (function () {
           _sendSMSGammuLike(to, text, command, doneCallback);
         });
       } else {
-        _checkHasModemManager(function (hasModemManager) {
+        _checkUse4gModem(function (hasModemManager) {
           if (hasModemManager) {
             sendOrEnqueue(function () {
               _sendSMSModemManager(to, text, doneCallback);

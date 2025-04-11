@@ -33,7 +33,7 @@ func (s *RuleNotifySmsSuite) TestSmsGammu() {
 	s.VerifyUnordered(
 		"driver -> /devices/test_sms/controls/send: [1] (QoS 1)",
 		"tst -> /devices/test_sms/controls/send/on: [1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [run command: systemctl status wb-gsm] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm should_enable] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending sms (gammu-like) to 88005553535: test value] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm restart_if_broken && gammu sendsms TEXT '88005553535' -unicode] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [input: test value] (QoS 1)",
@@ -48,7 +48,7 @@ func (s *RuleNotifySmsSuite) TestSmsModemManager() {
 	s.VerifyUnordered(
 		"driver -> /devices/test_sms/controls/send: [1] (QoS 1)",
 		"tst -> /devices/test_sms/controls/send/on: [1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [run command: systemctl status wb-gsm] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm should_enable] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending sms (via ModemManager) to 88005553535: test value] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: mmcli -m any --messaging-create-sms=\"number=88005553535,text=\\\"test value\\\"\" | sed -n 's#^Success.*/SMS/\\([0-9]\\+\\).*$#\\1#p' | xargs mmcli --send -s] (QoS 1)",
 	)
@@ -62,7 +62,7 @@ func (s *RuleNotifySmsSuite) TestSmsModemManagerWithQuotes() {
 	s.VerifyUnordered(
 		"driver -> /devices/test_sms/controls/send_quoted: [1] (QoS 1)",
 		"tst -> /devices/test_sms/controls/send_quoted/on: [1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [run command: systemctl status wb-gsm] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm should_enable] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending sms (via ModemManager) to 88005553535: test \"value\" 'single'] (QoS 1)",
 		"wbrules-log -> /wbrules/log/warning: [ModemManager can't handle SMS with double quotes now, auto replaced with single ones] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: mmcli -m any --messaging-create-sms=\"number=88005553535,text=\\\"test 'value' 'single'\\\"\" | sed -n 's#^Success.*/SMS/\\([0-9]\\+\\).*$#\\1#p' | xargs mmcli --send -s] (QoS 1)",
