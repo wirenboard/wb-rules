@@ -1,3 +1,15 @@
+wb-rules (2.28.4) stable; urgency=medium
+
+  * Fix sms sending via 2G/3G modems
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Thu, 10 Apr 2025 15:15:27 +0300
+
+wb-rules (2.28.3) stable; urgency=medium
+
+  * document reading of non-existent meta topics
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Mon, 07 Apr 2025 09:37:42 +0300
+
 wb-rules (2.28.2) stable; urgency=medium
 
   * Update wbgo.so library
