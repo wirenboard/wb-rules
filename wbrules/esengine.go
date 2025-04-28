@@ -2526,6 +2526,7 @@ func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 
 	// arguments: (bucket string, key string, value)
 	var bucket, key, value string
+	var shouldDelete bool
 
 	if ctx.GetTop() != 3 {
 		engine.Log(ENGINE_LOG_ERROR, "bad persistentSet request, arg number mismatch")
@@ -2546,8 +2547,13 @@ func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 	}
 	key = ctx.GetString(1)
 
-	// parse value
-	value = ctx.JsonEncode(2)
+	if ctx.IsNullOrUndefined(2) {
+		shouldDelete = true
+	} else {
+		shouldDelete = false
+		// parse value
+		value = ctx.JsonEncode(2)
+	}
 
 	// perform a transaction
 	engine.persistentDB.Update(func(tx *bolt.Tx) error {
@@ -2556,13 +2562,24 @@ func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 			return err
 		}
 
+		if shouldDelete {
+			if err := b.Delete([]byte(key)); err != nil {
+				return err
+			}
+			return nil
+		}
+
 		if err := b.Put([]byte(key), []byte(value)); err != nil {
 			return err
 		}
 		return nil
 	})
 
-	wbgong.Debug.Printf("write value to persistent storage %s: '%s' <= '%s'", bucket, key, value)
+	if shouldDelete {
+		wbgong.Debug.Printf("delete value from persistent storage %s: '%s'", bucket, key)
+	} else {
+		wbgong.Debug.Printf("write value to persistent storage %s: '%s' <= '%s'", bucket, key, value)
+	}
 
 	return 0
 }
