@@ -851,27 +851,30 @@ global.PersistentStorage = function (name, options) {
           return true;
         }
 
-        // check if this value is an object without StorableObject's prototype
-        if (typeof value === 'object' && value._ps === undefined) {
-          throw new Error(
-            "don't write pure objects to PersistentStorage, use new StorableObject(obj) instead"
-          );
-        } else if (typeof value === 'object') {
-          // check if this storage is not a listener for the object
-
-          var len = value._ps.length;
-          var found = false;
-          for (var i = 0; i < len; i++) {
-            if (value._ps[i].p == o._psself && value._ps[i].k == key) {
-              found = true;
-              break;
+        // typeof null is 'object', so check for null separately
+        if (value !== null) {
+          // check if this value is an object without StorableObject's prototype
+          if (typeof value === 'object' && value._ps === undefined) {
+            throw new Error(
+              "don't write pure objects to PersistentStorage, use new StorableObject(obj) instead"
+            );
+          } else if (typeof value === 'object') {
+            // check if this storage is not a listener for the object
+  
+            var len = value._ps.length;
+            var found = false;
+            for (var i = 0; i < len; i++) {
+              if (value._ps[i].p == o._psself && value._ps[i].k == key) {
+                found = true;
+                break;
+              }
             }
-          }
-          if (!found) {
-            value._ps.push({
-              s: o._psself,
-              k: key,
-            });
+            if (!found) {
+              value._ps.push({
+                s: o._psself,
+                k: key,
+              });
+            }
           }
         }
 
