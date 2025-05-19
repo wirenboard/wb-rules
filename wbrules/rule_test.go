@@ -1,6 +1,7 @@
 package wbrules
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/robfig/cron/v3"
 	"github.com/wirenboard/wbgong"
 	"github.com/wirenboard/wbgong/testutils"
 )
@@ -22,19 +24,24 @@ type fakeCron struct {
 	t       *testing.T
 	started bool
 	entries map[string][]func()
+	lastID  cron.EntryID
 }
 
 func newFakeCron(t *testing.T) *fakeCron {
-	return &fakeCron{t, false, make(map[string][]func())}
+	return &fakeCron{t, false, make(map[string][]func()), 0}
 }
 
-func (cron *fakeCron) AddFunc(spec string, cmd func()) error {
+func (cron *fakeCron) AddFunc(spec string, cmd func()) (cron.EntryID, error) {
+	cron.lastID++
 	if entries, found := cron.entries[spec]; found {
 		cron.entries[spec] = append(entries, cmd)
 	} else {
 		cron.entries[spec] = []func(){cmd}
 	}
-	return nil
+	return cron.lastID, nil
+}
+
+func (cron *fakeCron) Remove(id cron.EntryID) {
 }
 
 func (cron *fakeCron) Start() {
@@ -42,9 +49,10 @@ func (cron *fakeCron) Start() {
 	cron.started = true
 }
 
-func (cron *fakeCron) Stop() {
+func (cron *fakeCron) Stop() context.Context {
 	wbgong.Debug.Printf("fakeCron.Stop()")
 	cron.started = false
+	return context.Background()
 }
 
 func (cron *fakeCron) invokeEntries(spec string) {

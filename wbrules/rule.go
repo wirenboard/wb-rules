@@ -1,6 +1,9 @@
 package wbrules
 
 import (
+	"context"
+
+	"github.com/robfig/cron/v3"
 	"github.com/stretchr/objx"
 	wbgong "github.com/wirenboard/wbgong"
 )
@@ -17,9 +20,10 @@ type DepTracker interface {
 }
 
 type Cron interface {
-	AddFunc(spec string, cmd func()) error
+	AddFunc(spec string, cmd func()) (cron.EntryID, error)
+	Remove(id cron.EntryID)
 	Start()
-	Stop()
+	Stop() context.Context
 }
 
 type RuleCondition interface {
@@ -32,7 +36,6 @@ type RuleCondition interface {
 	RequireInitialization() bool
 	Check(e *ControlChangeEvent) (bool, interface{})
 	GetControlSpecs() []ControlSpec
-	MaybeAddToCron(cron Cron, thunk func()) (added bool, err error)
 }
 
 type RuleConditionBase struct{}
@@ -47,10 +50,6 @@ func (ruleCond *RuleConditionBase) Check(e *ControlChangeEvent) (bool, interface
 
 func (ruleCond *RuleConditionBase) GetControlSpecs() []ControlSpec {
 	return []ControlSpec{}
-}
-
-func (ruleCond *RuleConditionBase) MaybeAddToCron(cron Cron, thunk func()) (bool, error) {
-	return false, nil
 }
 
 type SimpleCallbackCondition struct {
@@ -223,16 +222,16 @@ func (ruleCond *OrRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}
 
 type CronRuleCondition struct {
 	RuleConditionBase
-	spec string
+	spec    string
+	entryId cron.EntryID
 }
 
 func NewCronRuleCondition(spec string) *CronRuleCondition {
-	return &CronRuleCondition{spec: spec}
+	return &CronRuleCondition{spec: spec, entryId: 0}
 }
 
-func (ruleCond *CronRuleCondition) MaybeAddToCron(cron Cron, thunk func()) (added bool, err error) {
-	err = cron.AddFunc(ruleCond.spec, thunk)
-	added = err == nil
+func (ruleCond *CronRuleCondition) MaybeAddToCron(cron Cron, thunk func()) (err error) {
+	ruleCond.entryId, err = cron.AddFunc(ruleCond.spec, thunk)
 	return
 }
 
@@ -319,14 +318,17 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 }
 
 func (rule *Rule) MaybeAddToCron(cron Cron) {
-	var err error
-	rule.isIndependent, err = rule.cond.MaybeAddToCron(cron, func() {
-		if rule.then != nil {
-			rule.then(nil)
+	if cronCond, ok := rule.cond.(*CronRuleCondition); ok {
+		var err error
+		err = cronCond.MaybeAddToCron(cron, func() {
+			if rule.then != nil {
+				rule.then(nil)
+			}
+		})
+		rule.isIndependent = err == nil
+		if err != nil {
+			wbgong.Error.Printf("rule %s: invalid cron spec: %s", rule.name, err)
 		}
-	})
-	if err != nil {
-		wbgong.Error.Printf("rule %s: invalid cron spec: %s", rule.name, err)
 	}
 }
 
@@ -345,4 +347,21 @@ func (rule *Rule) IsIndependent() bool {
 // HasDeps checks whether the rule has dependencies
 func (rule *Rule) HasDeps() bool {
 	return rule.isIndependent || rule.hasDeps
+}
+
+func (rule *Rule) SetState(state bool, cron Cron) {
+	rule.enabled = state
+
+	if cronCond, ok := rule.cond.(*CronRuleCondition); ok {
+		if state {
+			if cronCond.entryId == 0 {
+				rule.MaybeAddToCron(cron)
+			}
+		} else {
+			if cronCond.entryId != 0 {
+				cron.Remove(cronCond.entryId)
+				cronCond.entryId = 0
+			}
+		}
+	}
 }

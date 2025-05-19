@@ -2332,7 +2332,7 @@ func (engine *ESEngine) esWbCtrlRule(ctx *ESContext, state bool) int {
 	ruleId := RuleId(ctx.GetInt(0))
 
 	if rule, found := engine.ruleMap[ruleId]; found {
-		rule.enabled = state
+		rule.SetState(state, engine.cron)
 	} else {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("trying to %s undefined rule: %d", act, ruleId))
 		return duktape.DUK_RET_ERROR
