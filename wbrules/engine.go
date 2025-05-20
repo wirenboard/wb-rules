@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/alexcesaro/statsd"
+	"github.com/robfig/cron/v3"
 	"github.com/stretchr/objx"
 	"github.com/wirenboard/wbgong"
-	cron "gopkg.in/robfig/cron.v1"
 )
 
 type EngineLogLevel int
@@ -569,7 +569,7 @@ func newCronProxy(cron Cron, exec func(func())) *cronProxy {
 	return &cronProxy{cron, exec}
 }
 
-func (cp cronProxy) AddFunc(spec string, cmd func()) error {
+func (cp cronProxy) AddFunc(spec string, cmd func()) (cron.EntryID, error) {
 	return cp.Cron.AddFunc(spec, func() {
 		cp.exec(cmd)
 	})
@@ -697,13 +697,17 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 		rulesWithoutControls:  make(map[*Rule]bool),
 		timerRules:            make(map[string][]*Rule),
 		currentTimer:          NO_TIMER_NAME,
-		cronMaker:             func() Cron { return cron.New() },
-		cron:                  nil,
-		debugEnabled:          ATOMIC_FALSE,
-		readyCh:               nil,
-		uninitializedRules:    make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY),
-		cleanupOnStop:         options.cleanupOnStop,
-		tracks:                make(map[string]map[uint32]MqttTracker),
+		cronMaker: func() Cron {
+			// Use Quartz Scheduler spec format
+			return cron.New(cron.WithParser(cron.NewParser(
+				cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)))
+		},
+		cron:               nil,
+		debugEnabled:       ATOMIC_FALSE,
+		readyCh:            nil,
+		uninitializedRules: make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY),
+		cleanupOnStop:      options.cleanupOnStop,
+		tracks:             make(map[string]map[uint32]MqttTracker),
 
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
