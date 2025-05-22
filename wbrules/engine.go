@@ -1195,7 +1195,6 @@ func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName stri
 		wbgong.Debug.Printf("[ruleengine] RulesLists for all: %v", engine.controlToRulesListMap)
 	}
 	engine.rulesMutex.Lock()
-	defer engine.rulesMutex.Unlock()
 
 	// select all uninitialized rules to run and clean list
 	for _, rule := range engine.uninitializedRules {
@@ -1234,8 +1233,14 @@ func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName stri
 		}
 	}
 
-	for _, ruleId := range engine.ruleList {
-		engine.ruleMap[ruleId].Check(ctrlEvent)
+	rulesToRun := make([]*Rule, len(engine.ruleList))
+	for i, ruleId := range engine.ruleList {
+		rulesToRun[i] = engine.ruleMap[ruleId]
+	}
+	engine.rulesMutex.Unlock()
+
+	for _, rule := range rulesToRun {
+		rule.Check(ctrlEvent)
 	}
 	engine.currentTimer = NO_TIMER_NAME
 }
