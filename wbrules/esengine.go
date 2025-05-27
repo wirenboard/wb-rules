@@ -1479,7 +1479,7 @@ func (engine *ESEngine) esVdevAddControl(ctx *ESContext) int {
 	if errControl != nil {
 		wbgong.Error.Printf("Error in creating control %s on device %s: %s", ctrlId, devId, errControl)
 	}
-	return 1
+	return 0
 }
 
 func (engine *ESEngine) esVdevCellGetDescription(ctx *ESContext) int {
