@@ -1,3 +1,9 @@
+wb-rules (2.31.2) stable; urgency=medium
+
+  * Fix cron spec format
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 27 May 2025 23:30:00 +0400
+
 wb-rules (2.31.1) stable; urgency=medium
 
   * Return undefined from addControl in rules
