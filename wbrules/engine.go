@@ -698,9 +698,14 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 		timerRules:            make(map[string][]*Rule),
 		currentTimer:          NO_TIMER_NAME,
 		cronMaker: func() Cron {
-			// Use Quartz Scheduler spec format
+			// There are two cron spec formats in common usage:
+			// - Standard: "minute hour dom month dow"
+			// - Quartz: "second minute hour dom month dow [year]"
+			// cron.v1 default format was incompatible with both of these formats: "second minute hour dom month [dow]".
+			// cron.v3 default format is Standard.
+			// Use original format here for backward compatibility.
 			return cron.New(cron.WithParser(cron.NewParser(
-				cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)))
+				cron.Second | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.DowOptional | cron.Descriptor)))
 		},
 		cron:               nil,
 		debugEnabled:       ATOMIC_FALSE,
