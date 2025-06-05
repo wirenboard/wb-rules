@@ -13,8 +13,6 @@ import (
 
 	"github.com/wirenboard/wb-rules/wbrules"
 	"github.com/wirenboard/wbgong"
-
-	"github.com/alexcesaro/statsd"
 )
 
 var version = "unknown"
@@ -61,16 +59,6 @@ func main() {
 	cleanup := flag.Bool("cleanup", false, "Clean up MQTT data on unload")
 	profile := flag.String("profile", "", "Run pprof server")
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		// TODO: maybe generate random string as hostname for this instance
-		wbgong.Warn.Print("failed to get hostname for this instance, using 'default'")
-		hostname = "default"
-	}
-
-	statsdURL := flag.String("statsd", "", "Statsd server address (empty for no statsd communication)")
-	statsdPrefix := flag.String("statsd-prefix", hostname, "Statsd prefix for this app instance (hostname by default)")
-
 	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
 
@@ -104,18 +92,6 @@ func main() {
 	}
 	wbgong.MaybeInitProfiling(nil)
 
-	// prepare statsd client if required
-	var statsdClient wbgong.StatsdClientWrapper
-	var runtimeStatsd wbgong.StatsdRuntimeCollector
-	if *statsdURL != "" {
-		if statsdClient, err = wbgong.NewStatsdClientWrapper("wb-rules", statsd.Address(*statsdURL), statsd.Prefix(*statsdPrefix)); err != nil {
-			wbgong.Error.Fatalf("failed to create statsd client: %s", err)
-		}
-		runtimeStatsd = wbgong.NewStatsdRuntimeCollector(statsdClient)
-		runtimeStatsd.Start()
-		defer runtimeStatsd.Stop()
-	}
-
 	// prepare exit signal channel
 	exitCh := make(chan os.Signal, 1)
 	signal.Notify(exitCh, syscall.SIGINT, syscall.SIGTERM)
@@ -131,8 +107,7 @@ func main() {
 		SetMqtt(driverMqttClient).
 		SetUseStorage(*vdevDbFile != "").
 		SetStoragePath(*vdevDbFile).
-		SetReownUnknownDevices(!*precise).
-		SetStatsdClient(statsdClient)
+		SetReownUnknownDevices(!*precise)
 
 	if *noQueues {
 		driverArgs.SetTesting()
@@ -163,7 +138,6 @@ func main() {
 	engineOptions.SetPersistentDBFile(*persistentDbFile)
 	engineOptions.SetModulesDirs(strings.Split(os.Getenv(WBRULES_MODULES_ENV), ":"))
 	engineOptions.SetCleanupOnStop(*cleanup)
-	engineOptions.SetStatsdClient(statsdClient)
 
 	if *noQueues {
 		engineOptions.SetTesting(true)
