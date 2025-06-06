@@ -247,16 +247,6 @@ func (s *EditorSuite) TestSaveFile() {
 		"sub/sample6.js":      "sample6 -- error",
 	})
 
-	s.verifySources(map[string]string{
-		"sample1.js":          "// sample1 (changed)",
-		"sample2.js":          "// sample2",
-		"sample3.js.disabled": "// disabled sample3",
-		"sample 4.js":         "// sample 4",
-		"sub/sample5.js":      "// sample5",
-		"sub/sample6.js":      "sample6 -- error",
-	})
-	s.EnsureNoErrorsOrWarnings()
-
 	s.expectLiveWrite("zzz.js", errors.New("fail!"))
 	s.VerifyRpcError(
 		"Save",
@@ -273,14 +263,31 @@ func (s *EditorSuite) TestSaveFile() {
 	)
 	s.verifyLiveWrite()
 
+	// test Save with enabled = false
+	s.verifySave(
+		objx.Map{"path": "disabled.js", "content": "// content", "enabled": false},
+		objx.Map{"path": "disabled.js.disabled"},
+		nil,
+	)
+
+	// test Save with enabled = true and path ending with .disabled
+	s.verifySave(
+		objx.Map{"path": "disabled.js.disabled", "content": "// enabled again", "enabled": true},
+		objx.Map{"path": "disabled.js"},
+		nil,
+	)
+
 	s.verifySources(map[string]string{
-		"sample1.js":          "// sample1 (changed)",
-		"sample2.js":          "// sample2",
-		"sample3.js.disabled": "// new disabled sample3",
-		"sample 4.js":         "// sample 4",
-		"sub/sample5.js":      "// sample5",
-		"sub/sample6.js":      "sample6 -- error",
+		"sample1.js":            "// sample1 (changed)",
+		"sample2.js":            "// sample2",
+		"sample3.js.disabled":   "// new disabled sample3",
+		"sample 4.js":           "// sample 4",
+		"sub/sample5.js":        "// sample5",
+		"sub/sample6.js":        "sample6 -- error",
+		"disabled.js":           "// enabled again",
 	})
+
+	s.EnsureNoErrorsOrWarnings()
 }
 
 func (s *EditorSuite) TestRemoveFile() {
@@ -304,6 +311,7 @@ func (s *EditorSuite) TestRemoveFile() {
 func (s *EditorSuite) TestLoadFile() {
 	s.VerifyRpc("Load", objx.Map{"path": "sample1.js"}, objx.Map{
 		"content": "// sample1",
+		"enabled":   true,
 	})
 	s.scriptErrorPath = "sample1.js"
 	scriptErr := NewScriptError(
@@ -315,6 +323,7 @@ func (s *EditorSuite) TestLoadFile() {
 	s.scriptError = &scriptErr
 	s.VerifyRpc("Load", objx.Map{"path": "sample1.js"}, objx.Map{
 		"content": "// sample1",
+		"enabled":   true,
 		"error": objx.Map{
 			"message": "syntax error!",
 			"traceback": []objx.Map{

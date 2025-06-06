@@ -61,6 +61,7 @@ func (editor *Editor) List(args *struct{}, reply *[]LocFileEntry) (err error) {
 type EditorSaveArgs struct {
 	Path    string `json:"path"`
 	Content string `json:"content"`
+	Enabled *bool  `json:"enabled,omitempty"`
 }
 
 type EditorSaveResponse struct {
@@ -82,12 +83,20 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 		return invalidLenError
 	}
 
-	*reply = EditorSaveResponse{nil, pth, nil}
-
-	// check if this file already exists and disabled, so update path
-	if entry, err := editor.locateFile(pth); err == nil && !entry.Enabled {
-		pth = pth + FILE_DISABLED_SUFFIX
+	enabled := true
+	if args.Enabled != nil {
+		enabled = *args.Enabled
 	}
+
+	hasSuffix := strings.HasSuffix(pth, FILE_DISABLED_SUFFIX)
+
+	if !enabled && !hasSuffix {
+		pth += FILE_DISABLED_SUFFIX
+	} else if enabled && hasSuffix {
+		pth = pth[:len(pth)-len(FILE_DISABLED_SUFFIX)]
+	}
+
+	*reply = EditorSaveResponse{nil, pth, nil}
 
 	err := editor.locFileManager.LiveWriteScript(pth, args.Content)
 	switch err.(type) {
@@ -140,6 +149,7 @@ func (editor *Editor) Remove(args *EditorPathArgs, reply *bool) error {
 type EditorContentResponse struct {
 	Content string       `json:"content"`
 	Error   *ScriptError `json:"error,omitempty"`
+	Enabled bool         `json:"enabled"`
 }
 
 func (editor *Editor) Load(args *EditorPathArgs, reply *EditorContentResponse) error {
@@ -153,8 +163,9 @@ func (editor *Editor) Load(args *EditorPathArgs, reply *EditorContentResponse) e
 		return writeError
 	}
 	*reply = EditorContentResponse{
-		string(content),
-		entry.Error,
+		Content: string(content),
+		Error:   entry.Error,
+		Enabled: entry.Enabled,
 	}
 	return nil
 }

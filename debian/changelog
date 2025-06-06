@@ -1,3 +1,9 @@
+wb-rules (2.32.0) stable; urgency=medium
+
+  * Add rule enable flag
+
+ -- Victor Vedenin <victor.vedenin@wirenboard.com>  Fri, 06 Jun 2025 16:54:00 +0300
+
 wb-rules (2.31.2) stable; urgency=medium
 
   * Fix cron spec format
