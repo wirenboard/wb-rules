@@ -58,8 +58,7 @@ func main() {
 	mqttDebug := flag.Bool("mqttdebug", false, "Enable MQTT debugging")
 	precise := flag.Bool("precise", false, "Don't reown devices without driver")
 	cleanup := flag.Bool("cleanup", false, "Clean up MQTT data on unload")
-	profile := flag.String("profile", "", "Run pprof server")
-	stats := flag.String("stats", "127.0.0.1:9090", "Serve metrics in Prometheus format")
+	httpAddr := flag.String("http", "", "Serve metrics and runtime profiling data")
 
 	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
@@ -78,18 +77,13 @@ func main() {
 		wbgong.SetDebuggingEnabled(true)
 	}
 
-	if *profile != "" {
-		go func() {
-			log.Println(http.ListenAndServe(*profile, nil))
-		}()
-	}
-
-	if *stats != "" {
-		http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+	if *httpAddr != "" {
+		http.HandleFunc("/metrics", func(w http.ResponseWriter, req *http.Request) {
 			metrics.WritePrometheus(w, true)
 		})
+		// debug/pprof handlers are registered in https://cs.opensource.google/go/go/+/refs/tags/go1.21.0:src/net/http/pprof/pprof.go;l=93
 		go func() {
-			log.Println(http.ListenAndServe(*stats, nil))
+			log.Println(http.ListenAndServe(*httpAddr, nil))
 		}()
 	}
 
