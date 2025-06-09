@@ -11,10 +11,9 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/VictoriaMetrics/metrics"
 	"github.com/wirenboard/wb-rules/wbrules"
 	"github.com/wirenboard/wbgong"
-
-	"github.com/alexcesaro/statsd"
 )
 
 var version = "unknown"
@@ -59,17 +58,7 @@ func main() {
 	mqttDebug := flag.Bool("mqttdebug", false, "Enable MQTT debugging")
 	precise := flag.Bool("precise", false, "Don't reown devices without driver")
 	cleanup := flag.Bool("cleanup", false, "Clean up MQTT data on unload")
-	profile := flag.String("profile", "", "Run pprof server")
-
-	hostname, err := os.Hostname()
-	if err != nil {
-		// TODO: maybe generate random string as hostname for this instance
-		wbgong.Warn.Print("failed to get hostname for this instance, using 'default'")
-		hostname = "default"
-	}
-
-	statsdURL := flag.String("statsd", "", "Statsd server address (empty for no statsd communication)")
-	statsdPrefix := flag.String("statsd-prefix", hostname, "Statsd prefix for this app instance (hostname by default)")
+	httpAddr := flag.String("http", "", "Serve metrics and runtime profiling data")
 
 	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
@@ -88,9 +77,13 @@ func main() {
 		wbgong.SetDebuggingEnabled(true)
 	}
 
-	if *profile != "" {
+	if *httpAddr != "" {
+		http.HandleFunc("/metrics", func(w http.ResponseWriter, req *http.Request) {
+			metrics.WritePrometheus(w, true)
+		})
+		// debug/pprof handlers are registered in https://cs.opensource.google/go/go/+/refs/tags/go1.21.0:src/net/http/pprof/pprof.go;l=93
 		go func() {
-			log.Println(http.ListenAndServe(*profile, nil))
+			log.Println(http.ListenAndServe(*httpAddr, nil))
 		}()
 	}
 
@@ -103,18 +96,6 @@ func main() {
 		wbgong.EnableMQTTDebugLog(*useSyslog)
 	}
 	wbgong.MaybeInitProfiling(nil)
-
-	// prepare statsd client if required
-	var statsdClient wbgong.StatsdClientWrapper
-	var runtimeStatsd wbgong.StatsdRuntimeCollector
-	if *statsdURL != "" {
-		if statsdClient, err = wbgong.NewStatsdClientWrapper("wb-rules", statsd.Address(*statsdURL), statsd.Prefix(*statsdPrefix)); err != nil {
-			wbgong.Error.Fatalf("failed to create statsd client: %s", err)
-		}
-		runtimeStatsd = wbgong.NewStatsdRuntimeCollector(statsdClient)
-		runtimeStatsd.Start()
-		defer runtimeStatsd.Stop()
-	}
 
 	// prepare exit signal channel
 	exitCh := make(chan os.Signal, 1)
@@ -131,8 +112,7 @@ func main() {
 		SetMqtt(driverMqttClient).
 		SetUseStorage(*vdevDbFile != "").
 		SetStoragePath(*vdevDbFile).
-		SetReownUnknownDevices(!*precise).
-		SetStatsdClient(statsdClient)
+		SetReownUnknownDevices(!*precise)
 
 	if *noQueues {
 		driverArgs.SetTesting()
@@ -163,7 +143,6 @@ func main() {
 	engineOptions.SetPersistentDBFile(*persistentDbFile)
 	engineOptions.SetModulesDirs(strings.Split(os.Getenv(WBRULES_MODULES_ENV), ":"))
 	engineOptions.SetCleanupOnStop(*cleanup)
-	engineOptions.SetStatsdClient(statsdClient)
 
 	if *noQueues {
 		engineOptions.SetTesting(true)

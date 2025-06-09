@@ -10,7 +10,7 @@ RestartSec=1
 User=root
 Environment="WB_RULES_MODULES=/etc/wb-rules-modules:/usr/share/wb-rules-modules"
 EnvironmentFile=-/etc/default/wb-rules
-ExecStart=/usr/bin/wb-rules $WB_RULES_OPTIONS -syslog -editdir '/etc/wb-rules/' '/usr/share/wb-rules-system/rules/' '/etc/wb-rules/' '/usr/share/wb-rules/'
+ExecStart=/usr/bin/wb-rules $WB_RULES_OPTIONS -http 127.0.0.1:9090 -syslog -editdir '/etc/wb-rules/' '/usr/share/wb-rules-system/rules/' '/etc/wb-rules/' '/usr/share/wb-rules/'
 
 [Install]
 WantedBy=multi-user.target

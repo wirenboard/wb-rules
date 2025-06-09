@@ -41,7 +41,7 @@ const (
 )
 
 var invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should ends with .js"}
-var invalidLenError = &EditorError{EDITOR_ERROR_INVALID_LEN, "File path should be shorter than or equal to 512 chars"}
+var invalidLenError = &EditorError{EDITOR_ERROR_INVALID_LEN, "File path should be shorter than or equal to 255 chars"}
 var listDirError = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
 var writeError = &EditorError{EDITOR_ERROR_WRITE, "Error writing the file"}
 var fileNotFoundError = &EditorError{EDITOR_ERROR_FILE_NOT_FOUND, "File not found"}
@@ -78,7 +78,7 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 
 	if !strings.HasSuffix(pth, ".js") {
 		return invalidExtensionError
-	} else if len(args.Path) > 512 {
+	} else if len(args.Path)+len(".js") > 255 {
 		return invalidLenError
 	}
 
