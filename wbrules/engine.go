@@ -716,19 +716,19 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 	engine.timerDeferQueue = wbgong.NewDeferredList(engine.CallHere)
 
 	s := metrics.NewSet()
-	s.NewGauge(`sync_queue_len{prefix="engine"}`, func() float64 {
+	s.NewGauge("wbrules_engine_sync_queue_length_total", func() float64 {
 		return float64(len(engine.syncQueue))
 	})
-	s.NewGauge(`sync_queue_cap{prefix="engine"}`, func() float64 {
+	s.NewGauge("wbrules_engine_sync_queue_capacity_total", func() float64 {
 		return float64(cap(engine.syncQueue))
 	})
-	s.NewGauge(`timers{prefix="engine"}`, func() float64 {
+	s.NewGauge("wbrules_engine_timers_total", func() float64 {
 		return float64(len(engine.timers))
 	})
-	s.NewGauge(`events{prefix="engine"}`, func() float64 {
+	s.NewGauge("wbrules_engine_events_total", func() float64 {
 		return float64(engine.eventBuffer.length())
 	})
-	s.NewGauge(`rules{prefix="engine"}`, func() float64 {
+	s.NewGauge("wbrules_engine_rules_total", func() float64 {
 		return float64(len(engine.ruleMap))
 	})
 	metrics.RegisterSet(s)
