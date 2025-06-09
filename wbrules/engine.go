@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/VictoriaMetrics/metrics"
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/objx"
 	"github.com/wirenboard/wbgong"
@@ -713,6 +714,24 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 
 	engine.readyQueue = wbgong.NewDeferredList(engine.CallSync)
 	engine.timerDeferQueue = wbgong.NewDeferredList(engine.CallHere)
+
+	s := metrics.NewSet()
+	s.NewGauge(`sync_queue_len{prefix="engine"}`, func() float64 {
+		return float64(len(engine.syncQueue))
+	})
+	s.NewGauge(`sync_queue_cap{prefix="engine"}`, func() float64 {
+		return float64(cap(engine.syncQueue))
+	})
+	s.NewGauge(`timers{prefix="engine"}`, func() float64 {
+		return float64(len(engine.timers))
+	})
+	s.NewGauge(`events{prefix="engine"}`, func() float64 {
+		return float64(engine.eventBuffer.length())
+	})
+	s.NewGauge(`rules{prefix="engine"}`, func() float64 {
+		return float64(len(engine.ruleMap))
+	})
+	metrics.RegisterSet(s)
 
 	return
 }

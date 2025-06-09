@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/VictoriaMetrics/metrics"
 	"github.com/wirenboard/wb-rules/wbrules"
 	"github.com/wirenboard/wbgong"
 )
@@ -58,6 +59,7 @@ func main() {
 	precise := flag.Bool("precise", false, "Don't reown devices without driver")
 	cleanup := flag.Bool("cleanup", false, "Clean up MQTT data on unload")
 	profile := flag.String("profile", "", "Run pprof server")
+	stats := flag.String("stats", "127.0.0.1:9090", "Serve metrics in Prometheus format")
 
 	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
@@ -79,6 +81,15 @@ func main() {
 	if *profile != "" {
 		go func() {
 			log.Println(http.ListenAndServe(*profile, nil))
+		}()
+	}
+
+	if *stats != "" {
+		http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+			metrics.WritePrometheus(w, true)
+		})
+		go func() {
+			log.Println(http.ListenAndServe(*stats, nil))
 		}()
 	}
 
