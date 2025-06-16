@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/alexcesaro/statsd"
+	"github.com/VictoriaMetrics/metrics"
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/objx"
 	"github.com/wirenboard/wbgong"
@@ -53,9 +53,6 @@ const (
 	ATOMIC_FALSE = 0
 
 	ENGINE_CALLSYNC_TIMEOUT = 120 * time.Second
-
-	ENGINE_STATSD_POLL_INTERVAL = 5 * time.Second
-	ENGINE_STATSD_PREFIX        = "engine"
 )
 
 // errors
@@ -588,7 +585,6 @@ type ControlChangeEvent struct {
 type RuleEngineOptions struct {
 	debugQueues   bool
 	cleanupOnStop bool
-	Statsd        wbgong.StatsdClientWrapper
 }
 
 func NewRuleEngineOptions() *RuleEngineOptions {
@@ -605,11 +601,6 @@ func (o *RuleEngineOptions) SetTesting(v bool) *RuleEngineOptions {
 
 func (o *RuleEngineOptions) SetCleanupOnStop(v bool) *RuleEngineOptions {
 	o.cleanupOnStop = v
-	return o
-}
-
-func (o *RuleEngineOptions) SetStatsdClient(c wbgong.StatsdClientWrapper) *RuleEngineOptions {
-	o.Statsd = c
 	return o
 }
 
@@ -660,8 +651,6 @@ type RuleEngine struct {
 	mqttTrackerMutex sync.Mutex
 
 	cleanupOnStop bool
-
-	statsdClient wbgong.StatsdClientWrapper
 
 	// subscriptions to control change events
 	// suitable for testing
@@ -726,24 +715,25 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 	engine.readyQueue = wbgong.NewDeferredList(engine.CallSync)
 	engine.timerDeferQueue = wbgong.NewDeferredList(engine.CallHere)
 
-	if options.Statsd != nil {
-		engine.statsdClient = options.Statsd.Clone(ENGINE_STATSD_PREFIX)
-		engine.statsdClient.SetCallback(engine.collectStats)
-	}
+	s := metrics.NewSet()
+	s.NewGauge("wbrules_engine_sync_queue_length_total", func() float64 {
+		return float64(len(engine.syncQueue))
+	})
+	s.NewGauge("wbrules_engine_sync_queue_capacity_total", func() float64 {
+		return float64(cap(engine.syncQueue))
+	})
+	s.NewGauge("wbrules_engine_timers_total", func() float64 {
+		return float64(len(engine.timers))
+	})
+	s.NewGauge("wbrules_engine_events_total", func() float64 {
+		return float64(engine.eventBuffer.length())
+	})
+	s.NewGauge("wbrules_engine_rules_total", func() float64 {
+		return float64(len(engine.ruleMap))
+	})
+	metrics.RegisterSet(s)
 
 	return
-}
-
-func (engine *RuleEngine) collectStats(s *statsd.Client) {
-	// callSync queue
-	s.Gauge("sync_queue.len", len(engine.syncQueue))
-	s.Gauge("sync_queue.cap", cap(engine.syncQueue))
-
-	// number of timers
-	s.Gauge("timers", len(engine.timers))
-
-	// length of event buffer
-	s.Gauge("events", engine.eventBuffer.length())
 }
 
 func (engine *RuleEngine) ReadyCh() <-chan struct{} {
@@ -1332,11 +1322,6 @@ func (engine *RuleEngine) updateDebugEnabled() {
 }
 
 func (engine *RuleEngine) Start() {
-	// start statsd client
-	if engine.statsdClient != nil {
-		engine.statsdClient.Start(ENGINE_STATSD_POLL_INTERVAL)
-	}
-
 	engine.readyCh = make(chan struct{})
 	engine.driverReadyCh = make(chan struct{}, 1)
 	engine.eventBuffer = NewEventBuffer()
@@ -1370,11 +1355,6 @@ func (engine *RuleEngine) Stop() {
 
 	// wait for main loop to release sync queue
 	<-engine.syncQueue
-
-	// stop statsd
-	if engine.statsdClient != nil {
-		engine.statsdClient.Stop()
-	}
 }
 
 func (engine *RuleEngine) IsActive() bool {
