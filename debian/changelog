@@ -1,3 +1,9 @@
+wb-rules (2.32.1) stable; urgency=medium
+
+  * Add script error logging
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 18 Jun 2025 00:30:00 +0400
+
 wb-rules (2.32.0) stable; urgency=medium
 
   * Rework metrics

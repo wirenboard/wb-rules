@@ -827,6 +827,7 @@ func (engine *ESEngine) trackESError(path string, err error) error {
 	// set error in the file entry
 	engine.sources[path].Error = &scriptErr
 
+	engine.Log(ENGINE_LOG_ERROR, scriptErr.Error())
 	return scriptErr
 }
 
