@@ -242,6 +242,10 @@ func (s *RuleBasicsSuite) TestRuleRedefinition() {
 	s.LiveLoadScript("testrules_rule_redefinition.js")
 	s.EnsureGotErrors()
 	s.SkipTill("[error] defineRule error: named rule redefinition: test")
+	s.Verify(testutils.RegexpCaptureMatcher(
+		`.*Error: error error \(rc -100\).*`, func(m []string) bool {
+			return true
+		}))
 	s.Verify("[changed] testrules_rule_redefinition.js")
 }
 
