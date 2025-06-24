@@ -2,10 +2,8 @@
 
 PREFIX = /usr
 DEB_TARGET_ARCH ?= armhf
+WBGO_LOCAL_PATH ?= .
 
-ifeq ($(DEB_TARGET_ARCH),armel)
-GO_ENV := GOARCH=arm GOARM=5 CC_FOR_TARGET=arm-linux-gnueabi-gcc CC=$$CC_FOR_TARGET CGO_ENABLED=1
-endif
 ifeq ($(DEB_TARGET_ARCH),armhf)
 GO_ENV := GOARCH=arm GOARM=6 CC_FOR_TARGET=arm-linux-gnueabihf-gcc CC=$$CC_FOR_TARGET CGO_ENABLED=1
 endif
@@ -13,10 +11,7 @@ ifeq ($(DEB_TARGET_ARCH),arm64)
 GO_ENV := GOARCH=arm64 CC_FOR_TARGET=aarch64-linux-gnu-gcc CC=$$CC_FOR_TARGET CGO_ENABLED=1
 endif
 ifeq ($(DEB_TARGET_ARCH),amd64)
-GO_ENV := GOARCH=amd64 CC=x86_64-linux-gnu-gcc
-endif
-ifeq ($(DEB_TARGET_ARCH),i386)
-GO_ENV := GOARCH=386 CC=i586-linux-gnu-gcc
+GO_ENV := GOARCH=amd64
 endif
 
 GO_ENV := GO111MODULE=on $(GO_ENV)
@@ -33,8 +28,8 @@ amd64:
 	$(MAKE) DEB_TARGET_ARCH=amd64
 
 test:
-	cp amd64.wbgo.so wbrules/wbgo.so
-	CC=x86_64-linux-gnu-gcc $(GO) test -v -trimpath -ldflags="-s -w" -cover ./wbrules
+	cp $(WBGO_LOCAL_PATH)/amd64.wbgo.so wbrules/wbgo.so
+	$(GO) test -v -trimpath -ldflags="-s -w" -cover ./wbrules
 
 wb-rules: main.go wbrules/*.go
 	$(GO_ENV) $(GO) build -trimpath $(GO_FLAGS)
@@ -47,7 +42,7 @@ install:
 
 	install -Dm0644 scripts/lib.js -t $(DESTDIR)$(PREFIX)/share/wb-rules-system/scripts
 	install -Dm0644 rules/load_alarms.js -t $(DESTDIR)$(PREFIX)/share/wb-rules
-	install -Dm0644 $(DEB_TARGET_ARCH).wbgo.so $(DESTDIR)$(PREFIX)/lib/wb-rules/wbgo.so
+	install -Dm0644 $(WBGO_LOCAL_PATH)/$(DEB_TARGET_ARCH).wbgo.so $(DESTDIR)$(PREFIX)/lib/wb-rules/wbgo.so
 	install -Dm0644 rules/alarms.conf -t $(DESTDIR)/etc/wb-rules
 	install -Dm0644 rules/alarms.schema.json -t $(DESTDIR)$(PREFIX)/share/wb-mqtt-confed/schemas
 
