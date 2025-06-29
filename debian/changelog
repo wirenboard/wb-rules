@@ -1,3 +1,9 @@
+wb-rules (2.33.0) stable; urgency=medium
+
+  * Fix requests/messages queue size, update wbgo.so library
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 27 Jun 2025 18:00:00 +0400
+
 wb-rules (2.32.2) stable; urgency=medium
 
   * Fix local build, no functional changes
