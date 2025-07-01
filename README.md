@@ -1104,6 +1104,8 @@ var myModule = require("path/to/myModule");
 `Notify.sendEmail(to, subject, text)` отправляет почту указанному
 адресату (`to`), с указанной темой (`subject`) и содержимым (`text`).
 
+Для отправки Email используется `sendmail`.
+
 `Notify.sendSMS(to, text, command)` отправляет SMS на указанный номер (`to`)
 с указанным содержимым (`text`), используя команду (`command`) (необязательный аргумент).
 
@@ -1111,6 +1113,8 @@ var myModule = require("path/to/myModule");
 
 `Notify.sendTelegramMessage(token, chatId, text)` отправляет сообщение
 боту с токеном `token`, в чат `chatId` и содержимым (`text`).
+
+Для отправки используется Telegram Bot API метод https://core.telegram.org/bots/api#sendmessage.
 
 ## Сервис алармов
 
