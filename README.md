@@ -1109,6 +1109,9 @@ var myModule = require("path/to/myModule");
 
 Для отправки SMS используется ModemManager, а если он не установлен, то `gammu`.
 
+`Notify.sendTelegramMessage(token, chatId, text)` отправляет сообщение
+боту с токеном `token`, в чат `chatId` и содержимым (`text`).
+
 ## Сервис алармов
 
 Основная функция:
@@ -1173,6 +1176,16 @@ var myModule = require("path/to/myModule");
       // /path/to/sender.py --number {}
       // /path/to/sender.py --number {} --text "{}"
       "command": ""
+    },
+    {
+      // Тип получателя - Telegram-бот
+      "type": "telegram",
+
+      // Токен бота
+      "token": "1234567890:AAHG7MAKsUHLs-pBLhpIw1RU07Hmw9LyDac",
+
+      // Идентификатор чата с пользователем
+      "chatId": "123456789"
     }
   ],
 

@@ -7,4 +7,8 @@ global.__proto__.Notify = {
   sendSMS: function sendSMS(to, text) {
     log('SMS TO: {} TEXT: {}', to, text);
   },
+
+  sendTelegramMessage: function sendTelegramMessage(token, chatId, text) {
+    log("TELEGRAM MESSAGE TOKEN: {} CHATID: {} TEXT: {}", token, chatId, text);
+  },
 };
