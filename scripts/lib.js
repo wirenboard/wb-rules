@@ -507,6 +507,14 @@ var Notify = (function () {
                 capturedOutput,
                 capturedErrorOutput
               );
+            var response = JSON.parse(capturedOutput);
+            if (!response.ok)
+              log.error(
+                'error sending telegram message to {}:\n{} {}',
+                chatId,
+                response.error_code,
+                response.description
+              );
           },
         }
       );
