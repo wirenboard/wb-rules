@@ -63,6 +63,36 @@
             },
             "required": ["type", "to"]
         },
+        "telegramRecipient": {
+            "title": "Telegram Bot",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "title": "Type",
+                    "enum": ["telegram"],
+                    "default": "telegram",
+                    "options": {
+                        "hidden": true
+                    },
+                    "propertyOrder": 1
+                },
+                "token": {
+                    "type": "string",
+                    "title": "Bot token",
+                    "description": "A token can be obtained from @BotFather",
+                    "minLength": 1,
+                    "propertyOrder": 2
+                },
+                "chatId": {
+                    "type": "string",
+                    "title": "Chat ID",
+                    "description": "The chat ID can be obtained from @getidsbot",
+                    "propertyOrder": 3
+                }
+            },
+            "required": ["type", "token", "chatId"]
+        },
         "alarmBase": {
             "type": "object",
             "properties": {
@@ -265,7 +295,8 @@
             "title": "Recipient",
             "oneOf": [
                 { "$ref": "#/definitions/emailRecipient" },
-                { "$ref": "#/definitions/smsRecipient" }
+                { "$ref": "#/definitions/smsRecipient" },
+                { "$ref": "#/definitions/telegramRecipient" }
             ]
         },
         "alarm": {
@@ -348,6 +379,11 @@
             "{} will be replaced with alarm message text": "{} будет заменено на текст сообщения",
             "SMS recipient": "SMS-сообщение",
             "Phone number": "Номер телефона",
+            "Telegram Bot": "Телеграм бот",
+            "Bot token": "Токен бота",
+            "A token can be obtained from @BotFather": "Токен можно получить через @BotFather",
+            "Chat ID": "Идентификатор чата",
+            "The chat ID can be obtained from @getidsbot": "Идентификатор можно получить через @getidsbot",
             "Command": "Команда",
             "Alarm name": "Название уведомления",
             "Cell": "Отслеживаемый параметр",

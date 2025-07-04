@@ -1,3 +1,9 @@
+wb-rules (2.34.0) stable; urgency=medium
+
+  * Added a channel to send messages to telegram chat with the bot
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 01 Jul 2025 14:00:00 +0400
+
 wb-rules (2.33.0) stable; urgency=medium
 
   * Fix requests/messages queue size, update wbgo.so library

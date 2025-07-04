@@ -117,6 +117,7 @@ func (s *AlarmSuite) verifyNotificationMsgs(alarm string, text string, stopTimer
 		fmt.Sprintf("[info] EMAIL TO: someone@example.com SUBJ: alarm! TEXT: %s", text),
 		fmt.Sprintf("[info] EMAIL TO: anotherone@example.com SUBJ: Alarm: %s TEXT: %s", text, text),
 		fmt.Sprintf("[info] SMS TO: +78122128506 TEXT: %s", text),
+		fmt.Sprintf("[info] TELEGRAM MESSAGE TOKEN: 1234567890:AAHG7MAKsUHLs-pBLhpIw1RU07Hmw9LyDac CHATID: 123456789 TEXT: %s", text),
 	)
 }
 

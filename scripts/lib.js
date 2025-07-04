@@ -487,6 +487,38 @@ var Notify = (function () {
         });
       }
     },
+
+    sendTelegramMessage: function sendTelegramMessage(token, chatId, text) {
+      log('sending telegram message to {}', chatId);
+      runShellCommand(
+        "curl -s -X POST https://api.telegram.org/bot{}/sendMessage -d chat_id={} -d text='{}'".format(
+          token,
+          chatId,
+          encodeURIComponent(text)
+        ),
+        {
+          captureErrorOutput: true,
+          captureOutput: true,
+          exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
+            if (exitCode != 0)
+              log.error(
+                'error sending telegram message to {}:\n{}\n{}',
+                chatId,
+                capturedOutput,
+                capturedErrorOutput
+              );
+            var response = JSON.parse(capturedOutput);
+            if (!response.ok)
+              log.error(
+                'error sending telegram message to {}:\n{} {}',
+                chatId,
+                response.error_code,
+                response.description
+              );
+          },
+        }
+      );
+    },
   };
 })();
 
@@ -504,6 +536,13 @@ var Alarms = (function () {
       if (!src.hasOwnProperty('to')) throw new Error("sms recipient without 'to'");
       return function sendSMSWrapper(text) {
         Notify.sendSMS(src.to, text, src.command || '');
+      };
+    },
+
+    telegram: function getTelegramSendFunc(src) {
+      if (!src.hasOwnProperty('chatId')) throw new Error("telegram message recipient without 'chatId'");
+      return function sendTelegramWrapper(text) {
+        Notify.sendTelegramMessage(src.token, src.chatId, text);
       };
     },
   };
