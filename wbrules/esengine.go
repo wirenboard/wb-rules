@@ -25,13 +25,14 @@ import (
 type itemType int
 
 const (
-	LIB_FILE            = "lib.js"
-	LIB_SYS_PATH        = "/usr/share/wb-rules-system/scripts"
-	LIB_REL_PATH_1      = "scripts"
-	LIB_REL_PATH_2      = "../scripts"
-	MIN_INTERVAL_MS     = 1
-	PERSISTENT_DB_CHMOD = 0640
-	SOURCE_ITEM_DEVICE  = itemType(iota)
+	LIB_FILE                      = "lib.js"
+	LIB_SYS_PATH                  = "/usr/share/wb-rules-system/scripts"
+	LIB_REL_PATH_1                = "scripts"
+	LIB_REL_PATH_2                = "../scripts"
+	MIN_INTERVAL_MS               = 1
+	MIN_INTERVAL_LOW_THRESHOLD_MS = 10
+	PERSISTENT_DB_CHMOD           = 0640
+	SOURCE_ITEM_DEVICE            = itemType(iota)
 	SOURCE_ITEM_RULE
 	SOURCE_ITEM_TIMER
 
@@ -2092,6 +2093,9 @@ func (engine *ESEngine) esWbStartTimer(ctx *ESContext) int {
 		ms = MIN_INTERVAL_MS
 	}
 	periodic := ctx.ToBoolean(2)
+	if periodic && ms <= MIN_INTERVAL_LOW_THRESHOLD_MS {
+		engine.Log(ENGINE_LOG_WARNING, fmt.Sprintf("_wbStartTimer: %d ms interval may degrade performance", int(ms)))
+	}
 
 	var callback func()
 	if name == NO_TIMER_NAME {
