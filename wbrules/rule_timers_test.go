@@ -105,11 +105,15 @@ func (s *RuleTimersSuite) TestShortTimers() {
 		"tst -> /devices/somedev/controls/foo: [short] (QoS 1, retained)",
 		"new fake timer: 1, 1",
 		"new fake timer: 2, 1",
+		"wbrules-log -> /wbrules/log/warning: [_wbStartTimer: 1 ms interval may degrade performance] (QoS 1)",
 		"new fake ticker: 3, 1",
+		"wbrules-log -> /wbrules/log/warning: [_wbStartTimer: 1 ms interval may degrade performance] (QoS 1)",
 		"new fake ticker: 4, 1",
 		"new fake timer: 5, 1",
 		"new fake timer: 6, 1",
+		"wbrules-log -> /wbrules/log/warning: [_wbStartTimer: 1 ms interval may degrade performance] (QoS 1)",
 		"new fake ticker: 7, 1",
+		"wbrules-log -> /wbrules/log/warning: [_wbStartTimer: 1 ms interval may degrade performance] (QoS 1)",
 		"new fake ticker: 8, 1",
 	)
 	s.VerifyEmpty()
