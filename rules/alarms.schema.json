@@ -99,8 +99,13 @@
                 "name": {
                     "type": "string",
                     "title": "Alarm name",
+                    "description": "Used as part of the topic",
+                    "pattern": "^[^$#+\\/]+$",
                     "minLength": 1,
-                    "propertyOrder": 1
+                    "propertyOrder": 1,
+                    "options": {
+                        "patternmessage": "Invalid alarm name"
+                    }
                 },
                 "cell": {
                     "type": "string",
@@ -418,7 +423,9 @@
             "Alarms": "Уведомления",
             "Alarm{{: |self.name}}": "Уведомление{{: |self.name}}",
             "Invalid format": "Неверный формат",
-            "Invalid device name": "Неверное имя устройства"
+            "Invalid device name": "Неверное имя устройства",
+            "Used as part of the topic": "Используется как часть топика в MQTT",
+            "Invalid alarm name": "Неверное название уведомления"
         }
     }
 }

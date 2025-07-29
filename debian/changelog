@@ -1,3 +1,9 @@
+wb-rules (2.34.2) stable; urgency=medium
+
+  * Alarms schema: add alarm name validation
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 29 Jul 2025 23:00:00 +0400
+
 wb-rules (2.34.1) stable; urgency=medium
 
   * setInterval/startTicker: warn about too low interval
