@@ -369,7 +369,7 @@ var Notify = (function () {
   }
 
   function _sendSMSGammuLike(to, text, command, doneCallback) {
-    log('sending sms (gammu-like) to {}: {}', to, text);
+    log('sending sms (gammu-like): {}', text);
     command = command || "wb-gsm restart_if_broken && gammu sendsms TEXT '{}' -unicode";
 
     var input = null;
@@ -394,7 +394,7 @@ var Notify = (function () {
   }
 
   function _sendSMSModemManager(to, text, doneCallback) {
-    log('sending sms (via ModemManager) to {}: {}', to, text);
+    log('sending sms (via ModemManager): {}', text);
     var command =
       'mmcli -m any --messaging-create-sms="number={},text={}" | sed -n \'s#^Success.*/SMS/\\([0-9]\\+\\).*$#\\1#p\' | xargs mmcli --send -s';
 
@@ -433,17 +433,16 @@ var Notify = (function () {
 
   return {
     sendEmail: function sendEmail(to, subject, text) {
-      log('sending email to {}: {}', to, subject);
+      log('sending email: {}', subject);
       var base64subject = Duktape.enc('base64', subject);
-      runShellCommand("/usr/sbin/sendmail '{}'".format(to), {
+      runShellCommand("/usr/sbin/sendmail -t", {
         captureErrorOutput: true,
         captureOutput: true,
-        input: 'Subject: =?utf-8?B?{}?=\r\nContent-Type: text/plain; charset=utf-8\n\n{}'.format(base64subject, text),
+        input: 'To: {}\r\nSubject: =?utf-8?B?{}?=\r\nContent-Type: text/plain; charset=utf-8\n\n{}'.format(to, base64subject, text),
         exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
           if (exitCode != 0)
             log.error(
-              'error sending email to {}:\n{}\n{}',
-              to,
+              'error sending email:\n{}\n{}',
               capturedOutput,
               capturedErrorOutput
             );
@@ -455,13 +454,13 @@ var Notify = (function () {
       var doneCallback = function (exitCode, capturedOutput, capturedErrorOutput) {
         _smsBusy = false;
         if (exitCode != 0)
-          log.error('error sending sms to {}:\n{}\n{}', to, capturedOutput, capturedErrorOutput);
+          log.error('error sending sms:\n{}\n{}', capturedOutput, capturedErrorOutput);
         _advanceSmsQueue();
       };
 
       var sendOrEnqueue = function (doSend) {
         if (_smsBusy) {
-          debug('queueing sms to {}: {}', to, text);
+          debug('queueing sms: {}', text);
           _smsQueue.push(doSend);
         } else {
           _smsBusy = true;
@@ -489,32 +488,31 @@ var Notify = (function () {
     },
 
     sendTelegramMessage: function sendTelegramMessage(token, chatId, text) {
-      log('sending telegram message to {}', chatId);
+      log('sending telegram message: {}', text);
       runShellCommand(
-        "curl -s -X POST https://api.telegram.org/bot{}/sendMessage -d chat_id={} -d text='{}'".format(
-          token,
-          chatId,
-          encodeURIComponent(text)
-        ),
+        "curl -s -X POST https://api.telegram.org/bot{}/sendMessage -H 'Content-Type: application/x-www-form-urlencoded' -d @-".format(token),
         {
           captureErrorOutput: true,
           captureOutput: true,
+          input: 'chat_id={}&text={}'.format(chatId, encodeURIComponent(text)),
           exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
             if (exitCode != 0)
               log.error(
-                'error sending telegram message to {}:\n{}\n{}',
-                chatId,
+                'error sending telegram message:\n{}\n{}',
                 capturedOutput,
                 capturedErrorOutput
               );
-            var response = JSON.parse(capturedOutput);
-            if (!response.ok)
-              log.error(
-                'error sending telegram message to {}:\n{} {}',
-                chatId,
-                response.error_code,
-                response.description
-              );
+            try {
+              var response = JSON.parse(capturedOutput);
+              if (!response.ok)
+                log.error(
+                  'error sending telegram message:\n{} {}',
+                  response.error_code,
+                  response.description
+                );
+            } catch (e) {
+              log.error('error parsing response: {}', e);
+            }
           },
         }
       );
