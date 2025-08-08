@@ -78,7 +78,7 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 
 	if !strings.HasSuffix(pth, ".js") {
 		return invalidExtensionError
-	} else if len(args.Path)+len(".js") > 255 {
+	} else if len(pth)+len(".js") > 255 {
 		return invalidLenError
 	}
 
@@ -209,12 +209,24 @@ type EditorRenameArgs struct {
 }
 
 func (editor *Editor) Rename(args *EditorRenameArgs, reply *bool) error {
+	newPath := path.Clean(args.NewPath)
+
+	for strings.HasPrefix(newPath, "/") {
+		newPath = newPath[1:]
+	}
+
+	if !strings.HasSuffix(newPath, ".js") {
+		return invalidExtensionError
+	} else if len(newPath)+len(".js") > 255 {
+		return invalidLenError
+	}
+
 	entry, err := editor.locateFile(args.Path)
 	if err != nil {
 		return err
 	}
 
-	newPath := strings.Replace(entry.PhysicalPath, entry.VirtualPath, args.NewPath, 1)
+	newPath = strings.Replace(entry.PhysicalPath, entry.VirtualPath, newPath, 1)
 
 	if _, err = os.Stat(newPath); !os.IsNotExist(err) {
 		wbgong.Error.Printf("can't rename %s to %s: looks like second file exists already, deal with this by yourself!",

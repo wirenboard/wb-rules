@@ -372,6 +372,16 @@ func (s *EditorSuite) TestEnableDisableFile() {
 }
 
 func (s *EditorSuite) TestRenameFile() {
+	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": "sample2.js"},
+		EDITOR_ERROR_OVERWRITE, "EditorError", "New-state file already exists")
+	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": "sample1_new"},
+		EDITOR_ERROR_INVALID_EXT, "EditorError", "File name should ends with .js")
+	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": strings.Repeat("x", 255) + ".js"},
+		EDITOR_ERROR_INVALID_LEN, "EditorError", "File path should be shorter than or equal to 255 chars")
+	s.VerifyRpcError("Rename", objx.Map{"path": "nosuchfile.js", "new_path": "sample1_new.js"},
+		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
+	s.EnsureGotErrors()
+
 	s.VerifyRpc("Rename", objx.Map{"path": "sample1.js", "new_path": "sample1_new.js"}, true)
 	s.verifySources(map[string]string{
 		"sample1_new.js":      "// sample1",
