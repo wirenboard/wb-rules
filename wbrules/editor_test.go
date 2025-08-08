@@ -36,7 +36,7 @@ func (s *EditorSuite) SetupTest() {
 	s.RpcFixture = testutils.NewRpcFixture(
 		s.T(), "wbrules", "Editor", "wbrules",
 		NewEditor(s),
-		"ChangeState", "List", "Load", "Remove", "Save")
+		"ChangeState", "List", "Load", "Remove", "Rename", "Save")
 }
 
 func (s *EditorSuite) TearDownTest() {
@@ -369,6 +369,27 @@ func (s *EditorSuite) TestEnableDisableFile() {
 		EDITOR_ERROR_OVERWRITE, "EditorError", "New-state file already exists")
 
 	s.EnsureGotErrors()
+}
+
+func (s *EditorSuite) TestRenameFile() {
+	s.VerifyRpc("Rename", objx.Map{"path": "sample1.js", "new_path": "sample1_new.js"}, true)
+	s.verifySources(map[string]string{
+		"sample1_new.js":      "// sample1",
+		"sample2.js":          "// sample2",
+		"sample3.js.disabled": "// disabled sample3",
+	})
+	s.VerifyRpc("ChangeState", objx.Map{"path": "sample1_new.js", "state": false}, true)
+	s.verifySources(map[string]string{
+		"sample1_new.js.disabled": "// sample1",
+		"sample2.js":              "// sample2",
+		"sample3.js.disabled":     "// disabled sample3",
+	})
+	s.VerifyRpc("Rename", objx.Map{"path": "sample1_new.js", "new_path": "sample1.js"}, true)
+	s.verifySources(map[string]string{
+		"sample1.js.disabled": "// sample1",
+		"sample2.js":          "// sample2",
+		"sample3.js.disabled": "// disabled sample3",
+	})
 }
 
 func TestEditorSuite(t *testing.T) {

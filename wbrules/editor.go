@@ -202,3 +202,31 @@ func (editor *Editor) ChangeState(args *EditorChangeStateArgs, reply *bool) erro
 	*reply = true
 	return nil
 }
+
+type EditorRenameArgs struct {
+	Path    string `json:"path"`
+	NewPath string `json:"new_path"`
+}
+
+func (editor *Editor) Rename(args *EditorRenameArgs, reply *bool) error {
+	entry, err := editor.locateFile(args.Path)
+	if err != nil {
+		return err
+	}
+
+	newPath := strings.Replace(entry.PhysicalPath, entry.VirtualPath, args.NewPath, 1)
+
+	if _, err = os.Stat(newPath); !os.IsNotExist(err) {
+		wbgong.Error.Printf("can't rename %s to %s: looks like second file exists already, deal with this by yourself!",
+			entry.PhysicalPath, newPath)
+		return overwriteError
+	}
+
+	if err = os.Rename(entry.PhysicalPath, newPath); err != nil {
+		wbgong.Error.Printf("error renaming %s to %s: %s", entry.PhysicalPath, newPath, err)
+		return renameError
+	}
+
+	*reply = true
+	return nil
+}
