@@ -29,7 +29,7 @@ amd64:
 
 test:
 	cp $(WBGO_LOCAL_PATH)/amd64.wbgo.so wbrules/wbgo.so
-	$(GO) test -v -trimpath -ldflags="-s -w" -cover ./wbrules
+	$(GO) test -v -trimpath -ldflags="-s -w" -cover -gcflags=all='-N -l' -race ./wbrules
 
 wb-rules: main.go wbrules/*.go
 	$(GO_ENV) $(GO) build -trimpath $(GO_FLAGS)

@@ -16,10 +16,10 @@ import (
 	"time"
 
 	"github.com/DisposaBoy/JsonConfigReader"
-	"github.com/boltdb/bolt"
 	"github.com/stretchr/objx"
 	duktape "github.com/wirenboard/go-duktape"
 	"github.com/wirenboard/wbgong"
+	bolt "go.etcd.io/bbolt"
 )
 
 type itemType int
