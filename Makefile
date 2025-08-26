@@ -30,6 +30,7 @@ else
 endif
 
 GO_FLAGS += $(if $(GCFLAGS),-gcflags=all="$(GCFLAGS)") $(if $(LDFLAGS),-ldflags="$(LDFLAGS)")
+GO_TEST_FLAGS = -v -cover -race
 
 all: clean wb-rules
 
