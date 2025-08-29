@@ -43,6 +43,7 @@ const (
 var invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should ends with .js"}
 var invalidLenError = &EditorError{EDITOR_ERROR_INVALID_LEN, "File path should be shorter than or equal to 255 chars"}
 var listDirError = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
+var readError = &EditorError{EDITOR_ERROR_WRITE, "Error reading the file"}
 var writeError = &EditorError{EDITOR_ERROR_WRITE, "Error writing the file"}
 var fileNotFoundError = &EditorError{EDITOR_ERROR_FILE_NOT_FOUND, "File not found"}
 var rmError = &EditorError{EDITOR_ERROR_REMOVE, "Error removing the file"}
@@ -150,7 +151,7 @@ func (editor *Editor) Load(args *EditorPathArgs, reply *EditorContentResponse) e
 	content, err := os.ReadFile(entry.PhysicalPath)
 	if err != nil {
 		wbgong.Error.Printf("error reading %s: %s", entry.PhysicalPath, err)
-		return writeError
+		return readError
 	}
 	*reply = EditorContentResponse{
 		string(content),

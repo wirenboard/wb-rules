@@ -23,6 +23,8 @@ const (
 	DRIVER_CONV_ID   = "wb-rules"
 	ENGINE_CLIENT_ID = "wb-rules-engine"
 
+	RPC_DRIVER_NAME = "wbrules"
+
 	PERSISTENT_DB_FILE      = "/var/lib/wirenboard/wbrules-persistent.db"
 	VIRTUAL_DEVICES_DB_FILE = "/var/lib/wirenboard/wbrules-vdev.db"
 	WBGO_FILE               = "/usr/lib/wb-rules/wbgo.so"
@@ -174,7 +176,7 @@ func main() {
 	wbgong.Info.Println("all rule files are loaded")
 
 	if *editDir != "" {
-		rpc := wbgong.NewMQTTRPCServer("wbrules", engineMqttClient)
+		rpc := wbgong.NewMQTTRPCServer(RPC_DRIVER_NAME, engineMqttClient)
 		rpc.Register(wbrules.NewEditor(engine))
 		rpc.Start()
 		defer rpc.Stop()

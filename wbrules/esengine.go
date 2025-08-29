@@ -914,6 +914,7 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 // ready. If the script didn't change since the last time it was loaded,
 // the script isn't loaded.
 func (engine *ESEngine) LiveLoadFile(path string) error {
+	wbgong.Debug.Printf("LiveLoadFile: %s", path)
 	r := make(chan error)
 	engine.WhenEngineReady(func() {
 		r <- engine.loadScriptAndRefresh(path, false)
@@ -923,7 +924,7 @@ func (engine *ESEngine) LiveLoadFile(path string) error {
 }
 
 func (engine *ESEngine) LiveRemoveFile(path string) error {
-	wbgong.Info.Printf("LiveRemoveFile: %s", path)
+	wbgong.Debug.Printf("LiveRemoveFile: %s", path)
 	path, virtualPath, _, _, err := engine.checkSourcePath(path)
 
 	if err != nil {
