@@ -1,0 +1,459 @@
+asyncapi: '3.0.0'
+info:
+  title: wb-rules MQTT-RPC API
+  version: '1.0.0'
+defaultContentType: application/json
+channels:
+  wbrulesEditorChangeState:
+    address: '/rpc/v1/wbrules/Editor/ChangeState/{clientId}'
+    messages:
+      wbrulesEditorChangeState:
+        $ref: '#/components/messages/wbrulesEditorChangeState'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorChangeStateReply:
+    address: '/rpc/v1/wbrules/Editor/ChangeState/{clientId}/reply'
+    messages:
+      wbrulesEditorChangeStateReply:
+        $ref: '#/components/messages/wbrulesEditorChangeStateReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorList:
+    address: '/rpc/v1/wbrules/Editor/List/{clientId}'
+    messages:
+      wbrulesEditorList:
+        $ref: '#/components/messages/wbrulesEditorList'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorListReply:
+    address: '/rpc/v1/wbrules/Editor/List/{clientId}/reply'
+    messages:
+      wbrulesEditorListReply:
+        $ref: '#/components/messages/wbrulesEditorListReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorLoad:
+    address: '/rpc/v1/wbrules/Editor/Load/{clientId}'
+    messages:
+      wbrulesEditorLoad:
+        $ref: '#/components/messages/wbrulesEditorLoad'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorLoadReply:
+    address: '/rpc/v1/wbrules/Editor/Load/{clientId}/reply'
+    messages:
+      wbrulesEditorLoadReply:
+        $ref: '#/components/messages/wbrulesEditorLoadReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorRemove:
+    address: '/rpc/v1/wbrules/Editor/Remove/{clientId}'
+    messages:
+      wbrulesEditorRemove:
+        $ref: '#/components/messages/wbrulesEditorRemove'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorRemoveReply:
+    address: '/rpc/v1/wbrules/Editor/Remove/{clientId}/reply'
+    messages:
+      wbrulesEditorRemoveReply:
+        $ref: '#/components/messages/wbrulesEditorRemoveReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorRename:
+    address: '/rpc/v1/wbrules/Editor/Rename/{clientId}'
+    messages:
+      wbrulesEditorRename:
+        $ref: '#/components/messages/wbrulesEditorRename'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorRenameReply:
+    address: '/rpc/v1/wbrules/Editor/Rename/{clientId}/reply'
+    messages:
+      wbrulesEditorRenameReply:
+        $ref: '#/components/messages/wbrulesEditorRenameReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorSave:
+    address: '/rpc/v1/wbrules/Editor/Save/{clientId}'
+    messages:
+      wbrulesEditorSave:
+        $ref: '#/components/messages/wbrulesEditorSave'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorSaveReply:
+    address: '/rpc/v1/wbrules/Editor/Save/{clientId}/reply'
+    messages:
+      wbrulesEditorSaveReply:
+        $ref: '#/components/messages/wbrulesEditorSaveReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+operations:
+  wbrulesEditorChangeState:
+    action: send
+    channel:
+      $ref: '#/channels/wbrulesEditorChangeState'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/wbrulesEditorChangeState/messages/wbrulesEditorChangeState'
+    reply:
+      channel:
+        $ref: '#/channels/wbrulesEditorChangeStateReply'
+      messages:
+        - $ref: '#/channels/wbrulesEditorChangeStateReply/messages/wbrulesEditorChangeStateReply'
+  wbrulesEditorList:
+    action: send
+    channel:
+      $ref: '#/channels/wbrulesEditorList'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/wbrulesEditorList/messages/wbrulesEditorList'
+    reply:
+      channel:
+        $ref: '#/channels/wbrulesEditorListReply'
+      messages:
+        - $ref: '#/channels/wbrulesEditorListReply/messages/wbrulesEditorListReply'
+  wbrulesEditorLoad:
+    action: send
+    channel:
+      $ref: '#/channels/wbrulesEditorLoad'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/wbrulesEditorLoad/messages/wbrulesEditorLoad'
+    reply:
+      channel:
+        $ref: '#/channels/wbrulesEditorLoadReply'
+      messages:
+        - $ref: '#/channels/wbrulesEditorLoadReply/messages/wbrulesEditorLoadReply'
+  wbrulesEditorRemove:
+    action: send
+    channel:
+      $ref: '#/channels/wbrulesEditorRemove'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/wbrulesEditorRemove/messages/wbrulesEditorRemove'
+    reply:
+      channel:
+        $ref: '#/channels/wbrulesEditorRemoveReply'
+      messages:
+        - $ref: '#/channels/wbrulesEditorRemoveReply/messages/wbrulesEditorRemoveReply'
+  wbrulesEditorRename:
+    action: send
+    channel:
+      $ref: '#/channels/wbrulesEditorRename'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/wbrulesEditorRename/messages/wbrulesEditorRename'
+    reply:
+      channel:
+        $ref: '#/channels/wbrulesEditorRenameReply'
+      messages:
+        - $ref: '#/channels/wbrulesEditorRenameReply/messages/wbrulesEditorRenameReply'
+  wbrulesEditorSave:
+    action: send
+    channel:
+      $ref: '#/channels/wbrulesEditorSave'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/wbrulesEditorSave/messages/wbrulesEditorSave'
+    reply:
+      channel:
+        $ref: '#/channels/wbrulesEditorSaveReply'
+      messages:
+        - $ref: '#/channels/wbrulesEditorSaveReply/messages/wbrulesEditorSaveReply'
+components:
+  messages:
+    wbrulesEditorChangeState:
+      name: editorChangeState
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorChangeStatePayload'
+    wbrulesEditorChangeStateReply:
+      name: editorChangeStateReply
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorChangeStateReplyPayload'
+    wbrulesEditorList:
+      name: editorList
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorListPayload'
+    wbrulesEditorListReply:
+      name: editorListReply
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorListReplyPayload'
+    wbrulesEditorLoad:
+      name: editorLoad
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorLoadPayload'
+    wbrulesEditorLoadReply:
+      name: editorLoadReply
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorLoadReplyPayload'
+    wbrulesEditorRemove:
+      name: editorRemove
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorRemovePayload'
+    wbrulesEditorRemoveReply:
+      name: editorRemoveReply
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorRemoveReplyPayload'
+    wbrulesEditorRename:
+      name: editorRename
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorRenamePayload'
+    wbrulesEditorRenameReply:
+      name: editorRenameReply
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorRenameReplyPayload'
+    wbrulesEditorSave:
+      name: editorSave
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorSavePayload'
+    wbrulesEditorSaveReply:
+      name: editorSaveReply
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorSaveReplyPayload'
+  schemas:
+    locItem:
+      type: object
+      properties:
+        line:
+          type: number
+        name:
+          type: string
+      required:
+        - line
+        - name
+    tracebackItem:
+      type: array
+      items:
+        $ref: '#/components/schemas/locItem'
+    errorItem:
+      type: object
+      properties:
+        message:
+          type: string
+        traceback:
+          $ref: '#/components/schemas/tracebackItem'
+      required:
+        - message
+        - traceback
+    wbrulesEditorChangeStatePayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            path:
+              type: string
+            state:
+              type: boolean
+          required:
+            - path
+            - state
+      required:
+        - id
+        - params
+    wbrulesEditorChangeStateReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: boolean
+      required:
+        - id
+        - result
+    wbrulesEditorListPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+      required:
+        - id
+        - params
+    wbrulesEditorListReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: array
+          items:
+            type: object
+            properties:
+              devices:
+                type: array
+                items:
+                  $ref: '#/components/schemas/locItem'
+              enabled:
+                type: boolean
+              error:
+                $ref: '#/components/schemas/errorItem'
+              rules:
+                type: array
+                items:
+                  $ref: '#/components/schemas/locItem'
+              timers:
+                type: array
+                items:
+                  $ref: '#/components/schemas/locItem'
+              virtualPath:
+                type: string
+            required:
+              - devices
+              - enabled
+              - rules
+              - timers
+              - virtualPath
+      required:
+        - id
+        - result
+    wbrulesEditorLoadPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            path:
+              type: string
+          required:
+            - path
+      required:
+        - id
+        - params
+    wbrulesEditorLoadReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: object
+          properties:
+            content:
+              type: string
+            error:
+              $ref: '#/components/schemas/errorItem'
+          required:
+            - content
+      required:
+        - id
+        - result
+    wbrulesEditorRemovePayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            path:
+              type: string
+          required:
+            - path
+      required:
+        - id
+        - params
+    wbrulesEditorRemoveReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: boolean
+      required:
+        - id
+        - result
+    wbrulesEditorRenamePayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            new_path:
+              type: string
+            path:
+              type: string
+          required:
+            - new_path
+            - path
+      required:
+        - id
+        - params
+    wbrulesEditorRenameReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: boolean
+      required:
+        - id
+        - result
+    wbrulesEditorSavePayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            content:
+              type: string
+            path:
+              type: string
+          required:
+            - content
+            - path
+      required:
+        - id
+        - params
+    wbrulesEditorSaveReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: object
+          properties:
+            error:
+              type: string
+            path:
+              type: string
+            traceback:
+              $ref: '#/components/schemas/tracebackItem'
+      required:
+        - id
+        - result
+  parameters:
+    clientId:
+      description: UUID
+  operationTraits:
+    mqtt:
+      bindings:
+        mqtt:
+          qos: 1
