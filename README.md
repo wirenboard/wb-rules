@@ -4,6 +4,8 @@ Rule engine for Wiren Board, version 2.0
 
 Движок правил для контроллеров Wiren Board, версия 2.0
 
+[mqtt-rpc API spec](./asyncapi.mqtt-rpc.yml)
+
 **Содержание**
 
 - [Правила](#правила)
