@@ -958,8 +958,6 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 		// here we need to invalidate controls/devices proxy
 		atomic.AddUint32(&engine.rev, 1)
 
-		engine.clearDeviceProxyCache()
-
 		// pushing event about new external meta received
 		metaCtrl := fmt.Sprintf("%s#%s", e.Control.GetId(), e.Type)
 		metaSpec := ControlSpec{e.Control.GetDevice().GetId(), metaCtrl}
@@ -1981,8 +1979,6 @@ func (engine *RuleEngine) Refresh() {
 	}
 	atomic.AddUint32(&engine.rev, 1) // invalidate device/control proxies
 
-	engine.clearDeviceProxyCache()
-
 	engine.setupCron()
 
 	engine.rulesMutex.Lock()
@@ -2005,13 +2001,6 @@ func (engine *RuleEngine) Driver() wbgong.Driver {
 
 func (engine *RuleEngine) getRev() uint32 {
 	return atomic.LoadUint32(&engine.rev)
-}
-
-func (engine *RuleEngine) clearDeviceProxyCache() {
-	engine.deviceProxyCache.Range(func(key, value interface{}) bool {
-		engine.deviceProxyCache.Delete(key)
-		return true
-	})
 }
 
 func (engine *RuleEngine) GetDeviceProxyCacheSize() int {
