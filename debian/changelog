@@ -1,4 +1,4 @@
-wb-rules (2.35.3) stable; urgency=medium
+wb-rules (2.36.0) stable; urgency=medium
 
   * Fix invalidation of cached control value
 
