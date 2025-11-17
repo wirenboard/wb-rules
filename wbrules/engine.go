@@ -118,10 +118,11 @@ type proxyOwner interface {
 }
 
 type DeviceProxy struct {
-	owner proxyOwner
-	name  string
-	dev   wbgong.Device
-	rev   uint32
+	owner             proxyOwner
+	name              string
+	dev               wbgong.Device
+	rev               uint32
+	controlProxyCache sync.Map
 }
 
 // ControlProxy tracks control access with the engine
@@ -151,7 +152,12 @@ func getDeviceRefFromDriver(devId string, drv wbgong.Driver) (dev wbgong.Device,
 // some rules want control spec without actual control
 func makeDeviceProxy(owner proxyOwner, devId string) *DeviceProxy {
 	dev, _ := getDeviceRefFromDriver(devId, owner.Driver())
-	return &DeviceProxy{owner, devId, dev, owner.getRev()}
+	return &DeviceProxy{
+		owner: owner,
+		name:  devId,
+		dev:   dev,
+		rev:   owner.getRev(),
+	}
 }
 
 func (devProxy *DeviceProxy) updated() bool {
@@ -162,13 +168,21 @@ func (devProxy *DeviceProxy) EnsureControlProxy(ctrlId string) *ControlProxy {
 	if wbgong.DebuggingEnabled() {
 		wbgong.Debug.Printf("[devProxy] EnsureControlProxy for control %s/%s", devProxy.name, ctrlId)
 	}
-	return &ControlProxy{
+
+	if proxy, ok := devProxy.controlProxyCache.Load(ctrlId); ok {
+		return proxy.(*ControlProxy)
+	}
+
+	newProxy := &ControlProxy{
 		devProxy:    devProxy,
 		name:        ctrlId,
 		control:     devProxy.getControl(ctrlId),
 		cachedValue: nil,
 		cacheValid:  false,
 	}
+
+	actual, _ := devProxy.controlProxyCache.LoadOrStore(ctrlId, newProxy)
+	return actual.(*ControlProxy)
 }
 
 func (devProxy *DeviceProxy) getControl(ctrlId string) wbgong.Control {
@@ -652,6 +666,8 @@ type RuleEngine struct {
 
 	cleanupOnStop bool
 
+	deviceProxyCache sync.Map
+
 	// subscriptions to control change events
 	// suitable for testing
 	controlChangeSubsMutex sync.Mutex
@@ -730,6 +746,12 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 	})
 	s.NewGauge("wbrules_engine_rules_total", func() float64 {
 		return float64(len(engine.ruleMap))
+	})
+	s.NewGauge("wbrules_engine_rev_total", func() float64 {
+		return float64(engine.getRev())
+	})
+	s.NewGauge("wbrules_engine_device_proxy_cache_total", func() float64 {
+		return float64(engine.GetDeviceProxyCacheSize())
 	})
 	metrics.RegisterSet(s)
 
@@ -935,6 +957,8 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 
 		// here we need to invalidate controls/devices proxy
 		atomic.AddUint32(&engine.rev, 1)
+
+		engine.clearDeviceProxyCache()
 
 		// pushing event about new external meta received
 		metaCtrl := fmt.Sprintf("%s#%s", e.Control.GetId(), e.Type)
@@ -1956,6 +1980,9 @@ func (engine *RuleEngine) Refresh() {
 		wbgong.Debug.Println("[engine] Refresh()")
 	}
 	atomic.AddUint32(&engine.rev, 1) // invalidate device/control proxies
+
+	engine.clearDeviceProxyCache()
+
 	engine.setupCron()
 
 	engine.rulesMutex.Lock()
@@ -1980,8 +2007,31 @@ func (engine *RuleEngine) getRev() uint32 {
 	return atomic.LoadUint32(&engine.rev)
 }
 
+func (engine *RuleEngine) clearDeviceProxyCache() {
+	engine.deviceProxyCache.Range(func(key, value interface{}) bool {
+		engine.deviceProxyCache.Delete(key)
+		return true
+	})
+}
+
+func (engine *RuleEngine) GetDeviceProxyCacheSize() int {
+	count := 0
+	engine.deviceProxyCache.Range(func(key, value interface{}) bool {
+		count++
+		return true
+	})
+	return count
+}
+
 func (engine *RuleEngine) GetDeviceProxy(name string) *DeviceProxy {
-	return makeDeviceProxy(engine, name)
+	if proxy, ok := engine.deviceProxyCache.Load(name); ok {
+		return proxy.(*DeviceProxy)
+	}
+
+	newProxy := makeDeviceProxy(engine, name)
+
+	actual, _ := engine.deviceProxyCache.LoadOrStore(name, newProxy)
+	return actual.(*DeviceProxy)
 }
 
 func (engine *RuleEngine) Log(level EngineLogLevel, message string) {

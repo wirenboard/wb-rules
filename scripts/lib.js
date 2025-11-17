@@ -75,9 +75,8 @@ var _WbRules = {
 
     if (name in o) return o[name];
 
-    var cells = {};
     function ensureCell(dev, name) {
-      return cells.hasOwnProperty(name) ? cells[name] : (cells[name] = _wbCellObject(dev, name));
+      return _wbCellObject(dev, name);
     }
     return (o[name] = new Proxy(_wbDevObject(name), {
       get: function (dev, name) {
