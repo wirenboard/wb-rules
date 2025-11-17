@@ -1,3 +1,9 @@
+wb-rules (2.36.0) stable; urgency=medium
+
+  * Fix invalidation of cached control value
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 10 Nov 2025 10:00:00 +0400
+
 wb-rules (2.35.2) stable; urgency=medium
 
   * RPC: Load: fix error message
