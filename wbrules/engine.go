@@ -1978,7 +1978,6 @@ func (engine *RuleEngine) Refresh() {
 		wbgong.Debug.Println("[engine] Refresh()")
 	}
 	atomic.AddUint32(&engine.rev, 1) // invalidate device/control proxies
-
 	engine.setupCron()
 
 	engine.rulesMutex.Lock()
