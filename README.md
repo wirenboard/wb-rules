@@ -1300,6 +1300,47 @@ defineRule("myRule", {
 
 ```
 
+`PersistentStorage` - не простой объект, он является прокси сущностью, и поэтому
+при работе с ним не поддерживается вывод всего хранилища через прямое обращение
+к объекту `ps`. Работать с сохраненными данными можно только после доступа
+через ключ `ps['key2']`:
+
+```
+var ps = new PersistentStorage("storage", {global: true});
+ps['key2'].foo = 5;
+log(JSON.stringify(ps["key2"])); // выведет {"foo":5}
+log(JSON.stringify(ps)); // выведет пустоту
+```
+
+Обратите внимание: можно добавлять только элементы с простыми типами,
+но нельзя использовать объекты. Вместо прямого `ps['key'] = {...}` нужно
+использовать `ps[idPrefix] = new StorableObject({...});`
+
+Код ниже вызовет исключение, которое без обработки прервет исполнение правила:
+
+```
+var ps = new PersistentStorage("storage", {global: true});
+
+// Выведет ошибку
+// Error: don't write pure objects to PersistentStorage, use new StorableObject(obj) instead
+try {
+  ps['key'] = {};
+} catch (err) {
+  log.error('{}', err);
+}
+
+// Правильное использование
+// - Сначала создаем элемент в хранилище, явно создавая объект с помошью StorableObject().
+//   Пустой или уже заполненный объект не важно.
+// - Далее уже можно работать с элементом в хранилище как с обычным объектом,
+//   все изменения уже будут сохраняться в постоянной памяти.
+ps['key'] = new StorableObject({});
+ps['key'].foo = 5;
+log('Raw call: ' + JSON.stringify(ps["key"])); // выведет Raw call: {"foo":5}
+var foo_storage = ps['key'];
+log('Via var: ' + JSON.stringify(foo_storage)); // выведет Via var: {"foo":5}
+```
+
 Можно создавать несколько постоянных хранилищ с разными именами;
 каждое из них будет иметь свой набор значений.
 
