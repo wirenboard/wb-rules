@@ -18,7 +18,7 @@ func (s *RuleBasicsSuite) TestRules() {
 	s.SetCellValue("stabSettings", "enabled", true)
 	s.Verify(
 		"driver -> /devices/stabSettings/controls/enabled: [1] (QoS 1, retained)",
-		"[info] heaterOn fired, changed: stabSettings/enabled -> true",
+		"[info] heaterOn fired",
 	)
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
 	s.VerifyUnordered(
@@ -34,7 +34,7 @@ func (s *RuleBasicsSuite) TestRules() {
 	s.publish("/devices/somedev/controls/temp", "22", "somedev/temp")
 	s.Verify(
 		"tst -> /devices/somedev/controls/temp: [22] (QoS 1, retained)",
-		"[info] heaterOff fired, changed: somedev/temp -> 22",
+		"[info] heaterOff fired",
 	)
 	s.publish("/devices/somedev/controls/sw", "0", "somedev/sw")
 	s.VerifyUnordered(
@@ -45,7 +45,7 @@ func (s *RuleBasicsSuite) TestRules() {
 	s.publish("/devices/somedev/controls/temp", "18", "somedev/temp")
 	s.Verify(
 		"tst -> /devices/somedev/controls/temp: [18] (QoS 1, retained)",
-		"[info] heaterOn fired, changed: somedev/temp -> 18",
+		"[info] heaterOn fired",
 	)
 	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
 	s.VerifyUnordered(
@@ -62,7 +62,7 @@ func (s *RuleBasicsSuite) TestRules() {
 	s.SetCellValue("stabSettings", "enabled", false)
 	s.Verify(
 		"driver -> /devices/stabSettings/controls/enabled: [0] (QoS 1, retained)",
-		"[info] heaterOff fired, changed: stabSettings/enabled -> false",
+		"[info] heaterOff fired",
 	)
 	s.publish("/devices/somedev/controls/sw", "0", "somedev/sw")
 	s.VerifyUnordered(

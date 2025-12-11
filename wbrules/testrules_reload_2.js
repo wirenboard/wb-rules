@@ -48,12 +48,11 @@ function defDetectRun(name) {
     when: function () {
       return true;
     },
-    then: function (newValue, devName, cellName) {
+    then: function () {
       if (smc !== dev.vdev.someCell) throw new Error('cell alias value mismatch!');
       log(
-        '{}: {} (s={}{})',
+        '{}: s={}{}',
         name,
-        cellSpec(devName, cellName),
         dev.vdev.someCell,
         // doesn't log anotherCell value in the altered version
         ', a={}'.format(dev.vdev.anotherCell)

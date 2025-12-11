@@ -296,20 +296,39 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 	rule.shouldCheck = false
 
 	if rule.enabled {
-		switch {
-		case !shouldFire:
+		if !shouldFire {
 			return
-		case newValue != nil:
-			args = objx.New(map[string]interface{}{
-				"newValue": newValue,
-			})
-		case e != nil: // newValue == nil
-			args = objx.New(map[string]interface{}{
-				"device":   e.Spec.DeviceId,
-				"cell":     e.Spec.ControlId,
-				"newValue": e.Value,
-			})
 		}
+
+		switch rule.cond.(type) {
+		case *FuncValueChangedRuleCondition:
+			if newValue != nil {
+				args = objx.New(map[string]interface{}{
+					"newValue": newValue,
+				})
+			}
+		case *CellChangedRuleCondition:
+			if e != nil {
+				args = objx.New(map[string]interface{}{
+					"device":   e.Spec.DeviceId,
+					"cell":     e.Spec.ControlId,
+					"newValue": e.Value,
+				})
+			}
+		case *OrRuleCondition:
+			if newValue != nil {
+				args = objx.New(map[string]interface{}{
+					"newValue": newValue,
+				})
+			} else if e != nil {
+				args = objx.New(map[string]interface{}{
+					"device":   e.Spec.DeviceId,
+					"cell":     e.Spec.ControlId,
+					"newValue": e.Value,
+				})
+			}
+		}
+
 		if wbgong.DebuggingEnabled() {
 			wbgong.Debug.Printf("[rule] firing Rule ruleId=%d", rule.id)
 		}

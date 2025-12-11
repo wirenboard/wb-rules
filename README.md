@@ -92,6 +92,17 @@ defineRule("test_whenChanged", {
 });
 ```
 
+Если нужно отслеживать более сложное условие, то можно передать функцию:
+```js
+defineRule("test_whenChanged", {
+  whenChanged: function() {
+    return dev["buzzer/enabled"] && dev["buzzer/volume"] > 10;
+  },
+  then: function (funcReturnValue) {
+    log("funcReturnValue:{}", funcReturnValue);
+  }
+```
+
 В функцию, заданную в значении ключа `then`, передаются в качестве
 аргументов текущее значение параметра `newValue`, имя устройства `devName` и имя параметра `cellName`, изменение которого привело к срабатыванию правила.
 
@@ -115,9 +126,9 @@ defineRule({
   asSoonAs: function() {
     return dev["wb-gpio/A1_OUT"]; // правило сработает, когда значение параметра изменится на истинное
   },
-  then: function (newValue, devName, cellName) {
-    log("Переключатель {} включён! Выключаем…", cellName);
-    dev["wb-gpio/A1_OUT"] = !newValue;
+  then: function () {
+    log("Переключатель A1_OUT включён! Выключаем…");
+    dev["wb-gpio/A1_OUT"] = false;
     log("Выключили.");
   }
 });
@@ -133,8 +144,8 @@ defineRule({
   when: function() {
     return dev["wb-gpio/A1_OUT"];
   },
-  then: function (newValue, devName, cellName) {
-    log("devName:{}, cellName:{}, newValue:{}", devName, cellName, newValue);
+  then: function () {
+    log("Переключатель A1_OUT включён!");
   }
 });
 ```

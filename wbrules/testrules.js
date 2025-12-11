@@ -53,12 +53,8 @@ defineRule('heaterOn', {
       throw new Error("/-notation in dev name doesn't work");
     return stabEnabled && temp < dev.stabSettings.lowThreshold;
   },
-  then: function (newValue, devName, cellName) {
-    log(
-      'heaterOn fired, changed: {} -> {}',
-      cellSpec(devName, cellName),
-      newValue === undefined ? '(none)' : newValue
-    );
+  then: function () {
+    log('heaterOn fired');
     sw = true;
   },
 });
@@ -67,12 +63,8 @@ defineRule('heaterOff', {
   when: function () {
     return sw && (!stabEnabled || temp >= dev.stabSettings.highThreshold);
   },
-  then: function (newValue, devName, cellName) {
-    log(
-      'heaterOff fired, changed: {} -> {}',
-      cellSpec(devName, cellName),
-      newValue === undefined ? '(none)' : newValue
-    );
+  then: function () {
+    log('heaterOff fired');
     dev['somedev/sw'] = false;
   },
 });

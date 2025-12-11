@@ -113,8 +113,8 @@ defineRule('asSoonAsExtError', {
   asSoonAs: function () {
     return dev['somedev/sw#error'];
   },
-  then: function (newValue, devName, cellName) {
-    log(devName + '/' + cellName + ' = ' + newValue);
+  then: function () {
+    log('asSoonAsExtError');
   },
 });
 
