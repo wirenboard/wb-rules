@@ -354,6 +354,8 @@ components:
           properties:
             content:
               type: string
+            enabled:
+              type: boolean
             error:
               $ref: '#/components/schemas/errorItem'
           required:

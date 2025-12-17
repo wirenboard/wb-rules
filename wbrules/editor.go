@@ -140,6 +140,7 @@ func (editor *Editor) Remove(args *EditorPathArgs, reply *bool) error {
 
 type EditorContentResponse struct {
 	Content string       `json:"content"`
+	Enabled bool         `json:"enabled"`
 	Error   *ScriptError `json:"error,omitempty"`
 }
 
@@ -155,6 +156,7 @@ func (editor *Editor) Load(args *EditorPathArgs, reply *EditorContentResponse) e
 	}
 	*reply = EditorContentResponse{
 		string(content),
+		entry.Enabled,
 		entry.Error,
 	}
 	return nil

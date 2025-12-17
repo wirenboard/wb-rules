@@ -1,3 +1,9 @@
+wb-rules (2.37.0) stable; urgency=medium
+
+  * Add 'enabled' field to Load RPC response
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 17 Dec 2025 18:40:00 +0400
+
 wb-rules (2.36.0) stable; urgency=medium
 
   * Fix invalidation of cached control value
