@@ -304,6 +304,7 @@ func (s *EditorSuite) TestRemoveFile() {
 func (s *EditorSuite) TestLoadFile() {
 	s.VerifyRpc("Load", objx.Map{"path": "sample1.js"}, objx.Map{
 		"content": "// sample1",
+		"enabled": true,
 	})
 	s.scriptErrorPath = "sample1.js"
 	scriptErr := NewScriptError(
@@ -315,6 +316,7 @@ func (s *EditorSuite) TestLoadFile() {
 	s.scriptError = &scriptErr
 	s.VerifyRpc("Load", objx.Map{"path": "sample1.js"}, objx.Map{
 		"content": "// sample1",
+		"enabled": true,
 		"error": objx.Map{
 			"message": "syntax error!",
 			"traceback": []objx.Map{
@@ -323,6 +325,12 @@ func (s *EditorSuite) TestLoadFile() {
 			},
 		},
 	})
+
+	s.VerifyRpc("Load", objx.Map{"path": "sample3.js"}, objx.Map{
+		"content": "// disabled sample3",
+		"enabled": false,
+	})
+
 	s.VerifyRpcError("Load", objx.Map{"path": "nosuchfile.js"},
 		EDITOR_ERROR_FILE_NOT_FOUND, "EditorError", "File not found")
 	s.WriteDataFile("unlisted.js.ok", "// unlisted")
