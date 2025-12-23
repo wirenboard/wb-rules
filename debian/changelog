@@ -1,3 +1,9 @@
+wb-rules (2.38.0) stable; urgency=medium
+
+  * Fix 'then' function arguments in edge/level-triggered rules
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 22 Dec 2025 14:00:00 +0400
+
 wb-rules (2.37.0) stable; urgency=medium
 
   * Add 'enabled' field to Load RPC response

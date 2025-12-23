@@ -29,8 +29,8 @@ func (s *RuleReloadSuite) SetupTest() {
 	s.SetupSkippingDefs("testrules_reload_1.js", "testrules_reload_2.js")
 	s.Verify(
 		"[info] detRun",
-		"[info] detectRun: somedev/temp (s=false, a=10)",
-		"[info] detectRun1: somedev/temp (s=false, a=10)",
+		"[info] detectRun: (no cell) (s=false, a=10)",
+		"[info] detectRun1: (no cell) (s=false, a=10)",
 	)
 }
 
@@ -40,8 +40,8 @@ func (s *RuleReloadSuite) VerifyRules() {
 		"tst -> /devices/vdev/controls/someCell/on: [1] (QoS 1)",
 		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
 		"[info] detRun",
-		"[info] detectRun: vdev/someCell (s=true, a=10)",
-		"[info] detectRun1: vdev/someCell (s=true, a=10)",
+		"[info] detectRun: (no cell) (s=true, a=10)",
+		"[info] detectRun1: (no cell) (s=true, a=10)",
 		"[info] rule1: vdev/someCell=true",
 		"[info] rule2: vdev/someCell=true",
 	)
@@ -51,8 +51,8 @@ func (s *RuleReloadSuite) VerifyRules() {
 		"tst -> /devices/vdev/controls/anotherCell/on: [17] (QoS 1)",
 		"driver -> /devices/vdev/controls/anotherCell: [17] (QoS 1, retained)",
 		"[info] detRun",
-		"[info] detectRun: vdev/anotherCell (s=true, a=17)",
-		"[info] detectRun1: vdev/anotherCell (s=true, a=17)",
+		"[info] detectRun: (no cell) (s=true, a=17)",
+		"[info] detectRun1: (no cell) (s=true, a=17)",
 		"[info] rule3: vdev/anotherCell=17",
 	)
 }
@@ -118,7 +118,7 @@ func (s *RuleReloadSuite) TestReload() {
 		"tst -> /devices/vdev/controls/someCell/on: [0] (QoS 1)",
 		"driver -> /devices/vdev/controls/someCell: [0] (QoS 1, retained)",
 		"[info] detRun",
-		"[info] detectRun: vdev/someCell (s=false)",
+		"[info] detectRun: (no cell) (s=false)",
 		"[info] rule1: vdev/someCell=false",
 		// rule2 is gone, rule3 is gone together with its anotherCell
 	)
@@ -128,7 +128,7 @@ func (s *RuleReloadSuite) TestReload() {
 		"tst -> /devices/vdev/controls/someCell/on: [1] (QoS 1)",
 		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
 		"[info] detRun",
-		"[info] detectRun: vdev/someCell (s=true)",
+		"[info] detectRun: (no cell) (s=true)",
 		"[info] rule1: vdev/someCell=true",
 	)
 
@@ -202,8 +202,8 @@ func (s *RuleReloadSuite) TestIndirectRulesCleanup() {
 		"driver -> /devices/vdev1/controls/qqq: [1] (QoS 1, retained)",
 		"[info] detRun",
 		"[info] checkIndirect",
-		"[info] detectRun1: vdev1/qqq (s=false, a=10)",
-		"[info] detectRun: vdev1/qqq (s=false, a=10)",
+		"[info] detectRun1: (no cell) (s=false, a=10)",
+		"[info] detectRun: (no cell) (s=false, a=10)",
 	)
 
 	// remove script
@@ -215,8 +215,8 @@ func (s *RuleReloadSuite) TestIndirectRulesCleanup() {
 	s.VerifyUnordered(
 		"tst -> /devices/vdev1/controls/qqq/on: [1] (QoS 1)",
 		"driver -> /devices/vdev1/controls/qqq: [1] (QoS 1, retained)",
-		"[info] detectRun1: vdev1/qqq (s=false, a=10)",
-		"[info] detectRun: vdev1/qqq (s=false, a=10)",
+		"[info] detectRun1: (no cell) (s=false, a=10)",
+		"[info] detectRun: (no cell) (s=false, a=10)",
 	)
 	s.VerifyEmpty()
 }
