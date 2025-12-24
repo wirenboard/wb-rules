@@ -12,6 +12,14 @@ const (
 	RULE_OR_COND_CAPACITY = 10
 )
 
+type CheckMode int8
+
+const (
+	CheckModeNone CheckMode = iota
+	CheckModeWithEvent
+	CheckModeIndependent
+)
+
 type DepTracker interface {
 	StartTrackingDeps()
 	StoreRuleControlSpec(rule *Rule, ctrlSpec ControlSpec)
@@ -245,7 +253,7 @@ type Rule struct {
 	name          string // optional, but will be checked for redefinition if set
 	cond          RuleCondition
 	then          ESCallbackFunc
-	shouldCheck   bool
+	checkMode     CheckMode
 	isIndependent bool
 	hasDeps       bool
 	enabled       bool
@@ -258,7 +266,7 @@ func NewRule(tracker DepTracker, id RuleId, name string, cond RuleCondition, the
 		name:          name,
 		cond:          cond,
 		then:          then,
-		shouldCheck:   false,
+		checkMode:     CheckModeNone,
 		isIndependent: false,
 		hasDeps:       false,
 		enabled:       true,
@@ -277,12 +285,12 @@ func (rule *Rule) StoreInitiallyKnownDeps() {
 	}
 }
 
-func (rule *Rule) ShouldCheck() {
-	rule.shouldCheck = true
+func (rule *Rule) SetCheckMode(mode CheckMode) {
+	rule.checkMode = mode
 }
 
 func (rule *Rule) Check(e *ControlChangeEvent) {
-	if e != nil && !rule.shouldCheck {
+	if e != nil && rule.checkMode == CheckModeNone {
 		// Don't invoke js if no cells mentioned in the
 		// condition callback changed. If rules are run
 		// not due to a cell being changed, still need
@@ -293,12 +301,15 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 	shouldFire, newValue := rule.cond.Check(e)
 	var args objx.Map
 	rule.tracker.StoreRuleDeps(rule)
-	rule.shouldCheck = false
+	noArgs := rule.checkMode == CheckModeIndependent
+	rule.checkMode = CheckModeNone
 
 	if rule.enabled {
 		switch {
 		case !shouldFire:
 			return
+		case noArgs:
+			break
 		case newValue != nil:
 			args = objx.New(map[string]interface{}{
 				"newValue": newValue,

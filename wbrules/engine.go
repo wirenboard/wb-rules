@@ -1215,7 +1215,7 @@ func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName stri
 
 	// select all uninitialized rules to run and clean list
 	for _, rule := range engine.uninitializedRules {
-		rule.ShouldCheck()
+		rule.SetCheckMode(CheckModeIndependent)
 	}
 	// clear uninitialized rules list
 	engine.uninitializedRules = make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY)
@@ -1230,13 +1230,13 @@ func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName stri
 			// condition controls are incomplete
 			if list, found := engine.controlToRulesListMap[ctrlEvent.Spec]; found {
 				for _, rule := range list {
-					rule.ShouldCheck()
+					rule.SetCheckMode(CheckModeWithEvent)
 				}
 			}
 		}
 		for rule, isWithoutControls := range engine.rulesWithoutControls {
 			if isWithoutControls {
-				rule.ShouldCheck()
+				rule.SetCheckMode(CheckModeIndependent)
 			}
 		}
 	}
@@ -1245,7 +1245,7 @@ func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName stri
 		engine.currentTimer = timerName
 		if list, found := engine.timerRules[timerName]; found {
 			for _, rule := range list {
-				rule.ShouldCheck()
+				rule.SetCheckMode(CheckModeIndependent)
 			}
 		}
 	}
