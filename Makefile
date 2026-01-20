@@ -14,10 +14,18 @@ ifeq ($(DEB_TARGET_ARCH),amd64)
 GO_ENV := GOARCH=amd64
 endif
 
-GO_ENV := GO111MODULE=on $(GO_ENV)
-
 GO ?= go
-GO_FLAGS = -ldflags "-s -w -X main.version=`git describe --tags --always --dirty`"
+GCFLAGS :=
+LDFLAGS := -X main.version=`git describe --tags --always --dirty`
+
+ifeq ($(DEBUG),)
+	LDFLAGS += -s -w
+else
+	GCFLAGS += -N -l
+endif
+
+GO_FLAGS = -trimpath $(if $(GCFLAGS),-gcflags=all="$(GCFLAGS)") $(if $(LDFLAGS),-ldflags="$(LDFLAGS)")
+GO_TEST_FLAGS = -v -cover
 
 all: clean wb-rules
 
@@ -29,10 +37,10 @@ amd64:
 
 test:
 	cp $(WBGO_LOCAL_PATH)/amd64.wbgo.so wbrules/wbgo.so
-	$(GO) test -v -trimpath -ldflags="-s -w" -cover ./wbrules
+	$(GO) test $(GO_FLAGS) $(GO_TEST_FLAGS) ./wbrules
 
 wb-rules: main.go wbrules/*.go
-	$(GO_ENV) $(GO) build -trimpath $(GO_FLAGS)
+	$(GO_ENV) $(GO) build $(GO_FLAGS)
 
 install:
 	mkdir -p $(DESTDIR)$(PREFIX)/share/wb-rules-modules/ $(DESTDIR)/etc/wb-rules-modules/
@@ -45,6 +53,3 @@ install:
 	install -Dm0644 $(WBGO_LOCAL_PATH)/$(DEB_TARGET_ARCH).wbgo.so $(DESTDIR)$(PREFIX)/lib/wb-rules/wbgo.so
 	install -Dm0644 rules/alarms.conf -t $(DESTDIR)/etc/wb-rules
 	install -Dm0644 rules/alarms.schema.json -t $(DESTDIR)$(PREFIX)/share/wb-mqtt-confed/schemas
-
-deb:
-	$(GO_ENV) dpkg-buildpackage -b -a$(DEB_TARGET_ARCH) -us -uc
