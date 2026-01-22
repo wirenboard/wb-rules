@@ -225,6 +225,12 @@ func (s *RuleBasicsSuite) TestFuncValueChange() {
 		"tst -> /devices/somedev/controls/cellforfunc2: [5] (QoS 1, retained)",
 		"[info] funcValueChange2: (no cell): true (boolean)",
 	)
+
+	s.FireTimer(1, s.CurrentTime())
+	s.Verify(
+		"timer.fire(): 1",
+		"[info] funcValueChange3: true (boolean)",
+	)
 }
 
 func (s *RuleBasicsSuite) TestAnonymousRule() {

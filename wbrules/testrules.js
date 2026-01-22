@@ -146,6 +146,18 @@ defineRule('funcValueChange2', {
   },
 });
 
+startTimer('funcValueChange3', 1000);
+defineRule('funcValueChange3', {
+  whenChanged: function () {
+    // no controls
+    return timers.funcValueChange3.firing;
+  },
+  then: function (newValue) {
+    if (arguments.length != 1) throw new Error('invalid arguments for then');
+    log('funcValueChange3: {} ({})', newValue, typeof newValue);
+  },
+});
+
 // test anonymous rule
 defineRule({
   whenChanged: 'somedev/anon',
