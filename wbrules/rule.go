@@ -301,20 +301,18 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 	shouldFire, newValue := rule.cond.Check(e)
 	var args objx.Map
 	rule.tracker.StoreRuleDeps(rule)
-	noArgs := rule.checkMode == CheckModeIndependent
+	noDeps := rule.checkMode == CheckModeIndependent
 	rule.checkMode = CheckModeNone
 
 	if rule.enabled {
 		switch {
 		case !shouldFire:
 			return
-		case noArgs:
-			break
 		case newValue != nil:
 			args = objx.New(map[string]interface{}{
 				"newValue": newValue,
 			})
-		case e != nil: // newValue == nil
+		case !noDeps && e != nil:
 			args = objx.New(map[string]interface{}{
 				"device":   e.Spec.DeviceId,
 				"cell":     e.Spec.ControlId,
