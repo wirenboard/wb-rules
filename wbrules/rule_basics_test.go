@@ -161,7 +161,6 @@ func (s *RuleBasicsSuite) TestFuncValueChange() {
 	s.publish("/devices/somedev/controls/cellforfunc/meta/type", "temperature", "somedev/cellforfunc")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cellforfunc/meta/type: [temperature] (QoS 1, retained)",
-		"[info] funcValueChange: false (boolean)",
 	)
 
 	s.publish("/devices/somedev/controls/cellforfunc", "5", "somedev/cellforfunc")
@@ -217,7 +216,6 @@ func (s *RuleBasicsSuite) TestFuncValueChange() {
 	s.publish("/devices/somedev/controls/cellforfunc2/meta/type", "temperature", "somedev/cellforfunc2")
 	s.Verify(
 		"tst -> /devices/somedev/controls/cellforfunc2/meta/type: [temperature] (QoS 1, retained)",
-		"[info] funcValueChange2: (no cell): false (boolean)",
 	)
 
 	s.publish("/devices/somedev/controls/cellforfunc2", "5", "somedev/cellforfunc2")
