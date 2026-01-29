@@ -15,17 +15,21 @@ GO_ENV := GOARCH=amd64
 endif
 
 GO ?= go
+GOTEST ?= $(GO) test
 GCFLAGS :=
 LDFLAGS := -X main.version=`git describe --tags --always --dirty`
+GO_FLAGS := -buildvcs=false
+GO_TEST_FLAGS := -v -cover
 
 ifeq ($(DEBUG),)
 	LDFLAGS += -s -w
+	GO_FLAGS += -trimpath
 else
 	GCFLAGS += -N -l
+	GO_TEST_FLAGS += -failfast
 endif
 
-GO_FLAGS = -trimpath $(if $(GCFLAGS),-gcflags=all="$(GCFLAGS)") $(if $(LDFLAGS),-ldflags="$(LDFLAGS)")
-GO_TEST_FLAGS = -v -cover
+GO_FLAGS += $(if $(GCFLAGS),-gcflags=all="$(GCFLAGS)") $(if $(LDFLAGS),-ldflags="$(LDFLAGS)")
 
 all: clean wb-rules
 
@@ -37,7 +41,7 @@ amd64:
 
 test:
 	cp $(WBGO_LOCAL_PATH)/amd64.wbgo.so wbrules/wbgo.so
-	$(GO) test $(GO_FLAGS) $(GO_TEST_FLAGS) ./wbrules
+	$(GOTEST) $(GO_FLAGS) $(GO_TEST_FLAGS) ./wbrules
 
 wb-rules: main.go wbrules/*.go
 	$(GO_ENV) $(GO) build $(GO_FLAGS)

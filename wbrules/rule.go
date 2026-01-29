@@ -163,6 +163,16 @@ func NewFuncValueChangedRuleCondition(f func() interface{}) *FuncValueChangedRul
 }
 
 func (ruleCond *FuncValueChangedRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
+	if e != nil {
+		if !e.IsComplete {
+			wbgong.Info.Printf("skipping rule due to incomplete cell in whenChanged: %s", e.Spec)
+			return false, nil
+		}
+		if (e.ControlType != wbgong.CONV_TYPE_PUSHBUTTON && e.PrevValue == nil) || (e.IsRetained && e.PrevValue == e.Value) {
+			return false, nil
+		}
+	}
+
 	v := ruleCond.thunk()
 	if ruleCond.oldValue == v {
 		return false, nil
@@ -298,32 +308,42 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 		return
 	}
 	rule.tracker.StartTrackingDeps()
-	shouldFire, newValue := rule.cond.Check(e)
-	var args objx.Map
-	rule.tracker.StoreRuleDeps(rule)
+
 	noDeps := rule.checkMode == CheckModeIndependent
 	rule.checkMode = CheckModeNone
 
-	if rule.enabled {
-		switch {
-		case !shouldFire:
-			return
-		case newValue != nil:
-			args = objx.New(map[string]interface{}{
-				"newValue": newValue,
-			})
-		case !noDeps && e != nil:
-			args = objx.New(map[string]interface{}{
-				"device":   e.Spec.DeviceId,
-				"cell":     e.Spec.ControlId,
-				"newValue": e.Value,
-			})
-		}
-		if wbgong.DebuggingEnabled() {
-			wbgong.Debug.Printf("[rule] firing Rule ruleId=%d", rule.id)
-		}
-		rule.then(args)
+	var shouldFire bool
+	var newValue interface{}
+
+	if noDeps {
+		shouldFire, newValue = rule.cond.Check(nil)
+	} else {
+		shouldFire, newValue = rule.cond.Check(e)
 	}
+
+	rule.tracker.StoreRuleDeps(rule)
+
+	if !rule.enabled || !shouldFire {
+		return
+	}
+
+	var args objx.Map
+	if newValue != nil {
+		args = objx.New(map[string]interface{}{
+			"newValue": newValue,
+		})
+	} else if !noDeps && e != nil {
+		args = objx.New(map[string]interface{}{
+			"device":   e.Spec.DeviceId,
+			"cell":     e.Spec.ControlId,
+			"newValue": e.Value,
+		})
+	}
+
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[rule] firing Rule ruleId=%d", rule.id)
+	}
+	rule.then(args)
 }
 
 func (rule *Rule) MaybeAddToCron(cron Cron) {
