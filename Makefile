@@ -34,7 +34,7 @@ GO_FLAGS += $(if $(GCFLAGS),-gcflags=all="$(GCFLAGS)") $(if $(LDFLAGS),-ldflags=
 all: clean wb-rules
 
 clean:
-	rm -rf wb-rules
+	rm -rf wb-rules wbrules/wbgo.so
 
 amd64:
 	$(MAKE) DEB_TARGET_ARCH=amd64
