@@ -1477,11 +1477,15 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 	// fill in control args
 	//
 	// try to get type
-	ctrlType, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_TYPE]
+	ctrlTypeRaw, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_TYPE]
 	if !ok {
 		return fmt.Errorf("%s/%s: no control type", devId, ctrlId)
 	}
-	args.SetType(ctrlType.(string))
+	ctrlType, ok := ctrlTypeRaw.(string)
+	if !ok {
+		return fmt.Errorf("%s/%s: non-string control type", devId, ctrlId)
+	}
+	args.SetType(ctrlType)
 
 	// get 'forceDefault' metaproperty
 	forceDefault := false
