@@ -18,8 +18,6 @@ _cgo_defun.c
 _cgo_gotypes.go
 _cgo_export.*
 
-_testmain.go
-
 *.deb
 *.exe
 *.test
@@ -42,6 +40,7 @@ debian/files
 debian/.debhelper
 
 .devcontainer
+.vscode
 
 ### direnv ###
 .direnv
