@@ -1485,13 +1485,29 @@ func (engine *ESEngine) esVdevAddControl(ctx *ESContext) int {
 	return 0
 }
 
+func (engine *ESEngine) ensureControlExists(ctx *ESContext, ctrlProxy *ControlProxy) (wbgong.Control, bool) {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		wbgong.Error.Printf("getControl(): no such control '%s'", ctrlProxy.name)
+		ctx.PushUndefined()
+		return nil, false
+	}
+
+	return ctrl, true
+}
+
 func (engine *ESEngine) esVdevCellGetDescription(ctx *ESContext) int {
 	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
 	if duk_ret < 0 {
 		return duk_ret
 	}
 
-	ctx.PushString(ctrlProxy.getControl().GetDescription())
+	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
+	if !ok {
+		return 1
+	}
+
+	ctx.PushString(ctrl.GetDescription())
 
 	return 1
 }
@@ -1507,9 +1523,14 @@ func (engine *ESEngine) esVdevCellGetTitle(ctx *ESContext) int {
 		lang = ctx.GetString(0)
 	}
 
+	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
+	if !ok {
+		return 1
+	}
+
 	var titleStr string
 
-	title := ctrlProxy.getControl().GetTitle()
+	title := ctrl.GetTitle()
 
 	if val, ok := title[lang]; ok {
 		titleStr = val
@@ -1526,7 +1547,12 @@ func (engine *ESEngine) esVdevCellGetType(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushString(ctrlProxy.getControl().GetType())
+	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
+	if !ok {
+		return 1
+	}
+
+	ctx.PushString(ctrl.GetType())
 
 	return 1
 }
@@ -1537,7 +1563,12 @@ func (engine *ESEngine) esVdevCellGetUnits(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushString(ctrlProxy.getControl().GetUnits())
+	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
+	if !ok {
+		return 1
+	}
+
+	ctx.PushString(ctrl.GetUnits())
 
 	return 1
 }
@@ -1548,7 +1579,12 @@ func (engine *ESEngine) esVdevCellGetReadonly(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushBoolean(ctrlProxy.getControl().GetReadonly())
+	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
+	if !ok {
+		return 1
+	}
+
+	ctx.PushBoolean(ctrl.GetReadonly())
 
 	return 1
 }
@@ -1559,7 +1595,12 @@ func (engine *ESEngine) esVdevCellGetMax(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushNumber(ctrlProxy.getControl().GetMax())
+	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
+	if !ok {
+		return 1
+	}
+
+	ctx.PushNumber(ctrl.GetMax())
 
 	return 1
 }
@@ -1570,7 +1611,12 @@ func (engine *ESEngine) esVdevCellGetMin(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushNumber(ctrlProxy.getControl().GetMin())
+	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
+	if !ok {
+		return 1
+	}
+
+	ctx.PushNumber(ctrl.GetMin())
 
 	return 1
 }
@@ -1581,7 +1627,12 @@ func (engine *ESEngine) esVdevCellGetPrecision(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushNumber(ctrlProxy.getControl().GetPrecision())
+	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
+	if !ok {
+		return 1
+	}
+
+	ctx.PushNumber(ctrl.GetPrecision())
 
 	return 1
 }
@@ -1591,9 +1642,13 @@ func (engine *ESEngine) esVdevCellGetError(ctx *ESContext) int {
 	if duk_ret < 0 {
 		return duk_ret
 	}
+	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
+	if !ok {
+		return 1
+	}
 	var errString string
-	if ctrlProxy.getControl().GetError() != nil {
-		errString = ctrlProxy.getControl().GetError().Error()
+	if ctrlErr := ctrl.GetError(); ctrlErr != nil {
+		errString = ctrlErr.Error()
 	}
 	ctx.PushString(errString)
 	return 1
@@ -1605,7 +1660,12 @@ func (engine *ESEngine) esVdevCellGetOrder(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushInt(ctrlProxy.getControl().GetOrder())
+	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
+	if !ok {
+		return 1
+	}
+
+	ctx.PushInt(ctrl.GetOrder())
 
 	return 1
 }
@@ -1616,7 +1676,12 @@ func (engine *ESEngine) esVdevCellGetId(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushString(ctrlProxy.getControl().GetId())
+	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
+	if !ok {
+		return 1
+	}
+
+	ctx.PushString(ctrl.GetId())
 
 	return 1
 }
@@ -1627,7 +1692,12 @@ func (engine *ESEngine) esVdevCellGetValue(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	value, err := ctrlProxy.getControl().GetValue()
+	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
+	if !ok {
+		return 1
+	}
+
+	value, err := ctrl.GetValue()
 	if err != nil {
 		wbgong.Error.Printf("getValue (%s/%s) failed: %v", ctrlProxy.devProxy.name, ctrlProxy.name, err)
 		return duktape.DUK_RET_ERROR
