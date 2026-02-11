@@ -1489,7 +1489,6 @@ func (engine *ESEngine) ensureControlExists(ctx *ESContext, ctrlProxy *ControlPr
 	ctrl := ctrlProxy.getControl()
 	if ctrl == nil {
 		wbgong.Error.Printf("getControl(): no such control '%s'", ctrlProxy.name)
-		ctx.PushUndefined()
 		return nil, false
 	}
 
@@ -1504,7 +1503,7 @@ func (engine *ESEngine) esVdevCellGetDescription(ctx *ESContext) int {
 
 	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
 	if !ok {
-		return 1
+		return duktape.DUK_RET_ERROR
 	}
 
 	ctx.PushString(ctrl.GetDescription())
@@ -1525,7 +1524,7 @@ func (engine *ESEngine) esVdevCellGetTitle(ctx *ESContext) int {
 
 	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
 	if !ok {
-		return 1
+		return duktape.DUK_RET_ERROR
 	}
 
 	var titleStr string
@@ -1549,7 +1548,7 @@ func (engine *ESEngine) esVdevCellGetType(ctx *ESContext) int {
 
 	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
 	if !ok {
-		return 1
+		return duktape.DUK_RET_ERROR
 	}
 
 	ctx.PushString(ctrl.GetType())
@@ -1565,7 +1564,7 @@ func (engine *ESEngine) esVdevCellGetUnits(ctx *ESContext) int {
 
 	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
 	if !ok {
-		return 1
+		return duktape.DUK_RET_ERROR
 	}
 
 	ctx.PushString(ctrl.GetUnits())
@@ -1581,7 +1580,7 @@ func (engine *ESEngine) esVdevCellGetReadonly(ctx *ESContext) int {
 
 	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
 	if !ok {
-		return 1
+		return duktape.DUK_RET_ERROR
 	}
 
 	ctx.PushBoolean(ctrl.GetReadonly())
@@ -1597,7 +1596,7 @@ func (engine *ESEngine) esVdevCellGetMax(ctx *ESContext) int {
 
 	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
 	if !ok {
-		return 1
+		return duktape.DUK_RET_ERROR
 	}
 
 	ctx.PushNumber(ctrl.GetMax())
@@ -1613,7 +1612,7 @@ func (engine *ESEngine) esVdevCellGetMin(ctx *ESContext) int {
 
 	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
 	if !ok {
-		return 1
+		return duktape.DUK_RET_ERROR
 	}
 
 	ctx.PushNumber(ctrl.GetMin())
@@ -1629,7 +1628,7 @@ func (engine *ESEngine) esVdevCellGetPrecision(ctx *ESContext) int {
 
 	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
 	if !ok {
-		return 1
+		return duktape.DUK_RET_ERROR
 	}
 
 	ctx.PushNumber(ctrl.GetPrecision())
@@ -1644,7 +1643,7 @@ func (engine *ESEngine) esVdevCellGetError(ctx *ESContext) int {
 	}
 	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
 	if !ok {
-		return 1
+		return duktape.DUK_RET_ERROR
 	}
 	var errString string
 	if ctrlErr := ctrl.GetError(); ctrlErr != nil {
@@ -1662,7 +1661,7 @@ func (engine *ESEngine) esVdevCellGetOrder(ctx *ESContext) int {
 
 	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
 	if !ok {
-		return 1
+		return duktape.DUK_RET_ERROR
 	}
 
 	ctx.PushInt(ctrl.GetOrder())
@@ -1678,7 +1677,7 @@ func (engine *ESEngine) esVdevCellGetId(ctx *ESContext) int {
 
 	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
 	if !ok {
-		return 1
+		return duktape.DUK_RET_ERROR
 	}
 
 	ctx.PushString(ctrl.GetId())
@@ -1694,7 +1693,7 @@ func (engine *ESEngine) esVdevCellGetValue(ctx *ESContext) int {
 
 	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
 	if !ok {
-		return 1
+		return duktape.DUK_RET_ERROR
 	}
 
 	value, err := ctrl.GetValue()
