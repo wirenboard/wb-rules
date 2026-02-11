@@ -1485,24 +1485,14 @@ func (engine *ESEngine) esVdevAddControl(ctx *ESContext) int {
 	return 0
 }
 
-func (engine *ESEngine) ensureControlExists(ctx *ESContext, ctrlProxy *ControlProxy) (wbgong.Control, bool) {
-	ctrl := ctrlProxy.getControl()
-	if ctrl == nil {
-		wbgong.Error.Printf("getControl(): no such control '%s'", ctrlProxy.name)
-		return nil, false
-	}
-
-	return ctrl, true
-}
-
 func (engine *ESEngine) esVdevCellGetDescription(ctx *ESContext) int {
 	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
 	if duk_ret < 0 {
 		return duk_ret
 	}
 
-	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
-	if !ok {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1522,8 +1512,8 @@ func (engine *ESEngine) esVdevCellGetTitle(ctx *ESContext) int {
 		lang = ctx.GetString(0)
 	}
 
-	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
-	if !ok {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1546,8 +1536,8 @@ func (engine *ESEngine) esVdevCellGetType(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
-	if !ok {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1562,8 +1552,8 @@ func (engine *ESEngine) esVdevCellGetUnits(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
-	if !ok {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1578,8 +1568,8 @@ func (engine *ESEngine) esVdevCellGetReadonly(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
-	if !ok {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1594,8 +1584,8 @@ func (engine *ESEngine) esVdevCellGetMax(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
-	if !ok {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1610,8 +1600,8 @@ func (engine *ESEngine) esVdevCellGetMin(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
-	if !ok {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1626,8 +1616,8 @@ func (engine *ESEngine) esVdevCellGetPrecision(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
-	if !ok {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1641,8 +1631,8 @@ func (engine *ESEngine) esVdevCellGetError(ctx *ESContext) int {
 	if duk_ret < 0 {
 		return duk_ret
 	}
-	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
-	if !ok {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
 		return duktape.DUK_RET_ERROR
 	}
 	var errString string
@@ -1659,8 +1649,8 @@ func (engine *ESEngine) esVdevCellGetOrder(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
-	if !ok {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1675,8 +1665,8 @@ func (engine *ESEngine) esVdevCellGetId(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
-	if !ok {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1691,8 +1681,8 @@ func (engine *ESEngine) esVdevCellGetValue(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctrl, ok := engine.ensureControlExists(ctx, ctrlProxy)
-	if !ok {
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
 		return duktape.DUK_RET_ERROR
 	}
 
