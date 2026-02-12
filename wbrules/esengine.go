@@ -1491,7 +1491,12 @@ func (engine *ESEngine) esVdevCellGetDescription(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushString(ctrlProxy.getControl().GetDescription())
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return duktape.DUK_RET_ERROR
+	}
+
+	ctx.PushString(ctrl.GetDescription())
 
 	return 1
 }
@@ -1507,9 +1512,14 @@ func (engine *ESEngine) esVdevCellGetTitle(ctx *ESContext) int {
 		lang = ctx.GetString(0)
 	}
 
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return duktape.DUK_RET_ERROR
+	}
+
 	var titleStr string
 
-	title := ctrlProxy.getControl().GetTitle()
+	title := ctrl.GetTitle()
 
 	if val, ok := title[lang]; ok {
 		titleStr = val
@@ -1526,7 +1536,12 @@ func (engine *ESEngine) esVdevCellGetType(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushString(ctrlProxy.getControl().GetType())
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return duktape.DUK_RET_ERROR
+	}
+
+	ctx.PushString(ctrl.GetType())
 
 	return 1
 }
@@ -1537,7 +1552,12 @@ func (engine *ESEngine) esVdevCellGetUnits(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushString(ctrlProxy.getControl().GetUnits())
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return duktape.DUK_RET_ERROR
+	}
+
+	ctx.PushString(ctrl.GetUnits())
 
 	return 1
 }
@@ -1548,7 +1568,12 @@ func (engine *ESEngine) esVdevCellGetReadonly(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushBoolean(ctrlProxy.getControl().GetReadonly())
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return duktape.DUK_RET_ERROR
+	}
+
+	ctx.PushBoolean(ctrl.GetReadonly())
 
 	return 1
 }
@@ -1559,7 +1584,12 @@ func (engine *ESEngine) esVdevCellGetMax(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushNumber(ctrlProxy.getControl().GetMax())
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return duktape.DUK_RET_ERROR
+	}
+
+	ctx.PushNumber(ctrl.GetMax())
 
 	return 1
 }
@@ -1570,7 +1600,12 @@ func (engine *ESEngine) esVdevCellGetMin(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushNumber(ctrlProxy.getControl().GetMin())
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return duktape.DUK_RET_ERROR
+	}
+
+	ctx.PushNumber(ctrl.GetMin())
 
 	return 1
 }
@@ -1581,7 +1616,12 @@ func (engine *ESEngine) esVdevCellGetPrecision(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushNumber(ctrlProxy.getControl().GetPrecision())
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return duktape.DUK_RET_ERROR
+	}
+
+	ctx.PushNumber(ctrl.GetPrecision())
 
 	return 1
 }
@@ -1591,9 +1631,13 @@ func (engine *ESEngine) esVdevCellGetError(ctx *ESContext) int {
 	if duk_ret < 0 {
 		return duk_ret
 	}
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return duktape.DUK_RET_ERROR
+	}
 	var errString string
-	if ctrlProxy.getControl().GetError() != nil {
-		errString = ctrlProxy.getControl().GetError().Error()
+	if ctrlErr := ctrl.GetError(); ctrlErr != nil {
+		errString = ctrlErr.Error()
 	}
 	ctx.PushString(errString)
 	return 1
@@ -1605,7 +1649,12 @@ func (engine *ESEngine) esVdevCellGetOrder(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushInt(ctrlProxy.getControl().GetOrder())
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return duktape.DUK_RET_ERROR
+	}
+
+	ctx.PushInt(ctrl.GetOrder())
 
 	return 1
 }
@@ -1616,7 +1665,12 @@ func (engine *ESEngine) esVdevCellGetId(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctx.PushString(ctrlProxy.getControl().GetId())
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return duktape.DUK_RET_ERROR
+	}
+
+	ctx.PushString(ctrl.GetId())
 
 	return 1
 }
@@ -1627,7 +1681,12 @@ func (engine *ESEngine) esVdevCellGetValue(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	value, err := ctrlProxy.getControl().GetValue()
+	ctrl := ctrlProxy.getControl()
+	if ctrl == nil {
+		return duktape.DUK_RET_ERROR
+	}
+
+	value, err := ctrl.GetValue()
 	if err != nil {
 		wbgong.Error.Printf("getValue (%s/%s) failed: %v", ctrlProxy.devProxy.name, ctrlProxy.name, err)
 		return duktape.DUK_RET_ERROR

@@ -170,7 +170,14 @@ func (devProxy *DeviceProxy) EnsureControlProxy(ctrlId string) *ControlProxy {
 	}
 
 	if proxy, ok := devProxy.controlProxyCache.Load(ctrlId); ok {
-		return proxy.(*ControlProxy)
+		controlProxy := proxy.(*ControlProxy)
+		if controlProxy.control != nil {
+			return controlProxy
+		}
+		controlProxy.Lock()
+		controlProxy.control = devProxy.getControl(ctrlId)
+		controlProxy.Unlock()
+		return controlProxy
 	}
 
 	newProxy := &ControlProxy{

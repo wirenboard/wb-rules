@@ -34,7 +34,7 @@ func (s *RuleNotifyTgSuite) TestTg() {
 		"tst -> /devices/test_tg/controls/send/on: [1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending telegram message: Test message] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: curl -s -X POST https://api.telegram.org/bot1234567890:abcdefghijklmnopqrstuvwxyz123456789/sendMessage -H 'Content-Type: application/x-www-form-urlencoded' -d @-] (QoS 1)",
-        "wbrules-log -> /wbrules/log/info: [input: chat_id=12345678&text=Test%20message] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: chat_id=12345678&text=Test%20message] (QoS 1)",
 	)
 }
 
@@ -47,7 +47,7 @@ func (s *RuleNotifyTgSuite) TestTgWithQuotes() {
 		"tst -> /devices/test_tg/controls/send_quoted/on: [1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending telegram message: Test \"message\" 'single'] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: curl -s -X POST https://api.telegram.org/bot1234567890:abcdefghijklmnopqrstuvwxyz123456789/sendMessage -H 'Content-Type: application/x-www-form-urlencoded' -d @-] (QoS 1)",
-        "wbrules-log -> /wbrules/log/info: [input: chat_id=12345678&text=Test%20%22message%22%20'single'] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: chat_id=12345678&text=Test%20%22message%22%20'single'] (QoS 1)",
 	)
 }
 

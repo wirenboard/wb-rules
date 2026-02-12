@@ -45,7 +45,7 @@ func (s *RuleNotifyEmailSuite) TestEmailWithQuotes() {
 	s.VerifyUnordered(
 		"driver -> /devices/test_email/controls/send_quoted: [1] (QoS 1)",
 		"tst -> /devices/test_email/controls/send_quoted/on: [1] (QoS 1)",
-        "wbrules-log -> /wbrules/log/info: [sending email: Test \"subject\" 'single'] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending email: Test \"subject\" 'single'] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: /usr/sbin/sendmail -t] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?VGVzdCAic3ViamVjdCIgJ3NpbmdsZSc=?=\r\nContent-Type: text/plain; charset=utf-8\n\nTest \"text\" 'single'] (QoS 1)",
 	)
