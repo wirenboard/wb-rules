@@ -133,6 +133,20 @@ defineRule({
 });
 ```
 
+Пример с использованием `whenChanged`:
+```js
+defineRule({
+  whenChanged: "wb-gpio/A1_OUT",
+  then: function (newValue, devName, cellName) {
+    if (newValue) {
+      log("Переключатель {} включён! Выключаем…", cellName);
+      dev["wb-gpio/A1_OUT"] = !newValue;
+      log("Выключили."); 
+    }
+  }
+});
+```
+
 **when.** (deprecated) Правила, задаваемые при помощи `when`, называются level-triggered,
 и срабатывают при каждом просмотре, при котором функция, заданная в `when`, возвращает
 истинное значение. При срабатывании правила выполняется функция, заданная
@@ -151,6 +165,19 @@ defineRule({
 
 Если срабатывание правила не связано непосредственно
 с изменением контрола (например, вызов при инициализации, по таймеру, через `runRule()` или в условии не используются контролы), `then` вызывается без аргументов, т.е. значением всех трёх аргументов будет `undefined`.
+
+Пример с использованием `whenChanged`:
+```js
+// Правило сработает, когда переключатель Devices → Discrete I/O → A1_OUT будет включён
+defineRule({
+  whenChanged: "wb-gpio/A1_OUT",
+  then: function (newValue, devName, cellName) {
+    if (newValue) {
+      log("devName:{}, cellName:{}, newValue:{}", devName, cellName, newValue);
+    }
+  }
+});
+```
 
 **cron-правила** — это отдельный тип правил, которые задаются так:
 ```js
