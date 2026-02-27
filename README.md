@@ -1549,5 +1549,59 @@ apt-get install wb-rules
 
 Правила находятся в каталоге ```/etc/wb-rules/```
 
+## Сборка и разработка
+
+### Зависимость wbgo.so
+
+wb-rules использует закрытый плагин `wbgo.so`, собираемый из репозитория [wirenboard/wbgo-private](https://github.com/wirenboard/wbgo-private). Для сборки и тестирования необходимы файлы:
+
+- `amd64.wbgo.so` — для запуска тестов и сборки под x86_64
+- `arm64.wbgo.so` — для сборки deb-пакета под ARM64 (Wiren Board 7/8)
+- `armhf.wbgo.so` — для сборки deb-пакета под ARMv6/v7 (Wiren Board 5/6)
+
+Эти файлы размещаются в корне репозитория и указаны в `.gitignore`. Версия Go, используемая для сборки `wbgo.so`, должна совпадать с версией Go, используемой для сборки `wb-rules` (см. `debian/rules`). На текущий момент это Go 1.21.
+
+#### Как получить wbgo.so
+
+1. **Из CI/CD артефактов:** файлы `*.wbgo.so` генерируются при сборке пакета `wbgo-private` в CI. Скачайте артефакты нужной архитектуры из последнего успешного билда.
+
+2. **Сборка вручную** из репозитория `wbgo-private`:
+   ```bash
+   # Клонировать wbgo-private
+   git clone git@github.com:wirenboard/wbgo-private.git
+   cd wbgo-private
+
+   # Собрать для amd64
+   go build -buildmode=plugin -o amd64.wbgo.so .
+
+   # Собрать для arm64 (нужен кросс-компилятор)
+   GOARCH=arm64 CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 \
+     go build -buildmode=plugin -o arm64.wbgo.so .
+
+   # Собрать для armhf
+   GOARCH=arm GOARM=6 CC=arm-linux-gnueabihf-gcc CGO_ENABLED=1 \
+     go build -buildmode=plugin -o armhf.wbgo.so .
+   ```
+
+3. **Скопируйте** полученные файлы в корень репозитория `wb-rules`.
+
+### Запуск тестов
+
+```bash
+# Скопировать wbgo.so и запустить тесты
+make test
+# Эквивалентно:
+# cp amd64.wbgo.so wbrules/wbgo.so
+# go test -v -cover ./wbrules
+```
+
+### Сборка deb-пакета
+
+```bash
+# Через wbdev (Docker-окружение Wiren Board)
+WBDEV_TARGET=bullseye-arm64 ./wbdev cdeb
+WBDEV_TARGET=bullseye-armhf ./wbdev cdeb
+```
+
 ## Ограничения
 Публикация более 100 топиков в секунду может вызвать повышенное потребление CPU и проблемы с производительностью. Рекомендуется оптимизировать частоту публикации топиков для обеспечения стабильной работы.
