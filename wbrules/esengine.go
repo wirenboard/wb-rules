@@ -214,6 +214,21 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	})
 	engine.globalCtx.Pop()
 
+	// Register fs object with filesystem functions
+	engine.globalCtx.PushObject()
+	engine.globalCtx.DefineFunctions(map[string]func(*ESContext) int{
+		"readFile":   engine.esFileReadFile,
+		"writeFile":  engine.esFileWriteFile,
+		"appendFile": engine.esFileAppendFile,
+		"stat":       engine.esFileStat,
+		"readDir":    engine.esFileReadDir,
+		"exists":     engine.esFileExists,
+		"mkdir":      engine.esFileMkdir,
+		"unlink":     engine.esFileUnlink,
+		"rename":     engine.esFileRename,
+	})
+	engine.globalCtx.PutPropString(-2, "fs")
+
 	// set global prototype to __wbModulePrototype
 	engine.globalCtx.GetPropString(-1, MODULE_OBJ_PROTO_NAME)
 	engine.globalCtx.SetPrototype(-2)

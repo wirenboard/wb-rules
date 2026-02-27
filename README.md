@@ -20,6 +20,7 @@ Rule engine for Wiren Board, version 2.0
 - [Доступ к топикам meta](#доступ-к-топикам-meta)
 - [API создания/управления устройств](#api-созданияуправления-устройств)
 - [Встроенные функции и переменные](#встроенные-функции-и-переменные)
+- [Файловые операции `fs`](#файловые-операции-fs)
 - [Модули](#модули)
 - [Сервис оповещений](#сервис-оповещений)
 - [Сервис алармов](#сервис-алармов)
@@ -861,6 +862,110 @@ $ cat test.conf
   "config": [
     ...
   ]
+}
+```
+
+## Файловые операции `fs`
+
+Глобальный объект `fs` предоставляет синхронные функции для работы с файловой системой, аналогичные Node.js `fs.*Sync()`. Все функции (кроме `fs.exists()`) генерируют исключение при ошибке.
+
+### `fs.readFile(path)`
+
+Читает содержимое файла и возвращает его как строку.
+
+```js
+var content = fs.readFile("/etc/hostname");
+log("hostname: {}", content);
+```
+
+### `fs.writeFile(path, data)`
+
+Записывает строку в файл, создавая файл при необходимости или перезаписывая существующий.
+
+```js
+fs.writeFile("/tmp/output.txt", "hello world");
+```
+
+### `fs.appendFile(path, data)`
+
+Дописывает строку в конец файла. Если файл не существует, создаёт его.
+
+```js
+fs.appendFile("/tmp/log.txt", "new line\n");
+```
+
+### `fs.stat(path)`
+
+Возвращает информацию о файле или директории в виде объекта:
+- `size` — размер в байтах
+- `isFile` — `true`, если это обычный файл
+- `isDirectory` — `true`, если это директория
+- `mtime` — время последней модификации (Unix timestamp)
+- `mode` — права доступа в восьмеричном формате (строка, например `"644"`)
+
+```js
+var st = fs.stat("/etc/hostname");
+log("size={} isFile={}", st.size, st.isFile);
+```
+
+### `fs.readDir(path)`
+
+Возвращает массив объектов с информацией о содержимом директории. Каждый элемент содержит:
+- `name` — имя файла или директории
+- `isFile` — `true`, если это обычный файл
+- `isDirectory` — `true`, если это директория
+
+```js
+var entries = fs.readDir("/tmp");
+for (var i = 0; i < entries.length; i++) {
+  log("{} (file={})", entries[i].name, entries[i].isFile);
+}
+```
+
+### `fs.exists(path)`
+
+Возвращает `true`, если файл или директория существует, `false` в противном случае. В отличие от остальных функций, **не генерирует исключение** при отсутствии файла.
+
+```js
+if (fs.exists("/tmp/flag.txt")) {
+  log("file exists");
+}
+```
+
+### `fs.mkdir(path [, options])`
+
+Создаёт директорию. Для создания вложенных директорий используйте опцию `{recursive: true}`.
+
+```js
+fs.mkdir("/tmp/newdir");
+fs.mkdir("/tmp/a/b/c", {recursive: true});
+```
+
+### `fs.unlink(path)`
+
+Удаляет файл.
+
+```js
+fs.unlink("/tmp/output.txt");
+```
+
+### `fs.rename(oldPath, newPath)`
+
+Переименовывает или перемещает файл.
+
+```js
+fs.rename("/tmp/old.txt", "/tmp/new.txt");
+```
+
+### Обработка ошибок
+
+Все функции `fs` (кроме `fs.exists()`) генерируют исключение при ошибке. Для обработки ошибок используйте `try/catch`:
+
+```js
+try {
+  var content = fs.readFile("/nonexistent/file");
+} catch (e) {
+  log.error("failed to read file: {}", e.message);
 }
 ```
 
