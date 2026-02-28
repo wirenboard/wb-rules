@@ -141,7 +141,6 @@ defineRule('fileCmd', {
             log('asyncRename: ok');
           }
         });
-      }
       // Async wrong args
       } else if (op === 'asyncReadFileNoCallback') {
         fs.readFile(parts[1]);
