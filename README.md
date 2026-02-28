@@ -867,36 +867,40 @@ $ cat test.conf
 
 ## Файловые операции `fs`
 
-Глобальный объект `fs` предоставляет синхронные функции для работы с файловой системой, аналогичные Node.js `fs.*Sync()` (в отличие от Node.js, суффикс `Sync` не используется — все функции синхронные по умолчанию). Все функции (кроме `fs.exists()`) генерируют исключение при ошибке.
+Глобальный объект `fs` предоставляет функции для работы с файловой системой, следующие конвенции Node.js:
+- **Синхронные** функции имеют суффикс `Sync` (например, `fs.readFileSync()`). Они блокируют выполнение и возвращают результат напрямую (или генерируют исключение при ошибке).
+- **Асинхронные** функции (без суффикса) принимают callback последним аргументом и выполняют I/O в фоне. Callback вызывается по паттерну error-first: `callback(err, data)`, где `err` — объект `{message: "..."}` при ошибке или `null` при успехе.
 
 Функции работают только с текстовыми (UTF-8) данными. Бинарные файлы не поддерживаются.
 
-### `fs.readFile(path)`
+### Синхронные функции
+
+#### `fs.readFileSync(path)`
 
 Читает содержимое файла и возвращает его как строку. Максимальный размер файла — 10 МБ.
 
 ```js
-var content = fs.readFile("/etc/hostname");
+var content = fs.readFileSync("/etc/hostname");
 log("hostname: {}", content);
 ```
 
-### `fs.writeFile(path, data)`
+#### `fs.writeFileSync(path, data)`
 
 Записывает строку в файл, создавая файл при необходимости или перезаписывая существующий. Файл создаётся с правами `0644`.
 
 ```js
-fs.writeFile("/tmp/output.txt", "hello world");
+fs.writeFileSync("/tmp/output.txt", "hello world");
 ```
 
-### `fs.appendFile(path, data)`
+#### `fs.appendFileSync(path, data)`
 
 Дописывает строку в конец файла. Если файл не существует, создаёт его с правами `0644`.
 
 ```js
-fs.appendFile("/tmp/log.txt", "new line\n");
+fs.appendFileSync("/tmp/log.txt", "new line\n");
 ```
 
-### `fs.stat(path)`
+#### `fs.statSync(path)`
 
 Возвращает информацию о файле или директории в виде объекта:
 - `size` — размер в байтах
@@ -906,11 +910,11 @@ fs.appendFile("/tmp/log.txt", "new line\n");
 - `mode` — права доступа в восьмеричном формате (строка, например `"644"`)
 
 ```js
-var st = fs.stat("/etc/hostname");
+var st = fs.statSync("/etc/hostname");
 log("size={} isFile={}", st.size, st.isFile);
 ```
 
-### `fs.readDir(path)`
+#### `fs.readdirSync(path)`
 
 Возвращает массив объектов с информацией о содержимом директории. Каждый элемент содержит:
 - `name` — имя файла или директории
@@ -918,57 +922,167 @@ log("size={} isFile={}", st.size, st.isFile);
 - `isDirectory` — `true`, если это директория
 
 ```js
-var entries = fs.readDir("/tmp");
+var entries = fs.readdirSync("/tmp");
 for (var i = 0; i < entries.length; i++) {
   log("{} (file={})", entries[i].name, entries[i].isFile);
 }
 ```
 
-### `fs.exists(path)`
+#### `fs.existsSync(path)`
 
 Возвращает `true`, если файл или директория существует, `false` в противном случае. В отличие от остальных функций, **не генерирует исключение** при отсутствии файла.
 
 ```js
-if (fs.exists("/tmp/flag.txt")) {
+if (fs.existsSync("/tmp/flag.txt")) {
   log("file exists");
 }
 ```
 
-### `fs.mkdir(path [, options])`
+#### `fs.mkdirSync(path [, options])`
 
 Создаёт директорию с правами `0755`. Для создания вложенных директорий используйте опцию `{recursive: true}`.
 
 ```js
-fs.mkdir("/tmp/newdir");
-fs.mkdir("/tmp/a/b/c", {recursive: true});
+fs.mkdirSync("/tmp/newdir");
+fs.mkdirSync("/tmp/a/b/c", {recursive: true});
 ```
 
-### `fs.unlink(path)`
+#### `fs.unlinkSync(path)`
 
 Удаляет файл. Для удаления директорий используйте shell-команды.
 
 ```js
-fs.unlink("/tmp/output.txt");
+fs.unlinkSync("/tmp/output.txt");
 ```
 
-### `fs.rename(oldPath, newPath)`
+#### `fs.renameSync(oldPath, newPath)`
 
 Переименовывает или перемещает файл.
 
 ```js
-fs.rename("/tmp/old.txt", "/tmp/new.txt");
+fs.renameSync("/tmp/old.txt", "/tmp/new.txt");
 ```
 
-### Обработка ошибок
+#### Обработка ошибок (sync)
 
-Все функции `fs` (кроме `fs.exists()`) генерируют исключение при ошибке. Для обработки ошибок используйте `try/catch`:
+Все синхронные функции `fs` (кроме `fs.existsSync()`) генерируют исключение при ошибке. Для обработки ошибок используйте `try/catch`:
 
 ```js
 try {
-  var content = fs.readFile("/nonexistent/file");
+  var content = fs.readFileSync("/nonexistent/file");
 } catch (e) {
   log.error("failed to read file: {}", e.message);
 }
+```
+
+### Асинхронные функции
+
+Асинхронные версии выполняют I/O в фоновом потоке и вызывают callback по завершению. Callback следует паттерну error-first: первый аргумент — ошибка (`null` при успехе, объект `{message: "..."}` при ошибке), второй — результат.
+
+#### `fs.readFile(path, callback)`
+
+```js
+fs.readFile("/etc/hostname", function (err, data) {
+  if (err) {
+    log.error("failed: {}", err.message);
+    return;
+  }
+  log("hostname: {}", data);
+});
+```
+
+#### `fs.writeFile(path, data, callback)`
+
+```js
+fs.writeFile("/tmp/output.txt", "hello world", function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+```
+
+#### `fs.appendFile(path, data, callback)`
+
+```js
+fs.appendFile("/tmp/log.txt", "new line\n", function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+```
+
+#### `fs.stat(path, callback)`
+
+```js
+fs.stat("/etc/hostname", function (err, st) {
+  if (err) {
+    log.error("failed: {}", err.message);
+    return;
+  }
+  log("size={} isFile={}", st.size, st.isFile);
+});
+```
+
+#### `fs.readdir(path, callback)`
+
+```js
+fs.readdir("/tmp", function (err, entries) {
+  if (err) {
+    log.error("failed: {}", err.message);
+    return;
+  }
+  for (var i = 0; i < entries.length; i++) {
+    log("{} (file={})", entries[i].name, entries[i].isFile);
+  }
+});
+```
+
+#### `fs.exists(path, callback)`
+
+**Внимание:** в отличие от остальных async-функций, callback получает один аргумент `exists` (boolean), без `err`. Это соответствует конвенции Node.js.
+
+```js
+fs.exists("/tmp/flag.txt", function (exists) {
+  if (exists) {
+    log("file exists");
+  }
+});
+```
+
+#### `fs.mkdir(path [, options], callback)`
+
+```js
+fs.mkdir("/tmp/newdir", function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+
+fs.mkdir("/tmp/a/b/c", {recursive: true}, function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+```
+
+#### `fs.unlink(path, callback)`
+
+```js
+fs.unlink("/tmp/output.txt", function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+```
+
+#### `fs.rename(oldPath, newPath, callback)`
+
+```js
+fs.rename("/tmp/old.txt", "/tmp/new.txt", function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
 ```
 
 ### Алиасы `defineAlias()`

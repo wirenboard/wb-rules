@@ -217,11 +217,22 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	// Register fs object with filesystem functions
 	engine.globalCtx.PushObject()
 	engine.globalCtx.DefineFunctions(map[string]func(*ESContext) int{
+		// Sync functions (Node.js *Sync convention)
+		"readFileSync":   engine.esFileReadFileSync,
+		"writeFileSync":  engine.esFileWriteFileSync,
+		"appendFileSync": engine.esFileAppendFileSync,
+		"statSync":       engine.esFileStatSync,
+		"readdirSync":    engine.esFileReaddirSync,
+		"existsSync":     engine.esFileExistsSync,
+		"mkdirSync":      engine.esFileMkdirSync,
+		"unlinkSync":     engine.esFileUnlinkSync,
+		"renameSync":     engine.esFileRenameSync,
+		// Async functions (error-first callback)
 		"readFile":   engine.esFileReadFile,
 		"writeFile":  engine.esFileWriteFile,
 		"appendFile": engine.esFileAppendFile,
 		"stat":       engine.esFileStat,
-		"readDir":    engine.esFileReadDir,
+		"readdir":    engine.esFileReaddir,
 		"exists":     engine.esFileExists,
 		"mkdir":      engine.esFileMkdir,
 		"unlink":     engine.esFileUnlink,
