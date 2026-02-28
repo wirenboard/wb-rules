@@ -7,7 +7,7 @@ defineRule('fileCmd', {
     try {
       if (op === 'readFile') {
         var content = fs.readFile(parts[1]);
-        log('readFile: {}', content);
+        log('readFile: [{}]', content);
       } else if (op === 'writeFile') {
         fs.writeFile(parts[1], parts[2]);
         log('writeFile: ok');
@@ -16,7 +16,7 @@ defineRule('fileCmd', {
         log('appendFile: ok');
       } else if (op === 'stat') {
         var st = fs.stat(parts[1]);
-        log('stat: size={} isFile={} isDirectory={}', st.size, st.isFile, st.isDirectory);
+        log('stat: size={} isFile={} isDirectory={} mode={} mtime={}', st.size, st.isFile, st.isDirectory, st.mode, st.mtime);
       } else if (op === 'readDir') {
         var entries = fs.readDir(parts[1]);
         var names = [];
@@ -41,6 +41,21 @@ defineRule('fileCmd', {
       } else if (op === 'rename') {
         fs.rename(parts[1], parts[2]);
         log('rename: ok');
+      } else if (op === 'readFileNoArgs') {
+        fs.readFile();
+        log('readFile: should not reach');
+      } else if (op === 'writeFileOneArg') {
+        fs.writeFile(parts[1]);
+        log('writeFile: should not reach');
+      } else if (op === 'statNoArgs') {
+        fs.stat();
+        log('stat: should not reach');
+      } else if (op === 'readFileInt') {
+        fs.readFile(123);
+        log('readFile: should not reach');
+      } else if (op === 'unlinkDir') {
+        fs.unlink(parts[1]);
+        log('unlink: should not reach');
       }
     } catch (e) {
       log.error('caught error');
