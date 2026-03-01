@@ -1,3 +1,9 @@
+wb-rules (2.38.7) UNRELEASED; urgency=medium
+
+  * Add Node.js-style filesystem API (global fs object)
+
+ -- Evgeny Boger <boger@wirenboard.com>  Sun, 01 Mar 2026 15:36:00 +0300
+
 wb-rules (2.38.6) stable; urgency=medium
 
   * Fix crash on calling method of removed control

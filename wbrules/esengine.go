@@ -214,6 +214,54 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	})
 	engine.globalCtx.Pop()
 
+	// Register fs object with filesystem functions
+	engine.globalCtx.PushObject()
+	engine.globalCtx.DefineFunctions(map[string]func(*ESContext) int{
+		// Sync functions (Node.js *Sync convention)
+		"readFileSync":   engine.esFileReadFileSync,
+		"writeFileSync":  engine.esFileWriteFileSync,
+		"appendFileSync": engine.esFileAppendFileSync,
+		"statSync":       engine.esFileStatSync,
+		"readdirSync":    engine.esFileReaddirSync,
+		"existsSync":     engine.esFileExistsSync,
+		"mkdirSync":      engine.esFileMkdirSync,
+		"unlinkSync":     engine.esFileUnlinkSync,
+		"renameSync":     engine.esFileRenameSync,
+		"rmdirSync":      engine.esFileRmdirSync,
+		"copyFileSync":   engine.esFileCopyFileSync,
+		"accessSync":     engine.esFileAccessSync,
+		"realpathSync":   engine.esFileRealpathSync,
+		"readlinkSync":   engine.esFileReadlinkSync,
+		// Async functions (error-first callback)
+		"readFile":   engine.esFileReadFile,
+		"writeFile":  engine.esFileWriteFile,
+		"appendFile": engine.esFileAppendFile,
+		"stat":       engine.esFileStat,
+		"readdir":    engine.esFileReaddir,
+		"exists":     engine.esFileExists,
+		"mkdir":      engine.esFileMkdir,
+		"unlink":     engine.esFileUnlink,
+		"rename":     engine.esFileRename,
+		"rmdir":      engine.esFileRmdir,
+		"copyFile":   engine.esFileCopyFile,
+		"access":     engine.esFileAccess,
+		"realpath":   engine.esFileRealpath,
+		"readlink":   engine.esFileReadlink,
+		"watch":      engine.esFileWatch,
+	})
+	// Access mode constants (match Node.js fs.constants)
+	engine.globalCtx.PushObject() // constants sub-object
+	engine.globalCtx.PushInt(0)   // F_OK
+	engine.globalCtx.PutPropString(-2, "F_OK")
+	engine.globalCtx.PushInt(1) // X_OK
+	engine.globalCtx.PutPropString(-2, "X_OK")
+	engine.globalCtx.PushInt(2) // W_OK
+	engine.globalCtx.PutPropString(-2, "W_OK")
+	engine.globalCtx.PushInt(4) // R_OK
+	engine.globalCtx.PutPropString(-2, "R_OK")
+	engine.globalCtx.PutPropString(-2, "constants") // fs.constants = {F_OK, X_OK, W_OK, R_OK}
+	engine.globalCtx.PutPropString(-2, "fs")
+
 	// set global prototype to __wbModulePrototype
 	engine.globalCtx.GetPropString(-1, MODULE_OBJ_PROTO_NAME)
 	engine.globalCtx.SetPrototype(-2)
