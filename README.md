@@ -1549,5 +1549,66 @@ apt-get install wb-rules
 
 Правила находятся в каталоге ```/etc/wb-rules/```
 
+## Сборка и разработка
+
+### Зависимость wbgo.so
+
+wb-rules использует закрытый плагин `wbgo.so`, собираемый из репозитория [wirenboard/wbgo-private](https://github.com/wirenboard/wbgo-private). Для сборки и тестирования необходимы файлы:
+
+- `amd64.wbgo.so` — для запуска тестов и сборки под x86_64
+- `arm64.wbgo.so` — для сборки deb-пакета под ARM64 (Wiren Board 7/8)
+- `armhf.wbgo.so` — для сборки deb-пакета под ARMv6/v7 (Wiren Board 5/6)
+
+Эти файлы размещаются в корне репозитория и указаны в `.gitignore`. Версия Go, используемая для сборки `wbgo.so`, должна совпадать с версией Go, используемой для сборки `wb-rules` (см. `debian/rules`). На текущий момент это Go 1.21.
+
+#### Как получить wbgo.so
+
+1. **Из deb-пакета** (для arm64/armhf): файл `wbgo.so` входит в состав deb-пакета `wb-rules` и устанавливается в `/usr/lib/wb-rules/wbgo.so`. Его можно извлечь из пакета в unstable-репозитории Wiren Board:
+   ```bash
+   # Скачать deb-пакет для arm64
+   wget https://deb.wirenboard.com/wb8/bullseye/pool/main/w/wb-rules/wb-rules_<VERSION>_arm64.deb
+
+   # Извлечь wbgo.so
+   dpkg-deb -x wb-rules_<VERSION>_arm64.deb tmp/
+   cp tmp/usr/lib/wb-rules/wbgo.so arm64.wbgo.so
+   ```
+
+   Список доступных пакетов:
+   - arm64: https://deb.wirenboard.com/wb8/bullseye/dists/unstable/main/binary-arm64/Packages
+   - armhf: https://deb.wirenboard.com/wb6/bullseye/dists/unstable/main/binary-armhf/Packages
+
+   Также deb-пакеты доступны как артефакты в [GitHub Releases](https://github.com/wirenboard/wb-rules/releases).
+
+2. **Из CI/CD артефактов:** файлы `*.wbgo.so` генерируются при сборке пакета `wbgo-private` в CI. Скачайте артефакты нужной архитектуры из последнего успешного билда.
+
+3. **Сборка вручную** из репозитория `wbgo-private`:
+   ```bash
+   git clone git@github.com:wirenboard/wbgo-private.git
+   cd wbgo-private
+   make wbgoso TARGET_ARCH=amd64
+   make wbgoso TARGET_ARCH=arm64
+   make wbgoso TARGET_ARCH=armhf
+   ```
+
+4. **Скопируйте** полученные файлы в корень репозитория `wb-rules`.
+
+### Запуск тестов
+
+```bash
+# Скопировать wbgo.so и запустить тесты
+make test
+# Эквивалентно:
+# cp amd64.wbgo.so wbrules/wbgo.so
+# go test -v -cover ./wbrules
+```
+
+### Сборка deb-пакета
+
+```bash
+# Через wbdev (Docker-окружение Wiren Board)
+WBDEV_TARGET=bullseye-arm64 ./wbdev cdeb
+WBDEV_TARGET=bullseye-armhf ./wbdev cdeb
+```
+
 ## Ограничения
 Публикация более 100 топиков в секунду может вызвать повышенное потребление CPU и проблемы с производительностью. Рекомендуется оптимизировать частоту публикации топиков для обеспечения стабильной работы.
