@@ -1,3 +1,5 @@
+/* global defineRule, fs, log */
+/* eslint-disable no-restricted-syntax, no-unused-vars, security/detect-object-injection */
 defineRule('fileCmd', {
   whenChanged: 'somedev/fileCmd',
   then: function (cmd) {
