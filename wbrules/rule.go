@@ -142,7 +142,7 @@ func (ruleCond *CellChangedRuleCondition) Check(e *ControlChangeEvent) (bool, in
 		return false, nil
 	}
 
-	if (e.ControlType != wbgong.CONV_TYPE_PUSHBUTTON && e.PrevValue == nil) || (e.IsRetained && e.PrevValue == e.Value) {
+	if (e.ControlType != wbgong.CONV_TYPE_PUSHBUTTON && e.PrevValue == nil && e.IsFirstValue) || (e.IsRetained && e.PrevValue == e.Value) {
 		return false, nil
 	}
 
@@ -168,7 +168,7 @@ func (ruleCond *FuncValueChangedRuleCondition) Check(e *ControlChangeEvent) (boo
 			wbgong.Info.Printf("skipping rule due to incomplete cell in whenChanged: %s", e.Spec)
 			return false, nil
 		}
-		if (e.ControlType != wbgong.CONV_TYPE_PUSHBUTTON && e.PrevValue == nil) || (e.IsRetained && e.PrevValue == e.Value) {
+		if (e.ControlType != wbgong.CONV_TYPE_PUSHBUTTON && e.PrevValue == nil && e.IsFirstValue) || (e.IsRetained && e.PrevValue == e.Value) {
 			return false, nil
 		}
 	}
