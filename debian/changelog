@@ -1,3 +1,9 @@
+wb-rules (2.38.8) stable; urgency=medium
+
+  * Fix trackMqtt panic on script reload (SOFT-5628)
+
+ -- Evgeny Boger <boger@wirenboard.com>  Sun, 01 Mar 2026 13:27:13 +0300
+
 wb-rules (2.38.7) stable; urgency=medium
 
   * Add build instructions for wbgo.so plugin files
