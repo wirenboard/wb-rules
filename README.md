@@ -20,6 +20,7 @@ Rule engine for Wiren Board, version 2.0
 - [Доступ к топикам meta](#доступ-к-топикам-meta)
 - [API создания/управления устройств](#api-созданияуправления-устройств)
 - [Встроенные функции и переменные](#встроенные-функции-и-переменные)
+- [Файловые операции `fs`](#файловые-операции-fs)
 - [Модули](#модули)
 - [Сервис оповещений](#сервис-оповещений)
 - [Сервис алармов](#сервис-алармов)
@@ -863,6 +864,355 @@ $ cat test.conf
   ]
 }
 ```
+
+## Файловые операции `fs`
+
+Глобальный объект `fs` предоставляет функции для работы с файловой системой, следующие конвенции Node.js:
+- **Синхронные** функции имеют суффикс `Sync` (например, `fs.readFileSync()`). Они блокируют выполнение и возвращают результат напрямую (или генерируют исключение при ошибке).
+- **Асинхронные** функции (без суффикса) принимают callback последним аргументом и выполняют I/O в фоне. Callback вызывается по паттерну error-first: `callback(err, data)`, где `err` — объект `{message: "..."}` при ошибке или `null` при успехе.
+
+Функции работают только с текстовыми (UTF-8) данными. Бинарные файлы не поддерживаются.
+
+### Синхронные функции
+
+#### `fs.readFileSync(path)`
+
+Читает содержимое файла и возвращает его как строку. Максимальный размер файла — 10 МБ.
+
+```js
+var content = fs.readFileSync("/etc/hostname");
+log("hostname: {}", content);
+```
+
+#### `fs.writeFileSync(path, data)`
+
+Записывает строку в файл, создавая файл при необходимости или перезаписывая существующий. Файл создаётся с правами `0644`.
+
+```js
+fs.writeFileSync("/tmp/output.txt", "hello world");
+```
+
+#### `fs.appendFileSync(path, data)`
+
+Дописывает строку в конец файла. Если файл не существует, создаёт его с правами `0644`.
+
+```js
+fs.appendFileSync("/tmp/log.txt", "new line\n");
+```
+
+#### `fs.statSync(path)`
+
+Возвращает информацию о файле или директории в виде объекта:
+- `size` — размер в байтах
+- `isFile` — `true`, если это обычный файл
+- `isDirectory` — `true`, если это директория
+- `mtime` — время последней модификации (Unix timestamp)
+- `mode` — права доступа в восьмеричном формате (строка, например `"644"`)
+
+```js
+var st = fs.statSync("/etc/hostname");
+log("size={} isFile={}", st.size, st.isFile);
+```
+
+#### `fs.readdirSync(path)`
+
+Возвращает массив объектов с информацией о содержимом директории. Каждый элемент содержит:
+- `name` — имя файла или директории
+- `isFile` — `true`, если это обычный файл
+- `isDirectory` — `true`, если это директория
+
+```js
+var entries = fs.readdirSync("/tmp");
+for (var i = 0; i < entries.length; i++) {
+  log("{} (file={})", entries[i].name, entries[i].isFile);
+}
+```
+
+#### `fs.existsSync(path)`
+
+Возвращает `true`, если файл или директория существует, `false` в противном случае. В отличие от остальных функций, **не генерирует исключение** при отсутствии файла.
+
+```js
+if (fs.existsSync("/tmp/flag.txt")) {
+  log("file exists");
+}
+```
+
+#### `fs.mkdirSync(path [, options])`
+
+Создаёт директорию с правами `0755`. Для создания вложенных директорий используйте опцию `{recursive: true}`.
+
+```js
+fs.mkdirSync("/tmp/newdir");
+fs.mkdirSync("/tmp/a/b/c", {recursive: true});
+```
+
+#### `fs.unlinkSync(path)`
+
+Удаляет файл. Для удаления директорий используйте `fs.rmdirSync()`.
+
+```js
+fs.unlinkSync("/tmp/output.txt");
+```
+
+#### `fs.renameSync(oldPath, newPath)`
+
+Переименовывает или перемещает файл.
+
+```js
+fs.renameSync("/tmp/old.txt", "/tmp/new.txt");
+```
+
+#### `fs.rmdirSync(path [, options])`
+
+Удаляет директорию. По умолчанию директория должна быть пустой. Для рекурсивного удаления используйте опцию `{recursive: true}`.
+
+```js
+fs.rmdirSync("/tmp/emptydir");
+fs.rmdirSync("/tmp/dir_with_files", {recursive: true});
+```
+
+#### `fs.copyFileSync(src, dest)`
+
+Копирует файл из `src` в `dest`. Права доступа исходного файла сохраняются. Максимальный размер — 10 МБ.
+
+```js
+fs.copyFileSync("/tmp/source.txt", "/tmp/dest.txt");
+```
+
+#### `fs.accessSync(path [, mode])`
+
+Проверяет доступность файла. Если файл недоступен — генерирует исключение. Аргумент `mode` (по умолчанию `fs.constants.F_OK`) определяет тип проверки. Константы доступны через `fs.constants`:
+
+| Константа | Значение | Описание |
+|-----------|----------|----------|
+| `fs.constants.F_OK` | 0 | Файл существует |
+| `fs.constants.R_OK` | 4 | Файл доступен для чтения |
+| `fs.constants.W_OK` | 2 | Файл доступен для записи |
+| `fs.constants.X_OK` | 1 | Файл доступен для выполнения |
+
+```js
+// Проверить существование
+fs.accessSync("/tmp/file.txt");
+
+// Проверить права на чтение и запись
+fs.accessSync("/tmp/file.txt", fs.constants.R_OK | fs.constants.W_OK);
+```
+
+#### `fs.realpathSync(path)`
+
+Разрешает все символические ссылки в пути и возвращает абсолютный путь.
+
+```js
+var realPath = fs.realpathSync("/tmp/symlink");
+log("real path: {}", realPath);
+```
+
+#### `fs.readlinkSync(path)`
+
+Читает цель символической ссылки и возвращает путь, на который она указывает.
+
+```js
+var target = fs.readlinkSync("/tmp/symlink");
+log("link target: {}", target);
+```
+
+#### Обработка ошибок (sync)
+
+Все синхронные функции `fs` (кроме `fs.existsSync()`) генерируют исключение при ошибке. Для обработки ошибок используйте `try/catch`:
+
+```js
+try {
+  var content = fs.readFileSync("/nonexistent/file");
+} catch (e) {
+  log.error("failed to read file: {}", e.message);
+}
+```
+
+### Асинхронные функции
+
+Асинхронные версии выполняют I/O в фоновом потоке и вызывают callback по завершению. Callback следует паттерну error-first: первый аргумент — ошибка (`null` при успехе, объект `{message: "..."}` при ошибке), второй — результат.
+
+#### `fs.readFile(path, callback)`
+
+```js
+fs.readFile("/etc/hostname", function (err, data) {
+  if (err) {
+    log.error("failed: {}", err.message);
+    return;
+  }
+  log("hostname: {}", data);
+});
+```
+
+#### `fs.writeFile(path, data, callback)`
+
+```js
+fs.writeFile("/tmp/output.txt", "hello world", function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+```
+
+#### `fs.appendFile(path, data, callback)`
+
+```js
+fs.appendFile("/tmp/log.txt", "new line\n", function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+```
+
+#### `fs.stat(path, callback)`
+
+```js
+fs.stat("/etc/hostname", function (err, st) {
+  if (err) {
+    log.error("failed: {}", err.message);
+    return;
+  }
+  log("size={} isFile={}", st.size, st.isFile);
+});
+```
+
+#### `fs.readdir(path, callback)`
+
+```js
+fs.readdir("/tmp", function (err, entries) {
+  if (err) {
+    log.error("failed: {}", err.message);
+    return;
+  }
+  for (var i = 0; i < entries.length; i++) {
+    log("{} (file={})", entries[i].name, entries[i].isFile);
+  }
+});
+```
+
+#### `fs.exists(path, callback)`
+
+**Внимание:** в отличие от остальных async-функций, callback получает один аргумент `exists` (boolean), без `err`. Это соответствует конвенции Node.js.
+
+```js
+fs.exists("/tmp/flag.txt", function (exists) {
+  if (exists) {
+    log("file exists");
+  }
+});
+```
+
+#### `fs.mkdir(path [, options], callback)`
+
+```js
+fs.mkdir("/tmp/newdir", function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+
+fs.mkdir("/tmp/a/b/c", {recursive: true}, function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+```
+
+#### `fs.unlink(path, callback)`
+
+```js
+fs.unlink("/tmp/output.txt", function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+```
+
+#### `fs.rename(oldPath, newPath, callback)`
+
+```js
+fs.rename("/tmp/old.txt", "/tmp/new.txt", function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+```
+
+#### `fs.rmdir(path [, options], callback)`
+
+```js
+fs.rmdir("/tmp/emptydir", function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+
+fs.rmdir("/tmp/dir_with_files", {recursive: true}, function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+```
+
+#### `fs.copyFile(src, dest, callback)`
+
+```js
+fs.copyFile("/tmp/source.txt", "/tmp/dest.txt", function (err) {
+  if (err) {
+    log.error("failed: {}", err.message);
+  }
+});
+```
+
+#### `fs.access(path [, mode], callback)`
+
+```js
+fs.access("/tmp/file.txt", fs.constants.R_OK, function (err) {
+  if (err) {
+    log.error("file is not readable: {}", err.message);
+  }
+});
+```
+
+#### `fs.realpath(path, callback)`
+
+```js
+fs.realpath("/tmp/symlink", function (err, resolvedPath) {
+  if (err) {
+    log.error("failed: {}", err.message);
+    return;
+  }
+  log("real path: {}", resolvedPath);
+});
+```
+
+#### `fs.readlink(path, callback)`
+
+```js
+fs.readlink("/tmp/symlink", function (err, target) {
+  if (err) {
+    log.error("failed: {}", err.message);
+    return;
+  }
+  log("link target: {}", target);
+});
+```
+
+#### `fs.watch(path, callback)`
+
+Отслеживает изменения файла. Возвращает объект с методом `close()` для остановки наблюдения. Callback вызывается при каждом изменении с аргументами `(eventType, filename)`, где `eventType` — `"change"` (запись, изменение атрибутов) или `"rename"` (создание, удаление, переименование).
+
+```js
+var watcher = fs.watch("/tmp/config.txt", function (eventType, filename) {
+  log("file {} event: {}", filename, eventType);
+});
+
+// Позже, для остановки наблюдения:
+watcher.close();
+```
+
+**Внимание:** наблюдатель автоматически закрывается при перезагрузке скрипта.
 
 ### Алиасы `defineAlias()`
 
