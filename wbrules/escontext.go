@@ -114,12 +114,6 @@ func (ctx *ESContext) IsValid() bool {
 	return ctx.valid
 }
 
-func (ctx *ESContext) mustBeValid() {
-	if !ctx.valid {
-		panic("operation on invalid context")
-	}
-}
-
 func (ctx *ESContext) DefaultCallbackErrorHandler(err ESError) {
 	wbgong.Error.Printf("failed to invoke callback in context %p: %s", ctx, err)
 }
@@ -307,7 +301,9 @@ func (ctx *ESContext) callbackKey(key ESCallback) string {
 }
 
 func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} {
-	ctx.mustBeValid()
+	if !ctx.valid {
+		return nil
+	}
 	wbgong.Debug.Printf("trying to invoke callback %d in context %p\n", key, ctx)
 
 	ctx.PushHeapStash()

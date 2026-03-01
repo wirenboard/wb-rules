@@ -1948,8 +1948,8 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 	tracker.Callback = ctx.WrapCallback(-1)
 	if _, ok := engine.tracks[topic]; !ok {
 		engine.tracks[topic] = make(MqttTrackerMap)
+		engine.mqttClient.Subscribe(engine.newTrackHandler(topic), topic)
 	}
-	engine.mqttClient.Subscribe(engine.newTrackHandler(topic), topic)
 	engine.tracks[topic][trackerID] = tracker
 
 	engine.cleanup.AddCleanup(func() {
@@ -1957,6 +1957,7 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 		defer engine.mqttTrackerMutex.Unlock()
 		delete(engine.tracks[topic], trackerID)
 		if len(engine.tracks[topic]) < 1 {
+			delete(engine.tracks, topic)
 			engine.mqttClient.Unsubscribe(topic)
 		}
 	})
@@ -1966,18 +1967,38 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 
 func (engine *RuleEngine) newTrackHandler(subTopic string) func(wbgong.MQTTMessage) {
 	return func(msg wbgong.MQTTMessage) {
-		var args objx.Map
-		if _, ok := engine.tracks[subTopic]; ok {
-			for _, tracker := range engine.tracks[subTopic] {
-				tr := tracker
-				args = objx.New(map[string]interface{}{
-					"topic": msg.Topic,
-					"value": msg.Payload,
-				})
-				engine.CallSync(func() {
-					tr.Callback(args)
-				})
+		// Recover from "send on closed channel" panic that can
+		// occur if the engine shuts down while MQTT messages are
+		// still being delivered to this handler.
+		defer func() {
+			if r := recover(); r != nil {
+				wbgong.Warn.Printf("trackMqtt handler recovered from panic during shutdown: %v", r)
 			}
+		}()
+
+		engine.mqttTrackerMutex.Lock()
+		trackers, ok := engine.tracks[subTopic]
+		if !ok {
+			engine.mqttTrackerMutex.Unlock()
+			return
+		}
+		// Copy tracker values while holding the lock to avoid
+		// racing with cleanup that deletes trackers from the map.
+		trackersSnapshot := make([]MqttTracker, 0, len(trackers))
+		for _, tracker := range trackers {
+			trackersSnapshot = append(trackersSnapshot, tracker)
+		}
+		engine.mqttTrackerMutex.Unlock()
+
+		for _, tr := range trackersSnapshot {
+			tr := tr // capture loop variable for closure
+			args := objx.New(map[string]interface{}{
+				"topic": msg.Topic,
+				"value": msg.Payload,
+			})
+			engine.CallSync(func() {
+				tr.Callback(args)
+			})
 		}
 	}
 }
