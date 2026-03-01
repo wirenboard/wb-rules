@@ -29,6 +29,7 @@ type ESLocation struct {
 type ESTraceback []ESLocation
 type ESCallback uint64
 type ESCallbackFunc func(args objx.Map) interface{}
+type ESCallbackArgsFunc func(args ...interface{})
 type ESCallbackErrorHandler func(err ESError)
 
 // ESSyncFunc denotes a function that executes the specified
@@ -376,6 +377,41 @@ func (ctx *ESContext) WrapCallback(callbackStackIndex int) ESCallbackFunc {
 	runtime.SetFinalizer(holder, callbackFinalizer)
 	return func(args objx.Map) interface{} {
 		return ctx.invokeCallback(holder.callback, args)
+	}
+}
+
+// WrapCallbackArgs is like WrapCallback but returns a function that accepts
+// multiple positional arguments, suitable for Node.js error-first callbacks.
+func (ctx *ESContext) WrapCallbackArgs(callbackStackIndex int) ESCallbackArgsFunc {
+	holder := &callbackHolder{
+		ctx,
+		ctx.storeCallback(callbackStackIndex),
+	}
+	runtime.SetFinalizer(holder, callbackFinalizer)
+	return func(args ...interface{}) {
+		ctx.invokeCallbackArgs(holder.callback, args...)
+	}
+}
+
+// invokeCallbackArgs calls the stored callback with multiple positional arguments.
+func (ctx *ESContext) invokeCallbackArgs(key ESCallback, args ...interface{}) {
+	ctx.mustBeValid()
+
+	ctx.PushHeapStash()
+	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
+	ctx.PushString(ctx.callbackKey(key))
+	for _, arg := range args {
+		if arg == nil {
+			ctx.PushNull()
+		} else {
+			ctx.PushJSObject(arg)
+		}
+	}
+	// PcallProp consumes key + all args and pushes one result,
+	// so the stack always has exactly 3 items to pop: result, callbacksObj, heapStash.
+	defer ctx.Pop3()
+	if s := ctx.PcallProp(-2-len(args), len(args)); s != 0 {
+		ctx.callbackErrorHandler(ctx.GetESError())
 	}
 }
 
