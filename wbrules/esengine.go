@@ -93,6 +93,9 @@ func (o *ESEngineOptions) SetModulesDirs(dirs []string) {
 }
 
 func (o *ESEngineOptions) SetMaxHeapSize(size uint64) {
+	if size < 128*1024 {
+		panic("max heap size must be at least 128KB")
+	}
 	o.MaxHeapSize = size
 }
 
