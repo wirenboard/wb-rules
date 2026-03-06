@@ -40,7 +40,9 @@ debian/files
 debian/.debhelper
 
 .devcontainer
+.golangci.yml
 .vscode
+.zed
 
 ### direnv ###
 .direnv

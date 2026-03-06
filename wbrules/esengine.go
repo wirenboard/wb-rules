@@ -70,6 +70,7 @@ type ESEngineOptions struct {
 	PersistentDBFile     string
 	PersistentDBFileMode os.FileMode
 	ModulesDirs          []string
+	MaxHeapSize          uint64
 }
 
 func NewESEngineOptions() *ESEngineOptions {
@@ -89,6 +90,13 @@ func (o *ESEngineOptions) SetPersistentDBFileMode(mode os.FileMode) {
 
 func (o *ESEngineOptions) SetModulesDirs(dirs []string) {
 	o.ModulesDirs = dirs
+}
+
+func (o *ESEngineOptions) SetMaxHeapSize(size uint64) {
+	if size < 128*1024 {
+		panic("max heap size must be at least 128KB")
+	}
+	o.MaxHeapSize = size
 }
 
 type TimerSet struct {
@@ -147,7 +155,7 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
 	}
-	engine.globalCtx = engine.ctxFactory.newESContext(engine.MaybeCallSync, "")
+	engine.globalCtx = engine.ctxFactory.newESContext(engine.MaybeCallSync, "", options.MaxHeapSize)
 
 	if options.PersistentDBFile != "" {
 		if err = engine.SetPersistentDBMode(options.PersistentDBFile,

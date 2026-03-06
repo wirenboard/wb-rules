@@ -70,18 +70,18 @@ func (err ESError) Error() string {
 	return err.Message
 }
 
-func (f *ESContextFactory) newESContext(syncFunc ESSyncFunc, filename string) *ESContext {
-	return f.newESContextFromDuktape(syncFunc, filename, duktape.NewContext())
+func (f *ESContextFactory) newESContext(syncFunc ESSyncFunc, filename string, maxHeapSize uint64) *ESContext {
+	return f.newESContextFromDuktape(syncFunc, filename, duktape.NewContext(maxHeapSize))
 }
 
 func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, filename string, dctx *duktape.Context) *ESContext {
 	ctx := &ESContext{
-		dctx,     // *duktape.Context
-		syncFunc, // syncFunc
-		nil,      // callbackErrorHandler
-		f,        // factory
-		make(map[string]*Rule),
-		true, // validation flag
+		Context:              dctx,
+		syncFunc:             syncFunc,
+		callbackErrorHandler: nil,
+		factory:              f,
+		ruleNames:            make(map[string]*Rule),
+		valid:                true,
 	}
 	ctx.callbackErrorHandler = ctx.DefaultCallbackErrorHandler
 	ctx.initGlobalObject()

@@ -21,7 +21,7 @@ var objTests = []string{
 
 func TestJSToObjxAndBack(t *testing.T) {
 	f := newESContextFactory()
-	ctx := f.newESContext(nil, "")
+	ctx := f.newESContext(nil, "", 0)
 	for _, jsonStr := range objTests {
 		if r := ctx.PevalString("(" + jsonStr + ")"); r != 0 {
 			t.Fatal("failed to evaluate the script")
@@ -54,7 +54,7 @@ func TestJSToObjxAndBack(t *testing.T) {
 
 func TestNumConversions(t *testing.T) {
 	f := newESContextFactory()
-	ctx := f.newESContext(nil, "")
+	ctx := f.newESContext(nil, "", 0)
 	ctx.PushJSObject(objx.Map{
 		"v_uint8":   uint8(0xf0),
 		"v_uint16":  uint16(0xf001),
@@ -130,7 +130,7 @@ var locTests = []struct {
 
 func TestCallLocation(t *testing.T) {
 	f := newESContextFactory()
-	ctx := f.newESContext(nil, "")
+	ctx := f.newESContext(nil, "", 0)
 	var storedTracebacks []ESTraceback
 	ctx.PushGlobalObject()
 	ctx.DefineFunctions(map[string]func(*ESContext) int{
@@ -149,14 +149,14 @@ func TestCallLocation(t *testing.T) {
 
 func TestLoadScenario(t *testing.T) {
 	f := newESContextFactory()
-	ctx := f.newESContext(nil, "")
+	ctx := f.newESContext(nil, "", 0)
 	err := ctx.LoadScenario("testrules_load_scenario.js")
 	assert.Equal(t, err, nil)
 }
 
 func TestLoadScenarioNeg(t *testing.T) {
 	f := newESContextFactory()
-	ctx := f.newESContext(nil, "")
+	ctx := f.newESContext(nil, "", 0)
 	err := ctx.LoadScenario("testrules_load_scenario_bad.js")
 	if assert.NotEqual(t, err, nil) {
 		eserror, ok := err.(ESError)
