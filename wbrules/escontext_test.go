@@ -165,3 +165,34 @@ func TestLoadScenarioNeg(t *testing.T) {
 		}
 	}
 }
+
+// TestInvokeCallbackOnInvalidContext verifies that invoking a callback
+// on an invalidated context returns nil instead of panicking.
+// This is a regression test for SOFT-5628.
+func TestInvokeCallbackOnInvalidContext(t *testing.T) {
+	f := newESContextFactory()
+	ctx := f.newESContext(nil, "")
+
+	// Push a simple JS function and store it as a callback
+	ctx.PevalString("(function(obj) { return 'ok'; })")
+	cb := ctx.storeCallback(-1)
+	ctx.Pop()
+
+	// Wrap the callback into a closure (as trackMqtt does)
+	wrappedCb := func(args objx.Map) interface{} {
+		return ctx.invokeCallback(cb, args)
+	}
+
+	// Verify the callback works before invalidation
+	result := wrappedCb(objx.Map{"key": "value"})
+	assert.Equal(t, "ok", result)
+
+	// Invalidate the context (simulates script reload)
+	ctx.invalidate()
+
+	// Calling the callback on the invalidated context must not panic
+	assert.NotPanics(t, func() {
+		result = wrappedCb(objx.Map{"key": "value"})
+	})
+	assert.Nil(t, result)
+}
