@@ -1,3 +1,9 @@
+wb-rules (2.38.8) stable; urgency=medium
+
+  * Fix whenChanged not firing for empty string values (SOFT-5446)
+
+ -- Evgeny Boger <boger@wirenboard.com>  Sun, 01 Mar 2026 17:35:04 +0300
+
 wb-rules (2.38.7) stable; urgency=medium
 
   * Add build instructions for wbgo.so plugin files

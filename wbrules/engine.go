@@ -601,6 +601,10 @@ type ControlChangeEvent struct {
 	IsRetained  bool
 	Value       interface{}
 	PrevValue   interface{}
+	// IsFirstValue is true for the first ControlValueEvent per cell,
+	// used to distinguish genuinely unseen cells from PrevValue==nil
+	// caused by ToTypedValue("", "text") returning nil (SOFT-5446).
+	IsFirstValue bool
 }
 
 type RuleEngineOptions struct {
@@ -673,6 +677,8 @@ type RuleEngine struct {
 
 	cleanupOnStop bool
 
+	seenValueCells map[ControlSpec]bool
+
 	deviceProxyCache sync.Map
 
 	// subscriptions to control change events
@@ -724,6 +730,7 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 		readyCh:            nil,
 		uninitializedRules: make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY),
 		cleanupOnStop:      options.cleanupOnStop,
+		seenValueCells:     make(map[ControlSpec]bool),
 		tracks:             make(map[string]map[uint32]MqttTracker),
 
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
@@ -920,6 +927,7 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 	var spec ControlSpec
 	isComplete := false
 	isRetained := false
+	isFirstValue := false
 	var controlType string
 
 	switch e := event.(type) {
@@ -937,6 +945,11 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 		prevValue, err = wbgong.ToTypedValue(e.PrevRawValue, ctrl.GetType())
 		if err != nil {
 			prevValue = e.PrevRawValue
+		}
+
+		if !engine.seenValueCells[spec] {
+			engine.seenValueCells[spec] = true
+			isFirstValue = true
 		}
 
 		isComplete = ctrl.IsComplete()
@@ -983,12 +996,13 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 	}
 
 	cce := &ControlChangeEvent{
-		Spec:        spec,
-		ControlType: controlType,
-		IsComplete:  isComplete,
-		IsRetained:  isRetained,
-		Value:       value,
-		PrevValue:   prevValue,
+		Spec:         spec,
+		ControlType:  controlType,
+		IsComplete:   isComplete,
+		IsRetained:   isRetained,
+		Value:        value,
+		PrevValue:    prevValue,
+		IsFirstValue: isFirstValue,
 	}
 
 	engine.eventBuffer.PushEvent(cce)
