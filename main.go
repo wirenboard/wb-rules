@@ -61,7 +61,7 @@ func main() {
 	precise := flag.Bool("precise", false, "Don't reown devices without driver")
 	cleanup := flag.Bool("cleanup", false, "Clean up MQTT data on unload")
 	httpAddr := flag.String("http", "", "Serve metrics and runtime profiling data")
-	maxHeapSize := flag.Uint64("max-heap-size", 64*1024*1024, "Max heap size")
+	maxHeapSize := flag.Uint64("max-heap-size", 64*1024*1024, "Max heap size in bytes")
 
 	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
