@@ -5,7 +5,7 @@ import (
 
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/objx"
-	wbgong "github.com/wirenboard/wbgong"
+	"github.com/wirenboard/wbgong"
 )
 
 const (
