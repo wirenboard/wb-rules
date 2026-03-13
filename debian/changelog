@@ -1,4 +1,4 @@
-wb-rules (2.38.8) stable; urgency=medium
+wb-rules (2.39.0) stable; urgency=medium
 
   * Enforce memory limit
 
