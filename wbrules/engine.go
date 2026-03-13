@@ -1946,17 +1946,21 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 
 	tracker := NewMqttTracker(topic, trackerID)
 	tracker.Callback = ctx.WrapCallback(-1)
-	if _, ok := engine.tracks[topic]; !ok {
+	needSubscribe := len(engine.tracks[topic]) == 0
+	if needSubscribe {
 		engine.tracks[topic] = make(MqttTrackerMap)
 	}
-	engine.mqttClient.Subscribe(engine.newTrackHandler(topic), topic)
 	engine.tracks[topic][trackerID] = tracker
+	if needSubscribe {
+		engine.mqttClient.Subscribe(engine.newTrackHandler(topic), topic)
+	}
 
 	engine.cleanup.AddCleanup(func() {
 		engine.mqttTrackerMutex.Lock()
 		defer engine.mqttTrackerMutex.Unlock()
 		delete(engine.tracks[topic], trackerID)
-		if len(engine.tracks[topic]) < 1 {
+		if len(engine.tracks[topic]) == 0 {
+			delete(engine.tracks, topic)
 			engine.mqttClient.Unsubscribe(topic)
 		}
 	})
@@ -1966,18 +1970,25 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 
 func (engine *RuleEngine) newTrackHandler(subTopic string) func(wbgong.MQTTMessage) {
 	return func(msg wbgong.MQTTMessage) {
-		var args objx.Map
-		if _, ok := engine.tracks[subTopic]; ok {
-			for _, tracker := range engine.tracks[subTopic] {
-				tr := tracker
-				args = objx.New(map[string]interface{}{
-					"topic": msg.Topic,
-					"value": msg.Payload,
-				})
-				engine.CallSync(func() {
-					tr.Callback(args)
-				})
-			}
+		engine.mqttTrackerMutex.Lock()
+		trackers := make([]MqttTracker, 0, len(engine.tracks[subTopic]))
+		for _, tracker := range engine.tracks[subTopic] {
+			trackers = append(trackers, tracker)
+		}
+		engine.mqttTrackerMutex.Unlock()
+
+		for _, tr := range trackers {
+			args := objx.New(map[string]interface{}{
+				"topic": msg.Topic,
+				"value": msg.Payload,
+			})
+			cb := tr.Callback
+			// MaybeCallSync is safe here: if the engine is shutting down
+			// (syncQueue closed), it runs the thunk directly, but
+			// invokeCallback checks context validity before touching Duktape.
+			engine.MaybeCallSync(func() {
+				cb(args)
+			})
 		}
 	}
 }
