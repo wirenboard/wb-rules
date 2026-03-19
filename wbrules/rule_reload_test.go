@@ -58,7 +58,6 @@ func (s *RuleReloadSuite) VerifyRules() {
 }
 
 func (s *RuleReloadSuite) TestReload() {
-
 	s.VerifyRules()
 
 	s.ReplaceScript("testrules_reload_2.js", "testrules_reload_2_changed.js")

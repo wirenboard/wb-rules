@@ -28,7 +28,7 @@ type ESLocation struct {
 
 type ESTraceback []ESLocation
 type ESCallback uint64
-type ESCallbackFunc func(args objx.Map) interface{}
+type ESCallbackFunc func(args objx.Map) any
 type ESCallbackErrorHandler func(err ESError)
 
 // ESSyncFunc denotes a function that executes the specified
@@ -104,9 +104,9 @@ func (ctx *ESContext) invalidate() {
 	ctx.valid = false
 }
 
-func (ctx *ESContext) assertStackClean(stack_top int) {
-	if ctx.GetTop() != stack_top {
-		wbgong.Error.Panicf("stack top assertion failed: expected %d, got %d", stack_top, ctx.GetTop())
+func (ctx *ESContext) assertStackClean(stackTop int) {
+	if ctx.GetTop() != stackTop {
+		wbgong.Error.Panicf("stack top assertion failed: expected %d, got %d", stackTop, ctx.GetTop())
 	}
 }
 
@@ -128,8 +128,8 @@ func (ctx *ESContext) SetCallbackErrorHandler(handler ESCallbackErrorHandler) {
 	ctx.callbackErrorHandler = handler
 }
 
-func (ctx *ESContext) getObject(objIndex int) map[string]interface{} {
-	m := make(map[string]interface{})
+func (ctx *ESContext) getObject(objIndex int) map[string]any {
+	m := make(map[string]any)
 	ctx.Enum(-1, duktape.DUK_ENUM_OWN_PROPERTIES_ONLY)
 	for ctx.Next(-1, true) {
 		key := ctx.SafeToString(-2)
@@ -140,9 +140,9 @@ func (ctx *ESContext) getObject(objIndex int) map[string]interface{} {
 	return m
 }
 
-func (ctx *ESContext) getArray(objIndex int) []interface{} {
+func (ctx *ESContext) getArray(objIndex int) []any {
 	// FIXME: this will not work for arrays with length >= 2^32
-	r := make([]interface{}, ctx.GetLength(objIndex))
+	r := make([]any, ctx.GetLength(objIndex))
 	ctx.Enum(-1, duktape.DUK_ENUM_ARRAY_INDICES_ONLY)
 	for ctx.Next(-1, true) {
 		n := ctx.ToInt(-2)
@@ -153,7 +153,7 @@ func (ctx *ESContext) getArray(objIndex int) []interface{} {
 	return r
 }
 
-func (ctx *ESContext) getJSObject(objIndex int, top bool) interface{} {
+func (ctx *ESContext) getJSObject(objIndex int, top bool) any {
 	t := duktape.Type(ctx.GetType(-1))
 	switch {
 	case t.IsNone() || t.IsUndefined() || t.IsNull(): // FIXME
@@ -171,9 +171,8 @@ func (ctx *ESContext) getJSObject(objIndex int, top bool) interface{} {
 		m := ctx.getObject(objIndex)
 		if top {
 			return objx.New(m)
-		} else {
-			return m
 		}
+		return m
 	case t.IsBuffer():
 		wbgong.Error.Println("buffers aren't supported yet")
 		return nil
@@ -185,11 +184,11 @@ func (ctx *ESContext) getJSObject(objIndex int, top bool) interface{} {
 	}
 }
 
-func (ctx *ESContext) GetJSObject(objIndex int) interface{} {
+func (ctx *ESContext) GetJSObject(objIndex int) any {
 	return ctx.getJSObject(objIndex, true)
 }
 
-func (ctx *ESContext) PushJSObject(obj interface{}) {
+func (ctx *ESContext) PushJSObject(obj any) {
 	if obj == nil {
 		ctx.PushNull()
 		return
@@ -198,7 +197,7 @@ func (ctx *ESContext) PushJSObject(obj interface{}) {
 	case string:
 		ctx.PushString(t)
 	case objx.Map:
-		ctx.PushJSObject(map[string]interface{}(t))
+		ctx.PushJSObject(map[string]any(t))
 	case wbgong.Title:
 		ctx.PushObject()
 		for k, v := range t {
@@ -211,7 +210,7 @@ func (ctx *ESContext) PushJSObject(obj interface{}) {
 			ctx.PushJSObject(v)
 			ctx.PutPropString(-2, k)
 		}
-	case map[string]interface{}:
+	case map[string]any:
 		ctx.PushObject()
 		for k, v := range t {
 			ctx.PushJSObject(v)
@@ -246,7 +245,7 @@ func (ctx *ESContext) PushJSObject(obj interface{}) {
 	}
 }
 
-func (ctx *ESContext) pushJSObjectUsingReflection(obj interface{}) {
+func (ctx *ESContext) pushJSObjectUsingReflection(obj any) {
 	v := reflect.ValueOf(obj)
 	if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
 		log.Panicf("ESContext: unsupported object value: %v", obj)
@@ -306,7 +305,7 @@ func (ctx *ESContext) callbackKey(key ESCallback) string {
 	return strconv.FormatUint(uint64(key), 16)
 }
 
-func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) interface{} {
+func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) any {
 	ctx.mustBeValid()
 	wbgong.Debug.Printf("trying to invoke callback %d in context %p\n", key, ctx)
 
@@ -374,7 +373,7 @@ func (ctx *ESContext) WrapCallback(callbackStackIndex int) ESCallbackFunc {
 		ctx.storeCallback(callbackStackIndex),
 	}
 	runtime.SetFinalizer(holder, callbackFinalizer)
-	return func(args objx.Map) interface{} {
+	return func(args objx.Map) any {
 		return ctx.invokeCallback(holder.callback, args)
 	}
 }
@@ -508,10 +507,9 @@ func (ctx *ESContext) DefineFunctions(fns map[string]func(*ESContext) int) {
 		ctx.PushGoFunc(func(dctx *duktape.Context) int {
 			if ctx, ok := factory.duktapeToESContextMap[*dctx]; ok {
 				return f(ctx)
-			} else {
-				wbgong.Error.Panicf("No known conversion for duktape context to ESContext from %v", dctx)
-				panic("")
 			}
+			wbgong.Error.Panicf("No known conversion for duktape context to ESContext from %v", dctx)
+			panic("")
 		})
 		ctx.PutPropString(-2, name)
 	}

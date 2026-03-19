@@ -9,7 +9,7 @@ import (
 	"sync"
 	"syscall"
 
-	wbgong "github.com/wirenboard/wbgong"
+	"github.com/wirenboard/wbgong"
 )
 
 type CommandResult struct {
@@ -23,7 +23,7 @@ func captureCommandOutput(pipe io.ReadCloser, wg *sync.WaitGroup, result *string
 	go func() {
 		var buf bytes.Buffer
 		if _, err := io.Copy(&buf, pipe); err == nil {
-			*result = string(buf.Bytes())
+			*result = buf.String()
 		} else {
 			*e = err
 		}
@@ -40,24 +40,24 @@ func Spawn(name string, args []string, captureOutput bool, captureErrorOutput bo
 	cmd := exec.Command(name, args...)
 	if input != nil {
 		if stdinPipe, err = cmd.StdinPipe(); err != nil {
-			return nil, fmt.Errorf("cmd.StdinPipe() failed: %s", err)
+			return nil, fmt.Errorf("cmd.StdinPipe() failed: %w", err)
 		}
 	}
 	if captureOutput {
 		if stdoutPipe, err = cmd.StdoutPipe(); err != nil {
-			return nil, fmt.Errorf("cmd.StdoutPipe() failed: %s", err)
+			return nil, fmt.Errorf("cmd.StdoutPipe() failed: %w", err)
 		}
 	}
 	if captureErrorOutput {
 		if stderrPipe, err = cmd.StderrPipe(); err != nil {
-			return nil, fmt.Errorf("cmd.StderrPipe() failed: %s", err)
+			return nil, fmt.Errorf("cmd.StderrPipe() failed: %w", err)
 		}
 	} else {
 		cmd.Stderr = os.Stderr
 	}
 
 	if err = cmd.Start(); err != nil {
-		return nil, fmt.Errorf("cmd.Start() failed: %s", err)
+		return nil, fmt.Errorf("cmd.Start() failed: %w", err)
 	}
 
 	if stdinPipe != nil || stdoutPipe != nil || stderrPipe != nil {
@@ -78,7 +78,7 @@ func Spawn(name string, args []string, captureOutput bool, captureErrorOutput bo
 		}
 		wg.Wait()
 		if err != nil {
-			return nil, fmt.Errorf("error capturing output: %s", err)
+			return nil, fmt.Errorf("error capturing output: %w", err)
 		}
 	}
 

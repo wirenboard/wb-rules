@@ -11,7 +11,7 @@ type RuleLoopbackSuite struct {
 }
 
 func (s *RuleLoopbackSuite) SetupTest() {
-	s.RuleSuiteBase.SetupSkippingDefs("testrules_loopback.js")
+	s.SetupSkippingDefs("testrules_loopback.js")
 }
 
 func (s *RuleLoopbackSuite) TestSetGaugeLoud() {

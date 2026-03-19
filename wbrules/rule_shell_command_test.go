@@ -21,9 +21,8 @@ func (s *RuleShellCommandSuite) fileExists(path string) bool {
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
 			return false
-		} else {
-			s.Require().Fail("unexpected error when checking for samplefile", "%s", err)
 		}
+		s.Require().Fail("unexpected error when checking for samplefile", "%s", err)
 	}
 	return true
 }

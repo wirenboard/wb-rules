@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -54,16 +55,16 @@ const (
 	GLOBAL_INIT_ENV_FUNC_NAME     = "__esInitEnv"
 )
 
-var noSuchPropError = errors.New("no such property")
-var wrongPropTypeError = errors.New("wrong property type")
+var (
+	noSuchPropError    = errors.New("no such property")
+	wrongPropTypeError = errors.New("wrong property type")
+	noLibJs            = errors.New("unable to locate lib.js")
+)
 
-var noLibJs = errors.New("unable to locate lib.js")
 var searchDirs = []string{LIB_SYS_PATH}
 
 // cache for quicker filename hashing
 var filenameMd5s = make(map[string]string)
-
-type sourceMap map[string]*LocFileEntry
 
 type ESEngineOptions struct {
 	*RuleEngineOptions
@@ -424,7 +425,7 @@ func (engine *ESEngine) SetSourceRoot(sourceRoot string) (err error) {
 
 func (engine *ESEngine) handleTimerCleanup(ctx *ESContext, timer TimerId) {
 	var s *TimerSet
-	var found = false
+	var found bool
 
 	// find timers set for current context
 	if s, found = engine.ctxTimers[ctx]; !found {
@@ -474,7 +475,7 @@ func (engine *ESEngine) buildSingleWhenChangedRuleCondition(ctx *ESContext, defI
 	}
 	if ctx.IsFunction(defIndex) {
 		f := ctx.WrapCallback(defIndex)
-		return NewFuncValueChangedRuleCondition(func() interface{} { return f(nil) }), nil
+		return NewFuncValueChangedRuleCondition(func() any { return f(nil) }), nil
 	}
 	return nil, errors.New("whenChanged: array expected")
 }
@@ -495,9 +496,8 @@ func (engine *ESEngine) buildWhenChangedRuleCondition(ctx *ESContext, defIndex i
 		ctx.Pop()
 		if err != nil {
 			return nil, err
-		} else {
-			conds[i] = cond
 		}
+		conds[i] = cond
 	}
 
 	return NewOrRuleCondition(conds), nil
@@ -550,14 +550,15 @@ func (engine *ESEngine) buildRule(ctx *ESContext, name string, defIndex int) (*R
 		return nil, errors.New("invalid rule -- no then")
 	}
 	then := engine.wrapRuleCallback(ctx, defIndex, "then")
-	if cond, err := engine.buildRuleCond(ctx, defIndex); err != nil {
-		return nil, err
-	} else {
-		ruleId := engine.nextRuleId
-		engine.nextRuleId++
-
-		return NewRule(engine, ruleId, name, cond, then), nil
+	cond, err := engine.buildRuleCond(ctx, defIndex)
+	if err != nil {
+		return nil, fmt.Errorf("error building rule condition: %w", err)
 	}
+
+	ruleId := engine.nextRuleId
+	engine.nextRuleId++
+
+	return NewRule(engine, ruleId, name, cond, then), nil
 }
 
 func (engine *ESEngine) loadLib() error {
@@ -615,7 +616,7 @@ func (engine *ESEngine) ListSourceFiles() (entries []LocFileEntry, err error) {
 
 	// prepare sorted list of local
 	pathList := make([]string, 0, len(engine.editableSources))
-	for virtualPath, _ := range engine.editableSources {
+	for virtualPath := range engine.editableSources {
 		pathList = append(pathList, virtualPath)
 	}
 	sort.Strings(pathList)
@@ -628,15 +629,10 @@ func (engine *ESEngine) ListSourceFiles() (entries []LocFileEntry, err error) {
 	return
 }
 
-// TODO
-func (engine *ESEngine) LocateFile(virtualPath string) (entry LocFileEntry, err error) {
-	return
-}
-
 // cleanPath is a clean shortest path from root directory to this file
 // virtualPath is a relative path for files in the edit directory
 // underSourceRoot is true when this file is in the edit directory\
-func (engine *ESEngine) checkSourcePath(path string) (cleanPath string, virtualPath string, underSourceRoot bool, enabled bool, err error) {
+func (engine *ESEngine) checkSourcePath(path string) (cleanPath, virtualPath string, underSourceRoot, enabled bool, err error) {
 	path, err = filepath.Abs(path)
 	if err != nil {
 		return
@@ -660,7 +656,7 @@ func (engine *ESEngine) checkSourcePath(path string) (cleanPath string, virtualP
 	return
 }
 
-func (engine *ESEngine) checkVirtualPath(path string) (cleanPath string, virtualPath string, enabled bool, err error) {
+func (engine *ESEngine) checkVirtualPath(path string) (cleanPath, virtualPath string, enabled bool, err error) {
 	physicalPath := filepath.Join(engine.sourceRoot, filepath.Clean(path))
 	cleanPath, virtualPath, underSourceRoot, enabled, err := engine.checkSourcePath(physicalPath)
 	if err == nil && !underSourceRoot {
@@ -1486,9 +1482,9 @@ func (engine *ESEngine) esVdevAddControl(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esVdevCellGetDescription(ctx *ESContext) int {
-	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
-	if duk_ret < 0 {
-		return duk_ret
+	ctrlProxy, dukRet := engine.getControlFromCtx(ctx)
+	if dukRet < 0 {
+		return dukRet
 	}
 
 	ctrl := ctrlProxy.getControl()
@@ -1502,9 +1498,9 @@ func (engine *ESEngine) esVdevCellGetDescription(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) esVdevCellGetTitle(ctx *ESContext) int {
-	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
-	if duk_ret < 0 {
-		return duk_ret
+	ctrlProxy, dukRet := engine.getControlFromCtx(ctx)
+	if dukRet < 0 {
+		return dukRet
 	}
 
 	lang := "en"
@@ -1747,7 +1743,7 @@ func (engine *ESEngine) esVdevCellSetEnumTitles(ctx *ESContext) int {
 	m := make(map[string]wbgong.Title)
 	for value, title := range ctx.GetJSObject(0).(objx.Map) {
 		m[value] = make(wbgong.Title)
-		for k, v := range title.(map[string]interface{}) {
+		for k, v := range title.(map[string]any) {
 			m[value][k] = v.(string)
 		}
 	}
@@ -1831,7 +1827,7 @@ func (engine *ESEngine) esVdevCellSetMax(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MAX, fmt.Sprintf("%d", max))
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MAX, strconv.Itoa(max))
 
 	return 0
 }
@@ -1848,7 +1844,7 @@ func (engine *ESEngine) esVdevCellSetMin(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MIN, fmt.Sprintf("%d", min))
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MIN, strconv.Itoa(min))
 
 	return 0
 }
@@ -1902,13 +1898,13 @@ func (engine *ESEngine) esVdevCellSetOrder(ctx *ESContext) int {
 		return duk_ret
 	}
 
-	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_ORDER, fmt.Sprintf("%d", order))
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_ORDER, strconv.Itoa(order))
 
 	return 0
 }
 
 func (engine *ESEngine) esVdevCellSetValue(ctx *ESContext) int {
-	var value interface{}
+	var value any
 	notifySubs := true
 
 	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
@@ -1930,9 +1926,8 @@ func (engine *ESEngine) esVdevCellSetValue(ctx *ESContext) int {
 			if !obj.IsBool() {
 				wbgong.Error.Printf("setValue (%s/%s): notify field must be bool", ctrlProxy.devProxy.name, ctrlProxy.name)
 				return duktape.DUK_RET_TYPE_ERROR
-			} else {
-				notifySubs = obj.Bool()
 			}
+			notifySubs = obj.Bool()
 		}
 	} else {
 		value = ctx.GetJSObject(0)
@@ -2049,7 +2044,7 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 			c := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
 
-			m := objx.New(map[string]interface{}{
+			m := objx.New(map[string]any{
 				JS_DEVPROXY_FUNC_VALUE_RET: c.Value(),
 			})
 			ctx.PushJSObject(m)
@@ -2115,7 +2110,7 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 				return 1
 			}
 
-			dataMap := make(map[string]interface{})
+			dataMap := make(map[string]any)
 			for key, value := range ctrlMeta {
 				dataMap[key] = value
 			}
@@ -2260,7 +2255,7 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 					defer engine.cleanup.PopCleanupScope(currentFilename)
 				}
 
-				args := objx.New(map[string]interface{}{
+				args := objx.New(map[string]any{
 					"exitStatus": r.ExitStatus,
 				})
 				if captureOutput {
@@ -2333,7 +2328,7 @@ func (engine *ESEngine) esWbDefineRule(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) trackMqtt(ctx *ESContext) int {
-	if !(ctx.IsString(0) && ctx.IsFunction(1)) {
+	if !ctx.IsString(0) || !ctx.IsFunction(1) {
 		engine.Log(ENGINE_LOG_ERROR, "bad track definition")
 		return duktape.DUK_RET_ERROR
 	}
@@ -2455,7 +2450,7 @@ func (engine *ESEngine) esReadConfig(ctx *ESContext) int {
 
 	if err != nil {
 		if logErrorOnNoFile {
-			engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("failed to open config file: %s", path))
+			engine.Log(ENGINE_LOG_ERROR, "failed to open config file: "+path)
 		}
 		return duktape.DUK_RET_ERROR
 	}
@@ -2466,13 +2461,13 @@ func (engine *ESEngine) esReadConfig(ctx *ESContext) int {
 	if err != nil {
 		// JsonConfigReader doesn't produce its own errors, thus
 		// any errors returned from it are I/O errors.
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("failed to read config file: %s", path))
+		engine.Log(ENGINE_LOG_ERROR, "failed to read config file: "+path)
 		return duktape.DUK_RET_ERROR
 	}
 
 	parsedJSON, err := objx.FromJSON(string(preprocessedContent))
 	if err != nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("failed to parse json: %s", path))
+		engine.Log(ENGINE_LOG_ERROR, "failed to parse json: "+path)
 		return duktape.DUK_RET_ERROR
 	}
 	ctx.PushJSObject(parsedJSON)
@@ -2532,7 +2527,6 @@ func (engine *ESEngine) ClosePersistentDB() (err error) {
 // Creates a name for persistent storage bucket.
 // Used in 'PersistentStorage(name, options)'
 func (engine *ESEngine) esPersistentName(ctx *ESContext) int {
-
 	if engine.persistentDB == nil {
 		engine.Log(ENGINE_LOG_ERROR, "persistent DB is not initialized")
 		return duktape.DUK_RET_ERROR
@@ -2573,7 +2567,7 @@ func (engine *ESEngine) esPersistentName(ctx *ESContext) int {
 	} else {
 		// get global ID for bucket if this is local storage
 		name = engine.expandLocalObjectId(ctx, name)
-		engine.Log(ENGINE_LOG_INFO, fmt.Sprintf("create local storage name: %s", name))
+		engine.Log(ENGINE_LOG_INFO, "create local storage name: "+name)
 	}
 
 	// push name as return value

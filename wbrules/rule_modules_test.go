@@ -1,10 +1,11 @@
 package wbrules
 
 import (
-	"github.com/wirenboard/wbgong/testutils"
 	"os"
 	"regexp"
 	"testing"
+
+	"github.com/wirenboard/wbgong/testutils"
 )
 
 type TestModulesSuite struct {
@@ -73,7 +74,7 @@ func (s *TestModulesSuite) TestModuleParams() {
 		"tst -> /devices/test/controls/params/on: [1] (QoS 1)",
 		"driver -> /devices/test/controls/params: [1] (QoS 1, retained)",
 		"[info] Module params init",
-		regexp.MustCompile("\\[__filename: .*/testrules_modules\\.js, module\\.filename: .*/test/params\\.js\\]"),
+		regexp.MustCompile(`\[__filename: .*/testrules_modules\.js, module\.filename: .*/test/params\.js\]`),
 	)
 }
 
@@ -100,7 +101,6 @@ func (s *TestModulesSuite) TestModulesCache() {
 		"[info] Value: 42",
 		"[info] Value: 42",
 	)
-
 }
 
 func TestModules(t *testing.T) {

@@ -73,7 +73,7 @@ func (s *EditorSuite) expectLiveWrite(path string, err error) {
 }
 
 func (s *EditorSuite) verifyLiveWrite() {
-	s.Equal("", s.liveWritePath, "LiveWriteDataFile() wasn't called")
+	s.Empty(s.liveWritePath, "LiveWriteDataFile() wasn't called")
 }
 
 func (s *EditorSuite) walkSources(walkFn func(virtualPath, physicalPath string)) {

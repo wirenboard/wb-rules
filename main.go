@@ -44,7 +44,6 @@ func isSocket(path string) bool {
 }
 
 func main() {
-
 	if len(os.Args) > 1 && os.Args[1] == "version" {
 		fmt.Println(version)
 		os.Exit(0)
@@ -161,7 +160,10 @@ func main() {
 	gotSome := false
 	watcher := wbgong.NewDirWatcher("\\.js(\\"+wbrules.FILE_DISABLED_SUFFIX+")?$", engine)
 	if *editDir != "" {
-		engine.SetSourceRoot(*editDir)
+		err := engine.SetSourceRoot(*editDir)
+		if err != nil {
+			wbgong.Error.Fatalf("error setting source root: %s", err)
+		}
 	}
 	for _, path := range flag.Args() {
 		if err := watcher.Load(path); err != nil {
@@ -177,7 +179,10 @@ func main() {
 
 	if *editDir != "" {
 		rpc := wbgong.NewMQTTRPCServer(RPC_DRIVER_NAME, engineMqttClient)
-		rpc.Register(wbrules.NewEditor(engine))
+		err := rpc.Register(wbrules.NewEditor(engine))
+		if err != nil {
+			wbgong.Error.Fatalf("error registering editor: %s", err)
+		}
 		rpc.Start()
 		defer rpc.Stop()
 	}

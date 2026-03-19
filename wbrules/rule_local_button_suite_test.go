@@ -1,8 +1,9 @@
 package wbrules
 
 import (
-	"github.com/wirenboard/wbgong/testutils"
 	"testing"
+
+	"github.com/wirenboard/wbgong/testutils"
 )
 
 type RuleLocalButtonSuite struct {
@@ -11,7 +12,7 @@ type RuleLocalButtonSuite struct {
 
 func (s *RuleLocalButtonSuite) SetupTest() {
 	// s.RuleSuiteBase.SetupTest(false, "testrules_localbutton.js")
-	s.RuleSuiteBase.SetupSkippingDefs("testrules_localbutton.js")
+	s.SetupSkippingDefs("testrules_localbutton.js")
 }
 
 func (s *RuleLocalButtonSuite) TestLocalButtons() {

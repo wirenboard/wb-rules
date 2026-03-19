@@ -10,7 +10,7 @@ require (
 	github.com/stretchr/objx v0.3.0
 	github.com/stretchr/testify v1.7.0
 	github.com/wirenboard/go-duktape v0.0.0-20240729075045-b4150233e350
-	github.com/wirenboard/wbgong v0.6.0
+	github.com/wirenboard/wbgong v0.6.1-0.20260319162554-422c81f0d923
 )
 
 require (

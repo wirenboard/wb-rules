@@ -53,7 +53,6 @@ func (s *PersistentStorageSuite) TestPersistentStorage() {
 		"[info] pure subobject is not created",
 		"[info] write objects 42, \"HelloWorld\", {\"name\":\"MyObj\",\"foo\":\"bar\",\"baz\":84,\"sub\":{\"hello\":\"world\"}}",
 	)
-
 }
 
 // try to read from persistent storage
@@ -65,7 +64,6 @@ func (s *PersistentStorageSuite) TestPersistentStorage2() {
 		"[info] read objects 42, \"HelloWorld\", {\"name\":\"MyObj\",\"foo\":\"bar\",\"baz\":84,\"sub\":{\"hello\":\"world\"}}",
 		"[info] read objects 42, \"HelloWorld\", {\"name\":\"MyObj\",\"foo\":\"bar\",\"baz\":84,\"sub\":{\"hello\":\"earth\"}}",
 	)
-
 }
 
 // test local storages in different files
