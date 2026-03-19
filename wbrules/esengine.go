@@ -1322,7 +1322,7 @@ func (engine *ESEngine) esVdevRemoveControl(ctx *ESContext) int {
 
 	errControl := engine.RemoveControl(devId, ctrlId)
 	if errControl != nil {
-		wbgong.Error.Printf("Error in removing control %s on device %s: %s", ctrlId, devId, errControl)
+		wbgong.Error.Printf("Error in removing control %s on device %s: %v", ctrlId, devId, errControl)
 	}
 	return 1
 }
@@ -1476,7 +1476,7 @@ func (engine *ESEngine) esVdevAddControl(ctx *ESContext) int {
 
 	errControl := engine.AddControl(devId, ctrlId, ctrlDef)
 	if errControl != nil {
-		wbgong.Error.Printf("Error in creating control %s on device %s: %s", ctrlId, devId, errControl)
+		wbgong.Error.Printf("Error in creating control %s on device %s: %v", ctrlId, devId, errControl)
 	}
 	return 0
 }

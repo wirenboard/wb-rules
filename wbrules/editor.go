@@ -41,7 +41,7 @@ const (
 )
 
 var (
-	invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should ends with .js"}
+	invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should end with .js"}
 	invalidLenError       = &EditorError{EDITOR_ERROR_INVALID_LEN, "File path should be shorter than or equal to 255 chars"}
 	listDirError          = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
 	readError             = &EditorError{EDITOR_ERROR_READ, "Error reading the file"}
