@@ -1032,7 +1032,7 @@ func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
 		},
 	})
 	if err != nil {
-		log.Panicf("cannot define wbrules device: %s", err)
+		log.Panicf("cannot define wbrules device: %v", err)
 	}
 }
 

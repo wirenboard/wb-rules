@@ -44,7 +44,7 @@ var (
 	invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should ends with .js"}
 	invalidLenError       = &EditorError{EDITOR_ERROR_INVALID_LEN, "File path should be shorter than or equal to 255 chars"}
 	listDirError          = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
-	readError             = &EditorError{EDITOR_ERROR_WRITE, "Error reading the file"}
+	readError             = &EditorError{EDITOR_ERROR_READ, "Error reading the file"}
 	writeError            = &EditorError{EDITOR_ERROR_WRITE, "Error writing the file"}
 	fileNotFoundError     = &EditorError{EDITOR_ERROR_FILE_NOT_FOUND, "File not found"}
 	rmError               = &EditorError{EDITOR_ERROR_REMOVE, "Error removing the file"}

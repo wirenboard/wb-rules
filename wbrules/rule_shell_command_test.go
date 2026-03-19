@@ -22,7 +22,7 @@ func (s *RuleShellCommandSuite) fileExists(path string) bool {
 		if os.IsNotExist(err) {
 			return false
 		}
-		s.Require().Fail("unexpected error when checking for samplefile", "%s", err)
+		s.Require().Fail("unexpected error when checking for samplefile", "%v", err)
 	}
 	return true
 }

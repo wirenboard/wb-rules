@@ -121,13 +121,13 @@ func main() {
 
 	driver, err := wbgong.NewDriverBase(driverArgs)
 	if err != nil {
-		wbgong.Error.Fatalf("error creating driver: %s", err)
+		wbgong.Error.Fatalf("error creating driver: %v", err)
 	}
 
 	wbgong.Info.Println("driver is created")
 
 	if err := driver.StartLoop(); err != nil {
-		wbgong.Error.Fatalf("error starting the driver: %s", err)
+		wbgong.Error.Fatalf("error starting the driver: %v", err)
 	}
 	driver.WaitForReady()
 
@@ -152,7 +152,7 @@ func main() {
 	engineMqttClient := wbgong.NewPahoMQTTClient(*brokerAddress, ENGINE_CLIENT_ID)
 	engine, err := wbrules.NewESEngine(driver, engineMqttClient, engineOptions)
 	if err != nil {
-		wbgong.Error.Fatalf("error creating engine: %s", err)
+		wbgong.Error.Fatalf("error creating engine: %v", err)
 	}
 	engine.Start()
 	defer engine.Stop()
@@ -162,7 +162,7 @@ func main() {
 	if *editDir != "" {
 		err := engine.SetSourceRoot(*editDir)
 		if err != nil {
-			wbgong.Error.Fatalf("error setting source root: %s", err)
+			wbgong.Error.Fatalf("error setting source root: %v", err)
 		}
 	}
 	for _, path := range flag.Args() {
@@ -181,7 +181,7 @@ func main() {
 		rpc := wbgong.NewMQTTRPCServer(RPC_DRIVER_NAME, engineMqttClient)
 		err := rpc.Register(wbrules.NewEditor(engine))
 		if err != nil {
-			wbgong.Error.Fatalf("error registering editor: %s", err)
+			wbgong.Error.Fatalf("error registering editor: %v", err)
 		}
 		rpc.Start()
 		defer rpc.Stop()

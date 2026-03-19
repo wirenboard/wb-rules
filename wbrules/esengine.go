@@ -221,7 +221,7 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	// [ global ]
 
 	if err := engine.loadLib(); err != nil {
-		wbgong.Error.Panicf("failed to load runtime library: %s", err)
+		wbgong.Error.Panicf("failed to load runtime library: %v", err)
 	}
 
 	engine.globalCtx.Pop()
@@ -406,7 +406,7 @@ func (engine *ESEngine) makeControlObject(ctx *ESContext, devID, ctrlID string) 
 
 // Engine callback error handler
 func (engine *ESEngine) CallbackErrorHandler(err ESError) {
-	engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("ECMAScript error: %s", err))
+	engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("ECMAScript error: %v", err))
 }
 
 func (engine *ESEngine) ScriptDir() string {
@@ -1104,7 +1104,7 @@ func (engine *ESEngine) esDefineVirtualDevice(ctx *ESContext) int {
 	obj := ctx.GetJSObject(1).(objx.Map)
 
 	if err := engine.DefineVirtualDevice(name, obj); err != nil {
-		wbgong.Error.Printf("device definition error: %s", err)
+		wbgong.Error.Printf("device definition error: %v", err)
 		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
 		return duktape.DUK_RET_INSTACK_ERROR
 	}
@@ -2237,7 +2237,7 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 	go func() {
 		r, err := Spawn(args[0], args[1:], captureOutput, captureErrorOutput, input)
 		if err != nil {
-			wbgong.Error.Printf("external command failed: %s", err)
+			wbgong.Error.Printf("external command failed: %v", err)
 			return
 		}
 		if callbackFn != nil {
@@ -2316,7 +2316,7 @@ func (engine *ESEngine) esWbDefineRule(ctx *ESContext) int {
 
 	if ruleId, err = engine.DefineRule(rule, ctx); err != nil {
 		engine.Log(ENGINE_LOG_ERROR,
-			fmt.Sprintf("defineRule error: %s", err))
+			fmt.Sprintf("defineRule error: %v", err))
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -2479,7 +2479,7 @@ func (engine *ESEngine) EvalScript(code string) error {
 	engine.CallSync(func() {
 		err := engine.globalCtx.EvalScript(code)
 		if err != nil {
-			engine.Logf(ENGINE_LOG_ERROR, "eval error: %s", err)
+			engine.Logf(ENGINE_LOG_ERROR, "eval error: %v", err)
 		}
 		ch <- err
 	})
@@ -2504,7 +2504,7 @@ func (engine *ESEngine) SetPersistentDBMode(filename string, mode os.FileMode) (
 		&bolt.Options{Timeout: 1 * time.Second})
 
 	if err != nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("can't open persistent DB file: %s", err))
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("can't open persistent DB file: %v", err))
 		return
 	}
 
