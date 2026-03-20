@@ -40,15 +40,17 @@ const (
 	EDITOR_ERROR_INVALID_LEN    = 1009
 )
 
-var invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should ends with .js"}
-var invalidLenError = &EditorError{EDITOR_ERROR_INVALID_LEN, "File path should be shorter than or equal to 255 chars"}
-var listDirError = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
-var readError = &EditorError{EDITOR_ERROR_WRITE, "Error reading the file"}
-var writeError = &EditorError{EDITOR_ERROR_WRITE, "Error writing the file"}
-var fileNotFoundError = &EditorError{EDITOR_ERROR_FILE_NOT_FOUND, "File not found"}
-var rmError = &EditorError{EDITOR_ERROR_REMOVE, "Error removing the file"}
-var renameError = &EditorError{EDITOR_ERROR_RENAME, "Error renaming the file"}
-var overwriteError = &EditorError{EDITOR_ERROR_OVERWRITE, "New-state file already exists"}
+var (
+	invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should end with .js"}
+	invalidLenError       = &EditorError{EDITOR_ERROR_INVALID_LEN, "File path should be shorter than or equal to 255 chars"}
+	listDirError          = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
+	readError             = &EditorError{EDITOR_ERROR_READ, "Error reading the file"}
+	writeError            = &EditorError{EDITOR_ERROR_WRITE, "Error writing the file"}
+	fileNotFoundError     = &EditorError{EDITOR_ERROR_FILE_NOT_FOUND, "File not found"}
+	rmError               = &EditorError{EDITOR_ERROR_REMOVE, "Error removing the file"}
+	renameError           = &EditorError{EDITOR_ERROR_RENAME, "Error renaming the file"}
+	overwriteError        = &EditorError{EDITOR_ERROR_OVERWRITE, "New-state file already exists"}
+)
 
 func NewEditor(locFileManager LocFileManager) *Editor {
 	return &Editor{locFileManager}
@@ -65,9 +67,9 @@ type EditorSaveArgs struct {
 }
 
 type EditorSaveResponse struct {
-	Error     interface{} `json:"error,omitempty"`
-	Path      string      `json:"path"`
-	Traceback []LocItem   `json:"traceback,omitempty"`
+	Error     any       `json:"error,omitempty"`
+	Path      string    `json:"path"`
+	Traceback []LocItem `json:"traceback,omitempty"`
 }
 
 func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) error {
@@ -87,7 +89,7 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 
 	// check if this file already exists and disabled, so update path
 	if entry, err := editor.locateFile(pth); err == nil && !entry.Enabled {
-		pth = pth + FILE_DISABLED_SUFFIX
+		pth += FILE_DISABLED_SUFFIX
 	}
 
 	err := editor.locFileManager.LiveWriteScript(pth, args.Content)

@@ -40,8 +40,8 @@ func (s *RuleReadConfigSuite) TryReadingConfig(configPath string) {
 	s.publish("/devices/somedev/controls/readSampleConfig", configPath, "somedev/readSampleConfig")
 }
 
-func (s *RuleReadConfigSuite) verifyReadConfRuleLog(configPath string, msgs ...interface{}) {
-	msgs = append([]interface{}{
+func (s *RuleReadConfigSuite) verifyReadConfRuleLog(configPath string, msgs ...any) {
+	msgs = append([]any{
 		fmt.Sprintf(
 			"tst -> /devices/somedev/controls/readSampleConfig: [%s] (QoS 1, retained)",
 			configPath),

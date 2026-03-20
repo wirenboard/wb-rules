@@ -5,7 +5,7 @@ import (
 
 	"github.com/robfig/cron/v3"
 	"github.com/stretchr/objx"
-	wbgong "github.com/wirenboard/wbgong"
+	"github.com/wirenboard/wbgong"
 )
 
 const (
@@ -42,7 +42,7 @@ type RuleCondition interface {
 	// case nil is returned as the optional value,
 	// the value of cell must be used.
 	RequireInitialization() bool
-	Check(e *ControlChangeEvent) (bool, interface{})
+	Check(e *ControlChangeEvent) (bool, any)
 	GetControlSpecs() []ControlSpec
 }
 
@@ -52,7 +52,7 @@ func (ruleCond *RuleConditionBase) RequireInitialization() bool {
 	return true
 }
 
-func (ruleCond *RuleConditionBase) Check(e *ControlChangeEvent) (bool, interface{}) {
+func (ruleCond *RuleConditionBase) Check(e *ControlChangeEvent) (bool, any) {
 	return false, nil
 }
 
@@ -75,7 +75,7 @@ func NewLevelTriggeredRuleCondition(cond func() bool) *LevelTriggeredRuleConditi
 	}
 }
 
-func (ruleCond *LevelTriggeredRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
+func (ruleCond *LevelTriggeredRuleCondition) Check(e *ControlChangeEvent) (bool, any) {
 	return ruleCond.cond(), nil
 }
 
@@ -87,7 +87,7 @@ func NewDestroyedRuleCondition() *DestroyedRuleCondition {
 	return &DestroyedRuleCondition{}
 }
 
-func (ruleCond *DestroyedRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
+func (ruleCond *DestroyedRuleCondition) Check(e *ControlChangeEvent) (bool, any) {
 	panic("invoking a destroyed rule")
 }
 
@@ -105,7 +105,7 @@ func NewEdgeTriggeredRuleCondition(cond func() bool) *EdgeTriggeredRuleCondition
 	}
 }
 
-func (ruleCond *EdgeTriggeredRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
+func (ruleCond *EdgeTriggeredRuleCondition) Check(e *ControlChangeEvent) (bool, any) {
 	current := ruleCond.cond()
 	shouldFire := current && (ruleCond.firstRun || current != ruleCond.prevCondValue)
 	ruleCond.prevCondValue = current
@@ -132,7 +132,7 @@ func (ruleCond *CellChangedRuleCondition) GetControlSpecs() []ControlSpec {
 	return []ControlSpec{ruleCond.ctrlSpec}
 }
 
-func (ruleCond *CellChangedRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
+func (ruleCond *CellChangedRuleCondition) Check(e *ControlChangeEvent) (bool, any) {
 	if e == nil || e.Spec != ruleCond.ctrlSpec {
 		return false, nil
 	}
@@ -151,18 +151,18 @@ func (ruleCond *CellChangedRuleCondition) Check(e *ControlChangeEvent) (bool, in
 
 type FuncValueChangedRuleCondition struct {
 	RuleConditionBase
-	thunk    func() interface{}
-	oldValue interface{}
+	thunk    func() any
+	oldValue any
 }
 
-func NewFuncValueChangedRuleCondition(f func() interface{}) *FuncValueChangedRuleCondition {
+func NewFuncValueChangedRuleCondition(f func() any) *FuncValueChangedRuleCondition {
 	return &FuncValueChangedRuleCondition{
 		thunk:    f,
 		oldValue: nil,
 	}
 }
 
-func (ruleCond *FuncValueChangedRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
+func (ruleCond *FuncValueChangedRuleCondition) Check(e *ControlChangeEvent) (bool, any) {
 	if e != nil {
 		if !e.IsComplete {
 			wbgong.Info.Printf("skipping rule due to incomplete cell in whenChanged: %s", e.Spec)
@@ -212,11 +212,11 @@ func (ruleCond *OrRuleCondition) GetControlSpecs() []ControlSpec {
 	return r
 }
 
-func (ruleCond *OrRuleCondition) Check(e *ControlChangeEvent) (bool, interface{}) {
+func (ruleCond *OrRuleCondition) Check(e *ControlChangeEvent) (bool, any) {
 	// if condition is not initialized, we need to check all subconditions to collect deps
 	// 'Or' condition is initialized by default if no subconditions requires initialization
 	var res = false
-	var newValue interface{}
+	var newValue any
 	var gotValue = false
 
 	for _, cond := range ruleCond.conds {
@@ -313,7 +313,7 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 	rule.checkMode = CheckModeNone
 
 	var shouldFire bool
-	var newValue interface{}
+	var newValue any
 
 	if noDeps {
 		shouldFire, newValue = rule.cond.Check(nil)
@@ -329,11 +329,11 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 
 	var args objx.Map
 	if newValue != nil {
-		args = objx.New(map[string]interface{}{
+		args = objx.New(map[string]any{
 			"newValue": newValue,
 		})
 	} else if !noDeps && e != nil {
-		args = objx.New(map[string]interface{}{
+		args = objx.New(map[string]any{
 			"device":   e.Spec.DeviceId,
 			"cell":     e.Spec.ControlId,
 			"newValue": e.Value,
@@ -348,8 +348,7 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 
 func (rule *Rule) MaybeAddToCron(cron Cron) {
 	if cronCond, ok := rule.cond.(*CronRuleCondition); ok {
-		var err error
-		err = cronCond.MaybeAddToCron(cron, func() {
+		err := cronCond.MaybeAddToCron(cron, func() {
 			if rule.then != nil {
 				rule.then(nil)
 			}

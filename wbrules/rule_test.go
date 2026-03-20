@@ -81,8 +81,7 @@ type RuleSuiteBase struct {
 
 	controlChange <-chan *ControlChangeEvent
 
-	ruleFile string
-	cron     *fakeCron
+	cron *fakeCron
 
 	PersistentDBFile string
 	VdevStorageFile  string
@@ -112,8 +111,8 @@ func (s *RuleSuiteBase) createTempFiles() {
 	wbgong.Debug.Printf("RuleSuiteBase created temp dir %s", tmpDir)
 }
 
-func (s *RuleSuiteBase) preprocessItemsForVerify(items []interface{}) (newItems []interface{}) {
-	newItems = make([]interface{}, len(items))
+func (s *RuleSuiteBase) preprocessItemsForVerify(items []any) (newItems []any) {
+	newItems = make([]any, len(items))
 	for n, item := range items {
 		itemStr, ok := item.(string)
 		if !ok {
@@ -139,16 +138,16 @@ func (s *RuleSuiteBase) preprocessItemsForVerify(items []interface{}) (newItems 
 	return
 }
 
-func (s *RuleSuiteBase) Verify(items ...interface{}) {
+func (s *RuleSuiteBase) Verify(items ...any) {
 	s.FakeMQTTFixture.Verify(s.preprocessItemsForVerify(items)...)
 }
 
-func (s *RuleSuiteBase) VerifyUnordered(items ...interface{}) {
+func (s *RuleSuiteBase) VerifyUnordered(items ...any) {
 	s.FakeMQTTFixture.VerifyUnordered(s.preprocessItemsForVerify(items)...)
 }
 
-func (s *RuleSuiteBase) SkipTill(item interface{}) {
-	items := make([]interface{}, 1)
+func (s *RuleSuiteBase) SkipTill(item any) {
+	items := make([]any, 1)
 	items[0] = item
 	s.FakeMQTTFixture.SkipTill(s.preprocessItemsForVerify(items)[0].(string))
 }
@@ -356,7 +355,7 @@ func (s *RuleSuiteBase) publishSomedev() {
 	s.publish("/devices/somedev/controls/temp", "19", "somedev/temp")
 }
 
-func (s *RuleSuiteBase) SetCellValue(devId, ctrlId string, value interface{}) {
+func (s *RuleSuiteBase) SetCellValue(devId, ctrlId string, value any) {
 	err := s.driver.Access(func(tx wbgong.DriverTx) (err error) {
 		dev := tx.GetDevice(devId)
 		ctrl := dev.GetControl(ctrlId)
@@ -371,7 +370,7 @@ func (s *RuleSuiteBase) SetCellValue(devId, ctrlId string, value interface{}) {
 	s.Equal(devId+"/"+ctrlId, ctrlSpec.String())
 }
 
-func (s *RuleSuiteBase) SetCellValueNoVerify(devID, ctrlID string, value interface{}) {
+func (s *RuleSuiteBase) SetCellValueNoVerify(devID, ctrlID string, value any) {
 	err := s.driver.Access(func(tx wbgong.DriverTx) (err error) {
 		dev := tx.GetDevice(devID)
 		ctrl := dev.GetControl(ctrlID)

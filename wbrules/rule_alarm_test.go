@@ -19,14 +19,13 @@ type AlarmSuite struct {
 func (s *AlarmSuite) SetupTest() {
 	s.SetupSkippingDefs("testrules_alarm.js")
 	s.publishTestDev()
-
 }
 
-func (s *AlarmSuite) loadAlarms(config string, alarm string) {
+func (s *AlarmSuite) loadAlarms(config, alarm string) {
 	s.loadAlarmsSkipping(config, "", alarm)
 }
 
-func (s *AlarmSuite) loadAlarmsSkipping(config string, skipLine string, alarm string) {
+func (s *AlarmSuite) loadAlarmsSkipping(config, skipLine, alarm string) {
 	confPath := s.CopyModifiedDataFileToTempDir(config, config, func(text string) string {
 		if skipLine == "" {
 			return text
@@ -103,7 +102,7 @@ func (s *AlarmSuite) verifyAlarmControlChange(name string, active bool) {
 	)
 }
 
-func (s *AlarmSuite) verifyNotificationMsgs(alarm string, text string, stopTimer bool, updateMeta bool) {
+func (s *AlarmSuite) verifyNotificationMsgs(alarm, text string, stopTimer, updateMeta bool) {
 	if updateMeta {
 		s.Verify(
 			fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta: [{\"order\":1,\"readonly\":true,\"title\":{\"en\":\"%s\"},\"type\":\"alarm\"}] (QoS 1, retained)", alarm, text),

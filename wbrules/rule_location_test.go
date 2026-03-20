@@ -201,7 +201,7 @@ func (s *RuleLocationSuite) TestRemoval() {
 
 func (s *RuleLocationSuite) TestFaultyScript() {
 	err := s.OverwriteScript("testrules_locations_faulty.js", "testrules_locations_faulty.js")
-	s.NotNil(err, "error expected")
+	s.Error(err, "error expected")
 	scriptErr, ok := err.(ScriptError)
 	s.Require().True(ok, "ScriptError expected")
 	s.Contains(scriptErr.Message, "ReferenceError")
@@ -271,7 +271,7 @@ func (s *RuleLocationSuite) TestSyntaxError() {
 	err := s.OverwriteScript(
 		"testrules_locations_syntax_error.js",
 		"testrules_locations_syntax_error.js")
-	s.NotNil(err, "error expected")
+	s.Error(err, "error expected")
 	scriptErr, ok := err.(ScriptError)
 	s.Require().True(ok, "ScriptError expected")
 	s.Contains(scriptErr.Message, "SyntaxError")

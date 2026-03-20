@@ -74,9 +74,9 @@ type TimerFunc func(id TimerId, d time.Duration, periodic bool) wbgong.Timer
 func newTimer(id TimerId, d time.Duration, periodic bool) wbgong.Timer {
 	if periodic {
 		return wbgong.NewRealTicker(d)
-	} else {
-		return wbgong.NewRealTimer(d)
 	}
+
+	return wbgong.NewRealTimer(d)
 }
 
 type TimerEntry struct {
@@ -136,7 +136,7 @@ type ControlProxy struct {
 	name     string
 	control  wbgong.Control
 
-	cachedValue interface{}
+	cachedValue any
 	cacheValid  bool
 }
 
@@ -277,8 +277,6 @@ func (devProxy *DeviceProxy) SetMeta(key, metaValue string) {
 	if errAccess != nil {
 		wbgong.Error.Printf("device %s SetMeta(%s=%s) error: %s", devId, key, metaValue, errAccess)
 	}
-
-	return
 }
 
 func (devProxy *DeviceProxy) GetMeta() (m wbgong.MetaInfo) {
@@ -295,8 +293,8 @@ func (devProxy *DeviceProxy) GetMeta() (m wbgong.MetaInfo) {
 	return
 }
 
-func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgong.Control, value interface{},
-	prevValue interface{}, tx wbgong.DriverTx) error {
+func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgong.Control, value any,
+	prevValue any, tx wbgong.DriverTx) error {
 	ctrlProxy.Lock()
 	defer ctrlProxy.Unlock()
 
@@ -358,7 +356,7 @@ func (ctrlProxy *ControlProxy) GetMeta() (m wbgong.MetaInfo) {
 }
 
 // TODO: return error on non-existing/incomplete control
-func (ctrlProxy *ControlProxy) Value() (v interface{}) {
+func (ctrlProxy *ControlProxy) Value() (v any) {
 	if wbgong.DebuggingEnabled() {
 		wbgong.Debug.Printf("[ctrlProxy] getting value of control %s/%s", ctrlProxy.devProxy.name, ctrlProxy.name)
 	}
@@ -411,7 +409,7 @@ func (ctrlProxy *ControlProxy) Value() (v interface{}) {
 	return
 }
 
-func (ctrlProxy *ControlProxy) SetValue(value interface{}, notifySubs bool) error {
+func (ctrlProxy *ControlProxy) SetValue(value any, notifySubs bool) error {
 	if wbgong.DebuggingEnabled() {
 		wbgong.Debug.Printf("[ctrlProxy %s/%s] SetValue(%v)", ctrlProxy.devProxy.name, ctrlProxy.name, value)
 	}
@@ -430,9 +428,8 @@ func (ctrlProxy *ControlProxy) SetValue(value interface{}, notifySubs bool) erro
 		_, isLocal = ctrl.GetDevice().(wbgong.LocalDevice)
 		if isLocal {
 			return ctrl.UpdateValue(value, notifySubs)()
-		} else {
-			return ctrl.SetOnValue(value)()
 		}
+		return ctrl.SetOnValue(value)()
 	})
 
 	if isLocal && notifySubs {
@@ -447,7 +444,7 @@ func (ctrlProxy *ControlProxy) SetValue(value interface{}, notifySubs bool) erro
 }
 
 // SetMeta sets meta field of control
-func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChangeEvent) {
+func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) *ControlChangeEvent {
 	if wbgong.DebuggingEnabled() {
 		wbgong.Debug.Printf("[ctrlProxy %s/%s] SetMeta(%v=%v)", ctrlProxy.devProxy.name, ctrlProxy.name, key, metaValue)
 	}
@@ -455,14 +452,14 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 	ctrl := ctrlProxy.getControl()
 	if ctrl == nil {
 		wbgong.Error.Printf("failed to SetMeta for unexisting control")
-		return
+		return nil
 	}
 
 	var spec ControlSpec
 	isComplete := false
 	isRetained := false
 	var controlType string
-	var prevMetaValue interface{}
+	var prevMetaValue any
 
 	isLocal := false
 	errAccess := ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
@@ -548,9 +545,9 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 	if errAccess != nil {
 		wbgong.Error.Printf("control %s/%s SetMeta(%s=%s) error: %s", ctrlProxy.devProxy.name,
 			ctrlProxy.name, key, metaValue, errAccess)
-		return
+		return nil
 	}
-	cce = &ControlChangeEvent{
+	return &ControlChangeEvent{
 		Spec:        spec,
 		ControlType: controlType,
 		IsComplete:  isComplete,
@@ -558,7 +555,6 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) (cce *ControlChang
 		Value:       metaValue,
 		PrevValue:   prevMetaValue,
 	}
-	return
 }
 
 // FIXME: error handling here
@@ -599,8 +595,8 @@ type ControlChangeEvent struct {
 	ControlType string
 	IsComplete  bool
 	IsRetained  bool
-	Value       interface{}
-	PrevValue   interface{}
+	Value       any
+	PrevValue   any
 }
 
 type RuleEngineOptions struct {
@@ -776,7 +772,7 @@ func (engine *RuleEngine) SubscribeControlChange() <-chan *ControlChangeEvent {
 	engine.controlChangeSubsMutex.Lock()
 	defer engine.controlChangeSubsMutex.Unlock()
 
-	ret := make(chan *ControlChangeEvent, 0) // ENGINE_CONTROL_CHANGE_QUEUE_LEN)
+	ret := make(chan *ControlChangeEvent) // ENGINE_CONTROL_CHANGE_QUEUE_LEN)
 	engine.controlChangeSubs = append(engine.controlChangeSubs, ret)
 	wbgong.Debug.Printf("[ruleengine] Add subscriber for ControlChangeEvent (channel %v)", ret)
 	return ret
@@ -883,21 +879,14 @@ ReadyWaitLoop:
 	engine.updateDebugEnabled()
 
 	// wbgong.Info.Printf("******** READY ********")
-	for {
-		select {
-		case _, ok := <-engine.eventBuffer.Observe():
-			if ok {
-				events := engine.eventBuffer.Retrieve()
-				for _, event := range events {
-					engine.processEvent(event)
-				}
-			} else {
-				engine.handleStop()
-				wbgong.Info.Println("[engine] Stop main loop")
-				return
-			}
+	for range engine.eventBuffer.Observe() {
+		for _, event := range engine.eventBuffer.Retrieve() {
+			engine.processEvent(event)
 		}
 	}
+
+	engine.handleStop()
+	wbgong.Info.Println("[engine] Stop main loop")
 }
 
 // PushToEventBuffer sends prepared ControlChangeEvent to engines event buffer
@@ -915,11 +904,10 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 		wbgong.Debug.Printf("[engine] driverEventHandler(event %T(%v))", event, event)
 	}
 
-	var value, prevValue interface{}
+	var value, prevValue any
 
 	var spec ControlSpec
-	isComplete := false
-	isRetained := false
+	var isComplete, isRetained bool
 	var controlType string
 
 	switch e := event.(type) {
@@ -1044,7 +1032,7 @@ func (engine *RuleEngine) setupRuleEngineSettingsDevice() {
 		},
 	})
 	if err != nil {
-		log.Panicf("cannot define wbrules device: %s", err)
+		log.Panicf("cannot define wbrules device: %v", err)
 	}
 }
 
@@ -1095,7 +1083,7 @@ func (engine *RuleEngine) StoreRuleDeps(rule *Rule) {
 			engine.StoreRuleControlSpec(rule, spec)
 		}
 	} else if len(engine.notedTimers) > 0 {
-		for timerName, _ := range engine.notedTimers {
+		for timerName := range engine.notedTimers {
 			engine.storeRuleTimer(rule, timerName)
 		}
 	} else if !rule.HasDeps() {
@@ -1401,7 +1389,7 @@ func (engine *RuleEngine) StartTimer(name string, callback func(), interval time
 
 	engine.timersMutex.Lock()
 	n := engine.nextTimerId
-	engine.nextTimerId += 1
+	engine.nextTimerId++
 	engine.timers[n] = entry
 	engine.timersMutex.Unlock()
 
@@ -1475,7 +1463,7 @@ func (engine *RuleEngine) Publish(topic, payload string, qos byte, retain bool) 
 	engine.mqttClient.Publish(wbgong.MQTTMessage{
 		Topic:    topic,
 		Payload:  payload,
-		QoS:      byte(qos),
+		QoS:      qos,
 		Retained: retain,
 	})
 }
@@ -1529,9 +1517,7 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 	// get 'order' property
 	orderValue, hasOrder := ctrlDef[VDEV_CONTROL_DESCR_PROP_ORDER]
 	if hasOrder {
-		order := 0.0
-		ok := false
-		order, ok = orderValue.(float64)
+		order, ok := orderValue.(float64)
 		if !ok {
 			return fmt.Errorf("%s/%s: non-number value of order property, has %T",
 				devId, ctrlId, orderValue)
@@ -1609,10 +1595,10 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 			var enumTitlesMap map[string]wbgong.Title
 
 			switch t := enum.(type) {
-			case map[string]interface{}:
+			case map[string]any:
 				enumTitlesMap = make(map[string]wbgong.Title)
 				for key, value := range t {
-					if submap, ok := value.(map[string]interface{}); ok {
+					if submap, ok := value.(map[string]any); ok {
 						titleMap := make(wbgong.Title)
 						for lang, title := range submap {
 							if str, ok := title.(string); ok {
@@ -1667,7 +1653,7 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 		var titleMap wbgong.Title
 
 		switch t := title.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			titleMap = make(wbgong.Title)
 			for key, value := range t {
 				if str, ok := value.(string); ok {
@@ -1783,7 +1769,7 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		var titleMap wbgong.Title
 
 		switch t := title.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			titleMap = make(wbgong.Title)
 			for key, value := range t {
 				if str, ok := value.(string); ok {
@@ -1826,7 +1812,7 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	// the newly added cells are published immediately and if their order
 	// changes (map key order is random) the tests may break.
 	controlIds := make([]string, 0, len(m))
-	for ctrlId, _ := range m {
+	for ctrlId := range m {
 		controlIds = append(controlIds, ctrlId)
 	}
 	sort.Strings(controlIds)
@@ -1838,7 +1824,7 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		maybeCtrlDef := m[ctrlId]
 		ctrlDef, ok := maybeCtrlDef.(objx.Map)
 		if !ok {
-			cd, ok := maybeCtrlDef.(map[string]interface{})
+			cd, ok := maybeCtrlDef.(map[string]any)
 			if !ok {
 				return fmt.Errorf("%s/%s: bad control definition", devId, ctrlId)
 			}
@@ -1970,7 +1956,7 @@ func (engine *RuleEngine) newTrackHandler(subTopic string) func(wbgong.MQTTMessa
 		if _, ok := engine.tracks[subTopic]; ok {
 			for _, tracker := range engine.tracks[subTopic] {
 				tr := tracker
-				args = objx.New(map[string]interface{}{
+				args = objx.New(map[string]any{
 					"topic": msg.Topic,
 					"value": msg.Payload,
 				})
@@ -2015,7 +2001,7 @@ func (engine *RuleEngine) getRev() uint32 {
 
 func (engine *RuleEngine) GetDeviceProxyCacheSize() int {
 	count := 0
-	engine.deviceProxyCache.Range(func(key, value interface{}) bool {
+	engine.deviceProxyCache.Range(func(key, value any) bool {
 		count++
 		return true
 	})
@@ -2055,6 +2041,6 @@ func (engine *RuleEngine) Log(level EngineLogLevel, message string) {
 	engine.Publish("/wbrules/log/"+topicItem, message, 1, false)
 }
 
-func (engine *RuleEngine) Logf(level EngineLogLevel, format string, v ...interface{}) {
+func (engine *RuleEngine) Logf(level EngineLogLevel, format string, v ...any) {
 	engine.Log(level, fmt.Sprintf(format, v...))
 }

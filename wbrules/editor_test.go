@@ -73,7 +73,7 @@ func (s *EditorSuite) expectLiveWrite(path string, err error) {
 }
 
 func (s *EditorSuite) verifyLiveWrite() {
-	s.Equal("", s.liveWritePath, "LiveWriteDataFile() wasn't called")
+	s.Empty(s.liveWritePath, "LiveWriteDataFile() wasn't called")
 }
 
 func (s *EditorSuite) walkSources(walkFn func(virtualPath, physicalPath string)) {
@@ -383,7 +383,7 @@ func (s *EditorSuite) TestRenameFile() {
 	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": "sample2.js"},
 		EDITOR_ERROR_OVERWRITE, "EditorError", "New-state file already exists")
 	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": "sample1_new"},
-		EDITOR_ERROR_INVALID_EXT, "EditorError", "File name should ends with .js")
+		EDITOR_ERROR_INVALID_EXT, "EditorError", "File name should end with .js")
 	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": strings.Repeat("x", 255) + ".js"},
 		EDITOR_ERROR_INVALID_LEN, "EditorError", "File path should be shorter than or equal to 255 chars")
 	s.VerifyRpcError("Rename", objx.Map{"path": "nosuchfile.js", "new_path": "sample1_new.js"},
