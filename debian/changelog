@@ -1,3 +1,9 @@
+wb-rules (2.39.2) stable; urgency=medium
+
+  * Fix trackMqtt panic on script reload
+
+ -- Evgeny Boger <boger@wirenboard.com>  Mon, 23 Mar 2026 13:27:13 +0300
+
 wb-rules (2.39.1) stable; urgency=medium
 
   * Fix linter issues, no functional changes

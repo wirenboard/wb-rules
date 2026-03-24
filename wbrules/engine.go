@@ -1934,8 +1934,8 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 	tracker.Callback = ctx.WrapCallback(-1)
 	if _, ok := engine.tracks[topic]; !ok {
 		engine.tracks[topic] = make(MqttTrackerMap)
+		engine.mqttClient.Subscribe(engine.newTrackHandler(topic), topic)
 	}
-	engine.mqttClient.Subscribe(engine.newTrackHandler(topic), topic)
 	engine.tracks[topic][trackerID] = tracker
 
 	engine.cleanup.AddCleanup(func() {
@@ -1943,6 +1943,7 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 		defer engine.mqttTrackerMutex.Unlock()
 		delete(engine.tracks[topic], trackerID)
 		if len(engine.tracks[topic]) < 1 {
+			delete(engine.tracks, topic)
 			engine.mqttClient.Unsubscribe(topic)
 		}
 	})
@@ -1952,18 +1953,22 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 
 func (engine *RuleEngine) newTrackHandler(subTopic string) func(wbgong.MQTTMessage) {
 	return func(msg wbgong.MQTTMessage) {
-		var args objx.Map
-		if _, ok := engine.tracks[subTopic]; ok {
-			for _, tracker := range engine.tracks[subTopic] {
-				tr := tracker
-				args = objx.New(map[string]any{
-					"topic": msg.Topic,
-					"value": msg.Payload,
-				})
-				engine.CallSync(func() {
-					tr.Callback(args)
-				})
-			}
+		engine.mqttTrackerMutex.Lock()
+		trackers := make([]MqttTracker, 0, len(engine.tracks[subTopic]))
+		for _, tracker := range engine.tracks[subTopic] {
+			trackers = append(trackers, tracker)
+		}
+		engine.mqttTrackerMutex.Unlock()
+
+		for _, tracker := range trackers {
+			tr := tracker
+			args := objx.New(map[string]any{
+				"topic": msg.Topic,
+				"value": msg.Payload,
+			})
+			engine.CallSync(func() {
+				tr.Callback(args)
+			})
 		}
 	}
 }
