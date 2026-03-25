@@ -165,3 +165,26 @@ func TestLoadScenarioNeg(t *testing.T) {
 		}
 	}
 }
+
+func TestInvokeCallbackOnInvalidContext(t *testing.T) {
+	f := newESContextFactory()
+	ctx := f.newESContext(nil, "")
+
+	ctx.PevalString("(function(obj) { return 'ok'; })")
+	cb := ctx.storeCallback(-1)
+	ctx.Pop()
+
+	wrappedCb := func(args objx.Map) interface{} {
+		return ctx.invokeCallback(cb, args)
+	}
+
+	result := wrappedCb(objx.Map{"key": "value"})
+	assert.Equal(t, "ok", result)
+
+	ctx.invalidate()
+
+	assert.NotPanics(t, func() {
+		result = wrappedCb(objx.Map{"key": "value"})
+	})
+	assert.Nil(t, result)
+}
