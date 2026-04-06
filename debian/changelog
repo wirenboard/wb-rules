@@ -1,3 +1,9 @@
+wb-rules (2.39.3) stable; urgency=medium
+
+  * Add 'unixtime' control type support
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 06 Apr 2026 15:00:00 +0400
+
 wb-rules (2.39.2) stable; urgency=medium
 
   * Fix trackMqtt panic on script reload
