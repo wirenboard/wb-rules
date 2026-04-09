@@ -1,3 +1,9 @@
+wb-rules (2.39.4) stable; urgency=medium
+
+  * getDevice/getControl: suppress errors
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 08 Apr 2026 17:00:00 +0400
+
 wb-rules (2.39.3) stable; urgency=medium
 
   * Add 'unixtime' control type support

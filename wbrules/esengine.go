@@ -1021,7 +1021,7 @@ func (engine *ESEngine) esGetDevice(ctx *ESContext) int {
 
 	errDevice := engine.GetDevice(name)
 	if errDevice != nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("Error in getting device: %s", errDevice))
+		engine.Log(ENGINE_LOG_DEBUG, fmt.Sprintf("Error in getting device: %s", errDevice))
 		ctx.PushUndefined()
 		return 1
 	}
@@ -1061,7 +1061,7 @@ func (engine *ESEngine) esGetDevice(ctx *ESContext) int {
 
 func (engine *ESEngine) esGetControl(ctx *ESContext) int {
 	if ctx.GetTop() != 1 || !ctx.IsString(0) {
-		engine.Log(ENGINE_LOG_ERROR, "getDevice(): bad parameters")
+		engine.Log(ENGINE_LOG_ERROR, "getControl(): bad parameters")
 		return duktape.DUK_RET_ERROR
 	}
 
@@ -1069,7 +1069,7 @@ func (engine *ESEngine) esGetControl(ctx *ESContext) int {
 
 	ids := strings.Split(name, "/")
 	if len(ids) != 2 {
-		engine.Log(ENGINE_LOG_ERROR, "getDevice(): bad parameters: should be 'devID/cellID'")
+		engine.Log(ENGINE_LOG_ERROR, "getControl(): bad parameters: should be 'devID/cellID'")
 		return duktape.DUK_RET_ERROR
 	}
 	devID := ids[0]
@@ -1077,14 +1077,14 @@ func (engine *ESEngine) esGetControl(ctx *ESContext) int {
 
 	errDevice := engine.GetDevice(devID)
 	if errDevice != nil {
-		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("Error in getting device: %s", errDevice))
+		engine.Log(ENGINE_LOG_DEBUG, fmt.Sprintf("Error in getting device: %s", errDevice))
 		ctx.PushUndefined()
 		return 1
 	}
 	devProxy := engine.GetDeviceProxy(devID)
 	ctrl := devProxy.getControl(ctrlID)
 	if ctrl == nil {
-		wbgong.Error.Printf("getControl(): no such control '%s'", ctrlID)
+		engine.Log(ENGINE_LOG_DEBUG, fmt.Sprintf("getControl(): no such control '%s'", ctrlID))
 		ctx.PushUndefined()
 		return 1
 	}
