@@ -6,10 +6,10 @@ require (
 	github.com/DisposaBoy/JsonConfigReader v0.0.0-20201129172854-99cf318d67e7
 	github.com/VictoriaMetrics/metrics v1.37.0
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/stretchr/objx v0.5.0
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/objx v0.5.2
+	github.com/stretchr/testify v1.8.4
 	github.com/wirenboard/go-duktape v0.0.0-20240729075045-b4150233e350
-	github.com/wirenboard/wbgong v0.7.2-0.20260507114043-eae6743e4ed8
+	github.com/wirenboard/wbgong v0.7.2-0.20260507201239-e8ab59e90ca2
 	go.etcd.io/bbolt v1.3.9
 )
 
