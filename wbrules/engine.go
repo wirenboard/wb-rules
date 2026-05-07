@@ -1360,7 +1360,10 @@ func (engine *RuleEngine) Stop() {
 	// run all necessary cleanups
 	if engine.cleanupOnStop {
 		wbgong.Info.Println("[engine] Performing MQTT cleanup on stop")
+		start := time.Now()
 		engine.cleanup.RunAllCleanups()
+		elapsed := time.Since(start)
+		wbgong.Info.Printf("[engine] MQTT cleanup completed in %s\n", elapsed)
 	}
 
 	engine.eventBuffer.Close()
