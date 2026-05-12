@@ -253,7 +253,10 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 
 	engineOptions := NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(s.PersistentDBFile)
-	engineOptions.SetModulesDirs(strings.Split(s.ModulesPath, ":"))
+	currentDir, _ := os.Getwd()
+	defaultModulesPath := currentDir + "/../modules"
+	moduleDirs := append(strings.Split(s.ModulesPath, ":"), defaultModulesPath)
+	engineOptions.SetModulesDirs(moduleDirs)
 	s.logClient = s.Broker.MakeClient("wbrules-log")
 
 	s.engine, err = NewESEngine(s.driver, s.logClient, engineOptions)
