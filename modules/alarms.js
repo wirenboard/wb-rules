@@ -64,8 +64,8 @@ function loadAlarm(alarmSrc, notify, alarmDeviceName) {
         (hasExpectedValue ? ' has unexpected value = {}' : ' is out of bounds, value = {}'),
     noAlarmMessage = alarmSrc.noAlarmMessage || alarmSrc.cell + ' is back to normal, value = {}',
     maxCount = checkHasNumKey('maxCount') ? Math.floor(alarmSrc.maxCount) : null,
-    alarmDelayMs = checkHasNumKey('alarmDelayMs') ? alarmDelayMs : 0,
-    noAlarmDelayMs = checkHasNumKey('noAlarmDelayMs') ? noAlarmDelayMs : 0,
+    alarmDelayMs = checkHasNumKey('alarmDelayMs') ? alarmSrc.alarmDelayMs : 0,
+    noAlarmDelayMs = checkHasNumKey('noAlarmDelayMs') ? alarmSrc.noAlarmDelayMs : 0,
     min,
     max,
     interval = null;
