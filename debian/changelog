@@ -1,4 +1,4 @@
-wb-rules (2.39.6) stable; urgency=medium
+wb-rules (2.40.0) stable; urgency=medium
 
   * Move notify/alarms to modules
 
