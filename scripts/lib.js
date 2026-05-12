@@ -354,9 +354,6 @@ function cron(spec) {
   return new _WbRules.CronEntry(spec);
 }
 
-var Notify = require("notify");
-var Alarms = require("alarms");
-
 global.StorableObject = function (obj, ps, pskey) {
   if (pskey === undefined) {
     pskey = '';
@@ -497,3 +494,6 @@ __wbVdevPrototype.setCellValue = function (cell, value) {
 __wbVdevPrototype.publish = function (topic, message) {
   publish('/devices/' + this.__deviceId + '/' + topic, message);
 };
+
+var Notify = require("notify");
+var Alarms = require("alarms");
