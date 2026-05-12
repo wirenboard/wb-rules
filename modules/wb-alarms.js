@@ -1,4 +1,4 @@
-var Notify = require("wb-notify");
+var Notify = require('wb-notify');
 
 var recipientTypes = {
   email: function getEmailSendFunc(src) {
