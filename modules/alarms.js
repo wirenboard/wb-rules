@@ -1,3 +1,5 @@
+var Notify = require("notify");
+
 var recipientTypes = {
   email: function getEmailSendFunc(src) {
     if (!src.hasOwnProperty('to')) throw new Error("email recipient without 'to'");
