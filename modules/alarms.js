@@ -134,7 +134,6 @@ function loadAlarm(alarmSrc, notify, alarmDeviceName) {
 
     if (interval !== null) intervalId = setInterval(notifyAboutActiveAlarm, interval);
 
-    alarmTimerId = null;
     wasActive = true;
   }
 
