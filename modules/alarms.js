@@ -23,7 +23,7 @@ var recipientTypes = {
 };
 
 function maybeFormat(text, arg) {
-  return text.indexOf('{}') >= 0 || text.indexOf('{{') > 0 ? text.xformat(arg) : text;
+  return text.indexOf('{}') >= 0 || text.indexOf('{{') >= 0 ? text.xformat(arg) : text;
 }
 
 function getSendFunc(src) {
