@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -253,8 +254,9 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 
 	engineOptions := NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(s.PersistentDBFile)
-	currentDir, _ := os.Getwd()
-	defaultModulesPath := currentDir + "/../modules"
+	currentDir, err := os.Getwd()
+	s.Ck("os.Getwd()", err)
+	defaultModulesPath := filepath.Join(currentDir, "..", "modules")
 	moduleDirs := append(strings.Split(s.ModulesPath, ":"), defaultModulesPath)
 	engineOptions.SetModulesDirs(moduleDirs)
 	s.logClient = s.Broker.MakeClient("wbrules-log")
