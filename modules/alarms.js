@@ -164,11 +164,11 @@ function loadAlarm(alarmSrc, notify, alarmDeviceName) {
           wasTriggered = true;
 
           if (!wasActive) {
-            if (alarmSrc.alarmDelayMs > 0)
+            if (alarmDelayMs > 0)
               activateTimerId = setTimeout(function () {
                 activateTimerId = null;
                 activateAlarm();
-              }, alarmSrc.alarmDelayMs);
+              }, alarmDelayMs);
             else activateAlarm();
           }
 
@@ -200,11 +200,11 @@ function loadAlarm(alarmSrc, notify, alarmDeviceName) {
           wasTriggered = false;
 
           if (wasActive) {
-            if (alarmSrc.noAlarmDelayMs > 0) {
+            if (noAlarmDelayMs > 0) {
               deactivateTimerId = setTimeout(function () {
                 deactivateTimerId = null;
                 deactivateAlarm();
-              }, alarmSrc.noAlarmDelayMs);
+              }, noAlarmDelayMs);
             } else deactivateAlarm();
           }
 
