@@ -33,7 +33,7 @@ function getSendFunc(src) {
     !src.hasOwnProperty('type') ||
     !recipientTypes.hasOwnProperty(src.type)
   )
-    throw new Error('invalid recipient spec: %s', JSON.stringify(src));
+    throw new Error('invalid recipient spec: ' + JSON.stringify(src));
   return recipientTypes[src.type](src);
 }
 
