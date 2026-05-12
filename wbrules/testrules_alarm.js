@@ -8,5 +8,5 @@ Notify.sendSMS = function (to, text) {
 };
 
 Notify.sendTelegramMessage = function (token, chatId, text) {
-  log("TELEGRAM MESSAGE TOKEN: {} CHATID: {} TEXT: {}", token, chatId, text);
+  log('TELEGRAM MESSAGE TOKEN: {} CHATID: {} TEXT: {}', token, chatId, text);
 };

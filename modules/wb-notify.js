@@ -73,7 +73,7 @@ function _checkUse4gModem(doneCallback) {
 exports.sendEmail = function (to, subject, text) {
   log('sending email: {}', subject);
   var base64subject = Duktape.enc('base64', subject);
-  runShellCommand("/usr/sbin/sendmail -t", {
+  runShellCommand('/usr/sbin/sendmail -t', {
     captureErrorOutput: true,
     captureOutput: true,
     input: 'To: {}\r\nSubject: =?utf-8?B?{}?=\r\nContent-Type: text/plain; charset=utf-8\n\n{}'.format(to, base64subject, text),

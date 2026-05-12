@@ -206,7 +206,7 @@ var _WbRules = {
       return wrapConditionFunc(item, undefined);
     }
 
-    // when: cron("...") is converted to cron: "..."
+    // when: cron('...') is converted to cron: '...'
     if (def.hasOwnProperty('when') && def.when instanceof _WbRules.CronEntry) {
       def._cron = def.when.spec;
       delete def.when;
@@ -455,7 +455,7 @@ global.PersistentStorage = function (name, options) {
             );
           } else if (typeof value === 'object') {
             // check if this storage is not a listener for the object
-  
+
             var len = value._ps.length;
             var found = false;
             for (var i = 0; i < len; i++) {
@@ -495,5 +495,5 @@ __wbVdevPrototype.publish = function (topic, message) {
   publish('/devices/' + this.__deviceId + '/' + topic, message);
 };
 
-var Notify = require("wb-notify");
-var Alarms = require("wb-alarms");
+var Notify = require('wb-notify');
+var Alarms = require('wb-alarms');
