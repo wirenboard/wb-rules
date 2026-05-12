@@ -495,5 +495,5 @@ __wbVdevPrototype.publish = function (topic, message) {
   publish('/devices/' + this.__deviceId + '/' + topic, message);
 };
 
-var Notify = require("notify");
-var Alarms = require("alarms");
+var Notify = require("wb-notify");
+var Alarms = require("wb-alarms");
