@@ -990,6 +990,7 @@ func (engine *RuleEngine) CallSync(thunk func()) {
 	engine.statusMtx.Unlock()
 
 	if !syncQueueActive {
+		thunk()
 		return
 	}
 
@@ -1366,11 +1367,19 @@ func (engine *RuleEngine) Start() {
 
 	engine.eventBuffer = NewEventBuffer()
 
-	engine.driver.OnDriverEvent(engine.driverEventHandler)
-	engine.driver.OnRetainReady(func(tx wbgong.DriverTx) {
-		engine.driverReadyCh <- struct{}{}
-	})
 	atomic.StoreUint32(&engine.active, ENGINE_ACTIVE)
+
+	engine.driver.OnDriverEvent(engine.driverEventHandler)
+	driverReadyCh := engine.driverReadyCh
+	engine.driver.OnRetainReady(func(tx wbgong.DriverTx) {
+		if driverReadyCh != nil {
+			select {
+			case driverReadyCh <- struct{}{}:
+			default:
+				// Channel already has signal or is full; don't block
+			}
+		}
+	})
 
 	go func() {
 		defer close(engine.mainLoopDone)
