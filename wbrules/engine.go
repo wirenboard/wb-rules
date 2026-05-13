@@ -1314,8 +1314,14 @@ func (engine *RuleEngine) handleStop() {
 	}
 
 	engine.statusMtx.Lock()
-	engine.readyCh = nil
-	engine.driverReadyCh = nil
+	if engine.readyCh != nil {
+		close(engine.readyCh)
+		engine.readyCh = nil
+	}
+	if engine.driverReadyCh != nil {
+		close(engine.driverReadyCh)
+		engine.driverReadyCh = nil
+	}
 	engine.syncQueueActive = false
 	engine.statusMtx.Unlock()
 }
