@@ -14,7 +14,7 @@ type TestModulesSuite struct {
 
 func (s *TestModulesSuite) SetupTest() {
 	currentDir, _ := os.Getwd()
-	s.ModulesPath = currentDir + "/test-modules/"
+	s.ModulesPath = currentDir + "/test-modules"
 	s.SetupSkippingDefs("testrules_modules.js", "testrules_modules_2.js")
 }
 

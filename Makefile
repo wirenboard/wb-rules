@@ -47,12 +47,13 @@ wb-rules: main.go wbrules/*.go
 	$(GO_ENV) $(GO) build $(GO_FLAGS)
 
 install:
-	mkdir -p $(DESTDIR)$(PREFIX)/share/wb-rules-modules/ $(DESTDIR)/etc/wb-rules-modules/
+	mkdir -p $(DESTDIR)/etc/wb-rules-modules/
 	install -Dm0755 wb-rules -t $(DESTDIR)$(PREFIX)/bin
 	install -Dm0644 rules/rules.js -t $(DESTDIR)/etc/wb-rules
 	install -Dm0644 wb-rules.wbconfigs $(DESTDIR)/etc/wb-configs.d/13wb-rules
 
 	install -Dm0644 scripts/lib.js -t $(DESTDIR)$(PREFIX)/share/wb-rules-system/scripts
+	install -Dm0644 modules/*.js -t $(DESTDIR)$(PREFIX)/share/wb-rules-modules
 	install -Dm0644 rules/load_alarms.js -t $(DESTDIR)$(PREFIX)/share/wb-rules
 	install -Dm0644 $(WBGO_LOCAL_PATH)/$(DEB_TARGET_ARCH).wbgo.so $(DESTDIR)$(PREFIX)/lib/wb-rules/wbgo.so
 	install -Dm0644 rules/alarms.conf -t $(DESTDIR)/etc/wb-rules
