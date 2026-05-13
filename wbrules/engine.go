@@ -985,6 +985,14 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 }
 
 func (engine *RuleEngine) CallSync(thunk func()) {
+	engine.statusMtx.Lock()
+	syncQueueActive := engine.syncQueueActive
+	engine.statusMtx.Unlock()
+
+	if !syncQueueActive {
+		return
+	}
+
 	if atomic.LoadUint32(&engine.debugEnabled) == ATOMIC_TRUE {
 		delay := time.NewTimer(ENGINE_CALLSYNC_TIMEOUT)
 		select {
@@ -1286,6 +1294,11 @@ func (engine *RuleEngine) setupCron() {
 
 func (engine *RuleEngine) handleStop() {
 	wbgong.Debug.Printf("engine stopped")
+
+	if engine.cron != nil {
+		engine.cron.Stop()
+		engine.cron = nil
+	}
 
 	engine.timersMutex.Lock()
 	timerEntries := make([]*TimerEntry, 0, len(engine.timers))
