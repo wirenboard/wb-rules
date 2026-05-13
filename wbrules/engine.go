@@ -628,6 +628,7 @@ type RuleEngine struct {
 	syncQueueActive bool
 	syncQueue       chan func()
 	syncQuitCh      chan chan struct{}
+	mainLoopDone    chan struct{}
 	mqttClient      wbgong.MQTTClient // for service
 	driver          wbgong.Driver
 	driverReadyCh   chan struct{}
@@ -689,6 +690,7 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 		syncQueue:             make(chan func(), SYNC_QUEUE_LEN),
 		syncQueueActive:       true,
 		syncQuitCh:            make(chan chan struct{}, 1),
+		mainLoopDone:          nil,
 		mqttClient:            mqtt,
 		driver:                driver,
 		driverReadyCh:         nil,
@@ -999,7 +1001,11 @@ func (engine *RuleEngine) CallSync(thunk func()) {
 }
 
 func (engine *RuleEngine) MaybeCallSync(thunk func()) {
-	if engine.syncQueueActive {
+	engine.statusMtx.Lock()
+	syncQueueActive := engine.syncQueueActive
+	engine.statusMtx.Unlock()
+
+	if syncQueueActive {
 		engine.CallSync(thunk)
 	} else {
 		thunk()
@@ -1297,7 +1303,6 @@ func (engine *RuleEngine) handleStop() {
 	engine.readyCh = nil
 	engine.driverReadyCh = nil
 	engine.syncQueueActive = false
-	close(engine.syncQueue)
 	engine.statusMtx.Unlock()
 }
 
@@ -1339,18 +1344,25 @@ func (engine *RuleEngine) updateDebugEnabled() {
 }
 
 func (engine *RuleEngine) Start() {
+	engine.statusMtx.Lock()
 	engine.readyCh = make(chan struct{})
 	engine.driverReadyCh = make(chan struct{}, 1)
+	engine.syncQueueActive = true
+	engine.mainLoopDone = make(chan struct{})
+	engine.statusMtx.Unlock()
+
 	engine.eventBuffer = NewEventBuffer()
 
 	engine.driver.OnDriverEvent(engine.driverEventHandler)
 	engine.driver.OnRetainReady(func(tx wbgong.DriverTx) {
 		engine.driverReadyCh <- struct{}{}
 	})
-	engine.syncQueueActive = true
 	atomic.StoreUint32(&engine.active, ENGINE_ACTIVE)
 
-	go engine.mainLoop()
+	go func() {
+		defer close(engine.mainLoopDone)
+		engine.mainLoop()
+	}()
 	go engine.syncLoop()
 }
 
@@ -1370,8 +1382,13 @@ func (engine *RuleEngine) Stop() {
 	engine.syncQuitCh <- q
 	<-q
 
-	// wait for main loop to release sync queue
-	<-engine.syncQueue
+	// wait for main loop shutdown sequence to finish
+	engine.statusMtx.Lock()
+	mainLoopDone := engine.mainLoopDone
+	engine.statusMtx.Unlock()
+	if mainLoopDone != nil {
+		<-mainLoopDone
+	}
 }
 
 func (engine *RuleEngine) IsActive() bool {
