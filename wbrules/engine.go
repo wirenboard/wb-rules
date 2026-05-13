@@ -1377,11 +1377,6 @@ func (engine *RuleEngine) Stop() {
 
 	engine.eventBuffer.Close()
 
-	// stop sync loop
-	q := make(chan struct{})
-	engine.syncQuitCh <- q
-	<-q
-
 	// wait for main loop shutdown sequence to finish
 	engine.statusMtx.Lock()
 	mainLoopDone := engine.mainLoopDone
@@ -1389,6 +1384,11 @@ func (engine *RuleEngine) Stop() {
 	if mainLoopDone != nil {
 		<-mainLoopDone
 	}
+
+	// stop sync loop
+	q := make(chan struct{})
+	engine.syncQuitCh <- q
+	<-q
 }
 
 func (engine *RuleEngine) IsActive() bool {
