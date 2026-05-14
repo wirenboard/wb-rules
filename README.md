@@ -1161,6 +1161,20 @@ var myModule = require("path/to/myModule");
 
 Для отправки используется Telegram Bot API метод https://core.telegram.org/bots/api#sendmessage.
 
+`Notify.sendWebhook(opts)` отправляет произвольный HTTP-запрос. Параметры
+передаются в объекте `opts`:
+
+* `url` — обязательный, полный URL запроса;
+* `method` — метод (`POST` по умолчанию);
+* `headers` — объект с дополнительными HTTP-заголовками;
+* `contentType` — значение `Content-Type` (по умолчанию `application/json`,
+  если тело начинается с `{`, иначе `text/plain; charset=utf-8`);
+* `body` — тело запроса (строка или объект; объект сериализуется в JSON).
+
+Для отправки используется `curl`; тело передаётся в `stdin` через `--data-binary @-`.
+Эта функция используется как универсальный транспорт для типов получателей
+`webhook`, `vk`, `max`, `matrix` и `wechat` в сервисе алармов (см. ниже).
+
 ## Сервис алармов
 
 Основная функция:
@@ -1235,6 +1249,98 @@ var myModule = require("path/to/myModule");
 
       // Идентификатор чата с пользователем
       "chatId": "123456789"
+    },
+    {
+      // Тип получателя - сообщение от группы ВКонтакте через
+      // метод https://api.vk.com/method/messages.send
+      "type": "vk",
+
+      // Токен сообщества с правом `messages` (получается на vk.com/dev)
+      "token": "vk1.a.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+
+      // Идентификатор получателя:
+      // - ID пользователя для личных сообщений,
+      // - 2000000000 + ID беседы для группового чата.
+      "peerId": "2000000001",
+
+      // Версия VK API (необязательное поле, по умолчанию "5.131")
+      "apiVersion": "5.131"
+    },
+    {
+      // Тип получателя - бот мессенджера MAX через
+      // метод https://platform-api.max.ru/messages
+      "type": "max",
+
+      // Токен доступа бота (получается через @MasterBot в MAX)
+      "token": "yyyyyyyyyyyyyyyyyyyyyyyyyy",
+
+      // Числовой идентификатор чата из MAX Bot API
+      "chatId": "12345"
+    },
+    {
+      // Тип получателя - Matrix-бот через Client-Server API
+      // (https://spec.matrix.org/latest/client-server-api/)
+      "type": "matrix",
+
+      // URL домашнего сервера Matrix (без завершающего /)
+      "homeserver": "https://matrix.org",
+
+      // Токен доступа бота. Получается одним из способов:
+      //   curl -X POST -H "Content-Type: application/json" \
+      //     -d '{"type":"m.login.password",
+      //          "identifier":{"type":"m.id.user","user":"wb-bot"},
+      //          "password":"<password>"}' \
+      //     https://matrix.org/_matrix/client/v3/login
+      // Либо в клиенте Element: Settings -> Help & About -> Access Token.
+      // Токен долгоживущий, действует до logout.
+      "accessToken": "syt_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+
+      // Внутренний ID комнаты (не alias #room:server)
+      "roomId": "!abcdef:matrix.org",
+
+      // Тип сообщения: m.text (обычное) или m.notice (бот-уведомление).
+      // Необязательное поле, по умолчанию m.text.
+      "msgType": "m.text"
+    },
+    {
+      // Тип получателя - бот группы WeChat Work (企业微信) - корпоративного
+      // мессенджера Tencent. Это НЕ обычный WeChat (微信): обычный WeChat
+      // не имеет публичного API для отправки сообщений, а WeChat Work -
+      // отдельный продукт, требующий регистрации организации (企业认证)
+      // и использующийся внутри неё.
+      //
+      // Используется метод https://developer.work.weixin.qq.com/document/path/91770
+      // Сообщение приходит в групповой чат WeChat Work, в котором создан бот.
+      "type": "wechat",
+
+      // Значение параметра ?key=... из URL вебхука бота групповой беседы.
+      // Получается в самом WeChat Work: в групповом чате -> Add Group Robot ->
+      // скопировать выданный сервисом webhook URL и взять из него UUID после ?key=
+      "key": "693a91f6-7xxx-4xxx-bxxx-xxxxxxxxxxxx"
+    },
+    {
+      // Тип получателя - произвольный HTTP-вебхук.
+      // Подходит для Discord, Mattermost, Slack, Bitrix24 и любого другого сервиса,
+      // принимающего HTTP-запрос.
+      "type": "webhook",
+
+      // Полный URL запроса (включая query-параметры, если нужно)
+      "url": "https://example.com/hooks/abcdef",
+
+      // HTTP-метод (необязательное поле, по умолчанию "POST")
+      "method": "POST",
+
+      // Значение Content-Type (необязательное поле)
+      "contentType": "application/json",
+
+      // Дополнительные HTTP-заголовки (необязательное поле)
+      "headers": {
+        "Authorization": "Bearer xxxxxxxxxxxx"
+      },
+
+      // Шаблон тела запроса. {} заменяется на текст сообщения,
+      // возможно использование {{ expr }} для произвольных JS-выражений.
+      "bodyTemplate": "{\"text\": \"{}\"}"
     }
   ],
 
