@@ -70,6 +70,10 @@ function _checkUse4gModem(doneCallback) {
   });
 }
 
+function _shellQuote(s) {
+  return "'" + String(s).replace(/'/g, "'\\''") + "'";
+}
+
 exports.sendEmail = function (to, subject, text) {
   log('sending email: {}', subject);
   var base64subject = Duktape.enc('base64', subject);
@@ -123,6 +127,39 @@ exports.sendSMS = function (to, text, command) {
       }
     });
   }
+};
+
+exports.sendWebhook = function (opts) {
+  if (!opts || !opts.url) throw new Error("sendWebhook: 'url' required");
+  var method = (opts.method || 'POST').toUpperCase();
+  var body = opts.body;
+  if (body != null && typeof body === 'object') body = JSON.stringify(body);
+  var contentType = opts.contentType ||
+    (body != null && body.charAt(0) === '{' ? 'application/json' : 'text/plain; charset=utf-8');
+
+  var cmd = 'curl -s -X ' + method + ' ' + _shellQuote(opts.url);
+  cmd += ' -H ' + _shellQuote('Content-Type: ' + contentType);
+  if (opts.headers) {
+    Object.keys(opts.headers).forEach(function (k) {
+      cmd += ' -H ' + _shellQuote(k + ': ' + opts.headers[k]);
+    });
+  }
+  if (body != null) cmd += ' --data-binary @-';
+
+  log('sending webhook: {} {}', method, opts.url);
+  runShellCommand(cmd, {
+    captureErrorOutput: true,
+    captureOutput: true,
+    input: body == null ? null : String(body),
+    exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
+      if (exitCode != 0)
+        log.error(
+          'error sending webhook:\n{}\n{}',
+          capturedOutput,
+          capturedErrorOutput
+        );
+    },
+  });
 };
 
 exports.sendTelegramMessage = function (token, chatId, text) {
