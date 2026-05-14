@@ -77,7 +77,7 @@ var recipientTypes = {
     var baseUrl = src.homeserver.replace(/\/+$/, '');
     var msgType = src.msgType || 'm.text';
     return function sendMatrixWrapper(text) {
-      var txnId = 'wbrules-' + Date.now() + '-' + Math.floor(Math.random() * 1000000000);
+      var txnId = 'wbrules-' + Date.now() + '-' + Math.random().toString(36).slice(2, 11);
       var url = baseUrl + '/_matrix/client/v3/rooms/' + encodeURIComponent(src.roomId) +
         '/send/m.room.message/' + encodeURIComponent(txnId);
       Notify.sendWebhook({
