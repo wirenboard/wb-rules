@@ -22,6 +22,85 @@ var recipientTypes = {
       Notify.sendTelegramMessage(src.token, src.chatId, text);
     };
   },
+
+  webhook: function getWebhookSendFunc(src) {
+    if (!src.hasOwnProperty('url')) throw new Error("webhook recipient without 'url'");
+    return function sendWebhookWrapper(text) {
+      var body = src.bodyTemplate ? maybeFormat(src.bodyTemplate, text) : text;
+      Notify.sendWebhook({
+        url: src.url,
+        method: src.method,
+        headers: src.headers,
+        contentType: src.contentType,
+        body: body,
+      });
+    };
+  },
+
+  vk: function getVkSendFunc(src) {
+    if (!src.hasOwnProperty('token')) throw new Error("vk recipient without 'token'");
+    if (!src.hasOwnProperty('peerId')) throw new Error("vk recipient without 'peerId'");
+    var apiVersion = src.apiVersion || '5.131';
+    return function sendVkWrapper(text) {
+      var body = 'access_token=' + encodeURIComponent(src.token) +
+        '&peer_id=' + encodeURIComponent(src.peerId) +
+        '&random_id=0' +
+        '&v=' + encodeURIComponent(apiVersion) +
+        '&message=' + encodeURIComponent(text);
+      Notify.sendWebhook({
+        url: 'https://api.vk.com/method/messages.send',
+        method: 'POST',
+        contentType: 'application/x-www-form-urlencoded',
+        body: body,
+      });
+    };
+  },
+
+  max: function getMaxSendFunc(src) {
+    if (!src.hasOwnProperty('token')) throw new Error("max recipient without 'token'");
+    if (!src.hasOwnProperty('chatId')) throw new Error("max recipient without 'chatId'");
+    return function sendMaxWrapper(text) {
+      Notify.sendWebhook({
+        url: 'https://platform-api.max.ru/messages',
+        method: 'POST',
+        contentType: 'application/json',
+        headers: { Authorization: src.token },
+        body: JSON.stringify({ chat_id: Number(src.chatId), text: text }),
+      });
+    };
+  },
+
+  matrix: function getMatrixSendFunc(src) {
+    if (!src.hasOwnProperty('homeserver')) throw new Error("matrix recipient without 'homeserver'");
+    if (!src.hasOwnProperty('accessToken')) throw new Error("matrix recipient without 'accessToken'");
+    if (!src.hasOwnProperty('roomId')) throw new Error("matrix recipient without 'roomId'");
+    var baseUrl = src.homeserver.replace(/\/+$/, '');
+    var msgType = src.msgType || 'm.text';
+    return function sendMatrixWrapper(text) {
+      var txnId = 'wbrules-' + Date.now() + '-' + Math.floor(Math.random() * 1e9);
+      var url = baseUrl + '/_matrix/client/v3/rooms/' + encodeURIComponent(src.roomId) +
+        '/send/m.room.message/' + encodeURIComponent(txnId);
+      Notify.sendWebhook({
+        url: url,
+        method: 'PUT',
+        contentType: 'application/json',
+        headers: { Authorization: 'Bearer ' + src.accessToken },
+        body: JSON.stringify({ msgtype: msgType, body: text }),
+      });
+    };
+  },
+
+  wechat: function getWechatSendFunc(src) {
+    if (!src.hasOwnProperty('key')) throw new Error("wechat recipient without 'key'");
+    return function sendWechatWrapper(text) {
+      Notify.sendWebhook({
+        url: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=' + encodeURIComponent(src.key),
+        method: 'POST',
+        contentType: 'application/json',
+        body: JSON.stringify({ msgtype: 'text', text: { content: text } }),
+      });
+    };
+  },
 };
 
 function maybeFormat(text, arg) {

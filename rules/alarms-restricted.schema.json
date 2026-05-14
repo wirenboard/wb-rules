@@ -93,6 +93,182 @@
       },
       "required": ["type", "token", "chatId"]
     },
+    "vkRecipient": {
+      "title": "VK community message",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "enum": ["vk"],
+          "default": "vk",
+          "options": {
+            "hidden": true
+          },
+          "propertyOrder": 1
+        },
+        "token": {
+          "type": "string",
+          "title": "Community access token",
+          "minLength": 1,
+          "propertyOrder": 2
+        },
+        "peerId": {
+          "type": "string",
+          "title": "Peer ID",
+          "minLength": 1,
+          "propertyOrder": 3
+        },
+        "apiVersion": {
+          "type": "string",
+          "title": "API version",
+          "default": "5.131",
+          "propertyOrder": 4
+        }
+      },
+      "required": ["type", "token", "peerId"]
+    },
+    "maxRecipient": {
+      "title": "MAX messenger bot",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "enum": ["max"],
+          "default": "max",
+          "options": {
+            "hidden": true
+          },
+          "propertyOrder": 1
+        },
+        "token": {
+          "type": "string",
+          "title": "Bot access token",
+          "minLength": 1,
+          "propertyOrder": 2
+        },
+        "chatId": {
+          "type": "string",
+          "title": "Chat ID",
+          "minLength": 1,
+          "propertyOrder": 3
+        }
+      },
+      "required": ["type", "token", "chatId"]
+    },
+    "matrixRecipient": {
+      "title": "Matrix bot",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "enum": ["matrix"],
+          "default": "matrix",
+          "options": {
+            "hidden": true
+          },
+          "propertyOrder": 1
+        },
+        "homeserver": {
+          "type": "string",
+          "title": "Homeserver URL",
+          "minLength": 1,
+          "propertyOrder": 2
+        },
+        "accessToken": {
+          "type": "string",
+          "title": "Access token",
+          "minLength": 1,
+          "propertyOrder": 3
+        },
+        "roomId": {
+          "type": "string",
+          "title": "Room ID",
+          "minLength": 1,
+          "propertyOrder": 4
+        },
+        "msgType": {
+          "type": "string",
+          "title": "Message type",
+          "enum": ["m.text", "m.notice"],
+          "default": "m.text",
+          "propertyOrder": 5
+        }
+      },
+      "required": ["type", "homeserver", "accessToken", "roomId"]
+    },
+    "wechatRecipient": {
+      "title": "WeChat Work group bot (NOT regular WeChat)",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "enum": ["wechat"],
+          "default": "wechat",
+          "options": {
+            "hidden": true
+          },
+          "propertyOrder": 1
+        },
+        "key": {
+          "type": "string",
+          "title": "Bot webhook key",
+          "minLength": 1,
+          "propertyOrder": 2
+        }
+      },
+      "required": ["type", "key"]
+    },
+    "webhookRecipient": {
+      "title": "Generic HTTP webhook",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "title": "Type",
+          "enum": ["webhook"],
+          "default": "webhook",
+          "options": {
+            "hidden": true
+          },
+          "propertyOrder": 1
+        },
+        "url": {
+          "type": "string",
+          "title": "URL",
+          "minLength": 1,
+          "propertyOrder": 2
+        },
+        "method": {
+          "type": "string",
+          "title": "HTTP method",
+          "enum": ["POST", "GET", "PUT", "PATCH", "DELETE"],
+          "default": "POST",
+          "propertyOrder": 3
+        },
+        "contentType": {
+          "type": "string",
+          "title": "Content-Type",
+          "default": "application/json",
+          "propertyOrder": 4
+        },
+        "headers": {
+          "type": "object",
+          "title": "Additional headers",
+          "additionalProperties": { "type": "string" },
+          "propertyOrder": 5
+        },
+        "bodyTemplate": {
+          "type": "string",
+          "title": "Body template",
+          "propertyOrder": 6
+        }
+      },
+      "required": ["type", "url"]
+    },
     "alarmBase": {
       "type": "object",
       "properties": {
@@ -232,8 +408,7 @@
             }
           },
           "required": ["name", "cell", "minValue", "maxValue"]
-        },
-
+        }
       ]
     },
     "recipient": {
@@ -245,7 +420,12 @@
       "oneOf": [
         { "$ref": "#/definitions/emailRecipient" },
         { "$ref": "#/definitions/smsRecipient" },
-        { "$ref": "#/definitions/telegramRecipient" }
+        { "$ref": "#/definitions/telegramRecipient" },
+        { "$ref": "#/definitions/vkRecipient" },
+        { "$ref": "#/definitions/maxRecipient" },
+        { "$ref": "#/definitions/matrixRecipient" },
+        { "$ref": "#/definitions/wechatRecipient" },
+        { "$ref": "#/definitions/webhookRecipient" }
       ],
       "options": {
         "disable_collapse" : true
