@@ -1,3 +1,5 @@
+/* global log, runShellCommand, debug, Duktape */
+
 var _smsQueue = [],
   _smsBusy = false;
 
@@ -140,8 +142,11 @@ exports.sendWebhook = function (opts) {
   var cmd = 'curl -s -X ' + method + ' ' + _shellQuote(opts.url);
   cmd += ' -H ' + _shellQuote('Content-Type: ' + contentType);
   if (opts.headers) {
-    Object.keys(opts.headers).forEach(function (k) {
-      cmd += ' -H ' + _shellQuote(k + ': ' + opts.headers[k]);
+    var headers = opts.headers;
+    Object.keys(headers).forEach(function (k) {
+      // eslint-disable-next-line security/detect-object-injection
+      var value = headers[k];
+      cmd += ' -H ' + _shellQuote(k + ': ' + value);
     });
   }
   if (body != null) cmd += ' --data-binary @-';

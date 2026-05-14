@@ -2,29 +2,29 @@ var Notify = require('wb-notify');
 
 var recipientTypes = {
   email: function getEmailSendFunc(src) {
-    if (!src.hasOwnProperty('to')) throw new Error("email recipient without 'to'");
-    var subject = src.hasOwnProperty('subject') ? '' + src.subject : '{}';
+    if (!Object.prototype.hasOwnProperty.call(src,'to')) throw new Error("email recipient without 'to'");
+    var subject = Object.prototype.hasOwnProperty.call(src,'subject') ? '' + src.subject : '{}';
     return function sendEmailWrapper(text) {
       Notify.sendEmail(src.to, maybeFormat(subject, text), text);
     };
   },
 
   sms: function getSMSSendFunc(src) {
-    if (!src.hasOwnProperty('to')) throw new Error("sms recipient without 'to'");
+    if (!Object.prototype.hasOwnProperty.call(src,'to')) throw new Error("sms recipient without 'to'");
     return function sendSMSWrapper(text) {
       Notify.sendSMS(src.to, text, src.command || '');
     };
   },
 
   telegram: function getTelegramSendFunc(src) {
-    if (!src.hasOwnProperty('chatId')) throw new Error("telegram message recipient without 'chatId'");
+    if (!Object.prototype.hasOwnProperty.call(src,'chatId')) throw new Error("telegram message recipient without 'chatId'");
     return function sendTelegramWrapper(text) {
       Notify.sendTelegramMessage(src.token, src.chatId, text);
     };
   },
 
   webhook: function getWebhookSendFunc(src) {
-    if (!src.hasOwnProperty('url')) throw new Error("webhook recipient without 'url'");
+    if (!Object.prototype.hasOwnProperty.call(src,'url')) throw new Error("webhook recipient without 'url'");
     return function sendWebhookWrapper(text) {
       var body = src.bodyTemplate ? maybeFormat(src.bodyTemplate, text) : text;
       Notify.sendWebhook({
@@ -38,8 +38,8 @@ var recipientTypes = {
   },
 
   vk: function getVkSendFunc(src) {
-    if (!src.hasOwnProperty('token')) throw new Error("vk recipient without 'token'");
-    if (!src.hasOwnProperty('peerId')) throw new Error("vk recipient without 'peerId'");
+    if (!Object.prototype.hasOwnProperty.call(src,'token')) throw new Error("vk recipient without 'token'");
+    if (!Object.prototype.hasOwnProperty.call(src,'peerId')) throw new Error("vk recipient without 'peerId'");
     var apiVersion = src.apiVersion || '5.131';
     return function sendVkWrapper(text) {
       var body = 'access_token=' + encodeURIComponent(src.token) +
@@ -57,8 +57,8 @@ var recipientTypes = {
   },
 
   max: function getMaxSendFunc(src) {
-    if (!src.hasOwnProperty('token')) throw new Error("max recipient without 'token'");
-    if (!src.hasOwnProperty('chatId')) throw new Error("max recipient without 'chatId'");
+    if (!Object.prototype.hasOwnProperty.call(src,'token')) throw new Error("max recipient without 'token'");
+    if (!Object.prototype.hasOwnProperty.call(src,'chatId')) throw new Error("max recipient without 'chatId'");
     return function sendMaxWrapper(text) {
       Notify.sendWebhook({
         url: 'https://platform-api.max.ru/messages',
@@ -71,13 +71,13 @@ var recipientTypes = {
   },
 
   matrix: function getMatrixSendFunc(src) {
-    if (!src.hasOwnProperty('homeserver')) throw new Error("matrix recipient without 'homeserver'");
-    if (!src.hasOwnProperty('accessToken')) throw new Error("matrix recipient without 'accessToken'");
-    if (!src.hasOwnProperty('roomId')) throw new Error("matrix recipient without 'roomId'");
+    if (!Object.prototype.hasOwnProperty.call(src,'homeserver')) throw new Error("matrix recipient without 'homeserver'");
+    if (!Object.prototype.hasOwnProperty.call(src,'accessToken')) throw new Error("matrix recipient without 'accessToken'");
+    if (!Object.prototype.hasOwnProperty.call(src,'roomId')) throw new Error("matrix recipient without 'roomId'");
     var baseUrl = src.homeserver.replace(/\/+$/, '');
     var msgType = src.msgType || 'm.text';
     return function sendMatrixWrapper(text) {
-      var txnId = 'wbrules-' + Date.now() + '-' + Math.floor(Math.random() * 1e9);
+      var txnId = 'wbrules-' + Date.now() + '-' + Math.floor(Math.random() * 1000000000);
       var url = baseUrl + '/_matrix/client/v3/rooms/' + encodeURIComponent(src.roomId) +
         '/send/m.room.message/' + encodeURIComponent(txnId);
       Notify.sendWebhook({
@@ -91,7 +91,7 @@ var recipientTypes = {
   },
 
   wechat: function getWechatSendFunc(src) {
-    if (!src.hasOwnProperty('key')) throw new Error("wechat recipient without 'key'");
+    if (!Object.prototype.hasOwnProperty.call(src,'key')) throw new Error("wechat recipient without 'key'");
     return function sendWechatWrapper(text) {
       Notify.sendWebhook({
         url: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=' + encodeURIComponent(src.key),
@@ -111,7 +111,7 @@ function getSendFunc(src) {
   if (
     !src ||
     typeof src != 'object' ||
-    !src.hasOwnProperty('type') ||
+    !Object.prototype.hasOwnProperty.call(src,'type') ||
     !recipientTypes.hasOwnProperty(src.type)
   )
     throw new Error('invalid recipient spec: ' + JSON.stringify(src));
@@ -299,12 +299,12 @@ function loadAlarm(alarmSrc, notify, alarmDeviceName) {
 }
 
 function doLoad(src) {
-  if (!src.hasOwnProperty('deviceName')) throw new Error('deviceName not specified for alarms');
+  if (!Object.prototype.hasOwnProperty.call(src,'deviceName')) throw new Error('deviceName not specified for alarms');
 
-  if (!src.hasOwnProperty('recipients') || !Array.isArray(src.recipients))
+  if (!Object.prototype.hasOwnProperty.call(src,'recipients') || !Array.isArray(src.recipients))
     throw new Error('absent/invalid recipients spec specified for alarms');
 
-  if (!src.hasOwnProperty('alarms') || !Array.isArray(src.alarms))
+  if (!Object.prototype.hasOwnProperty.call(src,'alarms') || !Array.isArray(src.alarms))
     throw new Error('absent/invalid alarms spec');
 
   var sendFuncs = src.recipients.map(getSendFunc);
@@ -329,7 +329,7 @@ function doLoad(src) {
       },
     },
   };
-  if (src.hasOwnProperty('deviceTitle')) deviceDef.title = src.deviceTitle;
+  if (Object.prototype.hasOwnProperty.call(src,'deviceTitle')) deviceDef.title = src.deviceTitle;
 
   loadedAlarms.forEach(function (alarm) {
     deviceDef.cells[alarm.cellName] = {
