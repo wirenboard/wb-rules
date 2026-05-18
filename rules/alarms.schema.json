@@ -607,7 +607,6 @@
             "Generic HTTP webhook": "Произвольный HTTP-webhook",
             "Full request URL including query parameters": "Полный URL запроса вместе с query-параметрами",
             "HTTP method": "HTTP-метод",
-            "Content-Type": "Content-Type",
             "Additional headers": "Дополнительные заголовки",
             "Extra HTTP headers as name/value pairs": "Дополнительные HTTP-заголовки в виде пар имя/значение",
             "Body template": "Шаблон тела запроса",
