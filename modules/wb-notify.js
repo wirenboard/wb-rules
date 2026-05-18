@@ -155,7 +155,7 @@ exports.sendWebhook = function (opts) {
   var contentType = opts.contentType ||
     (body != null && isValidJSON(body) ? 'application/json' : 'text/plain; charset=utf-8');
 
-  var cmd = 'curl -s -X ' + _shellQuote(method) + ' ' + _shellQuote(opts.url);
+  var cmd = 'curl -sS --fail -X ' + _shellQuote(method) + ' ' + _shellQuote(opts.url);
   cmd += ' -H ' + _shellQuote('Content-Type: ' + contentType);
   if (opts.headers) {
     var headers = opts.headers;
