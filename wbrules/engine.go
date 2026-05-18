@@ -626,7 +626,6 @@ type RuleEngine struct {
 	cleanup         *ScopedCleanup
 	rev             uint32 // atomic
 	syncQueueActive uint32 // atomic
-	syncQueueMtx    sync.RWMutex
 	syncQueue       chan func()
 	syncQuitCh      chan chan struct{}
 	mqttClient      wbgong.MQTTClient // for service
@@ -984,14 +983,6 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 }
 
 func (engine *RuleEngine) CallSync(thunk func()) {
-	engine.syncQueueMtx.RLock()
-	defer engine.syncQueueMtx.RUnlock()
-
-	if atomic.LoadUint32(&engine.syncQueueActive) != ATOMIC_TRUE {
-		thunk()
-		return
-	}
-
 	if atomic.LoadUint32(&engine.debugEnabled) == ATOMIC_TRUE {
 		delay := time.NewTimer(ENGINE_CALLSYNC_TIMEOUT)
 		select {
@@ -1305,12 +1296,9 @@ func (engine *RuleEngine) handleStop() {
 	engine.statusMtx.Lock()
 	engine.readyCh = nil
 	engine.driverReadyCh = nil
-	engine.statusMtx.Unlock()
-
 	atomic.StoreUint32(&engine.syncQueueActive, ATOMIC_FALSE)
-	engine.syncQueueMtx.Lock()
 	close(engine.syncQueue)
-	engine.syncQueueMtx.Unlock()
+	engine.statusMtx.Unlock()
 }
 
 func (engine *RuleEngine) isDebugControl(ctrlSpec ControlSpec) bool {
