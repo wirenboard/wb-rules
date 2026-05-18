@@ -625,7 +625,7 @@ type RuleEngine struct {
 	active          uint32 // atomic
 	cleanup         *ScopedCleanup
 	rev             uint32 // atomic
-	syncQueueActive bool
+	syncQueueActive uint32 // atomic
 	syncQueue       chan func()
 	syncQuitCh      chan chan struct{}
 	mqttClient      wbgong.MQTTClient // for service
@@ -687,7 +687,7 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 		cleanup:               MakeScopedCleanup(),
 		rev:                   0,
 		syncQueue:             make(chan func(), SYNC_QUEUE_LEN),
-		syncQueueActive:       true,
+		syncQueueActive:       ATOMIC_TRUE,
 		syncQuitCh:            make(chan chan struct{}, 1),
 		mqttClient:            mqtt,
 		driver:                driver,
@@ -999,7 +999,7 @@ func (engine *RuleEngine) CallSync(thunk func()) {
 }
 
 func (engine *RuleEngine) MaybeCallSync(thunk func()) {
-	if engine.syncQueueActive {
+	if atomic.LoadUint32(&engine.syncQueueActive) == ATOMIC_TRUE {
 		engine.CallSync(thunk)
 	} else {
 		thunk()
@@ -1296,7 +1296,7 @@ func (engine *RuleEngine) handleStop() {
 	engine.statusMtx.Lock()
 	engine.readyCh = nil
 	engine.driverReadyCh = nil
-	engine.syncQueueActive = false
+	atomic.StoreUint32(&engine.syncQueueActive, ATOMIC_FALSE)
 	close(engine.syncQueue)
 	engine.statusMtx.Unlock()
 }
@@ -1347,7 +1347,7 @@ func (engine *RuleEngine) Start() {
 	engine.driver.OnRetainReady(func(tx wbgong.DriverTx) {
 		engine.driverReadyCh <- struct{}{}
 	})
-	engine.syncQueueActive = true
+	atomic.StoreUint32(&engine.syncQueueActive, ATOMIC_TRUE)
 	atomic.StoreUint32(&engine.active, ENGINE_ACTIVE)
 
 	go engine.mainLoop()
