@@ -85,6 +85,8 @@ function isValidJSON(str) {
   }
 }
 
+var ALLOWED_WEBHOOK_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+
 exports.sendEmail = function (to, subject, text) {
   log('sending email: {}', subject);
   var base64subject = Duktape.enc('base64', subject);
@@ -143,12 +145,17 @@ exports.sendSMS = function (to, text, command) {
 exports.sendWebhook = function (opts) {
   if (!opts || !opts.url) throw new Error("sendWebhook: 'url' required");
   var method = (opts.method || 'POST').toUpperCase();
+  if (ALLOWED_WEBHOOK_METHODS.indexOf(method) === -1) {
+    throw new Error(
+      "sendWebhook: invalid method '" + method + "', expected one of " + ALLOWED_WEBHOOK_METHODS.join('/')
+    );
+  }
   var body = opts.body;
   if (body != null && typeof body === 'object') body = JSON.stringify(body);
   var contentType = opts.contentType ||
     (body != null && isValidJSON(body) ? 'application/json' : 'text/plain; charset=utf-8');
 
-  var cmd = 'curl -s -X ' + method + ' ' + _shellQuote(opts.url);
+  var cmd = 'curl -s -X ' + _shellQuote(method) + ' ' + _shellQuote(opts.url);
   cmd += ' -H ' + _shellQuote('Content-Type: ' + contentType);
   if (opts.headers) {
     var headers = opts.headers;
