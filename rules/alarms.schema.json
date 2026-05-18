@@ -605,7 +605,6 @@
             "Bot webhook key": "Ключ вебхука бота",
             "The `key` parameter from the group bot webhook URL in WeChat Work. Created in a WeChat Work group chat via Add Group Robot.": "Значение параметра `key` из URL вебхука бота группы WeChat Work. Создаётся в групповом чате WeChat Work через Add Group Robot.",
             "Generic HTTP webhook": "Произвольный HTTP-webhook",
-            "URL": "URL",
             "Full request URL including query parameters": "Полный URL запроса вместе с query-параметрами",
             "HTTP method": "HTTP-метод",
             "Content-Type": "Content-Type",
