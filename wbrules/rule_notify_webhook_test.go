@@ -97,8 +97,8 @@ func (s *RuleNotifyWebhookSuite) TestCustomContentType() {
 		"driver -> /devices/test_webhook/controls/send_custom_ct: [1] (QoS 1)",
 		"tst -> /devices/test_webhook/controls/send_custom_ct/on: [1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending webhook: POST https://example.com/hook] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [run command: curl -s -X POST 'https://example.com/hook' -H 'Content-Type: application/xml' --data-binary @-] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [input: <event>alarm</event>] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: curl -s -X POST 'https://example.com/hook' -H 'Content-Type: text/csv; charset=utf-8' --data-binary @-] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: event,value\nalarm,42] (QoS 1)",
 	)
 }
 

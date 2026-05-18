@@ -1,3 +1,5 @@
+/* global log, dev, defineVirtualDevice, defineRule, Notify */
+
 global.__proto__.runShellCommand = function (command, options) {
   log('run command: {}', command);
   if (options.input != null) {
@@ -80,8 +82,8 @@ defineRule({
   then: function () {
     Notify.sendWebhook({
       url: 'https://example.com/hook',
-      contentType: 'application/xml',
-      body: '<event>alarm</event>',
+      contentType: 'text/csv; charset=utf-8',
+      body: 'event,value\nalarm,42',
     });
   },
 });
