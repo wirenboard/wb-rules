@@ -18,7 +18,7 @@ func (s *PersistentStorageSuite) SetupFixture() {
 
 	// we need to create separated temp directory because persistent DB file
 	// should be keeped between tests
-	s.tmpDir, err = os.MkdirTemp("", "wbrulestest")
+	s.tmpDir, err = os.MkdirTemp("/dev/shm", "wbrulestest")
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}
