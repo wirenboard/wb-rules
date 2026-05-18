@@ -40,10 +40,12 @@ var recipientTypes = {
   vk: function getVkSendFunc(src) {
     if (!Object.prototype.hasOwnProperty.call(src,'token')) throw new Error("vk recipient without 'token'");
     if (!Object.prototype.hasOwnProperty.call(src,'peerId')) throw new Error("vk recipient without 'peerId'");
+    var peerId = Number(src.peerId);
+    if (!isFinite(peerId)) throw new Error("vk recipient with non-numeric 'peerId'");
     var apiVersion = src.apiVersion || '5.131';
     return function sendVkWrapper(text) {
       var body = 'access_token=' + encodeURIComponent(src.token) +
-        '&peer_id=' + encodeURIComponent(src.peerId) +
+        '&peer_id=' + peerId +
         '&random_id=0' +
         '&v=' + encodeURIComponent(apiVersion) +
         '&message=' + encodeURIComponent(text);
@@ -59,13 +61,15 @@ var recipientTypes = {
   max: function getMaxSendFunc(src) {
     if (!Object.prototype.hasOwnProperty.call(src,'token')) throw new Error("max recipient without 'token'");
     if (!Object.prototype.hasOwnProperty.call(src,'chatId')) throw new Error("max recipient without 'chatId'");
+    var chatId = Number(src.chatId);
+    if (!isFinite(chatId)) throw new Error("max recipient with non-numeric 'chatId'");
     return function sendMaxWrapper(text) {
       Notify.sendWebhook({
         url: 'https://platform-api.max.ru/messages',
         method: 'POST',
         contentType: 'application/json',
         headers: { Authorization: src.token },
-        body: JSON.stringify({ chat_id: Number(src.chatId), text: text }),
+        body: JSON.stringify({ chat_id: chatId, text: text }),
       });
     };
   },
