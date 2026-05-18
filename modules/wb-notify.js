@@ -76,6 +76,15 @@ function _shellQuote(s) {
   return "'" + String(s).replace(/'/g, "'\\''") + "'";
 }
 
+function isValidJSON(str) {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 exports.sendEmail = function (to, subject, text) {
   log('sending email: {}', subject);
   var base64subject = Duktape.enc('base64', subject);
@@ -137,7 +146,7 @@ exports.sendWebhook = function (opts) {
   var body = opts.body;
   if (body != null && typeof body === 'object') body = JSON.stringify(body);
   var contentType = opts.contentType ||
-    (body != null && body.charAt(0) === '{' ? 'application/json' : 'text/plain; charset=utf-8');
+    (body != null && isValidJSON(body) ? 'application/json' : 'text/plain; charset=utf-8');
 
   var cmd = 'curl -s -X ' + method + ' ' + _shellQuote(opts.url);
   cmd += ' -H ' + _shellQuote('Content-Type: ' + contentType);
