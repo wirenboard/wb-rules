@@ -1,3 +1,5 @@
+/* global log */
+
 var Notify = require('wb-notify');
 
 var recipientTypes = {
