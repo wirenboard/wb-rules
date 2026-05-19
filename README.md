@@ -1168,7 +1168,7 @@ var myModule = require("path/to/myModule");
 * `method` — метод (`POST` по умолчанию);
 * `headers` — объект с дополнительными HTTP-заголовками;
 * `contentType` — значение `Content-Type` (по умолчанию `application/json`,
-  если тело начинается с `{`, иначе `text/plain; charset=utf-8`);
+  если тело является валидным JSON, иначе `text/plain; charset=utf-8`);
 * `body` — тело запроса (строка или объект; объект сериализуется в JSON).
 
 Для отправки используется `curl`; тело передаётся в `stdin` через `--data-binary @-`.
