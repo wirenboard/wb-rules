@@ -119,6 +119,7 @@
                     "title": "Peer ID",
                     "description": "User ID, or 2000000000 + chat ID for group chats",
                     "minLength": 1,
+                    "pattern": "^[0-9]+$",
                     "propertyOrder": 3
                 },
                 "apiVersion": {
