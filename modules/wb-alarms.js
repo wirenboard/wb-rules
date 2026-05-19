@@ -311,7 +311,14 @@ function doLoad(src) {
   if (!Object.prototype.hasOwnProperty.call(src,'alarms') || !Array.isArray(src.alarms))
     throw new Error('absent/invalid alarms spec');
 
-  var sendFuncs = src.recipients.map(getSendFunc);
+  var sendFuncs = [];
+  src.recipients.forEach(function (recipient) {
+    try {
+      sendFuncs.push(getSendFunc(recipient));
+    } catch (e) {
+      log.warning('skipping recipient: {}', e.message || e);
+    }
+  });
   function notify(text) {
     dev[src.deviceName].log = text;
     sendFuncs.forEach(function (sendFunc) {
