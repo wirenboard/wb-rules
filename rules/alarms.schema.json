@@ -93,6 +93,195 @@
             },
             "required": ["type", "token", "chatId"]
         },
+        "vkRecipient": {
+            "title": "VK community message",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "title": "Type",
+                    "enum": ["vk"],
+                    "default": "vk",
+                    "options": {
+                        "hidden": true
+                    },
+                    "propertyOrder": 1
+                },
+                "token": {
+                    "type": "string",
+                    "title": "Community access token",
+                    "description": "Community access token with `messages` permission, obtained at vk.com/dev",
+                    "minLength": 1,
+                    "propertyOrder": 2
+                },
+                "peerId": {
+                    "type": "string",
+                    "title": "Peer ID",
+                    "description": "User ID, or 2000000000 + chat ID for group chats",
+                    "minLength": 1,
+                    "pattern": "^[0-9]+$",
+                    "propertyOrder": 3
+                },
+                "apiVersion": {
+                    "type": "string",
+                    "title": "API version",
+                    "default": "5.131",
+                    "propertyOrder": 4
+                }
+            },
+            "required": ["type", "token", "peerId"]
+        },
+        "maxRecipient": {
+            "title": "MAX messenger bot",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "title": "Type",
+                    "enum": ["max"],
+                    "default": "max",
+                    "options": {
+                        "hidden": true
+                    },
+                    "propertyOrder": 1
+                },
+                "token": {
+                    "type": "string",
+                    "title": "Bot access token",
+                    "description": "A token can be obtained from @MasterBot in MAX messenger",
+                    "minLength": 1,
+                    "propertyOrder": 2
+                },
+                "chatId": {
+                    "type": "string",
+                    "title": "Chat ID",
+                    "description": "Numeric chat identifier returned by MAX Bot API",
+                    "minLength": 1,
+                    "pattern": "^[0-9]+$",
+                    "propertyOrder": 3
+                }
+            },
+            "required": ["type", "token", "chatId"]
+        },
+        "matrixRecipient": {
+            "title": "Matrix bot",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "title": "Type",
+                    "enum": ["matrix"],
+                    "default": "matrix",
+                    "options": {
+                        "hidden": true
+                    },
+                    "propertyOrder": 1
+                },
+                "homeserver": {
+                    "type": "string",
+                    "title": "Homeserver URL",
+                    "description": "Matrix homeserver URL, e.g. https://matrix.org",
+                    "minLength": 1,
+                    "propertyOrder": 2
+                },
+                "accessToken": {
+                    "type": "string",
+                    "title": "Access token",
+                    "description": "Bot account access token from POST /_matrix/client/v3/login",
+                    "minLength": 1,
+                    "propertyOrder": 3
+                },
+                "roomId": {
+                    "type": "string",
+                    "title": "Room ID",
+                    "description": "Internal room ID like !abcdef:matrix.org (not an alias #room:server)",
+                    "minLength": 1,
+                    "propertyOrder": 4
+                },
+                "msgType": {
+                    "type": "string",
+                    "title": "Message type",
+                    "enum": ["m.text", "m.notice"],
+                    "default": "m.text",
+                    "propertyOrder": 5
+                }
+            },
+            "required": ["type", "homeserver", "accessToken", "roomId"]
+        },
+        "wechatRecipient": {
+            "title": "WeChat Work group bot (NOT regular WeChat)",
+            "description": "Corporate WeChat Work (企业微信) only — separate Tencent product, requires organization registration. Does NOT send to regular consumer WeChat (微信).",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "title": "Type",
+                    "enum": ["wechat"],
+                    "default": "wechat",
+                    "options": {
+                        "hidden": true
+                    },
+                    "propertyOrder": 1
+                },
+                "key": {
+                    "type": "string",
+                    "title": "Bot webhook key",
+                    "description": "The `key` parameter from the group bot webhook URL in WeChat Work. Created in a WeChat Work group chat via Add Group Robot.",
+                    "minLength": 1,
+                    "propertyOrder": 2
+                }
+            },
+            "required": ["type", "key"]
+        },
+        "webhookRecipient": {
+            "title": "Generic HTTP webhook",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "title": "Type",
+                    "enum": ["webhook"],
+                    "default": "webhook",
+                    "options": {
+                        "hidden": true
+                    },
+                    "propertyOrder": 1
+                },
+                "url": {
+                    "type": "string",
+                    "title": "URL",
+                    "description": "Full request URL including query parameters",
+                    "minLength": 8,
+                    "propertyOrder": 2
+                },
+                "method": {
+                    "type": "string",
+                    "title": "HTTP method",
+                    "enum": ["POST", "GET", "PUT", "PATCH", "DELETE"],
+                    "default": "POST",
+                    "propertyOrder": 3
+                },
+                "contentType": {
+                    "type": "string",
+                    "title": "Content-Type",
+                    "propertyOrder": 4
+                },
+                "headers": {
+                    "type": "object",
+                    "title": "Additional headers",
+                    "description": "Extra HTTP headers as name/value pairs",
+                    "additionalProperties": { "type": "string" },
+                    "propertyOrder": 5
+                },
+                "bodyTemplate": {
+                    "type": "string",
+                    "title": "Body template",
+                    "description": "Request body. {} will be replaced with alarm message text",
+                    "propertyOrder": 6
+                }
+            },
+            "required": ["type", "url"]
+        },
         "alarmBase": {
             "type": "object",
             "properties": {
@@ -301,7 +490,12 @@
             "oneOf": [
                 { "$ref": "#/definitions/emailRecipient" },
                 { "$ref": "#/definitions/smsRecipient" },
-                { "$ref": "#/definitions/telegramRecipient" }
+                { "$ref": "#/definitions/telegramRecipient" },
+                { "$ref": "#/definitions/vkRecipient" },
+                { "$ref": "#/definitions/maxRecipient" },
+                { "$ref": "#/definitions/matrixRecipient" },
+                { "$ref": "#/definitions/wechatRecipient" },
+                { "$ref": "#/definitions/webhookRecipient" }
             ]
         },
         "alarm": {
@@ -389,6 +583,35 @@
             "A token can be obtained from @BotFather": "Токен можно получить через @BotFather",
             "Chat ID": "Идентификатор чата",
             "The chat ID can be obtained from @getidsbot": "Идентификатор можно получить через @getidsbot",
+            "VK community message": "Сообщение от группы ВКонтакте",
+            "Community access token": "Токен сообщества",
+            "Community access token with `messages` permission, obtained at vk.com/dev": "Токен сообщества с правом `messages`, получается на vk.com/dev",
+            "Peer ID": "Идентификатор получателя",
+            "User ID, or 2000000000 + chat ID for group chats": "ID пользователя, либо 2000000000 + ID беседы для групповых чатов",
+            "API version": "Версия API",
+            "MAX messenger bot": "Бот мессенджера MAX",
+            "Bot access token": "Токен доступа бота",
+            "A token can be obtained from @MasterBot in MAX messenger": "Токен можно получить через @MasterBot в мессенджере MAX",
+            "Numeric chat identifier returned by MAX Bot API": "Числовой идентификатор чата из MAX Bot API",
+            "Matrix bot": "Matrix-бот",
+            "Homeserver URL": "URL домашнего сервера",
+            "Matrix homeserver URL, e.g. https://matrix.org": "URL домашнего сервера Matrix, например https://matrix.org",
+            "Access token": "Токен доступа",
+            "Bot account access token from POST /_matrix/client/v3/login": "Токен доступа бота, получается через POST /_matrix/client/v3/login",
+            "Room ID": "Идентификатор комнаты",
+            "Internal room ID like !abcdef:matrix.org (not an alias #room:server)": "Внутренний ID комнаты вида !abcdef:matrix.org (не alias #room:server)",
+            "Message type": "Тип сообщения",
+            "WeChat Work group bot (NOT regular WeChat)": "Бот группы WeChat Work (не обычный WeChat)",
+            "Corporate WeChat Work (企业微信) only — separate Tencent product, requires organization registration. Does NOT send to regular consumer WeChat (微信).": "Только корпоративный WeChat Work (企业微信) — отдельный продукт Tencent с регистрацией организации. Не отправляет в обычный пользовательский WeChat (微信).",
+            "Bot webhook key": "Ключ вебхука бота",
+            "The `key` parameter from the group bot webhook URL in WeChat Work. Created in a WeChat Work group chat via Add Group Robot.": "Значение параметра `key` из URL вебхука бота группы WeChat Work. Создаётся в групповом чате WeChat Work через Add Group Robot.",
+            "Generic HTTP webhook": "Произвольный HTTP-webhook",
+            "Full request URL including query parameters": "Полный URL запроса вместе с query-параметрами",
+            "HTTP method": "HTTP-метод",
+            "Additional headers": "Дополнительные заголовки",
+            "Extra HTTP headers as name/value pairs": "Дополнительные HTTP-заголовки в виде пар имя/значение",
+            "Body template": "Шаблон тела запроса",
+            "Request body. {} will be replaced with alarm message text": "Тело запроса. {} будет заменено на текст сообщения",
             "Command": "Команда",
             "Alarm name": "Название уведомления",
             "Cell": "Отслеживаемый параметр",
