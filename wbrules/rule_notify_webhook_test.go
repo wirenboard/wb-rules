@@ -32,7 +32,7 @@ func (s *RuleNotifyWebhookSuite) TestPlainTextBody() {
 	s.VerifyUnordered(
 		"driver -> /devices/test_webhook/controls/send_text: [1] (QoS 1)",
 		"tst -> /devices/test_webhook/controls/send_text/on: [1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [sending webhook: POST https://example.com/hook] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending webhook: POST https://example.com] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: curl -sS --fail -X 'POST' 'https://example.com/hook' -H 'Content-Type: text/plain; charset=utf-8' --data-binary @-] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [input: plain text body] (QoS 1)",
 	)
@@ -45,7 +45,7 @@ func (s *RuleNotifyWebhookSuite) TestObjectBodyAsJSON() {
 	s.VerifyUnordered(
 		"driver -> /devices/test_webhook/controls/send_json_object: [1] (QoS 1)",
 		"tst -> /devices/test_webhook/controls/send_json_object/on: [1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [sending webhook: POST https://example.com/hook] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending webhook: POST https://example.com] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: curl -sS --fail -X 'POST' 'https://example.com/hook' -H 'Content-Type: application/json' --data-binary @-] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [input: {\"event\":\"alarm\",\"value\":42}] (QoS 1)",
 	)
@@ -58,7 +58,7 @@ func (s *RuleNotifyWebhookSuite) TestJSONStringDetected() {
 	s.VerifyUnordered(
 		"driver -> /devices/test_webhook/controls/send_json_string: [1] (QoS 1)",
 		"tst -> /devices/test_webhook/controls/send_json_string/on: [1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [sending webhook: POST https://example.com/hook] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending webhook: POST https://example.com] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: curl -sS --fail -X 'POST' 'https://example.com/hook' -H 'Content-Type: application/json' --data-binary @-] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [input: {\"alert\":\"text\"}] (QoS 1)",
 	)
@@ -71,7 +71,7 @@ func (s *RuleNotifyWebhookSuite) TestGetNoBody() {
 	s.VerifyUnordered(
 		"driver -> /devices/test_webhook/controls/send_get_no_body: [1] (QoS 1)",
 		"tst -> /devices/test_webhook/controls/send_get_no_body/on: [1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [sending webhook: GET https://example.com/ping] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending webhook: GET https://example.com] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: curl -sS --fail -X 'GET' 'https://example.com/ping' -H 'Content-Type: text/plain; charset=utf-8'] (QoS 1)",
 	)
 }
@@ -83,7 +83,7 @@ func (s *RuleNotifyWebhookSuite) TestCustomHeaders() {
 	s.VerifyUnordered(
 		"driver -> /devices/test_webhook/controls/send_with_headers: [1] (QoS 1)",
 		"tst -> /devices/test_webhook/controls/send_with_headers/on: [1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [sending webhook: POST https://example.com/hook] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending webhook: POST https://example.com] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: curl -sS --fail -X 'POST' 'https://example.com/hook' -H 'Content-Type: application/json' -H 'Authorization: Bearer xyz' --data-binary @-] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [input: {\"ok\":true}] (QoS 1)",
 	)
@@ -96,7 +96,7 @@ func (s *RuleNotifyWebhookSuite) TestCustomContentType() {
 	s.VerifyUnordered(
 		"driver -> /devices/test_webhook/controls/send_custom_ct: [1] (QoS 1)",
 		"tst -> /devices/test_webhook/controls/send_custom_ct/on: [1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [sending webhook: POST https://example.com/hook] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending webhook: POST https://example.com] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: curl -sS --fail -X 'POST' 'https://example.com/hook' -H 'Content-Type: text/csv; charset=utf-8' --data-binary @-] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [input: event,value\nalarm,42] (QoS 1)",
 	)

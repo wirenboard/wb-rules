@@ -85,6 +85,13 @@ function isValidJSON(str) {
   }
 }
 
+// Strip path and query so we don't leak secrets embedded in webhook URLs
+// (Discord/Slack tokens live in the path, Gotify/WeChat Work keys in the query).
+function _redactUrlForLog(url) {
+  var m = /^([a-zA-Z][a-zA-Z0-9+.\-]*:\/\/[^\/?#]+)/.exec(String(url));
+  return m ? m[1] : '<url>';
+}
+
 var ALLOWED_WEBHOOK_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
 exports.sendEmail = function (to, subject, text) {
@@ -167,7 +174,7 @@ exports.sendWebhook = function (opts) {
   }
   if (body != null) cmd += ' --data-binary @-';
 
-  log('sending webhook: {} {}', method, opts.url);
+  log('sending webhook: {} {}', method, _redactUrlForLog(opts.url));
   runShellCommand(cmd, {
     captureErrorOutput: true,
     captureOutput: true,
