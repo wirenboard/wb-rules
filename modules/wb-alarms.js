@@ -321,9 +321,11 @@ function doLoad(src) {
     try {
       sendFuncs.push(getSendFunc(recipient));
     } catch (e) {
-      log.warning('skipping recipient: {}', e.message || e);
+      log.error('skipping recipient: {}', e.message || e);
     }
   });
+  if (src.recipients.length > 0 && sendFuncs.length === 0)
+    throw new Error('all recipients are invalid: nothing would be delivered');
   function notify(text) {
     dev[src.deviceName].log = text;
     sendFuncs.forEach(function (sendFunc) {
