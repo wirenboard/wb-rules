@@ -31,7 +31,7 @@ var recipientTypes = {
       var method = src.method ? ('' + src.method).toUpperCase() : src.method;
       var opts = {
         url: src.url,
-        method: src.method,
+        method: method,
         headers: src.headers,
         contentType: src.contentType,
       };
