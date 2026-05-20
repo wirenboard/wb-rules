@@ -317,6 +317,9 @@ function doLoad(src) {
     throw new Error('absent/invalid alarms spec');
 
   var sendFuncs = [];
+  // Skip (don't fail-fast) so that downgrading testing -> stable, where a
+  // newer recipient type is unsupported, doesn't disable the whole alarm
+  // group. Block below still fails if every recipient is invalid.
   src.recipients.forEach(function (recipient, index) {
     try {
       sendFuncs.push(getSendFunc(recipient));
