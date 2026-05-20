@@ -264,7 +264,6 @@
                 "contentType": {
                     "type": "string",
                     "title": "Content-Type",
-                    "default": "application/json",
                     "propertyOrder": 4
                 },
                 "headers": {
