@@ -76,7 +76,7 @@ function _shellQuote(s) {
   return "'" + String(s).replace(/'/g, "'\\''") + "'";
 }
 
-function isValidJSON(str) {
+function _isValidJSON(str) {
   try {
     JSON.parse(str);
     return true;
@@ -168,7 +168,7 @@ exports.sendWebhook = function (opts) {
   var bodyIsObject = body != null && typeof body === 'object';
   if (bodyIsObject) body = JSON.stringify(body);
   var contentType = opts.contentType ||
-    (bodyIsObject || (typeof body === 'string' && isValidJSON(body))
+    (bodyIsObject || (typeof body === 'string' && _isValidJSON(body))
       ? 'application/json'
       : 'text/plain; charset=utf-8');
 
