@@ -317,11 +317,13 @@ function doLoad(src) {
     throw new Error('absent/invalid alarms spec');
 
   var sendFuncs = [];
-  src.recipients.forEach(function (recipient) {
+  src.recipients.forEach(function (recipient, index) {
     try {
       sendFuncs.push(getSendFunc(recipient));
     } catch (e) {
-      log.error('skipping recipient: {}', e.message || e);
+      var type = recipient && Object.prototype.hasOwnProperty.call(recipient, 'type')
+        ? recipient.type : '<unknown>';
+      log.error('skipping recipient #{} (type: {}): {}', index, type, e.message || e);
     }
   });
   if (src.recipients.length > 0 && sendFuncs.length === 0)
