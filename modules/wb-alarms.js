@@ -28,14 +28,17 @@ var recipientTypes = {
   webhook: function getWebhookSendFunc(src) {
     if (!Object.prototype.hasOwnProperty.call(src,'url')) throw new Error("webhook recipient without 'url'");
     return function sendWebhookWrapper(text) {
-      var body = src.bodyTemplate ? maybeFormat(src.bodyTemplate, text) : text;
-      Notify.sendWebhook({
+      var method = src.method ? ('' + src.method).toUpperCase() : src.method;
+      var opts = {
         url: src.url,
         method: src.method,
         headers: src.headers,
         contentType: src.contentType,
-        body: body,
-      });
+      };
+      if (src.bodyTemplate || !method || method === 'POST' || method === 'PUT' || method === 'PATCH') {
+        opts.body = src.bodyTemplate ? maybeFormat(src.bodyTemplate, text) : text;
+      }
+      Notify.sendWebhook(opts);
     };
   },
 
