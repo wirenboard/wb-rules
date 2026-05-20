@@ -89,8 +89,11 @@ function _isValidJSON(str) {
 // webhook URLs. Discord/Slack tokens live in the path, Gotify/WeChat Work
 // keys in the query, and basic-auth style credentials may appear in userinfo.
 function _redactUrlForLog(url) {
-  var m = /^([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)(?:[^/?#@]*@)?([^/?#]+)/.exec(String(url));
-  return m ? m[1] + m[2] : '(invalid url)';
+  var m = /^([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)([^/?#]*)/.exec(String(url));
+  if (!m) return '(invalid url)';
+  var authority = m[2];
+  var atIdx = authority.lastIndexOf('@');
+  return m[1] + (atIdx >= 0 ? authority.slice(atIdx + 1) : authority);
 }
 
 var ALLOWED_WEBHOOK_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
