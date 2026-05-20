@@ -158,9 +158,12 @@ exports.sendWebhook = function (opts) {
     );
   }
   var body = opts.body;
-  if (body != null && typeof body === 'object') body = JSON.stringify(body);
+  var bodyIsObject = body != null && typeof body === 'object';
+  if (bodyIsObject) body = JSON.stringify(body);
   var contentType = opts.contentType ||
-    (body != null && isValidJSON(body) ? 'application/json' : 'text/plain; charset=utf-8');
+    (bodyIsObject || (typeof body === 'string' && isValidJSON(body))
+      ? 'application/json'
+      : 'text/plain; charset=utf-8');
 
   var cmd = 'curl -sS --fail -X ' + _shellQuote(method) + ' ' + _shellQuote(opts.url);
   cmd += ' -H ' + _shellQuote('Content-Type: ' + contentType);
