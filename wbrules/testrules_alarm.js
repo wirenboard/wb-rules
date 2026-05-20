@@ -1,3 +1,5 @@
+/* global Notify, log */
+
 // Override Notify used by modules loaded from lib.js.
 Notify.sendEmail = function (to, subject, text) {
   log('EMAIL TO: {} SUBJ: {} TEXT: {}', to, subject, text);
@@ -15,7 +17,7 @@ Notify.sendWebhook = function (opts) {
   // Matrix txnId uses Date.now()+Math.random() — normalize so the log is deterministic.
   var url = String(opts.url).replace(
     /(\/send\/m\.room\.message\/)[^/?#]+/,
-    '$1<txnId>'
+    '$1[txnId]'
   );
   var method = opts.method || 'POST';
   var contentType = opts.contentType || '(default)';

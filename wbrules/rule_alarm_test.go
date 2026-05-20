@@ -246,7 +246,7 @@ func (s *AlarmSuite) verifyWebhookNotificationMsgs(alarm, text, encodedText stri
 		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/log: [%s] (QoS 1, retained)", text),
 		fmt.Sprintf("[info] WEBHOOK URL: https://api.vk.com/method/messages.send METHOD: POST CONTENT-TYPE: application/x-www-form-urlencoded HEADERS: (none) BODY: access_token=vk1.a.test&peer_id=2000000001&random_id=0&v=5.131&message=%s", encodedText),
 		fmt.Sprintf("[info] WEBHOOK URL: https://platform-api.max.ru/messages METHOD: POST CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"max-token\"} BODY: {\"chat_id\":12345,\"text\":\"%s\"}", text),
-		fmt.Sprintf("[info] WEBHOOK URL: https://matrix.example.com/_matrix/client/v3/rooms/!abc%%3Amatrix.example.com/send/m.room.message/<txnId> METHOD: PUT CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"Bearer syt_test\"} BODY: {\"msgtype\":\"m.text\",\"body\":\"%s\"}", text),
+		fmt.Sprintf("[info] WEBHOOK URL: https://matrix.example.com/_matrix/client/v3/rooms/!abc%%3Amatrix.example.com/send/m.room.message/[txnId] METHOD: PUT CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"Bearer syt_test\"} BODY: {\"msgtype\":\"m.text\",\"body\":\"%s\"}", text),
 		fmt.Sprintf("[info] WEBHOOK URL: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key-12345 METHOD: POST CONTENT-TYPE: application/json HEADERS: (none) BODY: {\"msgtype\":\"text\",\"text\":{\"content\":\"%s\"}}", text),
 		fmt.Sprintf("[info] WEBHOOK URL: https://example.com/hook METHOD: POST CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"Bearer xyz\"} BODY: {\"event\": \"alarm\", \"text\": \"%s\"}", text),
 	)
