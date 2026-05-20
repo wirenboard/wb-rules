@@ -322,7 +322,7 @@ function doLoad(src) {
       sendFuncs.push(getSendFunc(recipient));
     } catch (e) {
       var type = recipient && Object.prototype.hasOwnProperty.call(recipient, 'type')
-        ? recipient.type : '<unknown>';
+        ? recipient.type : '?';
       log.error('skipping recipient #{} (type: {}): {}', index, type, e.message || e);
     }
   });
