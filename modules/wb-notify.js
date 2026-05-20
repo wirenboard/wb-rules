@@ -175,7 +175,7 @@ exports.sendWebhook = function (opts) {
       ? 'application/json'
       : 'text/plain; charset=utf-8');
 
-  var cmd = 'curl -sS --fail -X ' + _shellQuote(method) + ' ' + _shellQuote(opts.url);
+  var cmd = 'curl -sS --fail -X ' + _shellQuote(method);
   cmd += ' -H ' + _shellQuote('Content-Type: ' + contentType);
   if (opts.headers) {
     var headers = opts.headers;
@@ -186,6 +186,8 @@ exports.sendWebhook = function (opts) {
     });
   }
   if (body != null) cmd += ' --data-binary @-';
+  // -- ends option parsing so a URL starting with '-' isn't taken as a curl flag
+  cmd += ' -- ' + _shellQuote(opts.url);
 
   log('sending webhook: {} {}', method, _redactUrlForLog(opts.url));
   runShellCommand(cmd, {
