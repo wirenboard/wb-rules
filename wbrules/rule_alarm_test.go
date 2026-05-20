@@ -235,6 +235,48 @@ func (s *AlarmSuite) TestMaxAlarm() {
 	s.setOkTemp(9, true) // minValue removed, 9 must be ok
 }
 
+// verifyWebhookNotificationMsgs asserts the log/meta updates plus the five
+// WEBHOOK log lines produced by alarms_new_recipients.conf for a single
+// notification of the given text. encodedText must be encodeURIComponent(text)
+// — it appears in the VK body — and is passed explicitly to keep the test
+// readable.
+func (s *AlarmSuite) verifyWebhookNotificationMsgs(alarm, text, encodedText string) {
+	s.Verify(
+		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta: [{\"order\":1,\"readonly\":true,\"title\":{\"en\":\"%s\"},\"type\":\"alarm\"}] (QoS 1, retained)", alarm, text),
+		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/log: [%s] (QoS 1, retained)", text),
+		fmt.Sprintf("[info] WEBHOOK URL: https://api.vk.com/method/messages.send METHOD: POST CONTENT-TYPE: application/x-www-form-urlencoded HEADERS: (none) BODY: access_token=vk1.a.test&peer_id=2000000001&random_id=0&v=5.131&message=%s", encodedText),
+		fmt.Sprintf("[info] WEBHOOK URL: https://platform-api.max.ru/messages METHOD: POST CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"max-token\"} BODY: {\"chat_id\":12345,\"text\":\"%s\"}", text),
+		fmt.Sprintf("[info] WEBHOOK URL: https://matrix.example.com/_matrix/client/v3/rooms/!abc%%3Amatrix.example.com/send/m.room.message/<txnId> METHOD: PUT CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"Bearer syt_test\"} BODY: {\"msgtype\":\"m.text\",\"body\":\"%s\"}", text),
+		fmt.Sprintf("[info] WEBHOOK URL: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key-12345 METHOD: POST CONTENT-TYPE: application/json HEADERS: (none) BODY: {\"msgtype\":\"text\",\"text\":{\"content\":\"%s\"}}", text),
+		fmt.Sprintf("[info] WEBHOOK URL: https://example.com/hook METHOD: POST CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"Bearer xyz\"} BODY: {\"event\": \"alarm\", \"text\": \"%s\"}", text),
+	)
+}
+
+func (s *AlarmSuite) TestNewRecipientTypes() {
+	s.loadAlarms("alarms_new_recipients.conf", "unnecessaryDeviceIsOn")
+
+	// Activation: cell goes 0 -> 1, alarm fires once.
+	s.publishControlValue("somedev", "unnecessaryDevicePower", "1",
+		"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
+	s.verifyAlarmControlChange("unnecessaryDeviceIsOn", true)
+	s.verifyWebhookNotificationMsgs(
+		"unnecessaryDeviceIsOn",
+		"Unnecessary device is on",
+		"Unnecessary%20device%20is%20on",
+	)
+
+	// Deactivation: cell goes 1 -> 0, default noAlarmMessage embeds cell name & value.
+	s.publishControlValue("somedev", "unnecessaryDevicePower", "0",
+		"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
+	s.verifyAlarmControlChange("unnecessaryDeviceIsOn", false)
+	s.verifyWebhookNotificationMsgs(
+		"unnecessaryDeviceIsOn",
+		"somedev/unnecessaryDevicePower is back to normal, value = false",
+		"somedev%2FunnecessaryDevicePower%20is%20back%20to%20normal%2C%20value%20%3D%20false",
+	)
+	s.VerifyEmpty()
+}
+
 func TestAlarmSuite(t *testing.T) {
 	testutils.RunSuites(t,
 		new(AlarmSuite),
