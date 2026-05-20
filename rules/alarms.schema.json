@@ -157,6 +157,7 @@
                     "title": "Chat ID",
                     "description": "Numeric chat identifier returned by MAX Bot API",
                     "minLength": 1,
+                    "pattern": "^[0-9]+$",
                     "propertyOrder": 3
                 }
             },
