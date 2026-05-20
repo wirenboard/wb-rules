@@ -95,6 +95,17 @@ function _redactUrlForLog(url) {
 
 var ALLOWED_WEBHOOK_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
 
+function normalizeWebhookMethod(method) {
+  var normalized = method ? String(method).toUpperCase() : 'POST';
+  if (ALLOWED_WEBHOOK_METHODS.indexOf(normalized) === -1) {
+    throw new Error(
+      "invalid webhook method '" + normalized + "', expected one of " + ALLOWED_WEBHOOK_METHODS.join('/')
+    );
+  }
+  return normalized;
+}
+exports.normalizeWebhookMethod = normalizeWebhookMethod;
+
 exports.sendEmail = function (to, subject, text) {
   log('sending email: {}', subject);
   var base64subject = Duktape.enc('base64', subject);
@@ -152,12 +163,7 @@ exports.sendSMS = function (to, text, command) {
 
 exports.sendWebhook = function (opts) {
   if (!opts || !opts.url) throw new Error("sendWebhook: 'url' required");
-  var method = (opts.method || 'POST').toUpperCase();
-  if (ALLOWED_WEBHOOK_METHODS.indexOf(method) === -1) {
-    throw new Error(
-      "sendWebhook: invalid method '" + method + "', expected one of " + ALLOWED_WEBHOOK_METHODS.join('/')
-    );
-  }
+  var method = normalizeWebhookMethod(opts.method);
   var body = opts.body;
   var bodyIsObject = body != null && typeof body === 'object';
   if (bodyIsObject) body = JSON.stringify(body);

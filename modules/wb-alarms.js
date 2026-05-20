@@ -27,15 +27,15 @@ var recipientTypes = {
 
   webhook: function getWebhookSendFunc(src) {
     if (!Object.prototype.hasOwnProperty.call(src,'url')) throw new Error("webhook recipient without 'url'");
+    var method = Notify.normalizeWebhookMethod(src.method);
     return function sendWebhookWrapper(text) {
-      var method = src.method ? ('' + src.method).toUpperCase() : src.method;
       var opts = {
         url: src.url,
         method: method,
         headers: src.headers,
         contentType: src.contentType,
       };
-      if (src.bodyTemplate || !method || method === 'POST' || method === 'PUT' || method === 'PATCH') {
+      if (src.bodyTemplate || method === 'POST' || method === 'PUT' || method === 'PATCH') {
         opts.body = src.bodyTemplate ? maybeFormat(src.bodyTemplate, text) : text;
       }
       Notify.sendWebhook(opts);
