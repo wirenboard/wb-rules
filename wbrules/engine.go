@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"runtime"
 	"sort"
 	"strconv"
 	"sync"
@@ -625,8 +626,10 @@ type RuleEngine struct {
 	active          uint32 // atomic
 	cleanup         *ScopedCleanup
 	rev             uint32 // atomic
-	syncQueueActive bool
+	syncQueueActive uint32 // atomic
 	syncQueue       chan func()
+	syncStopCh      chan struct{}
+	syncStopOnce    sync.Once
 	syncQuitCh      chan chan struct{}
 	mqttClient      wbgong.MQTTClient // for service
 	driver          wbgong.Driver
@@ -687,7 +690,8 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 		cleanup:               MakeScopedCleanup(),
 		rev:                   0,
 		syncQueue:             make(chan func(), SYNC_QUEUE_LEN),
-		syncQueueActive:       true,
+		syncStopCh:            make(chan struct{}),
+		syncQueueActive:       ATOMIC_TRUE,
 		syncQuitCh:            make(chan chan struct{}, 1),
 		mqttClient:            mqtt,
 		driver:                driver,
@@ -990,16 +994,25 @@ func (engine *RuleEngine) CallSync(thunk func()) {
 			if !delay.Stop() {
 				<-delay.C
 			}
+		case <-engine.syncStopCh:
+			if !delay.Stop() {
+				<-delay.C
+			}
+			thunk()
 		case <-delay.C:
 			panic("[engine] CallSync stuck!")
 		}
 	} else {
-		engine.syncQueue <- thunk
+		select {
+		case engine.syncQueue <- thunk:
+		case <-engine.syncStopCh:
+			thunk()
+		}
 	}
 }
 
 func (engine *RuleEngine) MaybeCallSync(thunk func()) {
-	if engine.syncQueueActive {
+	if atomic.LoadUint32(&engine.syncQueueActive) == ATOMIC_TRUE {
 		engine.CallSync(thunk)
 	} else {
 		thunk()
@@ -1296,8 +1309,10 @@ func (engine *RuleEngine) handleStop() {
 	engine.statusMtx.Lock()
 	engine.readyCh = nil
 	engine.driverReadyCh = nil
-	engine.syncQueueActive = false
-	close(engine.syncQueue)
+	atomic.StoreUint32(&engine.syncQueueActive, ATOMIC_FALSE)
+	engine.syncStopOnce.Do(func() {
+		close(engine.syncStopCh)
+	})
 	engine.statusMtx.Unlock()
 }
 
@@ -1342,12 +1357,14 @@ func (engine *RuleEngine) Start() {
 	engine.readyCh = make(chan struct{})
 	engine.driverReadyCh = make(chan struct{}, 1)
 	engine.eventBuffer = NewEventBuffer()
+	engine.syncStopCh = make(chan struct{})
+	engine.syncStopOnce = sync.Once{}
 
 	engine.driver.OnDriverEvent(engine.driverEventHandler)
 	engine.driver.OnRetainReady(func(tx wbgong.DriverTx) {
 		engine.driverReadyCh <- struct{}{}
 	})
-	engine.syncQueueActive = true
+	atomic.StoreUint32(&engine.syncQueueActive, ATOMIC_TRUE)
 	atomic.StoreUint32(&engine.active, ENGINE_ACTIVE)
 
 	go engine.mainLoop()
@@ -1370,8 +1387,9 @@ func (engine *RuleEngine) Stop() {
 	engine.syncQuitCh <- q
 	<-q
 
-	// wait for main loop to release sync queue
-	<-engine.syncQueue
+	for atomic.LoadUint32(&engine.syncQueueActive) == ATOMIC_TRUE {
+		runtime.Gosched()
+	}
 }
 
 func (engine *RuleEngine) IsActive() bool {

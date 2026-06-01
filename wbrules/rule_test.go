@@ -95,7 +95,7 @@ var updatesVerifyRx = regexp.MustCompile(`^\[(changed|removed)\] (.*)`)
 
 // creates necessary file paths if some are not defined already
 func (s *RuleSuiteBase) createTempFiles() {
-	tmpDir, err := os.MkdirTemp("", "wbrulestest")
+	tmpDir, err := os.MkdirTemp("/dev/shm", "wbrulestest")
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}

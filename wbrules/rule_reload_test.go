@@ -17,7 +17,7 @@ type RuleReloadSuite struct {
 
 func (s *RuleReloadSuite) SetupTest() {
 	var err error
-	s.reloadTmpDir, err = os.MkdirTemp("", "wbrulestest")
+	s.reloadTmpDir, err = os.MkdirTemp("/dev/shm", "wbrulestest")
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}
@@ -336,7 +336,7 @@ type RuleReloadForceDefaultSuite struct {
 
 func (s *RuleReloadForceDefaultSuite) SetupTest() {
 	var err error
-	s.reloadTmpDir, err = os.MkdirTemp("", "wbrulestest")
+	s.reloadTmpDir, err = os.MkdirTemp("/dev/shm", "wbrulestest")
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}
