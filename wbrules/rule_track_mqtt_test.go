@@ -25,36 +25,36 @@ func (s *RuleTrackMqttSuite) TestTracker() {
 	s.VerifyUnordered(
 		"tst -> /wierd/sub/some: [some-value] (QoS 1, retained)",
 		"wbrules-log -> /wbrules/log/info: [1. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub/some, value: some-value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub/some, value: some-value, retained: true, qos: 1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [2. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub/some, value: some-value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub/some, value: some-value, retained: true, qos: 1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [4. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub/some, value: some-value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub/some, value: some-value, retained: true, qos: 1] (QoS 1)",
 	)
 
 	s.publish("/wierd/sub2/some", "some-value")
 	s.VerifyUnordered(
 		"tst -> /wierd/sub2/some: [some-value] (QoS 1, retained)",
 		"wbrules-log -> /wbrules/log/info: [2. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub2/some, value: some-value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub2/some, value: some-value, retained: true, qos: 1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [4. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub2/some, value: some-value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub2/some, value: some-value, retained: true, qos: 1] (QoS 1)",
 	)
 
 	s.publish("/wierd/sub3/another", "another-value")
 	s.VerifyUnordered(
 		"tst -> /wierd/sub3/another: [another-value] (QoS 1, retained)",
 		"wbrules-log -> /wbrules/log/info: [3. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub3/another, value: another-value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub3/another, value: another-value, retained: true, qos: 1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [4. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub3/another, value: another-value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub3/another, value: another-value, retained: true, qos: 1] (QoS 1)",
 	)
 
-	s.publish("/wierd/different/long/topic", "random-value")
+	s.publish("/wierd/different/long/topic/on", "random-value")
 	s.VerifyUnordered(
-		"tst -> /wierd/different/long/topic: [random-value] (QoS 1, retained)",
+		"tst -> /wierd/different/long/topic/on: [random-value] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [4. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/different/long/topic, value: random-value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /wierd/different/long/topic/on, value: random-value, retained: false, qos: 1] (QoS 1)",
 	)
 
 	s.VerifyEmpty()

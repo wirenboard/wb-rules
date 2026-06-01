@@ -1981,8 +1981,10 @@ func (engine *RuleEngine) newTrackHandler(subTopic string) func(wbgong.MQTTMessa
 		for _, tracker := range trackers {
 			tr := tracker
 			args := objx.New(map[string]any{
-				"topic": msg.Topic,
-				"value": msg.Payload,
+				"topic":    msg.Topic,
+				"value":    msg.Payload,
+				"retained": msg.Retained,
+				"qos":      msg.QoS,
 			})
 			engine.CallSync(func() {
 				tr.Callback(args)

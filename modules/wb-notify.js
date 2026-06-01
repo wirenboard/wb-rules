@@ -1,3 +1,5 @@
+/* global log, runShellCommand, debug, Duktape */
+
 var _smsQueue = [],
   _smsBusy = false;
 
@@ -70,6 +72,43 @@ function _checkUse4gModem(doneCallback) {
   });
 }
 
+function _shellQuote(s) {
+  return "'" + String(s).replace(/'/g, "'\\''") + "'";
+}
+
+function _isValidJSON(str) {
+  try {
+    JSON.parse(str);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Strip path, query and URL userinfo so we don't leak secrets embedded in
+// webhook URLs. Discord/Slack tokens live in the path, Gotify/WeChat Work
+// keys in the query, and basic-auth style credentials may appear in userinfo.
+function _redactUrlForLog(url) {
+  var m = /^([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)([^/?#]*)/.exec(String(url));
+  if (!m) return '(invalid url)';
+  var authority = m[2];
+  var atIdx = authority.lastIndexOf('@');
+  return m[1] + (atIdx >= 0 ? authority.slice(atIdx + 1) : authority);
+}
+
+var ALLOWED_WEBHOOK_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
+
+function normalizeWebhookMethod(method) {
+  var normalized = method ? String(method).toUpperCase() : 'POST';
+  if (ALLOWED_WEBHOOK_METHODS.indexOf(normalized) === -1) {
+    throw new Error(
+      "invalid webhook method '" + normalized + "', expected one of " + ALLOWED_WEBHOOK_METHODS.join('/')
+    );
+  }
+  return normalized;
+}
+exports.normalizeWebhookMethod = normalizeWebhookMethod;
+
 exports.sendEmail = function (to, subject, text) {
   log('sending email: {}', subject);
   var base64subject = Duktape.enc('base64', subject);
@@ -123,6 +162,47 @@ exports.sendSMS = function (to, text, command) {
       }
     });
   }
+};
+
+exports.sendWebhook = function (opts) {
+  if (!opts || !opts.url) throw new Error("sendWebhook: 'url' required");
+  var method = normalizeWebhookMethod(opts.method);
+  var body = opts.body;
+  var bodyIsObject = body != null && typeof body === 'object';
+  if (bodyIsObject) body = JSON.stringify(body);
+  var contentType = opts.contentType ||
+    (bodyIsObject || (typeof body === 'string' && _isValidJSON(body))
+      ? 'application/json'
+      : 'text/plain; charset=utf-8');
+
+  var cmd = 'curl -sS --fail -X ' + _shellQuote(method);
+  cmd += ' -H ' + _shellQuote('Content-Type: ' + contentType);
+  if (opts.headers) {
+    var headers = opts.headers;
+    Object.keys(headers).forEach(function (k) {
+      // eslint-disable-next-line security/detect-object-injection
+      var value = headers[k];
+      cmd += ' -H ' + _shellQuote(k + ': ' + value);
+    });
+  }
+  if (body != null) cmd += ' --data-binary @-';
+  // -- ends option parsing so a URL starting with '-' isn't taken as a curl flag
+  cmd += ' -- ' + _shellQuote(opts.url);
+
+  log('sending webhook: {} {}', method, _redactUrlForLog(opts.url));
+  runShellCommand(cmd, {
+    captureErrorOutput: true,
+    captureOutput: true,
+    input: body == null ? null : String(body),
+    exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
+      if (exitCode != 0)
+        log.error(
+          'error sending webhook:\n{}\n{}',
+          capturedOutput,
+          capturedErrorOutput
+        );
+    },
+  });
 };
 
 exports.sendTelegramMessage = function (token, chatId, text) {

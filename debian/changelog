@@ -1,8 +1,21 @@
-wb-rules (2.40.1) stable; urgency=medium
+wb-rules (2.42.1) stable; urgency=medium
 
   * Fix race condition on service stop
 
- -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 13 May 2026 17:00:00 +0400
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 01 Jun 2026 10:30:00 +0400
+
+wb-rules (2.42.0) stable; urgency=medium
+
+  * trackMqtt: pass 'retained' and 'qos' parameters to callback function
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Sat, 30 May 2026 20:00:00 +0400
+
+wb-rules (2.41.0) stable; urgency=medium
+
+  * Add VK, MAX, Matrix, WeChat Work and generic HTTP webhook recipient
+    types for Alarms
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Thu, 14 May 2026 10:01:53 +0300
 
 wb-rules (2.40.0) stable; urgency=medium
 
