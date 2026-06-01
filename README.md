@@ -928,7 +928,7 @@ debug(fmt, [arg1 [, ...]]) // сокращение для log.debug(...)
 
 Если вам нужно следить за изменением произвольных MQTT-топиков, используйте `trackMqtt()`;
 
-`trackMqtt(topic, callback())` подписывается на MQTT с указанным topic'ом, допустимы символы `#` и `+` значения передаются в функцию объектом *message* состоящим из: *.topic* — путь к топику, значение которого изменилось и *.value* — новое значение топика:
+`trackMqtt(topic, callback())` подписывается на MQTT с указанным topic'ом, допустимы символы `#` и `+` значения передаются в функцию объектом *message* состоящим из: *.topic* — путь к топику, значение которого изменилось, *.value* — новое значение топика, *.retained* и *.qos*:
 ```js
 trackMqtt("/devices/wb-adc/controls/Vin", function(message) {
   log.info("name: {}, value: {}".format(message.topic, message.value));
