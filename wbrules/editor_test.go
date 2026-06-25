@@ -390,6 +390,10 @@ func (s *EditorSuite) TestEnableDisableFile() {
 func (s *EditorSuite) TestRenameFile() {
 	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": "sample2.js"},
 		EDITOR_ERROR_OVERWRITE, "EditorError", "New-state file already exists")
+	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": ".hidden.js"},
+		EDITOR_ERROR_INVALID_PATH, "EditorError", "File name should not start with a dot")
+	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": "sub/.hidden.js"},
+		EDITOR_ERROR_INVALID_PATH, "EditorError", "File name should not start with a dot")
 	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": "sample1_new"},
 		EDITOR_ERROR_INVALID_EXT, "EditorError", "File name should end with .js")
 	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": strings.Repeat("x", 255) + ".js"},
