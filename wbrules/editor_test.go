@@ -281,6 +281,14 @@ func (s *EditorSuite) TestSaveFile() {
 		"sub/sample5.js":      "// sample5",
 		"sub/sample6.js":      "sample6 -- error",
 	})
+
+	// check that saving a hidden file is rejected
+	s.VerifyRpcError("Save",
+		objx.Map{"path": ".hidden.js", "content": "// hidden"},
+		EDITOR_ERROR_INVALID_PATH, "EditorError", "File name should not start with a dot")
+	s.VerifyRpcError("Save",
+		objx.Map{"path": "sub/.hidden.js", "content": "// hidden"},
+		EDITOR_ERROR_INVALID_PATH, "EditorError", "File name should not start with a dot")
 }
 
 func (s *EditorSuite) TestRemoveFile() {

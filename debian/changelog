@@ -1,3 +1,9 @@
+wb-rules (2.43.1) stable; urgency=medium
+
+  * Editor: reject saving hidden files and ignore them in the directory watcher
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 25 Jun 2026 18:20:00 +0400
+
 wb-rules (2.43.0) stable; urgency=medium
 
   * Port for Debian 13
