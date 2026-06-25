@@ -58,7 +58,7 @@ func validateScriptPath(pth string) error {
 		return hiddenFileError
 	} else if !strings.HasSuffix(pth, ".js") {
 		return invalidExtensionError
-	} else if len(pth)+len(".js") > 255 {
+	} else if len(pth) > 255 {
 		return invalidLenError
 	}
 
