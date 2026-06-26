@@ -82,7 +82,7 @@ func main() {
 		http.HandleFunc("/metrics", func(w http.ResponseWriter, req *http.Request) {
 			metrics.WritePrometheus(w, true)
 		})
-		// debug/pprof handlers are registered in https://cs.opensource.google/go/go/+/refs/tags/go1.21.0:src/net/http/pprof/pprof.go;l=93
+		// debug/pprof handlers are registered in https://cs.opensource.google/go/go/+/refs/tags/go1.24.0:src/net/http/pprof/pprof.go;l=95
 		go func() {
 			log.Println(http.ListenAndServe(*httpAddr, nil))
 		}()
@@ -158,7 +158,7 @@ func main() {
 	defer engine.Stop()
 
 	gotSome := false
-	watcher := wbgong.NewDirWatcher("\\.js(\\"+wbrules.FILE_DISABLED_SUFFIX+")?$", engine)
+	watcher := wbgong.NewDirWatcher("(^|/)[^/.][^/]*\\.js(\\"+wbrules.FILE_DISABLED_SUFFIX+")?$", engine)
 	if *editDir != "" {
 		err := engine.SetSourceRoot(*editDir)
 		if err != nil {
