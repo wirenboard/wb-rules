@@ -147,8 +147,8 @@ exports.sendSMS = function (to, text, command, callback) {
       err = new Error('error sending sms:\n' + capturedOutput + '\n' + capturedErrorOutput);
       log.error('{}', err.message);
     }
-    _notifyDone(callback, err);
     _advanceSmsQueue();
+    _notifyDone(callback, err);
   };
 
   var sendOrEnqueue = function (doSend) {
