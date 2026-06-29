@@ -35,6 +35,22 @@ func (s *RuleNotifyEmailSuite) TestEmail() {
 		"wbrules-log -> /wbrules/log/info: [sending email: Test subject] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: /usr/sbin/sendmail -t] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?VGVzdCBzdWJqZWN0?=\r\nContent-Type: text/plain; charset=utf-8\n\nTest text] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [email send status: ok] (QoS 1)",
+	)
+}
+
+func (s *RuleNotifyEmailSuite) TestEmailError() {
+	s.setErrorCode(1)
+
+	s.publish("/devices/test_email/controls/send/on", "1", "test_email/send")
+	s.VerifyUnordered(
+		"driver -> /devices/test_email/controls/send: [1] (QoS 1)",
+		"tst -> /devices/test_email/controls/send/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending email: Test subject] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: /usr/sbin/sendmail -t] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?VGVzdCBzdWJqZWN0?=\r\nContent-Type: text/plain; charset=utf-8\n\nTest text] (QoS 1)",
+		"wbrules-log -> /wbrules/log/error: [error sending email:\nstdout\nstderr] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [email send status: error] (QoS 1)",
 	)
 }
 

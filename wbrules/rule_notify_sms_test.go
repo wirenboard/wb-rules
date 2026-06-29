@@ -37,6 +37,24 @@ func (s *RuleNotifySmsSuite) TestSmsGammu() {
 		"wbrules-log -> /wbrules/log/info: [sending sms (gammu-like): test value] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm restart_if_broken && gammu sendsms TEXT '88005553535' -unicode] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [input: test value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sms send status: ok] (QoS 1)",
+	)
+}
+
+func (s *RuleNotifySmsSuite) TestSmsGammuError() {
+	s.setErrorCode(1, 1) // to make mmcli check OK
+	s.setErrorCode(2, 1) // to make gammu fail
+
+	s.publish("/devices/test_sms/controls/send/on", "1", "test_sms/send")
+	s.VerifyUnordered(
+		"driver -> /devices/test_sms/controls/send: [1] (QoS 1)",
+		"tst -> /devices/test_sms/controls/send/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm should_enable] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending sms (gammu-like): test value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm restart_if_broken && gammu sendsms TEXT '88005553535' -unicode] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: test value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/error: [error sending sms:\nstdout\nstderr] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sms send status: error] (QoS 1)",
 	)
 }
 
@@ -51,6 +69,7 @@ func (s *RuleNotifySmsSuite) TestSmsModemManager() {
 		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm should_enable] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending sms (via ModemManager): test value] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: mmcli -m any --messaging-create-sms=\"number=88005553535,text=\\\"test value\\\"\" | sed -n 's#^Success.*/SMS/\\([0-9]\\+\\).*$#\\1#p' | xargs mmcli --send -s] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sms send status: ok] (QoS 1)",
 	)
 }
 

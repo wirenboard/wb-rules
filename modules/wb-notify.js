@@ -109,7 +109,13 @@ function normalizeWebhookMethod(method) {
 }
 exports.normalizeWebhookMethod = normalizeWebhookMethod;
 
-exports.sendEmail = function (to, subject, text) {
+// Invoke an optional Node-style callback with an Error (or null on success),
+// guarding against a missing or non-function argument.
+function _notifyDone(callback, err) {
+  if (typeof callback === 'function') callback(err);
+}
+
+exports.sendEmail = function (to, subject, text, callback) {
   log('sending email: {}', subject);
   var base64subject = Duktape.enc('base64', subject);
   runShellCommand('/usr/sbin/sendmail -t', {
@@ -117,21 +123,31 @@ exports.sendEmail = function (to, subject, text) {
     captureOutput: true,
     input: 'To: {}\r\nSubject: =?utf-8?B?{}?=\r\nContent-Type: text/plain; charset=utf-8\n\n{}'.format(to, base64subject, text),
     exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
-      if (exitCode != 0)
-        log.error(
-          'error sending email:\n{}\n{}',
-          capturedOutput,
-          capturedErrorOutput
-        );
+      var err = null;
+      if (exitCode != 0) {
+        err = new Error('error sending email:\n' + capturedOutput + '\n' + capturedErrorOutput);
+        log.error('{}', err.message);
+      }
+      _notifyDone(callback, err);
     },
   });
 };
 
-exports.sendSMS = function (to, text, command) {
+exports.sendSMS = function (to, text, command, callback) {
+  // 'command' is optional; allow sendSMS(to, text, callback)
+  if (typeof command === 'function') {
+    callback = command;
+    command = undefined;
+  }
+
   var doneCallback = function (exitCode, capturedOutput, capturedErrorOutput) {
     _smsBusy = false;
-    if (exitCode != 0)
-      log.error('error sending sms:\n{}\n{}', capturedOutput, capturedErrorOutput);
+    var err = null;
+    if (exitCode != 0) {
+      err = new Error('error sending sms:\n' + capturedOutput + '\n' + capturedErrorOutput);
+      log.error('{}', err.message);
+    }
+    _notifyDone(callback, err);
     _advanceSmsQueue();
   };
 
@@ -164,7 +180,7 @@ exports.sendSMS = function (to, text, command) {
   }
 };
 
-exports.sendWebhook = function (opts) {
+exports.sendWebhook = function (opts, callback) {
   if (!opts || !opts.url) throw new Error("sendWebhook: 'url' required");
   var method = normalizeWebhookMethod(opts.method);
   var body = opts.body;
@@ -195,17 +211,17 @@ exports.sendWebhook = function (opts) {
     captureOutput: true,
     input: body == null ? null : String(body),
     exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
-      if (exitCode != 0)
-        log.error(
-          'error sending webhook:\n{}\n{}',
-          capturedOutput,
-          capturedErrorOutput
-        );
+      var err = null;
+      if (exitCode != 0) {
+        err = new Error('error sending webhook:\n' + capturedOutput + '\n' + capturedErrorOutput);
+        log.error('{}', err.message);
+      }
+      _notifyDone(callback, err);
     },
   });
 };
 
-exports.sendTelegramMessage = function (token, chatId, text) {
+exports.sendTelegramMessage = function (token, chatId, text, callback) {
   log('sending telegram message: {}', text);
   runShellCommand(
     "curl -s -X POST https://api.telegram.org/bot{}/sendMessage -H 'Content-Type: application/x-www-form-urlencoded' -d @-".format(token),
@@ -214,23 +230,22 @@ exports.sendTelegramMessage = function (token, chatId, text) {
       captureOutput: true,
       input: 'chat_id={}&text={}'.format(chatId, encodeURIComponent(text)),
       exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
-        if (exitCode != 0)
-          log.error(
-            'error sending telegram message:\n{}\n{}',
-            capturedOutput,
-            capturedErrorOutput
-          );
+        var err = null;
+        if (exitCode != 0) {
+          err = new Error('error sending telegram message:\n' + capturedOutput + '\n' + capturedErrorOutput);
+          log.error('{}', err.message);
+        }
         try {
           var response = JSON.parse(capturedOutput);
-          if (!response.ok)
-            log.error(
-              'error sending telegram message:\n{} {}',
-              response.error_code,
-              response.description
-            );
+          if (!response.ok) {
+            err = new Error('error sending telegram message:\n' + response.error_code + ' ' + response.description);
+            log.error('{}', err.message);
+          }
         } catch (e) {
-          log.error('error parsing response: {}', e);
+          err = new Error('error parsing response: ' + e);
+          log.error('{}', err.message);
         }
+        _notifyDone(callback, err);
       },
     }
   );

@@ -38,7 +38,9 @@ defineVirtualDevice('test_sms', {
 defineRule({
   whenChanged: 'test_sms/send',
   then: function () {
-    Notify.sendSMS('88005553535', 'test value');
+    Notify.sendSMS('88005553535', 'test value', function (err) {
+      log('sms send status: {}', err ? 'error' : 'ok');
+    });
   },
 });
 

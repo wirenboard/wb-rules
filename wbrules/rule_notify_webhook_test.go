@@ -35,6 +35,22 @@ func (s *RuleNotifyWebhookSuite) TestPlainTextBody() {
 		"wbrules-log -> /wbrules/log/info: [sending webhook: POST https://example.com] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: curl -sS --fail -X 'POST' -H 'Content-Type: text/plain; charset=utf-8' --data-binary @- -- 'https://example.com/hook'] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [input: plain text body] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [webhook send status: ok] (QoS 1)",
+	)
+}
+
+func (s *RuleNotifyWebhookSuite) TestPlainTextBodyError() {
+	s.setErrorCode(1)
+
+	s.publish("/devices/test_webhook/controls/send_text/on", "1", "test_webhook/send_text")
+	s.VerifyUnordered(
+		"driver -> /devices/test_webhook/controls/send_text: [1] (QoS 1)",
+		"tst -> /devices/test_webhook/controls/send_text/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending webhook: POST https://example.com] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: curl -sS --fail -X 'POST' -H 'Content-Type: text/plain; charset=utf-8' --data-binary @- -- 'https://example.com/hook'] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: plain text body] (QoS 1)",
+		"wbrules-log -> /wbrules/log/error: [error sending webhook:\nok\nstderr] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [webhook send status: error] (QoS 1)",
 	)
 }
 
