@@ -234,16 +234,19 @@ exports.sendTelegramMessage = function (token, chatId, text, callback) {
         if (exitCode != 0) {
           err = new Error('error sending telegram message:\n' + capturedOutput + '\n' + capturedErrorOutput);
           log.error('{}', err.message);
-        }
-        try {
-          var response = JSON.parse(capturedOutput);
-          if (!response.ok) {
-            err = new Error('error sending telegram message:\n' + response.error_code + ' ' + response.description);
+        } else {
+          // Only inspect the Telegram JSON response when curl itself succeeded,
+          // otherwise a parse error would mask the real command failure.
+          try {
+            var response = JSON.parse(capturedOutput);
+            if (!response.ok) {
+              err = new Error('error sending telegram message:\n' + response.error_code + ' ' + response.description);
+              log.error('{}', err.message);
+            }
+          } catch (e) {
+            err = new Error('error parsing response: ' + e);
             log.error('{}', err.message);
           }
-        } catch (e) {
-          err = new Error('error parsing response: ' + e);
-          log.error('{}', err.message);
         }
         _notifyDone(callback, err);
       },
