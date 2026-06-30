@@ -114,7 +114,12 @@ exports.normalizeWebhookMethod = normalizeWebhookMethod;
 // logging the error so failures are not silently swallowed.
 function _notifyDone(callback, err) {
   if (typeof callback === 'function') {
-    callback(err);
+    // Isolate user code: a throwing callback must not abort our exitCallback
+    try {
+      callback(err);
+    } catch (e) {
+      log.error('error in notify callback: {}', e);
+    }
   } else if (err) {
     log.error('{}', err.message);
   }
