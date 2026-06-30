@@ -21,6 +21,9 @@ defineVirtualDevice('test_email', {
     send_quoted: {
       type: 'pushbutton',
     },
+    send_emoji: {
+      type: 'pushbutton',
+    },
   },
 });
 
@@ -37,5 +40,12 @@ defineRule({
   whenChanged: 'test_email/send_quoted',
   then: function () {
     Notify.sendEmail('me@example.org', 'Test "subject" \'single\'', 'Test "text" \'single\'');
+  },
+});
+
+defineRule({
+  whenChanged: 'test_email/send_emoji',
+  then: function () {
+    Notify.sendEmail('me@example.org', '🏠 тема', '🏠 текст');
   },
 });

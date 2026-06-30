@@ -1,3 +1,10 @@
+wb-rules (2.44.1) stable; urgency=medium
+
+  * Notify: fix garbled emoji (and other non-BMP characters) in sendEmail subject
+    and body by encoding them as proper UTF-8 base64 instead of Duktape's CESU-8
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 30 Jun 2026 19:00:00 +0400
+
 wb-rules (2.44.0) stable; urgency=medium
 
   * Notify: sendEmail/sendSMS/sendWebhook/sendTelegramMessage accept an optional

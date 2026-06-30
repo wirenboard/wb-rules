@@ -1,4 +1,4 @@
-/* global log, runShellCommand, debug, Duktape */
+/* global log, runShellCommand, debug */
 
 var _smsQueue = [],
   _smsBusy = false;
@@ -125,13 +125,78 @@ function _notifyDone(callback, err) {
   }
 }
 
+var _BASE64_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+// Encode a string as base64 of its UTF-8 bytes.
+//
+// Duktape keeps strings as CESU-8 internally, so Duktape.enc('base64', str)
+// (and passing a string straight to a shell command) yields invalid UTF-8 for
+// characters outside the BMP — e.g. emoji — which mail clients then render as
+// garbage. encodeURIComponent produces the correct UTF-8 byte sequence for
+// every code point (it combines surrogate pairs), which we base64-encode here.
+function _utf8ToBase64(str) {
+  var enc = encodeURIComponent(String(str));
+  var bytes = [];
+  var i = 0;
+  while (i < enc.length) {
+    if (enc.charAt(i) === '%') {
+      bytes.push(parseInt(enc.substr(i + 1, 2), 16));
+      i += 3;
+    } else {
+      bytes.push(enc.charCodeAt(i));
+      i += 1;
+    }
+  }
+
+  var out = '';
+  for (i = 0; i + 3 <= bytes.length; i += 3) {
+    var n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+    out +=
+      _BASE64_ALPHABET.charAt((n >> 18) & 63) +
+      _BASE64_ALPHABET.charAt((n >> 12) & 63) +
+      _BASE64_ALPHABET.charAt((n >> 6) & 63) +
+      _BASE64_ALPHABET.charAt(n & 63);
+  }
+  var rem = bytes.length - i;
+  if (rem === 1) {
+    var a = bytes[i] << 16;
+    out +=
+      _BASE64_ALPHABET.charAt((a >> 18) & 63) +
+      _BASE64_ALPHABET.charAt((a >> 12) & 63) +
+      '==';
+  } else if (rem === 2) {
+    var b = (bytes[i] << 16) | (bytes[i + 1] << 8);
+    out +=
+      _BASE64_ALPHABET.charAt((b >> 18) & 63) +
+      _BASE64_ALPHABET.charAt((b >> 12) & 63) +
+      _BASE64_ALPHABET.charAt((b >> 6) & 63) +
+      '=';
+  }
+  return out;
+}
+
+// Split a base64 payload into 76-character lines per RFC 2045.
+function _wrapBase64(b64) {
+  var lines = [];
+  for (var i = 0; i < b64.length; i += 76) {
+    lines.push(b64.substr(i, 76));
+  }
+  return lines.join('\r\n');
+}
+
 exports.sendEmail = function (to, subject, text, callback) {
   log('sending email: {}', subject);
-  var base64subject = Duktape.enc('base64', subject);
+  var input =
+    'To: ' + to + '\r\n' +
+    'Subject: =?utf-8?B?' + _utf8ToBase64(subject) + '?=\r\n' +
+    'Content-Type: text/plain; charset=utf-8\r\n' +
+    'Content-Transfer-Encoding: base64\n\n' +
+    _wrapBase64(_utf8ToBase64(text));
   runShellCommand('/usr/sbin/sendmail -t', {
     captureErrorOutput: true,
     captureOutput: true,
-    input: 'To: {}\r\nSubject: =?utf-8?B?{}?=\r\nContent-Type: text/plain; charset=utf-8\n\n{}'.format(to, base64subject, text),
+    input: input,
     exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
       var err = null;
       if (exitCode != 0) {

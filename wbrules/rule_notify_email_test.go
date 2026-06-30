@@ -34,7 +34,7 @@ func (s *RuleNotifyEmailSuite) TestEmail() {
 		"tst -> /devices/test_email/controls/send/on: [1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending email: Test subject] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: /usr/sbin/sendmail -t] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?VGVzdCBzdWJqZWN0?=\r\nContent-Type: text/plain; charset=utf-8\n\nTest text] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?VGVzdCBzdWJqZWN0?=\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\n\nVGVzdCB0ZXh0] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [email send status: ok] (QoS 1)",
 	)
 }
@@ -48,7 +48,7 @@ func (s *RuleNotifyEmailSuite) TestEmailError() {
 		"tst -> /devices/test_email/controls/send/on: [1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending email: Test subject] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: /usr/sbin/sendmail -t] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?VGVzdCBzdWJqZWN0?=\r\nContent-Type: text/plain; charset=utf-8\n\nTest text] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?VGVzdCBzdWJqZWN0?=\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\n\nVGVzdCB0ZXh0] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [email send status: error] (QoS 1)",
 	)
 }
@@ -63,7 +63,7 @@ func (s *RuleNotifyEmailSuite) TestEmailErrorWithoutCallback() {
 		"tst -> /devices/test_email/controls/send_quoted/on: [1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending email: Test \"subject\" 'single'] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: /usr/sbin/sendmail -t] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?VGVzdCAic3ViamVjdCIgJ3NpbmdsZSc=?=\r\nContent-Type: text/plain; charset=utf-8\n\nTest \"text\" 'single'] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?VGVzdCAic3ViamVjdCIgJ3NpbmdsZSc=?=\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\n\nVGVzdCAidGV4dCIgJ3NpbmdsZSc=] (QoS 1)",
 		"wbrules-log -> /wbrules/log/error: [error sending email:\nstdout\nstderr] (QoS 1)",
 	)
 }
@@ -77,7 +77,26 @@ func (s *RuleNotifyEmailSuite) TestEmailWithQuotes() {
 		"tst -> /devices/test_email/controls/send_quoted/on: [1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending email: Test \"subject\" 'single'] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: /usr/sbin/sendmail -t] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?VGVzdCAic3ViamVjdCIgJ3NpbmdsZSc=?=\r\nContent-Type: text/plain; charset=utf-8\n\nTest \"text\" 'single'] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?VGVzdCAic3ViamVjdCIgJ3NpbmdsZSc=?=\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\n\nVGVzdCAidGV4dCIgJ3NpbmdsZSc=] (QoS 1)",
+	)
+}
+
+// Emoji (and any other character outside the Basic Multilingual Plane) must be
+// transmitted as proper UTF-8. Duktape stores strings as CESU-8 internally, so
+// the subject/body are base64-encoded from their real UTF-8 bytes rather than
+// handed to the shell (or Duktape.enc) directly. Note that the "sending email:"
+// log line below still shows the CESU-8 bytes of the emoji — that is a separate
+// cosmetic quirk of logging through Duktape, not of the message we send.
+func (s *RuleNotifyEmailSuite) TestEmailEmoji() {
+	s.setErrorCode(0)
+
+	s.publish("/devices/test_email/controls/send_emoji/on", "1", "test_email/send_emoji")
+	s.VerifyUnordered(
+		"driver -> /devices/test_email/controls/send_emoji: [1] (QoS 1)",
+		"tst -> /devices/test_email/controls/send_emoji/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending email: \xed\xa0\xbc\xed\xbf\xa0 тема] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: /usr/sbin/sendmail -t] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?8J+PoCDRgtC10LzQsA==?=\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\n\n8J+PoCDRgtC10LrRgdGC] (QoS 1)",
 	)
 }
 
