@@ -128,6 +128,32 @@ function _notifyDone(callback, err) {
 var _BASE64_ALPHABET =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
+// Replace unpaired UTF-16 surrogates with U+FFFD. encodeURIComponent (used by
+// _utf8ToBase64) throws URIError on malformed UTF-16 such as a lone surrogate,
+// which would otherwise crash sendEmail; sanitizing keeps notifications working.
+function _sanitizeSurrogates(str) {
+  var out = '';
+  for (var i = 0; i < str.length; i++) {
+    var c = str.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff) {
+      // high surrogate: valid only when immediately followed by a low surrogate
+      var next = i + 1 < str.length ? str.charCodeAt(i + 1) : 0;
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        out += str.charAt(i) + str.charAt(i + 1);
+        i++;
+      } else {
+        out += '�';
+      }
+    } else if (c >= 0xdc00 && c <= 0xdfff) {
+      // lone low surrogate
+      out += '�';
+    } else {
+      out += str.charAt(i);
+    }
+  }
+  return out;
+}
+
 // Encode a string as base64 of its UTF-8 bytes.
 //
 // Duktape keeps strings as CESU-8 internally, so Duktape.enc('base64', str)
@@ -136,7 +162,7 @@ var _BASE64_ALPHABET =
 // garbage. encodeURIComponent produces the correct UTF-8 byte sequence for
 // every code point (it combines surrogate pairs), which we base64-encode here.
 function _utf8ToBase64(str) {
-  var enc = encodeURIComponent(String(str));
+  var enc = encodeURIComponent(_sanitizeSurrogates(String(str)));
   var bytes = [];
   var i = 0;
   while (i < enc.length) {

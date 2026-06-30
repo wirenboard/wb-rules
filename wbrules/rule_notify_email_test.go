@@ -100,6 +100,24 @@ func (s *RuleNotifyEmailSuite) TestEmailEmoji() {
 	)
 }
 
+// Malformed UTF-16 (a lone surrogate) makes encodeURIComponent throw, which
+// would crash sendEmail. Such characters are sanitized to U+FFFD so the message
+// still goes out. The "sending email:" log line shows the lone surrogate's
+// CESU-8 bytes (ED A0 80), while the actual subject/body carry the sanitized
+// U+FFFD (EF BF BD) — Ye+/vWI= / eO+/vXk= in base64.
+func (s *RuleNotifyEmailSuite) TestEmailLoneSurrogate() {
+	s.setErrorCode(0)
+
+	s.publish("/devices/test_email/controls/send_lone_surrogate/on", "1", "test_email/send_lone_surrogate")
+	s.VerifyUnordered(
+		"driver -> /devices/test_email/controls/send_lone_surrogate: [1] (QoS 1)",
+		"tst -> /devices/test_email/controls/send_lone_surrogate/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending email: a\xed\xa0\x80b] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: /usr/sbin/sendmail -t] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?Ye+/vWI=?=\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\neO+/vXk=] (QoS 1)",
+	)
+}
+
 func TestNotifyEmailSuite(t *testing.T) {
 	testutils.RunSuites(t,
 		new(RuleNotifyEmailSuite),

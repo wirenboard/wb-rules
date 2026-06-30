@@ -24,6 +24,9 @@ defineVirtualDevice('test_email', {
     send_emoji: {
       type: 'pushbutton',
     },
+    send_lone_surrogate: {
+      type: 'pushbutton',
+    },
   },
 });
 
@@ -47,5 +50,13 @@ defineRule({
   whenChanged: 'test_email/send_emoji',
   then: function () {
     Notify.sendEmail('me@example.org', '🏠 тема', '🏠 текст');
+  },
+});
+
+defineRule({
+  whenChanged: 'test_email/send_lone_surrogate',
+  then: function () {
+    // malformed UTF-16 (lone surrogate) must not crash sendEmail
+    Notify.sendEmail('me@example.org', 'a\uD800b', 'x\uD800y');
   },
 });
