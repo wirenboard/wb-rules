@@ -109,10 +109,15 @@ function normalizeWebhookMethod(method) {
 }
 exports.normalizeWebhookMethod = normalizeWebhookMethod;
 
-// Invoke an optional Node-style callback with an Error (or null on success),
-// guarding against a missing or non-function argument.
+// Report the send result: if a callback is provided, hand the error (or null on
+// success) to it and let the caller decide what to do. Otherwise, fall back to
+// logging the error so failures are not silently swallowed.
 function _notifyDone(callback, err) {
-  if (typeof callback === 'function') callback(err);
+  if (typeof callback === 'function') {
+    callback(err);
+  } else if (err) {
+    log.error('{}', err.message);
+  }
 }
 
 exports.sendEmail = function (to, subject, text, callback) {
@@ -126,7 +131,6 @@ exports.sendEmail = function (to, subject, text, callback) {
       var err = null;
       if (exitCode != 0) {
         err = new Error('error sending email:\n' + capturedOutput + '\n' + capturedErrorOutput);
-        log.error('{}', err.message);
       }
       _notifyDone(callback, err);
     },
@@ -145,7 +149,6 @@ exports.sendSMS = function (to, text, command, callback) {
     var err = null;
     if (exitCode != 0) {
       err = new Error('error sending sms:\n' + capturedOutput + '\n' + capturedErrorOutput);
-      log.error('{}', err.message);
     }
     _advanceSmsQueue();
     _notifyDone(callback, err);
@@ -214,7 +217,6 @@ exports.sendWebhook = function (opts, callback) {
       var err = null;
       if (exitCode != 0) {
         err = new Error('error sending webhook:\n' + capturedOutput + '\n' + capturedErrorOutput);
-        log.error('{}', err.message);
       }
       _notifyDone(callback, err);
     },
@@ -233,7 +235,6 @@ exports.sendTelegramMessage = function (token, chatId, text, callback) {
         var err = null;
         if (exitCode != 0) {
           err = new Error('error sending telegram message:\n' + capturedOutput + '\n' + capturedErrorOutput);
-          log.error('{}', err.message);
         } else {
           // Only inspect the Telegram JSON response when curl itself succeeded,
           // otherwise a parse error would mask the real command failure.
@@ -241,11 +242,9 @@ exports.sendTelegramMessage = function (token, chatId, text, callback) {
             var response = JSON.parse(capturedOutput);
             if (!response.ok) {
               err = new Error('error sending telegram message:\n' + response.error_code + ' ' + response.description);
-              log.error('{}', err.message);
             }
           } catch (e) {
             err = new Error('error parsing response: ' + e);
-            log.error('{}', err.message);
           }
         }
         _notifyDone(callback, err);

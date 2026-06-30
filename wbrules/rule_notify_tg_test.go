@@ -49,8 +49,22 @@ func (s *RuleNotifyTgSuite) TestTgError() {
 		"wbrules-log -> /wbrules/log/info: [sending telegram message: Test message] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: curl -s -X POST https://api.telegram.org/bot1234567890:abcdefghijklmnopqrstuvwxyz123456789/sendMessage -H 'Content-Type: application/x-www-form-urlencoded' -d @-] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [input: chat_id=12345678&text=Test%20message] (QoS 1)",
-		"wbrules-log -> /wbrules/log/error: [error sending telegram message:\n{\"ok\": true}\nstderr] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [telegram send status: error] (QoS 1)",
+	)
+}
+
+func (s *RuleNotifyTgSuite) TestTgErrorWithoutCallback() {
+	s.setErrorCode(1)
+
+	// send_quoted passes no callback, so the error must be logged
+	s.publish("/devices/test_tg/controls/send_quoted/on", "1", "test_tg/send_quoted")
+	s.VerifyUnordered(
+		"driver -> /devices/test_tg/controls/send_quoted: [1] (QoS 1)",
+		"tst -> /devices/test_tg/controls/send_quoted/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending telegram message: Test \"message\" 'single'] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: curl -s -X POST https://api.telegram.org/bot1234567890:abcdefghijklmnopqrstuvwxyz123456789/sendMessage -H 'Content-Type: application/x-www-form-urlencoded' -d @-] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: chat_id=12345678&text=Test%20%22message%22%20'single'] (QoS 1)",
+		"wbrules-log -> /wbrules/log/error: [error sending telegram message:\n{\"ok\": true}\nstderr] (QoS 1)",
 	)
 }
 

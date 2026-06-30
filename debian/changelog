@@ -1,7 +1,8 @@
 wb-rules (2.44.0) stable; urgency=medium
 
   * Notify: sendEmail/sendSMS/sendWebhook/sendTelegramMessage accept an optional
-    callback(err) reporting the send result
+    callback(err) reporting the send result; when given, the caller owns error
+    handling, otherwise the error is logged as before
 
  -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 29 Jun 2026 12:00:00 +0400
 

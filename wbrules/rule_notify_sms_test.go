@@ -53,8 +53,24 @@ func (s *RuleNotifySmsSuite) TestSmsGammuError() {
 		"wbrules-log -> /wbrules/log/info: [sending sms (gammu-like): test value] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm restart_if_broken && gammu sendsms TEXT '88005553535' -unicode] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [input: test value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/error: [error sending sms:\nstdout\nstderr] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sms send status: error] (QoS 1)",
+	)
+}
+
+func (s *RuleNotifySmsSuite) TestSmsErrorWithoutCallback() {
+	s.setErrorCode(1, 1) // to make mmcli check OK
+	s.setErrorCode(2, 1) // to make gammu fail
+
+	// send_quoted passes no callback, so the error must be logged
+	s.publish("/devices/test_sms/controls/send_quoted/on", "1", "test_sms/send_quoted")
+	s.VerifyUnordered(
+		"driver -> /devices/test_sms/controls/send_quoted: [1] (QoS 1)",
+		"tst -> /devices/test_sms/controls/send_quoted/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm should_enable] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending sms (gammu-like): test \"value\" 'single'] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm restart_if_broken && gammu sendsms TEXT '88005553535' -unicode] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: test \"value\" 'single'] (QoS 1)",
+		"wbrules-log -> /wbrules/log/error: [error sending sms:\nstdout\nstderr] (QoS 1)",
 	)
 }
 
