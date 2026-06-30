@@ -191,7 +191,7 @@ exports.sendEmail = function (to, subject, text, callback) {
     'To: ' + to + '\r\n' +
     'Subject: =?utf-8?B?' + _utf8ToBase64(subject) + '?=\r\n' +
     'Content-Type: text/plain; charset=utf-8\r\n' +
-    'Content-Transfer-Encoding: base64\n\n' +
+    'Content-Transfer-Encoding: base64\r\n\r\n' +
     _wrapBase64(_utf8ToBase64(text));
   runShellCommand('/usr/sbin/sendmail -t', {
     captureErrorOutput: true,
