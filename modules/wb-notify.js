@@ -212,6 +212,14 @@ function _wrapBase64(b64) {
 }
 
 exports.sendEmail = function (to, subject, text, callback) {
+  to = String(to);
+  // 'to' is the only field placed into a header verbatim (subject and body are
+  // base64-encoded), so a CR/LF in it would break the header/body boundary and
+  // allow header injection. Reject such values instead of building the message.
+  if (/[\r\n]/.test(to)) {
+    _notifyDone(callback, new Error("error sending email: 'to' must not contain CR or LF"));
+    return;
+  }
   log('sending email: {}', subject);
   var input =
     'To: ' + to + '\r\n' +

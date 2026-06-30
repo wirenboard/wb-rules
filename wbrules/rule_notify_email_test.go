@@ -118,6 +118,17 @@ func (s *RuleNotifyEmailSuite) TestEmailLoneSurrogate() {
 	)
 }
 
+// A CR/LF in 'to' must be rejected before the message is built, so it cannot be
+// used to inject extra headers (e.g. a hidden Bcc). No sendmail command is run.
+func (s *RuleNotifyEmailSuite) TestEmailHeaderInjection() {
+	s.publish("/devices/test_email/controls/send_header_injection/on", "1", "test_email/send_header_injection")
+	s.VerifyUnordered(
+		"driver -> /devices/test_email/controls/send_header_injection: [1] (QoS 1)",
+		"tst -> /devices/test_email/controls/send_header_injection/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [email send status: error sending email: 'to' must not contain CR or LF] (QoS 1)",
+	)
+}
+
 func TestNotifyEmailSuite(t *testing.T) {
 	testutils.RunSuites(t,
 		new(RuleNotifyEmailSuite),
