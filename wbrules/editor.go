@@ -41,6 +41,7 @@ const (
 )
 
 var (
+	hiddenFileError       = &EditorError{EDITOR_ERROR_INVALID_PATH, "File name should not start with a dot"}
 	invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should end with .js"}
 	invalidLenError       = &EditorError{EDITOR_ERROR_INVALID_LEN, "File path should be shorter than or equal to 255 chars"}
 	listDirError          = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
@@ -51,6 +52,18 @@ var (
 	renameError           = &EditorError{EDITOR_ERROR_RENAME, "Error renaming the file"}
 	overwriteError        = &EditorError{EDITOR_ERROR_OVERWRITE, "New-state file already exists"}
 )
+
+func validateScriptPath(pth string) error {
+	if strings.HasPrefix(path.Base(pth), ".") {
+		return hiddenFileError
+	} else if !strings.HasSuffix(pth, ".js") {
+		return invalidExtensionError
+	} else if len(pth) > 255 {
+		return invalidLenError
+	}
+
+	return nil
+}
 
 func NewEditor(locFileManager LocFileManager) *Editor {
 	return &Editor{locFileManager}
@@ -79,10 +92,8 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 		pth = pth[1:]
 	}
 
-	if !strings.HasSuffix(pth, ".js") {
-		return invalidExtensionError
-	} else if len(pth)+len(".js") > 255 {
-		return invalidLenError
+	if err := validateScriptPath(pth); err != nil {
+		return err
 	}
 
 	*reply = EditorSaveResponse{nil, pth, nil}
@@ -220,10 +231,8 @@ func (editor *Editor) Rename(args *EditorRenameArgs, reply *bool) error {
 		newPath = newPath[1:]
 	}
 
-	if !strings.HasSuffix(newPath, ".js") {
-		return invalidExtensionError
-	} else if len(newPath)+len(".js") > 255 {
-		return invalidLenError
+	if err := validateScriptPath(newPath); err != nil {
+		return err
 	}
 
 	entry, err := editor.locateFile(args.Path)

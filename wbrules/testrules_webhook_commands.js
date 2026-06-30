@@ -32,6 +32,8 @@ defineRule({
     Notify.sendWebhook({
       url: 'https://example.com/hook',
       body: 'plain text body',
+    }, function (err) {
+      log('webhook send status: {}', err ? 'error' : 'ok');
     });
   },
 });
