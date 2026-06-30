@@ -27,7 +27,9 @@ defineVirtualDevice('test_tg', {
 defineRule({
   whenChanged: 'test_tg/send',
   then: function () {
-    Notify.sendTelegramMessage('1234567890:abcdefghijklmnopqrstuvwxyz123456789', '12345678', 'Test message');
+    Notify.sendTelegramMessage('1234567890:abcdefghijklmnopqrstuvwxyz123456789', '12345678', 'Test message', function (err) {
+      log('telegram send status: {}', err ? 'error' : 'ok');
+    });
   },
 });
 

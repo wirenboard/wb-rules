@@ -27,7 +27,9 @@ defineVirtualDevice('test_email', {
 defineRule({
   whenChanged: 'test_email/send',
   then: function () {
-    Notify.sendEmail('me@example.org', 'Test subject', 'Test text');
+    Notify.sendEmail('me@example.org', 'Test subject', 'Test text', function (err) {
+      log('email send status: {}', err ? 'error' : 'ok');
+    });
   },
 });
 

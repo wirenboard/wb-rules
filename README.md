@@ -1146,22 +1146,29 @@ var myModule = require("path/to/myModule");
 
 С помощью сервиса оповещений можно отправлять сообщение на электронную почту или через SMS.
 
-`Notify.sendEmail(to, subject, text)` отправляет почту указанному
+Все функции этого сервиса работают асинхронно. Чтобы узнать результат
+отправки, можно передать последним аргументом необязательную функцию
+обратного вызова `callback(err)`: при успешной отправке `err` равен `null`,
+при ошибке — объект `Error` с описанием в свойстве `message`. Если `callback`
+передан, обработка ошибки полностью на стороне вызывающего кода; если не
+передан — ошибка пишется в лог.
+
+`Notify.sendEmail(to, subject, text[, callback])` отправляет почту указанному
 адресату (`to`), с указанной темой (`subject`) и содержимым (`text`).
 
 Для отправки Email используется `sendmail`.
 
-`Notify.sendSMS(to, text, command)` отправляет SMS на указанный номер (`to`)
+`Notify.sendSMS(to, text[, command][, callback])` отправляет SMS на указанный номер (`to`)
 с указанным содержимым (`text`), используя команду (`command`) (необязательный аргумент).
 
 Для отправки SMS используется ModemManager, а если он не установлен, то `gammu`.
 
-`Notify.sendTelegramMessage(token, chatId, text)` отправляет сообщение
+`Notify.sendTelegramMessage(token, chatId, text[, callback])` отправляет сообщение
 боту с токеном `token`, в чат `chatId` и содержимым (`text`).
 
 Для отправки используется Telegram Bot API метод https://core.telegram.org/bots/api#sendmessage.
 
-`Notify.sendWebhook(opts)` отправляет произвольный HTTP-запрос. Параметры
+`Notify.sendWebhook(opts[, callback])` отправляет произвольный HTTP-запрос. Параметры
 передаются в объекте `opts`:
 
 * `url` — обязательный, полный URL запроса;
