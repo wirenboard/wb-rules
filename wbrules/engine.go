@@ -1360,7 +1360,20 @@ func (engine *RuleEngine) Start() {
 
 	engine.driver.OnDriverEvent(engine.driverEventHandler)
 	engine.driver.OnRetainReady(func(tx wbgong.DriverTx) {
-		engine.driverReadyCh <- struct{}{}
+		// Read the channel under statusMtx: handleStop() nils it on shutdown,
+		// and this callback runs on a driver goroutine. Skip if already stopped
+		// and send non-blocking (the buffer of 1 already carries the signal) so
+		// a late retain-ready can never block this goroutine forever.
+		engine.statusMtx.Lock()
+		ch := engine.driverReadyCh
+		engine.statusMtx.Unlock()
+		if ch == nil {
+			return
+		}
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
 	})
 	atomic.StoreUint32(&engine.syncQueueActive, ATOMIC_TRUE)
 	atomic.StoreUint32(&engine.active, ENGINE_ACTIVE)
