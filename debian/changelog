@@ -1,3 +1,9 @@
+wb-rules (2.44.2) stable; urgency=medium
+
+  * Fix memory leak with startTicker
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 01 Jul 2026 17:00:00 +0400
+
 wb-rules (2.44.1) stable; urgency=medium
 
   * Notify: fix garbled emoji (and other non-BMP characters) in sendEmail subject
