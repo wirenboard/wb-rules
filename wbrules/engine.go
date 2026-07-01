@@ -1016,8 +1016,8 @@ func (engine *RuleEngine) CallSync(thunk func()) {
 }
 
 func (engine *RuleEngine) MaybeCallSync(thunk func()) {
-	// If the sync loop isn't running (engine not started yet or already
-	// stopped), callSync returns false and we run the thunk inline, as before.
+	// If the sync loop isn't running (engine already stopped),
+	// callSync returns false and we run the thunk inline, as before.
 	if !engine.callSync(thunk) {
 		thunk()
 	}
