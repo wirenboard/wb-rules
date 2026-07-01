@@ -982,7 +982,17 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 	engine.eventBuffer.PushEvent(cce)
 }
 
-func (engine *RuleEngine) CallSync(thunk func()) {
+// callSync hands thunk to the sync loop and reports whether it was accepted.
+// The active-check and the send are done under statusMtx, which handleStop also
+// holds when it closes syncQueue — so a late caller (notably a GC finalizer via
+// MaybeCallSync) can never send on the closed channel. It returns false when the
+// engine is stopping/stopped and the queue is (being) closed.
+func (engine *RuleEngine) callSync(thunk func()) bool {
+	engine.statusMtx.Lock()
+	defer engine.statusMtx.Unlock()
+	if atomic.LoadUint32(&engine.syncQueueActive) != ATOMIC_TRUE {
+		return false
+	}
 	if atomic.LoadUint32(&engine.debugEnabled) == ATOMIC_TRUE {
 		delay := time.NewTimer(ENGINE_CALLSYNC_TIMEOUT)
 		select {
@@ -996,12 +1006,17 @@ func (engine *RuleEngine) CallSync(thunk func()) {
 	} else {
 		engine.syncQueue <- thunk
 	}
+	return true
+}
+
+func (engine *RuleEngine) CallSync(thunk func()) {
+	engine.callSync(thunk)
 }
 
 func (engine *RuleEngine) MaybeCallSync(thunk func()) {
-	if atomic.LoadUint32(&engine.syncQueueActive) == ATOMIC_TRUE {
-		engine.CallSync(thunk)
-	} else {
+	// If the sync loop isn't running (engine not started yet or already
+	// stopped), callSync returns false and we run the thunk inline, as before.
+	if !engine.callSync(thunk) {
 		thunk()
 	}
 }
