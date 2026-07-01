@@ -1010,7 +1010,9 @@ func (engine *RuleEngine) callSync(thunk func()) bool {
 }
 
 func (engine *RuleEngine) CallSync(thunk func()) {
-	engine.callSync(thunk)
+	if !engine.callSync(thunk) {
+		panic("[engine] CallSync called while sync loop is stopped")
+	}
 }
 
 func (engine *RuleEngine) MaybeCallSync(thunk func()) {
