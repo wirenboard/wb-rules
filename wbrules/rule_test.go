@@ -21,6 +21,16 @@ const (
 	EXTRA_CTRL_CHANGE_WAIT_TIME_MS = 50
 )
 
+var initialWd string
+
+func init() {
+	var err error
+	initialWd, err = os.Getwd()
+	if err != nil {
+		panic(fmt.Sprintf("os.Getwd(): %v", err))
+	}
+}
+
 type fakeCron struct {
 	t       *testing.T
 	started bool
@@ -95,7 +105,7 @@ var updatesVerifyRx = regexp.MustCompile(`^\[(changed|removed)\] (.*)`)
 
 // creates necessary file paths if some are not defined already
 func (s *RuleSuiteBase) createTempFiles() {
-	tmpDir, err := os.MkdirTemp("", "wbrulestest")
+	tmpDir, err := os.MkdirTemp("/dev/shm", "wbrulestest")
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}
@@ -254,9 +264,7 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 
 	engineOptions := NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(s.PersistentDBFile)
-	currentDir, err := os.Getwd()
-	s.Ck("os.Getwd()", err)
-	defaultModulesPath := filepath.Join(currentDir, "..", "modules")
+	defaultModulesPath := filepath.Join(initialWd, "..", "modules")
 	moduleDirs := append(strings.Split(s.ModulesPath, ":"), defaultModulesPath)
 	engineOptions.SetModulesDirs(moduleDirs)
 	s.logClient = s.Broker.MakeClient("wbrules-log")
