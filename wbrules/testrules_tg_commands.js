@@ -1,3 +1,5 @@
+/* global log, Notify */
+
 global.__proto__.runShellCommand = function (command, options) {
   log('run command: {}', command);
   if (options.input) {
