@@ -21,6 +21,8 @@ const (
 	EXTRA_CTRL_CHANGE_WAIT_TIME_MS = 50
 )
 
+var initialWd, _ = os.Getwd()
+
 type fakeCron struct {
 	t       *testing.T
 	started bool
@@ -254,9 +256,7 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 
 	engineOptions := NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(s.PersistentDBFile)
-	currentDir, err := os.Getwd()
-	s.Ck("os.Getwd()", err)
-	defaultModulesPath := filepath.Join(currentDir, "..", "modules")
+	defaultModulesPath := filepath.Join(initialWd, "..", "modules")
 	moduleDirs := append(strings.Split(s.ModulesPath, ":"), defaultModulesPath)
 	engineOptions.SetModulesDirs(moduleDirs)
 	s.logClient = s.Broker.MakeClient("wbrules-log")
