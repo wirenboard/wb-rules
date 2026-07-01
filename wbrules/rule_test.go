@@ -21,7 +21,15 @@ const (
 	EXTRA_CTRL_CHANGE_WAIT_TIME_MS = 50
 )
 
-var initialWd, _ = os.Getwd()
+var initialWd string
+
+func init() {
+	var err error
+	initialWd, err = os.Getwd()
+	if err != nil {
+		panic(fmt.Sprintf("os.Getwd(): %v", err))
+	}
+}
 
 type fakeCron struct {
 	t       *testing.T
