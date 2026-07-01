@@ -1,3 +1,5 @@
+/* global log, Notify */
+
 var exitCodes = [];
 
 global.__proto__.runShellCommand = function (command, options) {
