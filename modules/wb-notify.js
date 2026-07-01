@@ -177,6 +177,7 @@ function _utf8ToBase64(str) {
 
   var out = '';
   for (i = 0; i + 3 <= bytes.length; i += 3) {
+    // eslint-disable-next-line security/detect-object-injection
     var n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
     out +=
       _BASE64_ALPHABET.charAt((n >> 18) & 63) +
@@ -186,12 +187,14 @@ function _utf8ToBase64(str) {
   }
   var rem = bytes.length - i;
   if (rem === 1) {
+    // eslint-disable-next-line security/detect-object-injection
     var a = bytes[i] << 16;
     out +=
       _BASE64_ALPHABET.charAt((a >> 18) & 63) +
       _BASE64_ALPHABET.charAt((a >> 12) & 63) +
       '==';
   } else if (rem === 2) {
+    // eslint-disable-next-line security/detect-object-injection
     var b = (bytes[i] << 16) | (bytes[i + 1] << 8);
     out +=
       _BASE64_ALPHABET.charAt((b >> 18) & 63) +
