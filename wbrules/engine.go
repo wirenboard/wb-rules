@@ -1073,6 +1073,12 @@ func (engine *RuleEngine) storeRuleTimer(rule *Rule, timerName string) {
 	list, found := engine.timerRules[timerName]
 	if !found {
 		list = make([]*Rule, 0, ENGINE_CONTROL_RULES_CAPACITY)
+	} else {
+		for _, item := range list {
+			if item == rule {
+				return
+			}
+		}
 	}
 	engine.timerRules[timerName] = append(list, rule)
 }
