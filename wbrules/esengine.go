@@ -461,6 +461,8 @@ func (engine *ESEngine) runTimerCleanups(ctx *ESContext) {
 		for _, id := range ids {
 			engine.StopTimerByIndex(id)
 		}
+
+		delete(engine.ctxTimers, ctx)
 	}
 }
 
