@@ -651,6 +651,15 @@ type RuleEngine struct {
 	timerRules            map[string][]*Rule
 	uninitializedRules    []*Rule
 
+	// Lock-free snapshot of the rule-dispatch state above, maintained by the
+	// engine goroutine and read by mainLoop to decide whether a control event
+	// can possibly trigger any rule. Lets mainLoop skip enqueueing a RunRules
+	// that would be a no-op (e.g. controls written by rules that nothing
+	// watches), so its events don't pile up in the unbounded event buffer.
+	specHasRules    sync.Map // ControlSpec -> struct{}, mirrors controlToRulesListMap keys
+	hasPollingRules atomic.Bool
+	hasUninitRules  atomic.Bool
+
 	notedControls   []ControlSpec
 	notedTimers     map[string]bool
 	trackingDeps    bool
@@ -831,11 +840,27 @@ func (engine *RuleEngine) processEvent(event *ControlChangeEvent) {
 		engine.updateDebugEnabled()
 	}
 
-	engine.CallSync(func() {
-		engine.RunRules(event, NO_TIMER_NAME)
-	})
+	// Skip rule dispatch when no rule can react to this event: RunRules would
+	// mark nothing and every rule would early-return. This keeps a flood of
+	// unwatched control changes from backing up the event buffer.
+	if engine.eventMayRunRules(event.Spec) {
+		engine.CallSync(func() {
+			engine.RunRules(event, NO_TIMER_NAME)
+		})
+	}
 
 	engine.notifyControlChangeSubs(event)
+}
+
+// eventMayRunRules reports whether a control event for spec could trigger any
+// rule. It reads only the lock-free snapshot, so it is safe to call from
+// mainLoop without taking rulesMutex. Errs on the side of true.
+func (engine *RuleEngine) eventMayRunRules(spec ControlSpec) bool {
+	if engine.hasUninitRules.Load() || engine.hasPollingRules.Load() {
+		return true
+	}
+	_, ok := engine.specHasRules.Load(spec)
+	return ok
 }
 
 func (engine *RuleEngine) mainLoop() {
@@ -1047,6 +1072,7 @@ func (engine *RuleEngine) SetCronMaker(cronMaker func() Cron) {
 
 func (engine *RuleEngine) SetUninitializedRule(rule *Rule) {
 	engine.uninitializedRules = append(engine.uninitializedRules, rule)
+	engine.hasUninitRules.Store(true)
 }
 
 func (engine *RuleEngine) StartTrackingDeps() {
@@ -1076,6 +1102,7 @@ func (engine *RuleEngine) StoreRuleControlSpec(rule *Rule, spec ControlSpec) {
 	}
 	wbgong.Debug.Printf("adding control spec %s for rule %d", spec.String(), rule.id)
 	engine.controlToRulesListMap[spec] = append(list, rule)
+	engine.specHasRules.Store(spec, struct{}{})
 	engine.rulesWithoutControls[rule] = false
 }
 
@@ -1117,6 +1144,7 @@ func (engine *RuleEngine) StoreRuleDeps(rule *Rule) {
 			}
 			if !found {
 				engine.rulesWithoutControls[rule] = true
+				engine.hasPollingRules.Store(true)
 			}
 		}
 	}
@@ -1231,6 +1259,7 @@ func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName stri
 	}
 	// clear uninitialized rules list
 	engine.uninitializedRules = make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY)
+	engine.hasUninitRules.Store(false)
 
 	if ctrlEvent != nil {
 		/*if cell.IsFreshButton() {
@@ -2008,6 +2037,14 @@ func (engine *RuleEngine) Refresh() {
 	// FIXME: maybe this problem is gone now
 	engine.controlToRulesListMap = make(map[ControlSpec][]*Rule)
 	engine.uninitializedRules = make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY)
+	// Reset the lock-free dispatch snapshot; StoreInitiallyKnownDeps below
+	// repopulates it for statically-known deps, the rest is rebuilt as rules run.
+	engine.specHasRules.Range(func(k, _ any) bool {
+		engine.specHasRules.Delete(k)
+		return true
+	})
+	engine.hasPollingRules.Store(false)
+	engine.hasUninitRules.Store(false)
 	for _, rule := range engine.ruleMap {
 		rule.StoreInitiallyKnownDeps()
 	}

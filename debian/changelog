@@ -1,6 +1,8 @@
 wb-rules (2.44.3) stable; urgency=medium
 
   * Reduce allocation churn in rule dependency tracking by reusing buffers
+  * Skip rule dispatch for control events no rule reacts to, so unwatched
+    control changes no longer back up the event buffer
 
  -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 02 Jul 2026 12:00:00 +0400
 
