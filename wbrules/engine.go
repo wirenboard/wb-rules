@@ -653,6 +653,7 @@ type RuleEngine struct {
 
 	notedControls   []ControlSpec
 	notedTimers     map[string]bool
+	trackingDeps    bool
 	currentTimer    string
 	cronMaker       func() Cron
 	cron            Cron
@@ -1049,8 +1050,17 @@ func (engine *RuleEngine) SetUninitializedRule(rule *Rule) {
 }
 
 func (engine *RuleEngine) StartTrackingDeps() {
-	engine.notedControls = make([]ControlSpec, 0, ENGINE_NOTED_CONTROLS_CAPACITY)
-	engine.notedTimers = make(map[string]bool)
+	engine.trackingDeps = true
+	// Reuse the buffers between checks instead of allocating new ones: RunRules
+	// checks every rule on every timer fire, so a fresh slice + map per check is
+	// a large amount of short-lived garbage under a heavy ticker workload.
+	if engine.notedControls == nil {
+		engine.notedControls = make([]ControlSpec, 0, ENGINE_NOTED_CONTROLS_CAPACITY)
+		engine.notedTimers = make(map[string]bool)
+		return
+	}
+	engine.notedControls = engine.notedControls[:0]
+	clear(engine.notedTimers)
 }
 
 func (engine *RuleEngine) StoreRuleControlSpec(rule *Rule, spec ControlSpec) {
@@ -1110,18 +1120,19 @@ func (engine *RuleEngine) StoreRuleDeps(rule *Rule) {
 			}
 		}
 	}
-	engine.notedControls = nil
-	engine.notedTimers = nil
+	// Stop tracking, but keep the buffers allocated for the next check. Their
+	// contents are cleared by StartTrackingDeps before they are used again.
+	engine.trackingDeps = false
 }
 
 func (engine *RuleEngine) trackControlSpec(s ControlSpec) {
-	if engine.notedControls != nil {
+	if engine.trackingDeps {
 		engine.notedControls = append(engine.notedControls, s)
 	}
 }
 
 func (engine *RuleEngine) trackTimer(timerName string) {
-	if engine.notedTimers != nil {
+	if engine.trackingDeps {
 		engine.notedTimers[timerName] = true
 	}
 }
