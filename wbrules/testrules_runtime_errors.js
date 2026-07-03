@@ -1,4 +1,4 @@
-// -*- mode: js2-mode -*-
+/* global defineRule, dev */
 
 defineRule('brokenCellChange', {
   asSoonAs: function () {

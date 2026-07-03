@@ -1,3 +1,10 @@
+wb-rules (2.44.3) stable; urgency=medium
+
+  * StorableObject: hide technical _psself field from Object.keys() and
+    Object.keys().forEach(), matching the behavior already present in for-in
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 03 Jul 2026 15:10:00 +0400
+
 wb-rules (2.44.2) stable; urgency=medium
 
   * Fix memory leak with startTicker

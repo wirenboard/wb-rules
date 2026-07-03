@@ -1,4 +1,4 @@
-// -*- mode: js2-mode -*-
+/* global defineVirtualDevice, defineRule, log, PersistentStorage, StorableObject */
 
 defineVirtualDevice('vdev', {
   cells: {
@@ -70,6 +70,14 @@ defineRule('testPersistentGlobalWrite', {
     obj.sub = StorableObject({
       hello: 'world',
     });
+
+    // technical _psself field must not leak into enumeration
+    var forInKeys = [];
+    for (var k in obj) {
+      forInKeys.push(k);
+    }
+    log('for-in keys: ' + forInKeys.join(','));
+    log('Object.keys: ' + Object.keys(obj).join(','));
 
     log(
       'write objects ' +

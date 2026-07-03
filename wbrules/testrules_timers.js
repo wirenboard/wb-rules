@@ -1,4 +1,4 @@
-// -*- mode: js2-mode -*-
+/* global defineRule, startTicker, startTimer, dev, log, timers */
 
 defineRule('startTimer', {
   asSoonAs: function () {

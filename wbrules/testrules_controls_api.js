@@ -1,3 +1,5 @@
+/* global defineRule, defineVirtualDevice, getDevice, log */
+
 var ctrlID = 'wrCtrlID';
 
 defineRule({

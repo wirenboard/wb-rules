@@ -1,3 +1,5 @@
+/* global defineRule, log */
+
 defineRule('multiple_require', {
   whenChanged: 'test/multifile',
   then: function () {

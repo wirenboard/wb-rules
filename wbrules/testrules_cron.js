@@ -1,3 +1,5 @@
+/* global defineRule, cron, log */
+
 defineRule('crontest_hourly', {
   when: cron('@hourly'),
   then: function () {

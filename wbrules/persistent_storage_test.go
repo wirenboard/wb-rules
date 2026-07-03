@@ -51,6 +51,8 @@ func (s *PersistentStorageSuite) TestPersistentStorage() {
 		"driver -> /devices/vdev/controls/write: [1] (QoS 1, retained)",
 		"[info] pure object is not created",
 		"[info] pure subobject is not created",
+		"[info] for-in keys: name,foo,baz,sub",
+		"[info] Object.keys: name,foo,baz,sub",
 		"[info] write objects 42, \"HelloWorld\", {\"name\":\"MyObj\",\"foo\":\"bar\",\"baz\":84,\"sub\":{\"hello\":\"world\"}}",
 	)
 }

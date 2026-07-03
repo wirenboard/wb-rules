@@ -1,3 +1,5 @@
+/* global defineVirtualDevice */
+
 defineVirtualDevice('roCells', {
   title: 'Readonly Cell Test',
   cells: {

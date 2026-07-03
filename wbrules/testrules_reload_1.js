@@ -1,3 +1,5 @@
+/* global defineVirtualDevice, defineRule, log */
+
 defineVirtualDevice('vdev0', {
   title: 'VDev0',
   cells: {

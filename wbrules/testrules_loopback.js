@@ -1,3 +1,5 @@
+/* global defineVirtualDevice, defineRule, getControl, log */
+
 defineVirtualDevice('loopback', {
   cells: {
     gauge: {

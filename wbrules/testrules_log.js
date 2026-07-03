@@ -1,3 +1,5 @@
+/* global log, debug */
+
 global.__proto__.testLog = function testLog() {
   log('log()');
   debug('debug()');

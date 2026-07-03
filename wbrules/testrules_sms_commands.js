@@ -1,9 +1,9 @@
-/* global log, Notify */
+/* global defineVirtualDevice, defineRule, dev, log, Notify */
 
 var exitCodes = [];
 
 global.__proto__.runShellCommand = function (command, options) {
-  if (exitCodes.length == 0) {
+  if (exitCodes.length === 0) {
     exitCodes = [dev['test_sms/exit_code_2'], dev['test_sms/exit_code_1']];
   }
 
