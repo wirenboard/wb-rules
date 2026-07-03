@@ -1,4 +1,4 @@
-/* global defineRule */
+/* global defineRule, dev */
 
 defineRule('brokenCellChange', {
   asSoonAs: function () {

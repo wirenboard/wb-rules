@@ -255,7 +255,7 @@ exports.sendSMS = function (to, text, command, callback) {
   var doneCallback = function (exitCode, capturedOutput, capturedErrorOutput) {
     _smsBusy = false;
     var err = null;
-    if (exitCode != 0) {
+    if (exitCode !== 0) {
       err = new Error('error sending sms:\n' + capturedOutput + '\n' + capturedErrorOutput);
     }
     _advanceSmsQueue();

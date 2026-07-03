@@ -1,4 +1,4 @@
-/* global defineRule, startTicker, startTimer, clearTimeout, dev, log, timers */
+/* global defineRule, startTicker, startTimer, dev, log, timers */
 
 defineRule('startTimer', {
   asSoonAs: function () {
