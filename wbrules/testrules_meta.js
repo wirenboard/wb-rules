@@ -1,4 +1,4 @@
-/* global defineVirtualDevice, defineRule, getDevice, log */
+/* global defineVirtualDevice, defineRule, dev, getDevice, log */
 
 function cellSpec(devName, cellName) {
   return devName === undefined ? '(no cell)' : '{}/{}'.format(devName, cellName);

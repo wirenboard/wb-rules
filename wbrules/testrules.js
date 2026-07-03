@@ -1,4 +1,4 @@
-/* global defineAlias, defineVirtualDevice, defineRule, log */
+/* global defineAlias, defineVirtualDevice, defineRule, log, publish */
 
 if (
   (function () {

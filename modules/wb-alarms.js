@@ -1,4 +1,4 @@
-/* global log */
+/* global defineVirtualDevice, defineRule, dev, getDevice, log, readConfig */
 
 var Notify = require('wb-notify');
 
