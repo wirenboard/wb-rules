@@ -1,4 +1,4 @@
-/* global defineRule, log */
+/* global defineRule, dev, log */
 
 var asSoonAsCount = 0,
   whenCount = 0,

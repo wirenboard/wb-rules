@@ -1,4 +1,4 @@
-/* global defineVirtualDevice, defineRule, log */
+/* global defineVirtualDevice, defineRule, dev, log */
 
 // the same code as in testrules_reload_3.js,
 // but it should cause script reloading

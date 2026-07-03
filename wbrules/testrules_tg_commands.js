@@ -1,4 +1,4 @@
-/* global defineVirtualDevice, defineRule, log, Notify */
+/* global defineVirtualDevice, defineRule, dev, log, Notify */
 
 global.__proto__.runShellCommand = function (command, options) {
   log('run command: {}', command);

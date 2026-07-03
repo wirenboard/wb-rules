@@ -1,4 +1,4 @@
-/* global defineVirtualDevice, defineRule, dev, log, runShellCommand, startTicker */
+/* global defineVirtualDevice, defineRule, dev, log, runShellCommand, startTicker, timers */
 
 defineVirtualDevice('relayClicker', {
   title: 'Relay Clicker',
