@@ -237,7 +237,7 @@ exports.sendEmail = function (to, subject, text, callback) {
     input: input,
     exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
       var err = null;
-      if (exitCode != 0) {
+      if (exitCode !== 0) {
         err = new Error('error sending email:\n' + capturedOutput + '\n' + capturedErrorOutput);
       }
       _notifyDone(callback, err);

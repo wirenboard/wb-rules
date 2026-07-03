@@ -1,4 +1,4 @@
-/* global defineAlias, defineVirtualDevice, defineRule, startTimer, runShellCommand, log */
+/* global defineAlias, defineVirtualDevice, defineRule, cron, startTimer, runShellCommand, log, timers */
 
 defineVirtualDevice('stabSettings', {
   title: 'Stabilization Settings',

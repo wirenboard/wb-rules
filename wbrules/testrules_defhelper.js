@@ -1,4 +1,4 @@
-/* global defineVirtualDevice, defineRule, log */
+/* global defineVirtualDevice, defineRule, dev, log */
 
 // When a rule is defined inside a module the editor must use the
 // topmost stack frame in the rule file to determine the location of

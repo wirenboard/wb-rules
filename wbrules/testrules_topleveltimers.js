@@ -1,4 +1,4 @@
-/* global setTimeout, clearTimeout, log */
+/* global clearTimeout, log */
 
 log('topleveltimers');
 

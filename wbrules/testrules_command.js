@@ -30,7 +30,7 @@ defineRule('runCommandWithOutput', {
       exitCallback: function (exitCode, capturedOutput, capturedErrorOutput) {
         log('exit({}): {}', exitCode, cmd);
         displayOutput('output: ', capturedOutput);
-        if (exitCode != 0) displayOutput('error: ', capturedErrorOutput);
+        if (exitCode !== 0) displayOutput('error: ', capturedErrorOutput);
       },
     };
     var p = cmd.indexOf('!');
