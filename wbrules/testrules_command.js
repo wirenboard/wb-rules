@@ -1,4 +1,4 @@
-/* global defineRule, log, runShellCommand */
+/* global defineRule, dev, log, runShellCommand */
 
 defineRule('runCommand', {
   whenChanged: 'somedev/cmd',

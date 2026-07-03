@@ -1,4 +1,4 @@
-/* global defineVirtualDevice, defineRule, log */
+/* global defineVirtualDevice, defineRule, dev, log */
 
 defineVirtualDevice('test-vdev', {
   title: 'Test virtual device',

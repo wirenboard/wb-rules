@@ -1,4 +1,4 @@
-/* global defineVirtualDevice, defineRule, defineAlias, log */
+/* global defineVirtualDevice, defineRule, defineAlias, dev, log */
 
 var devCells = {
   someCell: {
