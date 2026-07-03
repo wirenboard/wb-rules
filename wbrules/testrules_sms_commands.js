@@ -1,4 +1,4 @@
-/* global log, Notify */
+/* global defineVirtualDevice, defineRule, log, Notify */
 
 var exitCodes = [];
 

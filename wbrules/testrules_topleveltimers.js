@@ -1,4 +1,4 @@
-// -*- mode: js2-mode -*-
+/* global setTimeout, clearTimeout, log */
 
 log('topleveltimers');
 

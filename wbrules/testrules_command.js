@@ -1,4 +1,4 @@
-// -*- mode: js2-mode -*-
+/* global defineRule, log, runShellCommand */
 
 defineRule('runCommand', {
   whenChanged: 'somedev/cmd',

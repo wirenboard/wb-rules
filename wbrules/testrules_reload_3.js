@@ -1,3 +1,5 @@
+/* global defineVirtualDevice, defineRule, log */
+
 defineVirtualDevice('testNulledControl', {
   cells: {
     pers_text: {

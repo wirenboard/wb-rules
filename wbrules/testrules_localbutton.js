@@ -1,3 +1,5 @@
+/* global defineRule, defineVirtualDevice, log */
+
 defineVirtualDevice('buttons', {
   title: 'Button Test',
   cells: {

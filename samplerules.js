@@ -1,4 +1,4 @@
-// -*- mode: js2-mode -*-
+/* global defineAlias, defineVirtualDevice, defineRule, log */
 
 defineVirtualDevice('stabSettings', {
   title: 'Stabilization Settings',

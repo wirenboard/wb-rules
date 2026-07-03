@@ -1,3 +1,5 @@
+/* global defineVirtualDevice, defineRule, disableRule, enableRule, runRule, log */
+
 defineVirtualDevice('ctrltest', {
   cells: {
     disable: {

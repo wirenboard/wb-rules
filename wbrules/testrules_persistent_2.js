@@ -1,3 +1,5 @@
+/* global defineRule, log, PersistentStorage */
+
 defineRule('testPersistentGlobalRead', {
   whenChanged: ['vdev/read'],
   then: function () {

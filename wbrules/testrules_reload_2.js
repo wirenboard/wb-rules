@@ -1,3 +1,5 @@
+/* global defineVirtualDevice, defineRule, log */
+
 var devCells = {
   someCell: {
     type: 'switch',

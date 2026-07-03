@@ -1,4 +1,4 @@
-// -*- mode: js2-mode -*-
+/* global defineRule, log */
 
 var asSoonAsCount = 0,
   whenCount = 0,

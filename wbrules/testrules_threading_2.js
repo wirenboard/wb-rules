@@ -1,3 +1,5 @@
+/* global defineRule, log */
+
 global.myvar = 84;
 
 function adder(a, b) {

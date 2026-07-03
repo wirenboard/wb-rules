@@ -1,3 +1,5 @@
+/* global trackMqtt, log */
+
 trackMqtt('/wierd/sub/some', function (obj) {
   log('1. wierd topic got value');
   log('topic: {}, value: {}, retained: {}, qos: {}'.format(obj.topic, obj.value, obj.retained, obj.qos));

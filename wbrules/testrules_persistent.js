@@ -1,4 +1,4 @@
-// -*- mode: js2-mode -*-
+/* global defineVirtualDevice, defineRule, log, PersistentStorage, StorableObject */
 
 defineVirtualDevice('vdev', {
   cells: {

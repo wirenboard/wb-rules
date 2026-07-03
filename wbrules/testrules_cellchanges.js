@@ -1,3 +1,5 @@
+/* global defineVirtualDevice, defineRule, log */
+
 defineVirtualDevice('cellch', {
   title: 'Cell Change Test',
   cells: {

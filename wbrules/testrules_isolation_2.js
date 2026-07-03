@@ -1,3 +1,5 @@
+/* global defineRule, log */
+
 var v = 42;
 
 defineRule('isolated_rule', {
