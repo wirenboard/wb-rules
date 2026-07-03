@@ -71,6 +71,14 @@ defineRule('testPersistentGlobalWrite', {
       hello: 'world',
     });
 
+    // technical _psself field must not leak into enumeration
+    var forInKeys = [];
+    for (var k in obj) {
+      forInKeys.push(k);
+    }
+    log('for-in keys: ' + forInKeys.join(','));
+    log('Object.keys: ' + Object.keys(obj).join(','));
+
     log(
       'write objects ' +
         JSON.stringify(ps['key1']) +
