@@ -1,2 +1,3 @@
 buildDebGolangWbgo defaultTargets: 'bullseye-armhf bullseye-arm64',
-                   defaultRunLintian: true
+                   defaultRunLintian: true,
+                   defaultWbGoSoBranch: 'release/wb-2606'

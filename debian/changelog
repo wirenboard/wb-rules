@@ -1,3 +1,9 @@
+wb-rules (2.40.0-wb100) stable; urgency=medium
+
+  * Update wbgo.so
+
+ -- Petr Krasnoshchekov <petr.krasnoshchekov@wirenboard.com>  Fri, 10 Jul 2026 12:40:28 +0500
+
 wb-rules (2.40.0) stable; urgency=medium
 
   * Move notify/alarms to modules
