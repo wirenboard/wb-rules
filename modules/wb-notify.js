@@ -331,14 +331,35 @@ exports.sendWebhook = function (opts, callback) {
   });
 };
 
-exports.sendTelegramMessage = function (token, chatId, text, callback) {
+exports.sendTelegramMessage = function (token, chatId, text, options, callback) {
+  if (typeof options === "function") {
+    callback = options;
+    options = {};
+
+  } else {
+    options = options || {};
+  }
+
+  var body = "chat_id={}&text={}".format(chatId, encodeURIComponent(text));
+  if (options.parseMode) {
+    body += "&parse_mode={}".format(encodeURIComponent(options.parseMode));
+  }
+
+  if (options.disableWebPagePreview) {
+    body += "&disable_web_page_preview=true";
+  }
+
+  if (options.disableNotification) {
+    body += "&disable_notification=true";
+  }
+
   log('sending telegram message: {}', text);
   runShellCommand(
     "curl -s -X POST https://api.telegram.org/bot{}/sendMessage -H 'Content-Type: application/x-www-form-urlencoded' -d @-".format(token),
     {
       captureErrorOutput: true,
       captureOutput: true,
-      input: 'chat_id={}&text={}'.format(chatId, encodeURIComponent(text)),
+      input: body,
       exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
         var err = null;
         if (exitCode != 0) {
