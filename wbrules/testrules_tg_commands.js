@@ -23,6 +23,12 @@ defineVirtualDevice('test_tg', {
     send_quoted: {
       type: 'pushbutton',
     },
+    send_with_options: {
+      type: 'pushbutton',
+    },
+    send_options_no_callback: {
+      type: 'pushbutton',
+    },
   },
 });
 
@@ -39,5 +45,36 @@ defineRule({
   whenChanged: 'test_tg/send_quoted',
   then: function () {
     Notify.sendTelegramMessage('1234567890:abcdefghijklmnopqrstuvwxyz123456789', '12345678', 'Test "message" \'single\'');
+  },
+});
+
+defineRule({
+  whenChanged: 'test_tg/send_with_options',
+  then: function () {
+    Notify.sendTelegramMessage(
+      '1234567890:abcdefghijklmnopqrstuvwxyz123456789',
+      '12345678',
+      'Test message',
+      {
+        parseMode: 'HTML',
+        disableWebPagePreview: true,
+        disableNotification: true,
+      },
+      function (err) {
+        log('telegram send status: {}', err ? 'error' : 'ok');
+      }
+    );
+  },
+});
+
+defineRule({
+  whenChanged: 'test_tg/send_options_no_callback',
+  then: function () {
+    Notify.sendTelegramMessage(
+      '1234567890:abcdefghijklmnopqrstuvwxyz123456789',
+      '12345678',
+      'Test message',
+      { parseMode: 'Markdown' }
+    );
   },
 });
