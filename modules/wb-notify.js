@@ -354,7 +354,7 @@ exports.sendTelegramMessage = function (token, chatId, text, options, callback) 
 
   log('sending telegram message: {}', text);
   runShellCommand(
-    'curl -s -X POST https://api.telegram.org/bot{}/sendMessage -H \'Content-Type: application/x-www-form-urlencoded\' -d @-'.format(token),
+    "curl -s -X POST https://api.telegram.org/bot{}/sendMessage -H 'Content-Type: application/x-www-form-urlencoded' -d @-".format(token),
     {
       captureErrorOutput: true,
       captureOutput: true,
