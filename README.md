@@ -1163,8 +1163,20 @@ var myModule = require("path/to/myModule");
 
 Для отправки SMS используется ModemManager, а если он не установлен, то `gammu`.
 
-`Notify.sendTelegramMessage(token, chatId, text[, callback])` отправляет сообщение
+`Notify.sendTelegramMessage(token, chatId, text[, options][, callback])` отправляет сообщение
 боту с токеном `token`, в чат `chatId` и содержимым (`text`).
+
+Необязательный аргумент `options` — объект с дополнительными параметрами сообщения:
+
+* `parseMode` — режим разбора разметки в тексте сообщения (`parse_mode`),
+  например `"MarkdownV2"` или `"HTML"`;
+* `disableWebPagePreview` — если `true`, отключает предпросмотр ссылок
+  в сообщении (`disable_web_page_preview`);
+* `disableNotification` — если `true`, отправляет сообщение без звукового
+  уведомления (`disable_notification`).
+
+Аргумент `options` можно опустить: если четвёртым аргументом передана функция,
+она воспринимается как `callback`.
 
 Для отправки используется Telegram Bot API метод https://core.telegram.org/bots/api#sendmessage.
 
