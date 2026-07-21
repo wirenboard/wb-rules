@@ -1,4 +1,4 @@
-wb-rules (2.44.5) stable; urgency=medium
+wb-rules (2.45.0) stable; urgency=medium
 
   * Notify: enhance sendTelegramMessage to accept additional options
 
