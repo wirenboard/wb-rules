@@ -347,6 +347,9 @@ func (rule *Rule) Check(e *ControlChangeEvent) {
 }
 
 func (rule *Rule) MaybeAddToCron(cron Cron) {
+	if !rule.enabled {
+		return
+	}
 	if cronCond, ok := rule.cond.(*CronRuleCondition); ok {
 		err := cronCond.MaybeAddToCron(cron, func() {
 			if rule.then != nil {

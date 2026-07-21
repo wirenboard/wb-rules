@@ -4,6 +4,12 @@ wb-rules (2.45.0) stable; urgency=medium
 
  -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 20 Jul 2026 11:10:00 +0400
 
+wb-rules (2.44.5) stable; urgency=medium
+
+  * Fix disabled cron rules being re-enabled on script reload
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 20 Jul 2026 17:10:00 +0400
+
 wb-rules (2.44.4) stable; urgency=medium
 
   * Update wbgo.so
