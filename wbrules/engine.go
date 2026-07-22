@@ -667,12 +667,14 @@ type RuleEngine struct {
 	nextTrackID      uint32 // TrackID is used to watch a track in cleanups
 	mqttTrackerMutex sync.Mutex
 
-	// trackedRetained caches the last retained value seen for every actual
-	// topic under each subscription (subscription topic -> actual topic -> msg).
-	// The broker only redelivers retained values when a subscription is first
-	// created, so when a new tracker joins an already-subscribed topic (e.g. a
-	// second script tracking the same topic, or reloading one of them) we replay
-	// the cached values to that tracker to reproduce a fresh subscription.
+	// trackedRetained caches the last value seen for every actual topic under
+	// each subscription (subscription topic -> actual topic -> msg), stored as
+	// retained. The broker only redelivers retained values when a subscription
+	// is first created, so when a new tracker joins an already-subscribed topic
+	// (e.g. a second script tracking the same topic, or reloading one of them)
+	// we replay the cached values to that tracker to reproduce a fresh
+	// subscription. See newTrackHandler for why every message is cached, not
+	// only the ones flagged retained.
 	trackedRetained map[string]map[string]wbgong.MQTTMessage
 
 	cleanupOnStop bool
@@ -2012,17 +2014,24 @@ func (engine *RuleEngine) newTrackHandler(subTopic string) func(wbgong.MQTTMessa
 			engine.mqttTrackerMutex.Unlock()
 			return
 		}
-		// Cache retained values so trackers that join this subscription later
-		// (a second script tracking the same topic, or a reloaded script) can
-		// be replayed the current value, reproducing a fresh subscription.
-		if msg.Retained {
-			topicCache := engine.trackedRetained[subTopic]
-			if topicCache == nil {
-				topicCache = make(map[string]wbgong.MQTTMessage)
-				engine.trackedRetained[subTopic] = topicCache
-			}
-			topicCache[msg.Topic] = msg
+		// Cache the current value of every topic so trackers that join this
+		// subscription later (a second script tracking the same topic, or a
+		// reloaded script) can be replayed it, reproducing a fresh subscription.
+		//
+		// We cache regardless of msg.Retained: the broker clears the retained
+		// flag on messages delivered to an already-subscribed client (it is only
+		// set for values sent because of a new subscription), so a live update
+		// to a retained topic arrives here with Retained=false and is
+		// indistinguishable from a genuinely non-retained publish. The cached
+		// copy is stored as retained, matching how the broker would redeliver it.
+		topicCache := engine.trackedRetained[subTopic]
+		if topicCache == nil {
+			topicCache = make(map[string]wbgong.MQTTMessage)
+			engine.trackedRetained[subTopic] = topicCache
 		}
+		cachedMsg := msg
+		cachedMsg.Retained = true
+		topicCache[msg.Topic] = cachedMsg
 		trackers := make([]MqttTracker, 0, len(engine.tracks[subTopic]))
 		for _, tracker := range engine.tracks[subTopic] {
 			trackers = append(trackers, tracker)
