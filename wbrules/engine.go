@@ -2024,14 +2024,21 @@ func (engine *RuleEngine) newTrackHandler(subTopic string) func(wbgong.MQTTMessa
 		// to a retained topic arrives here with Retained=false and is
 		// indistinguishable from a genuinely non-retained publish. The cached
 		// copy is stored as retained, matching how the broker would redeliver it.
-		topicCache := engine.trackedRetained[subTopic]
-		if topicCache == nil {
-			topicCache = make(map[string]wbgong.MQTTMessage)
-			engine.trackedRetained[subTopic] = topicCache
+		//
+		// An empty payload clears a topic's retained value on the broker, so a
+		// fresh subscription would deliver nothing for it: drop it from the cache.
+		if msg.Payload == "" {
+			delete(engine.trackedRetained[subTopic], msg.Topic)
+		} else {
+			topicCache := engine.trackedRetained[subTopic]
+			if topicCache == nil {
+				topicCache = make(map[string]wbgong.MQTTMessage)
+				engine.trackedRetained[subTopic] = topicCache
+			}
+			cachedMsg := msg
+			cachedMsg.Retained = true
+			topicCache[msg.Topic] = cachedMsg
 		}
-		cachedMsg := msg
-		cachedMsg.Retained = true
-		topicCache[msg.Topic] = cachedMsg
 		trackers := make([]MqttTracker, 0, len(engine.tracks[subTopic]))
 		for _, tracker := range engine.tracks[subTopic] {
 			trackers = append(trackers, tracker)
