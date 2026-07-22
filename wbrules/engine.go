@@ -2004,6 +2004,14 @@ func mqttTrackerCallbackArgs(msg wbgong.MQTTMessage) objx.Map {
 func (engine *RuleEngine) newTrackHandler(subTopic string) func(wbgong.MQTTMessage) {
 	return func(msg wbgong.MQTTMessage) {
 		engine.mqttTrackerMutex.Lock()
+		// A message may still arrive after the last tracker was removed and the
+		// topic unsubscribed. Ignore it: don't cache (that would resurrect a
+		// stale trackedRetained entry that cleanup will never reclaim) and don't
+		// deliver.
+		if len(engine.tracks[subTopic]) == 0 {
+			engine.mqttTrackerMutex.Unlock()
+			return
+		}
 		// Cache retained values so trackers that join this subscription later
 		// (a second script tracking the same topic, or a reloaded script) can
 		// be replayed the current value; keep already-cached topics up to date
