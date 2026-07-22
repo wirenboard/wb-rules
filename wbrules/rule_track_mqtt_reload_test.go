@@ -32,7 +32,7 @@ func (s *RuleTrackMqttReloadSuite) TestReloadWithSharedTopic() {
 
 	// Reloading dup1 (dup2 keeps the shared subscription alive) must replay the
 	// cached retained value to the reloaded tracker only. dup2 stays silent.
-	s.ReplaceScript("testrules_track_mqtt_dup1.js", "testrules_track_mqtt_dup1.js")
+	s.Ck("OverwriteScript()", s.OverwriteScript("testrules_track_mqtt_dup1.js", "testrules_track_mqtt_dup1.js"))
 	s.VerifyUnordered(
 		"wbrules-log -> /wbrules/updates/changed: [testrules_track_mqtt_dup1.js] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [tmp1: /wierd/sub/some=some-value (retained: true)] (QoS 1)",
