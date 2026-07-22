@@ -2014,17 +2014,14 @@ func (engine *RuleEngine) newTrackHandler(subTopic string) func(wbgong.MQTTMessa
 		}
 		// Cache retained values so trackers that join this subscription later
 		// (a second script tracking the same topic, or a reloaded script) can
-		// be replayed the current value; keep already-cached topics up to date
-		// too, since live updates arrive with the retained flag cleared.
-		topicCache := engine.trackedRetained[subTopic]
-		if _, hadTopic := topicCache[msg.Topic]; msg.Retained || hadTopic {
+		// be replayed the current value, reproducing a fresh subscription.
+		if msg.Retained {
+			topicCache := engine.trackedRetained[subTopic]
 			if topicCache == nil {
 				topicCache = make(map[string]wbgong.MQTTMessage)
 				engine.trackedRetained[subTopic] = topicCache
 			}
-			m := msg
-			m.Retained = true
-			topicCache[msg.Topic] = m
+			topicCache[msg.Topic] = msg
 		}
 		trackers := make([]MqttTracker, 0, len(engine.tracks[subTopic]))
 		for _, tracker := range engine.tracks[subTopic] {
