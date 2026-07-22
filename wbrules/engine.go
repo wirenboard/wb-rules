@@ -667,6 +667,16 @@ type RuleEngine struct {
 	nextTrackID      uint32 // TrackID is used to watch a track in cleanups
 	mqttTrackerMutex sync.Mutex
 
+	// trackedRetained caches the last value seen for every actual topic under
+	// each subscription (subscription topic -> actual topic -> msg), stored as
+	// retained. The broker only redelivers retained values when a subscription
+	// is first created, so when a new tracker joins an already-subscribed topic
+	// (e.g. a second script tracking the same topic, or reloading one of them)
+	// we replay the cached values to that tracker to reproduce a fresh
+	// subscription. See newTrackHandler for why every message is cached, not
+	// only the ones flagged retained.
+	trackedRetained map[string]map[string]wbgong.MQTTMessage
+
 	cleanupOnStop bool
 
 	deviceProxyCache sync.Map
@@ -721,6 +731,7 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 		uninitializedRules: make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY),
 		cleanupOnStop:      options.cleanupOnStop,
 		tracks:             make(map[string]map[uint32]MqttTracker),
+		trackedRetained:    make(map[string]map[string]wbgong.MQTTMessage),
 
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
@@ -1938,11 +1949,36 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 
 	tracker := NewMqttTracker(topic, trackerID)
 	tracker.Callback = ctx.WrapCallback(-1)
-	if _, ok := engine.tracks[topic]; !ok {
+
+	_, alreadySubscribed := engine.tracks[topic]
+	if !alreadySubscribed {
 		engine.tracks[topic] = make(MqttTrackerMap)
 		engine.mqttClient.Subscribe(engine.newTrackHandler(topic), topic)
 	}
 	engine.tracks[topic][trackerID] = tracker
+
+	// The broker only redelivers retained values on a fresh subscription.
+	// When this tracker joins a topic that is already subscribed, replay the
+	// cached retained values to it so it behaves like a fresh subscription.
+	// A tracker present before the cache was populated is served by the
+	// subscription's own delivery instead (both happen under the same mutex,
+	// so exactly one of the two paths fires for a given value).
+	if alreadySubscribed {
+		if cached := engine.trackedRetained[topic]; len(cached) > 0 {
+			msgs := make([]wbgong.MQTTMessage, 0, len(cached))
+			for _, msg := range cached {
+				msgs = append(msgs, msg)
+			}
+			callback := tracker.Callback
+			// Deliver asynchronously on the engine loop, mirroring how the
+			// broker delivers retained values after the script finishes loading.
+			go engine.CallSync(func() {
+				for _, msg := range msgs {
+					callback(mqttTrackerCallbackArgs(msg))
+				}
+			})
+		}
+	}
 
 	engine.cleanup.AddCleanup(func() {
 		engine.mqttTrackerMutex.Lock()
@@ -1950,6 +1986,7 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 		delete(engine.tracks[topic], trackerID)
 		if len(engine.tracks[topic]) < 1 {
 			delete(engine.tracks, topic)
+			delete(engine.trackedRetained, topic)
 			engine.mqttClient.Unsubscribe(topic)
 		}
 	})
@@ -1957,9 +1994,51 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 	return nil
 }
 
+func mqttTrackerCallbackArgs(msg wbgong.MQTTMessage) objx.Map {
+	return objx.New(map[string]any{
+		"topic":    msg.Topic,
+		"value":    msg.Payload,
+		"retained": msg.Retained,
+		"qos":      msg.QoS,
+	})
+}
+
 func (engine *RuleEngine) newTrackHandler(subTopic string) func(wbgong.MQTTMessage) {
 	return func(msg wbgong.MQTTMessage) {
 		engine.mqttTrackerMutex.Lock()
+		// A message may still arrive after the last tracker was removed and the
+		// topic unsubscribed. Ignore it: don't cache (that would resurrect a
+		// stale trackedRetained entry that cleanup will never reclaim) and don't
+		// deliver.
+		if len(engine.tracks[subTopic]) == 0 {
+			engine.mqttTrackerMutex.Unlock()
+			return
+		}
+		// Cache the current value of every topic so trackers that join this
+		// subscription later (a second script tracking the same topic, or a
+		// reloaded script) can be replayed it, reproducing a fresh subscription.
+		//
+		// We cache regardless of msg.Retained: the broker clears the retained
+		// flag on messages delivered to an already-subscribed client (it is only
+		// set for values sent because of a new subscription), so a live update
+		// to a retained topic arrives here with Retained=false and is
+		// indistinguishable from a genuinely non-retained publish. The cached
+		// copy is stored as retained, matching how the broker would redeliver it.
+		//
+		// An empty payload clears a topic's retained value on the broker, so a
+		// fresh subscription would deliver nothing for it: drop it from the cache.
+		if msg.Payload == "" {
+			delete(engine.trackedRetained[subTopic], msg.Topic)
+		} else {
+			topicCache := engine.trackedRetained[subTopic]
+			if topicCache == nil {
+				topicCache = make(map[string]wbgong.MQTTMessage)
+				engine.trackedRetained[subTopic] = topicCache
+			}
+			cachedMsg := msg
+			cachedMsg.Retained = true
+			topicCache[msg.Topic] = cachedMsg
+		}
 		trackers := make([]MqttTracker, 0, len(engine.tracks[subTopic]))
 		for _, tracker := range engine.tracks[subTopic] {
 			trackers = append(trackers, tracker)
@@ -1968,12 +2047,7 @@ func (engine *RuleEngine) newTrackHandler(subTopic string) func(wbgong.MQTTMessa
 
 		for _, tracker := range trackers {
 			tr := tracker
-			args := objx.New(map[string]any{
-				"topic":    msg.Topic,
-				"value":    msg.Payload,
-				"retained": msg.Retained,
-				"qos":      msg.QoS,
-			})
+			args := mqttTrackerCallbackArgs(msg)
 			engine.CallSync(func() {
 				tr.Callback(args)
 			})

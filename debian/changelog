@@ -1,3 +1,10 @@
+wb-rules (2.45.1) stable; urgency=medium
+
+  * Fix trackMqtt callback not firing on script reload when another script
+    tracks the same topic
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 22 Jul 2026 18:00:00 +0400
+
 wb-rules (2.45.0) stable; urgency=medium
 
   * Notify: enhance sendTelegramMessage to accept additional options
