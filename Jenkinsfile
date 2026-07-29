@@ -1,2 +1,3 @@
-buildDebGolangWbgo defaultTargets: 'trixie-armhf trixie-arm64',
+buildDebGolangWbgo defaultTargets: 'current-armhf current-arm64',
+                   defaultWbGoSoBranch: 'feature/update-paho',
                    defaultRunLintian: true
