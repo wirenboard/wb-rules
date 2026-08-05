@@ -37,7 +37,7 @@ function _sendSMSGammuLike(to, text, command, doneCallback) {
 function _sendSMSModemManager(to, text, doneCallback) {
   log('sending sms (via ModemManager): {}', text);
   var command =
-    'mmcli -m any --messaging-create-sms="number={},text={}" | sed -n \'s#^Success.*/SMS/\\([0-9]\\+\\).*$#\\1#p\' | xargs mmcli --send -s';
+    'mmcli -m any --messaging-create-sms="number={},text={}" -K | cut -d: -f2- | xargs mmcli --send -s';
 
   if (text.indexOf('"') >= 0) {
     // can't send messages with all types of quotes via mmcli,

@@ -1,3 +1,9 @@
+wb-rules (2.45.2) stable; urgency=medium
+
+  * Notify: fix sendSMS()
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 05 Aug 2026 14:00:00 +0400
+
 wb-rules (2.45.1) stable; urgency=medium
 
   * Fix trackMqtt callback not firing on script reload when another script

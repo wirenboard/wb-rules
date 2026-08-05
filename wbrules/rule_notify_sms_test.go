@@ -84,7 +84,7 @@ func (s *RuleNotifySmsSuite) TestSmsModemManager() {
 		"tst -> /devices/test_sms/controls/send/on: [1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm should_enable] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending sms (via ModemManager): test value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [run command: mmcli -m any --messaging-create-sms=\"number=88005553535,text=\\\"test value\\\"\" | sed -n 's#^Success.*/SMS/\\([0-9]\\+\\).*$#\\1#p' | xargs mmcli --send -s] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: mmcli -m any --messaging-create-sms=\"number=88005553535,text=\\\"test value\\\"\" -K | cut -d: -f2- | xargs mmcli --send -s] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sms send status: ok] (QoS 1)",
 	)
 }
@@ -100,7 +100,7 @@ func (s *RuleNotifySmsSuite) TestSmsModemManagerWithQuotes() {
 		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm should_enable] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending sms (via ModemManager): test \"value\" 'single'] (QoS 1)",
 		"wbrules-log -> /wbrules/log/warning: [ModemManager can't handle SMS with double quotes now, auto replaced with single ones] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [run command: mmcli -m any --messaging-create-sms=\"number=88005553535,text=\\\"test 'value' 'single'\\\"\" | sed -n 's#^Success.*/SMS/\\([0-9]\\+\\).*$#\\1#p' | xargs mmcli --send -s] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: mmcli -m any --messaging-create-sms=\"number=88005553535,text=\\\"test 'value' 'single'\\\"\" -K | cut -d: -f2- | xargs mmcli --send -s] (QoS 1)",
 	)
 }
 
