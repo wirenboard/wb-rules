@@ -18,8 +18,8 @@ github.com/valyala/histogram v1.2.0 h1:wyYGAZZt3CpwUiIb9AU/Zbllg1llXyrtApRS815OL
 github.com/valyala/histogram v1.2.0/go.mod h1:Hb4kBwb4UxsaNbbbh+RRz8ZR6pdodR57tzWUS3BUzXY=
 github.com/wirenboard/go-duktape v0.0.0-20240729075045-b4150233e350 h1:hjfTrSlSU/Mt2KGZXYMfWhkUJBW8/fmZP5dT4YepCts=
 github.com/wirenboard/go-duktape v0.0.0-20240729075045-b4150233e350/go.mod h1:RBaIu9caMBuL6Xk32Ty04qAjl/5cVSfEdCQtbWzvMQ0=
-github.com/wirenboard/wbgong v0.7.4-0.20260805203332-7edb0abfbe1e h1:9NySNrx5KzMRLVbQTgQlODweBspOkTyjPsgaSBh1QMY=
-github.com/wirenboard/wbgong v0.7.4-0.20260805203332-7edb0abfbe1e/go.mod h1:wbKRnv0DNjXGexHFpMxPOSCHr5oOlMcNI2rJi7kJj+8=
+github.com/wirenboard/wbgong v0.7.4 h1:7qk3EAUzP+QypcGOf5krhkYayvuvkbl/Xw3ZMeXbuN0=
+github.com/wirenboard/wbgong v0.7.4/go.mod h1:wbKRnv0DNjXGexHFpMxPOSCHr5oOlMcNI2rJi7kJj+8=
 go.etcd.io/bbolt v1.3.9 h1:8x7aARPEXiXbHmtUwAIv7eV2fQFHrLLavdiJ3uzJXoI=
 go.etcd.io/bbolt v1.3.9/go.mod h1:zaO32+Ti0PK1ivdPtgMESzuzL2VPoIG1PCQNvOdo/dE=
 golang.org/x/sync v0.5.0 h1:60k92dhOjHxJkrqnwsfl8KuaHbn/5dl0lUPUklKo3qE=
