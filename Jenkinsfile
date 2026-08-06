@@ -1,2 +1,2 @@
-buildDebGolangWbgo defaultTargets: 'trixie-armhf trixie-arm64',
+buildDebGolangWbgo defaultTargets: 'current-armhf current-arm64',
                    defaultRunLintian: true
