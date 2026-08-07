@@ -1,3 +1,5 @@
+/* global defineRule, readConfig, log */
+
 defineRule('readSampleConfig', {
   whenChanged: 'somedev/readSampleConfig',
   then: function (path) {

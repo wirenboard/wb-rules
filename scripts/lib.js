@@ -423,6 +423,11 @@ global.StorableObject = function (obj, ps, pskey) {
       keys.splice(keys.indexOf('_psself'), 1);
       return keys;
     },
+    ownKeys: function (o) {
+      var keys = Object.keys(o);
+      keys.splice(keys.indexOf('_psself'), 1);
+      return keys;
+    },
   });
 
   p._psself = p;

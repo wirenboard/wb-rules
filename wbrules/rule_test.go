@@ -31,28 +31,42 @@ func init() {
 	}
 }
 
+type fakeCronEntry struct {
+	id  cron.EntryID
+	cmd func()
+}
+
 type fakeCron struct {
 	t       *testing.T
 	started bool
-	entries map[string][]func()
+	entries map[string][]fakeCronEntry
 	lastID  cron.EntryID
 }
 
 func newFakeCron(t *testing.T) *fakeCron {
-	return &fakeCron{t, false, make(map[string][]func()), 0}
+	return &fakeCron{t, false, make(map[string][]fakeCronEntry), 0}
 }
 
 func (cron *fakeCron) AddFunc(spec string, cmd func()) (cron.EntryID, error) {
 	cron.lastID++
-	if entries, found := cron.entries[spec]; found {
-		cron.entries[spec] = append(entries, cmd)
-	} else {
-		cron.entries[spec] = []func(){cmd}
-	}
+	cron.entries[spec] = append(cron.entries[spec], fakeCronEntry{cron.lastID, cmd})
 	return cron.lastID, nil
 }
 
 func (cron *fakeCron) Remove(id cron.EntryID) {
+	for spec, entries := range cron.entries {
+		kept := entries[:0]
+		for _, entry := range entries {
+			if entry.id != id {
+				kept = append(kept, entry)
+			}
+		}
+		if len(kept) == 0 {
+			delete(cron.entries, spec)
+		} else {
+			cron.entries[spec] = kept
+		}
+	}
 }
 
 func (cron *fakeCron) Start() {
@@ -72,8 +86,8 @@ func (cron *fakeCron) invokeEntries(spec string) {
 			spec)
 	}
 	if entries, found := cron.entries[spec]; found {
-		for _, cmd := range entries {
-			cmd()
+		for _, entry := range entries {
+			entry.cmd()
 		}
 	}
 }

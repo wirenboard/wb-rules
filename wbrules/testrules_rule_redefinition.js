@@ -1,3 +1,5 @@
+/* global defineRule, log */
+
 defineRule('test', {
   whenChanged: 'somedev/bar',
   then: function () {

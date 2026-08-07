@@ -1,4 +1,4 @@
-// -*- mode: js2-mode -*-
+/* global defineRule, dev, log */
 
 // The location of device "misc" is testrules_locations.js:4
 defineSomeDevice('misc');

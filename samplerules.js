@@ -1,4 +1,4 @@
-// -*- mode: js2-mode -*-
+/* global defineAlias, defineVirtualDevice, defineRule, cron, startTimer, startTicker, runShellCommand, log, timers */
 
 defineVirtualDevice('stabSettings', {
   title: 'Stabilization Settings',

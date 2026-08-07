@@ -1,4 +1,4 @@
-// -*- mode: js2-mode -*-
+/* global defineAlias, defineVirtualDevice, defineRule, dev, startTimer, log, publish, timers */
 
 if (
   (function () {
@@ -101,7 +101,7 @@ defineRule('sendmqtt', {
 defineRule('cellChange1', {
   whenChanged: 'somedev/foobarbaz',
   then: function (newValue, devName, cellName) {
-    if (arguments.length != 3) throw new Error('invalid arguments for then');
+    if (arguments.length !== 3) throw new Error('invalid arguments for then');
     var v = dev[devName][cellName];
     if (v !== newValue) throw new Error('bad newValue! ' + newValue);
     log('cellChange1: {}/{}={} ({})', devName, cellName, v, typeof v);
@@ -113,7 +113,7 @@ defineAlias('tempx', 'somedev/tempx');
 defineRule('cellChange2', {
   whenChanged: ['somedev/foobarbaz', 'tempx' /* an alias */, 'somedev/abutton'],
   then: function (newValue, devName, cellName) {
-    if (arguments.length != 3) throw new Error('invalid arguments for then');
+    if (arguments.length !== 3) throw new Error('invalid arguments for then');
     var v = dev[devName][cellName];
     if (v !== newValue)
       throw new Error(
@@ -129,7 +129,7 @@ defineRule('funcValueChange', {
     return dev.somedev.cellforfunc > 3;
   },
   then: function (newValue, devName, cellName) {
-    if (arguments.length != 1) throw new Error('invalid arguments for then');
+    if (arguments.length !== 1) throw new Error('invalid arguments for then');
     log('funcValueChange: {} ({})', newValue, typeof newValue);
   },
 });
@@ -153,7 +153,7 @@ defineRule('funcValueChange3', {
     return timers.funcValueChange3.firing;
   },
   then: function (newValue) {
-    if (arguments.length != 1) throw new Error('invalid arguments for then');
+    if (arguments.length !== 1) throw new Error('invalid arguments for then');
     log('funcValueChange3: {} ({})', newValue, typeof newValue);
   },
 });

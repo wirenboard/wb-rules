@@ -81,6 +81,35 @@ func (s *RuleNotifyTgSuite) TestTgWithQuotes() {
 	)
 }
 
+func (s *RuleNotifyTgSuite) TestTgWithOptions() {
+	s.setErrorCode(0)
+
+	s.publish("/devices/test_tg/controls/send_with_options/on", "1", "test_tg/send_with_options")
+	s.VerifyUnordered(
+		"driver -> /devices/test_tg/controls/send_with_options: [1] (QoS 1)",
+		"tst -> /devices/test_tg/controls/send_with_options/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending telegram message: Test message] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: curl -s -X POST https://api.telegram.org/bot1234567890:abcdefghijklmnopqrstuvwxyz123456789/sendMessage -H 'Content-Type: application/x-www-form-urlencoded' -d @-] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: chat_id=12345678&text=Test%20message&parse_mode=HTML&disable_web_page_preview=true&disable_notification=true] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [telegram send status: ok] (QoS 1)",
+	)
+}
+
+func (s *RuleNotifyTgSuite) TestTgOptionsWithoutCallback() {
+	s.setErrorCode(0)
+
+	// send_options_no_callback passes options but no callback, which must
+	// still be recognized as options rather than mistaken for a callback
+	s.publish("/devices/test_tg/controls/send_options_no_callback/on", "1", "test_tg/send_options_no_callback")
+	s.VerifyUnordered(
+		"driver -> /devices/test_tg/controls/send_options_no_callback: [1] (QoS 1)",
+		"tst -> /devices/test_tg/controls/send_options_no_callback/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending telegram message: Test message] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: curl -s -X POST https://api.telegram.org/bot1234567890:abcdefghijklmnopqrstuvwxyz123456789/sendMessage -H 'Content-Type: application/x-www-form-urlencoded' -d @-] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: chat_id=12345678&text=Test%20message&parse_mode=Markdown] (QoS 1)",
+	)
+}
+
 func TestNotifyTgSuite(t *testing.T) {
 	testutils.RunSuites(t,
 		new(RuleNotifyTgSuite),
