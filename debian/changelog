@@ -1,3 +1,9 @@
+wb-rules (2.46.2) stable; urgency=medium
+
+  * Fix race condition on service stop
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 07 Aug 2026 18:30:00 +0400
+
 wb-rules (2.46.1) stable; urgency=medium
 
   * Use go 1.26 compiler

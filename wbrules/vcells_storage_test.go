@@ -15,7 +15,7 @@ type VirtualCellsStorageSuite struct {
 
 func (s *VirtualCellsStorageSuite) SetupFixture() {
 	var err error
-	s.tmpDir, err = os.MkdirTemp("", "wbrulestest")
+	s.tmpDir, err = os.MkdirTemp("/dev/shm", "wbrulestest")
 	if err != nil {
 		s.FailNow("can't create temp directory")
 	}
