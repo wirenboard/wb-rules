@@ -1,6 +1,6 @@
 #!/usr/bin/make -f
 
-export PATH := /usr/lib/go-1.24/bin:$(PATH)
+export PATH := /usr/lib/go-1.26/bin:$(PATH)
 
 %:
 	dh $@ --parallel
