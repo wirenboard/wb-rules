@@ -833,10 +833,15 @@ func (engine *RuleEngine) syncLoop() {
 }
 
 func (engine *RuleEngine) processEvents(events []*ControlChangeEvent) {
+	hasDebugControl := false
 	for _, event := range events {
 		if engine.isDebugControl(event.Spec) {
-			engine.updateDebugEnabled()
+			hasDebugControl = true
+			break
 		}
+	}
+	if hasDebugControl {
+		engine.updateDebugEnabled()
 	}
 
 	engine.CallSync(func() {
