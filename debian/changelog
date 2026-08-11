@@ -1,3 +1,9 @@
+wb-rules (2.46.2) stable; urgency=medium
+
+  * Fix unbounded memory growth with timer-driven rules that write controls
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 10 Aug 2026 12:50:00 +0400
+
 wb-rules (2.46.1) stable; urgency=medium
 
   * Use go 1.26 compiler

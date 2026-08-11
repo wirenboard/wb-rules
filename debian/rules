@@ -3,7 +3,7 @@
 export PATH := /usr/lib/go-1.26/bin:$(PATH)
 
 %:
-	dh $@ --parallel
+	dh $@
 
 override_dh_installinit:
 	dh_installinit --noscripts

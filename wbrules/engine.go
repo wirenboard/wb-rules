@@ -832,20 +832,31 @@ func (engine *RuleEngine) syncLoop() {
 	}
 }
 
-func (engine *RuleEngine) processEvent(event *ControlChangeEvent) {
-	if wbgong.DebuggingEnabled() {
-		wbgong.Debug.Printf("control change: %s", event.Spec)
-		wbgong.Debug.Printf("rule engine: running rules after control change: %s", event.Spec)
+func (engine *RuleEngine) processEvents(events []*ControlChangeEvent) {
+	hasDebugControl := false
+	for _, event := range events {
+		if engine.isDebugControl(event.Spec) {
+			hasDebugControl = true
+			break
+		}
 	}
-	if engine.isDebugControl(event.Spec) {
+	if hasDebugControl {
 		engine.updateDebugEnabled()
 	}
 
 	engine.CallSync(func() {
-		engine.RunRules(event, NO_TIMER_NAME)
+		for _, event := range events {
+			if wbgong.DebuggingEnabled() {
+				wbgong.Debug.Printf("control change: %s", event.Spec)
+				wbgong.Debug.Printf("rule engine: running rules after control change: %s", event.Spec)
+			}
+			engine.RunRules(event, NO_TIMER_NAME)
+		}
 	})
 
-	engine.notifyControlChangeSubs(event)
+	for _, event := range events {
+		engine.notifyControlChangeSubs(event)
+	}
 }
 
 func (engine *RuleEngine) mainLoop() {
@@ -891,9 +902,7 @@ ReadyWaitLoop:
 
 	// wbgong.Info.Printf("******** READY ********")
 	for range engine.eventBuffer.Observe() {
-		for _, event := range engine.eventBuffer.Retrieve() {
-			engine.processEvent(event)
-		}
+		engine.processEvents(engine.eventBuffer.Retrieve())
 	}
 
 	engine.handleStop()
