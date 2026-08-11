@@ -1,3 +1,9 @@
+wb-rules (2.46.2) stable; urgency=medium
+
+  * Note that cron format supports seconds unlike standard cron
+
+ -- Alexander Kuznetsov <alexander.kuznetsov@wirenboard.com>  Tue, 11 Aug 2026 15:41:00 +0300
+
 wb-rules (2.46.1) stable; urgency=medium
 
   * Use go 1.26 compiler
