@@ -1,3 +1,12 @@
+wb-rules (2.47.0~quickjs1) unstable; urgency=medium
+
+  * Replace Duktape 1.0.2 with QuickJS 2026-06-04 (pinned as git submodule
+    third_party/quickjs, compiled in-package via internal/quickjsduk).
+  * ES2023 language support in rule scripts; engine semantics preserved
+    (see PORT-QUICKJS.md). Full upstream test suite passes.
+
+ -- wb-rules QuickJS port <wb-claude-mail-00001-7@proton.me>  Thu, 13 Aug 2026 12:00:00 +0000
+
 wb-rules (2.46.2) stable; urgency=medium
 
   * Fix unbounded memory growth with timer-driven rules that write controls

@@ -19,6 +19,12 @@ GOTEST ?= $(GO) test
 GCFLAGS :=
 LDFLAGS := -X main.version=`git describe --tags --always --dirty`
 GO_FLAGS := -buildvcs=false
+
+# Go forces -fuse-ld=gold for arm64 external linking (workaround for an
+# ancient binutils bug); binutils >= 2.44 no longer ships gold.
+ifneq ($(filter arm64 armhf,$(DEB_TARGET_ARCH)),)
+LDFLAGS += -extldflags=-fuse-ld=bfd
+endif
 GO_TEST_FLAGS := -v -cover
 
 ifeq ($(DEBUG),)
