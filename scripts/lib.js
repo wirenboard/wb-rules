@@ -370,11 +370,12 @@ global.StorableObject = function (obj, ps, pskey) {
     return obj;
   }
 
-  // set new prototype for this object
-  var p = {
-    _ps: [],
-    _psself: null,
-  };
+  // set new prototype for this object; the bookkeeping fields are
+  // non-enumerable so a spec-correct for-in (QuickJS walks the proxy's
+  // prototype chain, unlike Duktape's legacy 'enumerate' trap) skips them
+  var p = {};
+  Object.defineProperty(p, '_ps', { value: [], writable: true });
+  Object.defineProperty(p, '_psself', { value: null, writable: true });
   p.__proto__ = obj.__proto__;
 
   obj.__proto__ = p;

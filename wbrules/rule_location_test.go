@@ -74,7 +74,7 @@ func (s *RuleLocationSuite) TestLocations() {
 				{7, "whateverRule"},
 				// the problem with duktape: the last line of the
 				// defineRule() call is recorded
-				{24, "another"},
+				{17, "another"},
 			},
 			Timers: []LocItem{},
 		},
@@ -123,7 +123,7 @@ func (s *RuleLocationSuite) TestUpdatingLocations() {
 				{7, "whateverNewRule"},
 				// a problem with duktape: the last line of the
 				// defineRule() call is recorded
-				{24, "another"},
+				{17, "another"},
 			},
 			Timers: []LocItem{},
 		},
@@ -239,7 +239,7 @@ func (s *RuleLocationSuite) TestFaultyScript() {
 				{7, "whateverRule"},
 				// the problem with duktape: the last line of the
 				// defineRule() call is recorded
-				{24, "another"},
+				{17, "another"},
 			},
 			Timers: []LocItem{},
 		},

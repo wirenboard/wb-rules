@@ -541,16 +541,21 @@ func (ctx *ESContext) Format() string {
 	return buf.String()
 }
 
-var fileRx = regexp.MustCompile(`^\s*\S+\s+(.*):(\d+)(?:\s+[^:]*)?$`)
+// QuickJS stack lines: "    at func (file:line:col)" or "    at file:line:col"
+// (the latter for syntax errors). Native frames ("at fn (native)") don't match.
+var fileRx = regexp.MustCompile(`^\s*at\s+(?:[^(]*\()?([^():]*):(\d+)(?::\d+)?\)?$`)
 
 func (ctx *ESContext) GetESError() (r ESError) {
 	r.Traceback = ESTraceback{}
+	// Unlike Duktape, QuickJS's .stack holds only frame lines (no leading
+	// "Error: msg"), so take the message from the error value itself.
+	r.Message = ctx.SafeToString(-1)
 	if !ctx.GetPropString(-1, "stack") {
-		r.Message = ctx.SafeToString(-1)
 		ctx.Pop()
 		return
 	}
-	stackLines := strings.Split(ctx.SafeToString(-1), "\n")
+	stackStr := ctx.SafeToString(-1)
+	stackLines := strings.Split(stackStr, "\n")
 	r.Traceback = make(ESTraceback, 0, len(stackLines))
 	for _, line := range stackLines {
 		groups := fileRx.FindStringSubmatch(line)
@@ -563,7 +568,11 @@ func (ctx *ESContext) GetESError() (r ESError) {
 			r.Traceback = append(r.Traceback, ESLocation{groups[1], lineNumber})
 		}
 	}
-	r.Message = ctx.SafeToString(-1)
+	// Duktape's .stack embeds the message and wb-rules logged it whole;
+	// reproduce that shape (message first, frame lines after).
+	if len(r.Traceback) > 0 {
+		r.Message = r.Message + "\n" + strings.TrimRight(stackStr, "\n")
+	}
 	ctx.Pop()
 	return
 }
@@ -575,6 +584,14 @@ func (ctx *ESContext) GetESErrorAugmentingSyntaxErrors(path string) (r ESError) 
 	// for SyntaxError (requires newer duktape)
 	r = ctx.GetESError()
 	if len(r.Traceback) != 0 {
+		// QuickJS gives syntax errors a stack with position info, but the
+		// syntax-check compile runs without a filename ("input") — put the
+		// real script path in.
+		for i := range r.Traceback {
+			if r.Traceback[i].filename == "input" {
+				r.Traceback[i].filename = path
+			}
+		}
 		return
 	}
 
