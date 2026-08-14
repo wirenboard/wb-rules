@@ -1,3 +1,11 @@
+wb-rules (2.46.3) stable; urgency=medium
+
+  * Reduce CPU usage of control reads and writes: the object returned for
+    dev[...] is now built once per control, and its methods once at startup,
+    instead of both being rebuilt on every access
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 13 Aug 2026 12:00:00 +0400
+
 wb-rules (2.46.2) stable; urgency=medium
 
   * Fix unbounded memory growth with timer-driven rules that write controls
