@@ -36,7 +36,9 @@ Rule engine for Wiren Board, version 2.0
 
 Начиная с версии 2.47 сценарии выполняются движком
 [QuickJS](https://bellard.org/quickjs/) (вместо Duktape 1.0.2): в правилах
-доступен современный JavaScript — ES2023/ES2024 и большая часть ES2025
+доступен современный JavaScript — полный ES2025 и большинство возможностей
+ES2026 (`Uint8Array.fromBase64`, `Error.isError`, `Math.sumPrecise`, inline-модификаторы
+regexp `(?i:...)`; не поддерживается только explicit resource management — `using`/`DisposableStack`)
 (классы с приватными полями, `async`/`await` и промисы, `Object.groupBy`,
 `toSorted`/`findLast`, стрелочные функции в `defineRule` и т.д.). Готовый
 пример: [sample-es2025.js](./sample-es2025.js). Движок закреплён как
