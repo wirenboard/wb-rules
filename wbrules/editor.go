@@ -3,6 +3,7 @@ package wbrules
 import (
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/wirenboard/wbgong"
@@ -119,6 +120,7 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 }
 
 type EditorTsDiag struct {
+	File     string `json:"file,omitempty"` // set only for diags from other files
 	Line     int    `json:"line"`
 	Column   int    `json:"column"`
 	Severity string `json:"severity"`
@@ -126,8 +128,10 @@ type EditorTsDiag struct {
 }
 
 type EditorCheckResponse struct {
-	TsSupported bool           `json:"tsSupported"`
-	Diags       []EditorTsDiag `json:"diags"`
+	// "ready" | "pending" | "not-ts" | "unsupported"; diags are valid
+	// only when ready - clients poll again on pending
+	Status string         `json:"status"`
+	Diags  []EditorTsDiag `json:"diags"`
 }
 
 type EditorTypesResponse struct {
@@ -146,12 +150,19 @@ func (editor *Editor) Check(args *EditorPathArgs, reply *EditorCheckResponse) er
 	if err != nil {
 		return err
 	}
-	diags, available := editor.locFileManager.CheckTsFile(entry.PhysicalPath)
-	reply.TsSupported = available
+	diags, status := editor.locFileManager.CheckTsFile(entry.PhysicalPath)
+	reply.Status = status
 	reply.Diags = make([]EditorTsDiag, 0, len(diags))
+	checkedBase := filepath.Base(entry.PhysicalPath)
 	for _, d := range diags {
+		file := ""
+		if filepath.Base(d.File) != checkedBase {
+			// a diagnostic from another file pulled in by the program
+			// (import/reference); clients must not anchor it here
+			file = d.File
+		}
 		reply.Diags = append(reply.Diags, EditorTsDiag{
-			Line: d.Line, Column: d.Column, Severity: d.Severity, Message: d.Message,
+			File: file, Line: d.Line, Column: d.Column, Severity: d.Severity, Message: d.Message,
 		})
 	}
 	return nil

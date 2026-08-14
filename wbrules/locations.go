@@ -25,9 +25,10 @@ type LocFileManager interface {
 	ScriptDir() string
 	ListSourceFiles() ([]LocFileEntry, error)
 	LiveWriteScript(virtualPath, content string) error
-	// CheckTsFile type-checks one TypeScript rule file on demand and
-	// returns its diagnostics; nil diags and false when TS support is off.
-	CheckTsFile(physicalPath string) ([]TSDiag, bool)
+	// CheckTsFile returns the cached background type-check verdict for
+	// one rule file plus a status: "ready", "pending", "not-ts" or
+	// "unsupported" (see TS_CHECK_* constants).
+	CheckTsFile(physicalPath string) ([]TSDiag, string)
 	// TsTypesContent returns the installed wb-rules.d.ts so editors can
 	// validate against the API of the engine actually running.
 	TsTypesContent() (string, error)

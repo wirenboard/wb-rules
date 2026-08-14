@@ -25,6 +25,16 @@ import (
 
 type itemType int
 
+// Editor.Check statuses. Kept in their own const block: the main block
+// below derives itemType values from iota, which counts every preceding
+// spec in the same block.
+const (
+	TS_CHECK_READY       = "ready"
+	TS_CHECK_PENDING     = "pending"
+	TS_CHECK_NOT_TS      = "not-ts"
+	TS_CHECK_UNSUPPORTED = "unsupported"
+)
+
 const (
 	LIB_FILE                      = "lib.js"
 	LIB_SYS_PATH                  = "/usr/share/wb-rules-system/scripts"
@@ -135,6 +145,15 @@ type ESEngine struct {
 	tsc               *TSCompiler       // non-nil when TypeScript support is enabled
 	tsTypesPath       string            // installed wb-rules.d.ts (Editor.GetTypes)
 	tsCheckGen        map[string]uint64 // engine-loop only: per-file check revision
+
+	tsCheckMu      sync.Mutex
+	tsCheckResults map[string]*tsCheckEntry // latest background verdict per physical path
+}
+
+type tsCheckEntry struct {
+	gen   uint64
+	ready bool
+	diags []TSDiag
 }
 
 func init() {
@@ -162,6 +181,7 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		tracker:           wbgong.NewContentTracker(),
 		persistentDBCache: make(map[string]string),
 		tsCheckGen:        make(map[string]uint64),
+		tsCheckResults:    make(map[string]*tsCheckEntry),
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
 	}
@@ -307,10 +327,13 @@ func (engine *ESEngine) preprocessRuleSource(path string, src []byte) ([]byte, e
 		return nil, err
 	}
 	// generation guard: a slow check for an old revision of the file must
-	// not overwrite the newer check's published verdict (both counters are
-	// touched on the engine loop only)
+	// not overwrite the newer check's verdict (the gen counter is touched
+	// on the engine loop only)
 	engine.tsCheckGen[path]++
 	gen := engine.tsCheckGen[path]
+	engine.tsCheckMu.Lock()
+	engine.tsCheckResults[path] = &tsCheckEntry{gen: gen}
+	engine.tsCheckMu.Unlock()
 	engine.tsc.CheckAsync(path, func(diags []TSDiag) {
 		if !engine.IsActive() {
 			return
@@ -325,6 +348,9 @@ func (engine *ESEngine) preprocessRuleSource(path string, src []byte) ([]byte, e
 				engine.Log(ENGINE_LOG_WARNING, fmt.Sprintf(
 					"TS check: %s:%d:%d: %s", d.File, d.Line, d.Column, d.Message))
 			}
+			engine.tsCheckMu.Lock()
+			engine.tsCheckResults[path] = &tsCheckEntry{gen: gen, ready: true, diags: diags}
+			engine.tsCheckMu.Unlock()
 		})
 	})
 	return []byte(js), nil
@@ -2869,14 +2895,26 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 	return duktape.DUK_RET_INSTACK_ERROR
 }
 
-// CheckTsFile runs a synchronous on-demand type check of one .ts rule
-// file (Editor.Check RPC). The bool result reports whether TypeScript
-// support is available at all.
-func (engine *ESEngine) CheckTsFile(physicalPath string) ([]TSDiag, bool) {
-	if engine.tsc == nil || !strings.HasSuffix(physicalPath, ".ts") {
-		return nil, engine.tsc != nil
+// CheckTsFile serves the Editor.Check RPC from the background-check
+// verdict cache - every .ts load/save triggers a check, so this is a
+// cheap read that never blocks the serially-dispatched RPC loop on a
+// tsgo process. Status values: "ready" (diags valid), "pending" (check
+// in flight, poll again), "not-ts" (not a checkable .ts file, e.g.
+// disabled), "unsupported" (engine runs without tsgo).
+func (engine *ESEngine) CheckTsFile(physicalPath string) ([]TSDiag, string) {
+	if engine.tsc == nil {
+		return nil, TS_CHECK_UNSUPPORTED
 	}
-	return engine.tsc.Check(physicalPath), true
+	if !strings.HasSuffix(physicalPath, ".ts") {
+		return nil, TS_CHECK_NOT_TS
+	}
+	engine.tsCheckMu.Lock()
+	defer engine.tsCheckMu.Unlock()
+	entry, found := engine.tsCheckResults[physicalPath]
+	if !found || !entry.ready {
+		return nil, TS_CHECK_PENDING
+	}
+	return entry.diags, TS_CHECK_READY
 }
 
 // TsTypesContent returns the installed wb-rules.d.ts declarations.

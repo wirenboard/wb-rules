@@ -52,6 +52,38 @@ channels:
     parameters:
       clientId:
         $ref: '#/components/parameters/clientId'
+  wbrulesEditorCheck:
+    address: '/rpc/v1/wbrules/Editor/Check/{clientId}'
+    messages:
+      wbrulesEditorCheck:
+        $ref: '#/components/messages/wbrulesEditorCheck'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorCheckReply:
+    address: '/rpc/v1/wbrules/Editor/Check/{clientId}/reply'
+    messages:
+      wbrulesEditorCheckReply:
+        $ref: '#/components/messages/wbrulesEditorCheckReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorGetTypes:
+    address: '/rpc/v1/wbrules/Editor/GetTypes/{clientId}'
+    messages:
+      wbrulesEditorGetTypes:
+        $ref: '#/components/messages/wbrulesEditorGetTypes'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorGetTypesReply:
+    address: '/rpc/v1/wbrules/Editor/GetTypes/{clientId}/reply'
+    messages:
+      wbrulesEditorGetTypesReply:
+        $ref: '#/components/messages/wbrulesEditorGetTypesReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
   wbrulesEditorRemove:
     address: '/rpc/v1/wbrules/Editor/Remove/{clientId}'
     messages:
@@ -429,14 +461,21 @@ components:
         result:
           type: object
           properties:
-            tsSupported:
-              type: boolean
-              description: false when the engine runs without tsgo
+            status:
+              type: string
+              enum: [ready, pending, not-ts, unsupported]
+              description: >-
+                diags are valid only for 'ready'; poll again on 'pending';
+                'not-ts' for files the checker does not cover (e.g.
+                disabled); 'unsupported' when the engine runs without tsgo
             diags:
               type: array
               items:
                 type: object
                 properties:
+                  file:
+                    type: string
+                    description: set only for diagnostics from another file (import/reference)
                   line:
                     type: number
                   column:
@@ -447,7 +486,7 @@ components:
                   message:
                     type: string
           required:
-            - tsSupported
+            - status
             - diags
       required:
         - id

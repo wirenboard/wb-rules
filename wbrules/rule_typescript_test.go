@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/wirenboard/wbgong/testutils"
 )
@@ -55,23 +56,35 @@ func (s *RuleTypeScriptSuite) TestTsAsyncTypeCheck() {
 	s.Verify(regexp.MustCompile(`TS check: .*testrules_ts_badtypes\.ts:6:.*`))
 }
 
-// Editor.Check is the on-demand authoritative verdict for editors;
-// Editor.GetTypes serves the installed declarations they validate with.
+// Editor.Check serves the cached background verdict ("pending" until
+// the check completes); Editor.GetTypes serves the installed
+// declarations editors validate with.
 func (s *RuleTypeScriptSuite) TestEditorCheckAndTypes() {
 	editor := NewEditor(s.engine)
 
-	var check EditorCheckResponse
-	s.Ck("Editor.Check", editor.Check(&EditorPathArgs{Path: "testrules_ts.ts"}, &check))
-	s.True(check.TsSupported)
+	waitReady := func(path string) EditorCheckResponse {
+		var check EditorCheckResponse
+		for i := 0; i < 100; i++ {
+			s.Ck("Editor.Check", editor.Check(&EditorPathArgs{Path: path}, &check))
+			if check.Status != TS_CHECK_PENDING {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		s.Equal(TS_CHECK_READY, check.Status)
+		return check
+	}
+
+	check := waitReady("testrules_ts.ts")
 	s.Empty(check.Diags, "clean file must produce no diagnostics")
 
 	s.loadScripts([]string{"testrules_ts_badtypes.ts"})
 	s.SkipTill("wbrules-log -> /wbrules/updates/changed: [testrules_ts_badtypes.ts] (QoS 1)")
-	s.Ck("Editor.Check", editor.Check(&EditorPathArgs{Path: "testrules_ts_badtypes.ts"}, &check))
-	s.True(check.TsSupported)
+	check = waitReady("testrules_ts_badtypes.ts")
 	s.NotEmpty(check.Diags)
 	s.Equal(6, check.Diags[0].Line)
 	s.Equal("error", check.Diags[0].Severity)
+	s.Empty(check.Diags[0].File, "diag belongs to the checked file itself")
 
 	var types EditorTypesResponse
 	s.Ck("Editor.GetTypes", editor.GetTypes(&struct{}{}, &types))

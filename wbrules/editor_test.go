@@ -47,8 +47,8 @@ func (s *EditorSuite) TearDownTest() {
 }
 
 // test-double stubs for the TS hooks of LocFileManager
-func (s *EditorSuite) CheckTsFile(physicalPath string) ([]TSDiag, bool) {
-	return nil, false
+func (s *EditorSuite) CheckTsFile(physicalPath string) ([]TSDiag, string) {
+	return nil, TS_CHECK_UNSUPPORTED
 }
 
 func (s *EditorSuite) TsTypesContent() (string, error) {
