@@ -1,3 +1,35 @@
+wb-rules (2.47.0~quickjs4) unstable; urgency=medium
+
+  * Publish TypeScript check results as retained JSON on
+    /wbrules/ts-check/<virtual path> for UI editor integration.
+  * tsgo child process dies with the daemon (PDEATHSIG).
+
+ -- wb-rules QuickJS port <wb-claude-mail-00001-7@proton.me>  Fri, 14 Aug 2026 10:20:00 +0000
+
+wb-rules (2.47.0~quickjs3) unstable; urgency=medium
+
+  * Skip TypeScript declaration files (.d.ts) in watched rule directories.
+  * Type checks run with --lib esnext (no DOM globals shadowing rule code).
+
+ -- wb-rules QuickJS port <wb-claude-mail-00001-7@proton.me>  Thu, 13 Aug 2026 21:40:00 +0000
+
+wb-rules (2.47.0~quickjs2) unstable; urgency=medium
+
+  * TypeScript rule support via Microsoft typescript-go (tsgo): .ts files
+    transpile on load (~1ms), run immediately, and are type-checked in the
+    background; findings are logged as warnings with source line numbers.
+  * Ship /usr/share/wb-rules/types/wb-rules.d.ts (builtin API declarations).
+  * JS execution watchdog: -js-timeout (default 60s) interrupts runaway
+    rules (while(true) etc.) instead of freezing the engine.
+  * Fix engine shutdown races (late timer/cron/shell callbacks vs Stop).
+  * Fix strict-mode writes to dev/PersistentStorage (proxy set traps).
+  * exports/module.exports are now available in plain rule files.
+  * require() of a missing module reports 'cannot find module "id"'.
+  * Fix spurious "stack overflow" from QuickJS stack-anchor vs Go thread
+    migration (validated against a 663-script wild corpus).
+
+ -- wb-rules QuickJS port <wb-claude-mail-00001-7@proton.me>  Thu, 13 Aug 2026 21:00:00 +0000
+
 wb-rules (2.47.0~quickjs1) unstable; urgency=medium
 
   * Replace Duktape 1.0.2 with QuickJS 2026-06-04 (pinned as git submodule

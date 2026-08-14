@@ -395,7 +395,7 @@ func (s *EditorSuite) TestRenameFile() {
 	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": "sub/.hidden.js"},
 		EDITOR_ERROR_INVALID_PATH, "EditorError", "File name should not start with a dot")
 	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": "sample1_new"},
-		EDITOR_ERROR_INVALID_EXT, "EditorError", "File name should end with .js")
+		EDITOR_ERROR_INVALID_EXT, "EditorError", "File name should end with .js or .ts")
 	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": strings.Repeat("x", 255) + ".js"},
 		EDITOR_ERROR_INVALID_LEN, "EditorError", "File path should be shorter than or equal to 255 chars")
 	s.VerifyRpcError("Rename", objx.Map{"path": "nosuchfile.js", "new_path": "sample1_new.js"},

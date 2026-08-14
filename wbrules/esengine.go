@@ -31,6 +31,7 @@ const (
 	LIB_REL_PATH_1                = "scripts"
 	LIB_REL_PATH_2                = "../scripts"
 	MIN_INTERVAL_MS               = 1
+	DEFAULT_JS_EXECUTION_LIMIT    = 60 * time.Second
 	MIN_INTERVAL_LOW_THRESHOLD_MS = 10
 	PERSISTENT_DB_CHMOD           = 0640
 	SOURCE_ITEM_DEVICE            = itemType(iota)
@@ -71,12 +72,16 @@ type ESEngineOptions struct {
 	PersistentDBFile     string
 	PersistentDBFileMode os.FileMode
 	ModulesDirs          []string
+	TsgoPath             string        // tsgo binary for TypeScript rules ("" = TS disabled)
+	TsTypesPath          string        // wb-rules.d.ts used during async type checks
+	JsExecutionLimit     time.Duration // max wall time for one synchronous JS run; 0 = unlimited
 }
 
 func NewESEngineOptions() *ESEngineOptions {
 	return &ESEngineOptions{
 		RuleEngineOptions:    NewRuleEngineOptions(),
 		PersistentDBFileMode: PERSISTENT_DB_CHMOD,
+		JsExecutionLimit:     DEFAULT_JS_EXECUTION_LIMIT,
 	}
 }
 
@@ -90,6 +95,14 @@ func (o *ESEngineOptions) SetPersistentDBFileMode(mode os.FileMode) {
 
 func (o *ESEngineOptions) SetModulesDirs(dirs []string) {
 	o.ModulesDirs = dirs
+}
+
+func (o *ESEngineOptions) SetTsgoPath(path string) {
+	o.TsgoPath = path
+}
+
+func (o *ESEngineOptions) SetTsTypesPath(path string) {
+	o.TsTypesPath = path
 }
 
 type TimerSet struct {
@@ -119,6 +132,8 @@ type ESEngine struct {
 	persistentDBCache map[string]string
 	persistentDB      *bolt.DB
 	modulesDirs       []string
+	tsc               *TSCompiler     // non-nil when TypeScript support is enabled
+	tsDiagsPublished  map[string]bool // engine-loop only: files with published TS diagnostics
 }
 
 func init() {
@@ -145,10 +160,23 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		editableSources:   make(map[string]string),
 		tracker:           wbgong.NewContentTracker(),
 		persistentDBCache: make(map[string]string),
+		tsDiagsPublished:  make(map[string]bool),
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
 	}
+	if options.TsgoPath != "" {
+		tsc := NewTSCompiler(options.TsgoPath, options.TsTypesPath)
+		if tsc.Available() {
+			engine.tsc = tsc
+			engine.ctxFactory.preprocessor = engine.preprocessRuleSource
+			engine.ctxFactory.lineTranslator = tsc.TranslateLine
+		} else {
+			wbgong.Warn.Printf("tsgo binary not found at %s; TypeScript rules disabled", options.TsgoPath)
+		}
+	}
 	engine.globalCtx = engine.ctxFactory.newESContext(engine.MaybeCallSync, "")
+	// a runaway rule (while(true) etc.) must error out, not freeze the loop
+	engine.globalCtx.SetExecutionTimeLimit(options.JsExecutionLimit)
 
 	if options.PersistentDBFile != "" {
 		if err = engine.SetPersistentDBMode(options.PersistentDBFile,
@@ -243,6 +271,87 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	engine.RuleEngine.setupRuleEngineSettingsDevice()
 
 	return
+}
+
+// preprocessRuleSource transpiles TypeScript rule files on load. The
+// transpile is a fast type-strip (~1 ms); the full type check runs in the
+// background afterwards and only ever produces warnings — rules run first,
+// diagnostics arrive later.
+func (engine *ESEngine) preprocessRuleSource(path string, src []byte) ([]byte, error) {
+	if !strings.HasSuffix(path, ".ts") {
+		return src, nil
+	}
+	if strings.HasSuffix(path, ".d.ts") {
+		// declaration files carry no executable code and make the
+		// transpiler panic; they may sit in watched rule dirs
+		wbgong.Debug.Printf("skipping TypeScript declaration file %s", path)
+		return []byte("// TypeScript declaration file, nothing to execute\n"), nil
+	}
+	if engine.tsc == nil {
+		return nil, fmt.Errorf("TypeScript rules need tsgo (not configured)")
+	}
+	js, err := engine.tsc.Transpile(string(src), path)
+	if err != nil {
+		return nil, err
+	}
+	engine.tsc.CheckAsync(path, func(diags []TSDiag) {
+		if !engine.IsActive() {
+			return
+		}
+		// MaybeCallSync: the engine may have stopped while the check ran;
+		// never block a background goroutine on a dead sync queue.
+		engine.MaybeCallSync(func() {
+			for _, d := range diags {
+				engine.Log(ENGINE_LOG_WARNING, fmt.Sprintf(
+					"TS check: %s:%d:%d: %s", d.File, d.Line, d.Column, d.Message))
+			}
+			engine.publishTsCheck(path, diags)
+		})
+	})
+	return []byte(js), nil
+}
+
+// publishTsCheck posts type-check results for one rule file as retained
+// JSON on /wbrules/ts-check/<virtual path>, so the UI editor can render
+// diagnostics at source lines. An empty diags list is published too - it
+// clears earlier squiggles after the user fixes the file.
+func (engine *ESEngine) publishTsCheck(physicalPath string, diags []TSDiag) {
+	// runs on the engine loop (via MaybeCallSync), so tsDiagsPublished
+	// needs no locking
+	if len(diags) == 0 && !engine.tsDiagsPublished[physicalPath] {
+		return // nothing shown before, nothing to clear
+	}
+	engine.tsDiagsPublished[physicalPath] = len(diags) > 0
+	virtualPath := physicalPath
+	if entry, found := engine.sources[physicalPath]; found {
+		virtualPath = entry.VirtualPath
+	}
+	type uiDiag struct {
+		Line     int    `json:"line"`
+		Column   int    `json:"column"`
+		Severity string `json:"severity"`
+		Message  string `json:"message"`
+	}
+	out := struct {
+		File  string   `json:"file"`
+		Diags []uiDiag `json:"diags"`
+	}{File: virtualPath, Diags: make([]uiDiag, 0, len(diags))}
+	for _, d := range diags {
+		out.Diags = append(out.Diags, uiDiag{Line: d.Line, Column: d.Column, Severity: d.Severity, Message: d.Message})
+	}
+	payload, err := json.Marshal(out)
+	if err != nil {
+		return
+	}
+	engine.Publish("/wbrules/ts-check/"+virtualPath, string(payload), 1, true)
+}
+
+// Stop shuts the engine down, including the TypeScript compiler child.
+func (engine *ESEngine) Stop() {
+	if engine.tsc != nil {
+		engine.tsc.Stop()
+	}
+	engine.RuleEngine.Stop()
 }
 
 func (engine *ESEngine) exportModSearch(ctx *ESContext) {
@@ -2243,7 +2352,10 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 			return
 		}
 		if callbackFn != nil {
-			engine.CallSync(func() {
+			// MaybeCallSync: the engine may already be stopping — CallSync
+			// on a closed sync queue panics (a shell command finishing
+			// during shutdown crashed the whole engine)
+			engine.MaybeCallSync(func() {
 				// check that context is still alive
 				// (file is not removed or reloaded)
 				if !ctx.IsValid() {
@@ -2766,5 +2878,8 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 
 	wbgong.Error.Printf("error requiring module %s, not found", id)
 
-	return duktape.DUK_RET_ERROR
+	// throw a descriptive Error instead of a bare rc code so script errors
+	// read "cannot find module 'X'" in the UI and logs
+	ctx.PushErrorObject(duktape.DUK_ERR_ERROR, fmt.Sprintf("cannot find module %q", id))
+	return duktape.DUK_RET_INSTACK_ERROR
 }

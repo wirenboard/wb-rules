@@ -42,7 +42,7 @@ const (
 
 var (
 	hiddenFileError       = &EditorError{EDITOR_ERROR_INVALID_PATH, "File name should not start with a dot"}
-	invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should end with .js"}
+	invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should end with .js or .ts"}
 	invalidLenError       = &EditorError{EDITOR_ERROR_INVALID_LEN, "File path should be shorter than or equal to 255 chars"}
 	listDirError          = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
 	readError             = &EditorError{EDITOR_ERROR_READ, "Error reading the file"}
@@ -56,7 +56,7 @@ var (
 func validateScriptPath(pth string) error {
 	if strings.HasPrefix(path.Base(pth), ".") {
 		return hiddenFileError
-	} else if !strings.HasSuffix(pth, ".js") {
+	} else if !strings.HasSuffix(pth, ".js") && !strings.HasSuffix(pth, ".ts") {
 		return invalidExtensionError
 	} else if len(pth) > 255 {
 		return invalidLenError

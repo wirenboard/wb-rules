@@ -28,6 +28,8 @@ const (
 	PERSISTENT_DB_FILE      = "/var/lib/wirenboard/wbrules-persistent.db"
 	VIRTUAL_DEVICES_DB_FILE = "/var/lib/wirenboard/wbrules-vdev.db"
 	WBGO_FILE               = "/usr/lib/wb-rules/wbgo.so"
+	TSGO_FILE               = "/usr/lib/wb-rules/tsgo"
+	TS_TYPES_FILE           = "/usr/share/wb-rules/types/wb-rules.d.ts"
 
 	WBRULES_MODULES_ENV = "WB_RULES_MODULES"
 
@@ -65,6 +67,9 @@ func main() {
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
 
 	wbgoso := flag.String("wbgo", WBGO_FILE, "Location to wbgo.so file")
+	tsgoPath := flag.String("tsgo", TSGO_FILE, "Location of the tsgo binary (TypeScript support; empty to disable)")
+	tsTypes := flag.String("ts-types", TS_TYPES_FILE, "wb-rules type declarations used for TypeScript checking")
+	jsTimeout := flag.Duration("js-timeout", wbrules.DEFAULT_JS_EXECUTION_LIMIT, "Max wall time for one synchronous JS run (0 to disable)")
 
 	flag.Parse()
 
@@ -144,6 +149,9 @@ func main() {
 	engineOptions.SetPersistentDBFile(*persistentDbFile)
 	engineOptions.SetModulesDirs(strings.Split(os.Getenv(WBRULES_MODULES_ENV), ":"))
 	engineOptions.SetCleanupOnStop(*cleanup)
+	engineOptions.SetTsgoPath(*tsgoPath)
+	engineOptions.SetTsTypesPath(*tsTypes)
+	engineOptions.JsExecutionLimit = *jsTimeout
 
 	if *noQueues {
 		engineOptions.SetTesting(true)
@@ -158,7 +166,7 @@ func main() {
 	defer engine.Stop()
 
 	gotSome := false
-	watcher := wbgong.NewDirWatcher("(^|/)[^/.][^/]*\\.js(\\"+wbrules.FILE_DISABLED_SUFFIX+")?$", engine)
+	watcher := wbgong.NewDirWatcher("(^|/)[^/.][^/]*\\.(js|ts)(\\"+wbrules.FILE_DISABLED_SUFFIX+")?$", engine)
 	if *editDir != "" {
 		err := engine.SetSourceRoot(*editDir)
 		if err != nil {
