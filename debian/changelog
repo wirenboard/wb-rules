@@ -1,3 +1,10 @@
+wb-rules (2.47.0~quickjs6) unstable; urgency=medium
+
+  * Editor.Check / Editor.GetTypes RPC (documented in asyncapi); the
+    retained /wbrules/ts-check topic is removed.
+
+ -- wb-rules QuickJS port <wb-claude-mail-00001-7@proton.me>  Fri, 14 Aug 2026 15:00:00 +0000
+
 wb-rules (2.47.0~quickjs5) unstable; urgency=medium
 
   * Review fixes: fuse stack anchor into PcallProp/JSON cgo calls; JS
