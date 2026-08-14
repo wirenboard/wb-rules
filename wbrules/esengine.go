@@ -52,6 +52,7 @@ const (
 
 	THREAD_STORAGE_OBJ_NAME       = "_esThreads"
 	MODULES_USER_STORAGE_OBJ_NAME = "_esModules"
+	CELL_OBJ_PROTO_NAME           = "_esCellPrototype"
 	GLOBAL_INIT_ENV_FUNC_NAME     = "__esInitEnv"
 )
 
@@ -172,6 +173,9 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 
 	// init virtual device cell prototype
 	engine.initVdevCellPrototype(engine.globalCtx)
+
+	// init prototype for objects returned from _wbCellObject
+	engine.initCellObjectPrototype(engine.globalCtx)
 
 	// init threads storage
 	engine.initGlobalThreadList(engine.globalCtx)
@@ -361,7 +365,7 @@ func (engine *ESEngine) initVdevCellPrototype(ctx *ESContext) {
 		"getValue":       engine.esVdevCellGetValue,
 	})
 
-	ctx.PutPropString(-2, "__wbVdevCellPrototype")
+	ctx.PutPropString(-2, VDEV_OBJ_PROTO_CELL_NAME)
 }
 
 func (engine *ESEngine) makeControlObject(ctx *ESContext, devID, ctrlID string) {
@@ -2032,6 +2036,20 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 
 	controlProxy := devProxy.EnsureControlProxy(ctx.GetString(-1))
 	ctx.PushGoObject(controlProxy)
+
+	ctx.PushHeapStash()
+	ctx.GetPropString(-1, CELL_OBJ_PROTO_NAME)
+	ctx.SetPrototype(-3)
+	ctx.Pop()
+
+	return 1
+}
+
+func (engine *ESEngine) initCellObjectPrototype(ctx *ESContext) {
+	ctx.PushHeapStash()
+	defer ctx.Pop()
+
+	ctx.PushObject()
 	ctx.DefineFunctions(map[string]func(*ESContext) int{
 		JS_DEVPROXY_FUNC_RAWVALUE: func(ctx *ESContext) int {
 			ctx.PushThis()
@@ -2122,7 +2140,7 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 			return 1
 		},
 	})
-	return 1
+	ctx.PutPropString(-2, CELL_OBJ_PROTO_NAME)
 }
 
 func (engine *ESEngine) esWbStartTimer(ctx *ESContext) int {
