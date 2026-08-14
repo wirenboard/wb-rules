@@ -71,6 +71,13 @@ wb-rules (2.47.0~quickjs1) unstable; urgency=medium
     (see PORT-QUICKJS.md). Full upstream test suite passes.
 
  -- wb-rules QuickJS port <wb-claude-mail-00001-7@proton.me>  Thu, 13 Aug 2026 12:00:00 +0000
+wb-rules (2.46.3) stable; urgency=medium
+
+  * Reduce CPU usage of control reads and writes: the object returned for
+    dev[...] is now built once per control, and its methods once at startup,
+    instead of both being rebuilt on every access
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 13 Aug 2026 12:00:00 +0400
 
 wb-rules (2.46.2) stable; urgency=medium
 

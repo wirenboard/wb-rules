@@ -75,7 +75,16 @@ var _WbRules = {
 
     if (name in o) return o[name];
 
-    return (o[name] = new Proxy(_wbDevObject(name), {
+    var devObject = _wbDevObject(name);
+
+    var cells = Object.create(null);
+    function cellObject(cellName) {
+      var cell = cells[cellName];
+      if (cell === undefined) cell = cells[cellName] = _wbCellObject(devObject, cellName);
+      return cell;
+    }
+
+    return (o[name] = new Proxy(devObject, {
       get: function (dev, name) {
         var sharpPosition = name.indexOf('#');
         var metaField = '';
@@ -83,7 +92,7 @@ var _WbRules = {
           metaField = name.slice(sharpPosition + 1);
           name = name.slice(0, sharpPosition);
         }
-        var cell = _wbCellObject(dev, name);
+        var cell = cellObject(name);
         if (_WbRules.requireCompleteCells && !cell.isComplete())
           throw new _WbRules.IncompleteCellCaught(name);
         if (metaField !== '') {
@@ -104,9 +113,9 @@ var _WbRules = {
           name = name.slice(0, sharpPosition);
         }
         if (metaField !== '') {
-          _wbCellObject(dev, name).setMeta({ k: metaField, v: value });
+          cellObject(name).setMeta({ k: metaField, v: value });
         } else {
-          _wbCellObject(dev, name).setValue({ v: value });
+          cellObject(name).setValue({ v: value });
         }
         return true;
       },
