@@ -1,3 +1,11 @@
+wb-rules (2.47.0~quickjs7) unstable; urgency=medium
+
+  * Editor.Check serves the cached background verdict with a status
+    (ready/pending/not-ts/unsupported) instead of blocking the RPC loop
+    on a tsgo process; asyncapi channel definitions fixed.
+
+ -- wb-rules QuickJS port <wb-claude-mail-00001-7@proton.me>  Fri, 14 Aug 2026 15:40:00 +0000
+
 wb-rules (2.47.0~quickjs6) unstable; urgency=medium
 
   * Editor.Check / Editor.GetTypes RPC (documented in asyncapi); the
