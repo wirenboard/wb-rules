@@ -90,7 +90,7 @@ int qjd_install_require(JSContext *ctx) {
      * Duktape.modSearch on it per context. Recreate the pieces user
      * scripts rely on: a NUMERIC version and the enc/dec codecs. */
     JSValue duk = JS_NewObject(ctx);
-    JS_SetPropertyStr(ctx, duk, "version", JS_NewInt32(ctx, 20600));
+    JS_SetPropertyStr(ctx, duk, "version", JS_NewInt32(ctx, 10002));
     r |= JS_SetPropertyStr(ctx, glob, "Duktape", duk);
     JS_FreeValue(ctx, glob);
     static const char *codecs =

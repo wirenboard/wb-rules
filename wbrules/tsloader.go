@@ -2,6 +2,7 @@ package wbrules
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/wirenboard/wbgong"
 )
@@ -84,7 +86,7 @@ func (c *TSCompiler) Available() bool {
 }
 
 func (c *TSCompiler) ensureStartedLocked() error {
-	if c.cmd != nil && c.cmd.ProcessState == nil {
+	if c.cmd != nil {
 		return nil
 	}
 	cmd := exec.Command(c.binPath, "--api", "--async")
@@ -105,7 +107,14 @@ func (c *TSCompiler) ensureStartedLocked() error {
 	c.cmd = cmd
 	c.stdin = stdin
 	c.stdout = bufio.NewReader(stdout)
-	go func() { _ = cmd.Wait() }() // reap; next call notices death and respawns
+	go func() {
+		_ = cmd.Wait() // reap
+		c.mu.Lock()
+		if c.cmd == cmd {
+			c.cmd = nil // next call respawns
+		}
+		c.mu.Unlock()
+	}()
 	return nil
 }
 
@@ -196,12 +205,24 @@ func (c *TSCompiler) transpileLocked(src, fileName string) (string, error) {
 			},
 		},
 	}
+	// a wedged (not dead) child would block readMsg forever - and
+	// Transpile runs on the engine loop; kill the process on deadline so
+	// the read unblocks and the caller's respawn path takes over
+	proc := c.cmd.Process
+	watchdog := time.AfterFunc(15*time.Second, func() { proc.Kill() })
+	defer watchdog.Stop()
 	if err := c.writeMsg(req); err != nil {
 		return "", err
 	}
 	resp, err := c.readMsg()
 	if err != nil {
 		return "", err
+	}
+	var respID int64
+	if err := json.Unmarshal(resp["id"], &respID); err != nil || respID != c.nextID {
+		// unsolicited or out-of-order message: the framing is no longer
+		// trustworthy; treat as transport failure (kill + respawn)
+		return "", fmt.Errorf("tsgo api: response id mismatch")
 	}
 	if e, ok := resp["error"]; ok {
 		return "", fmt.Errorf("tsgo transpile: %s", string(e))
@@ -335,7 +356,11 @@ func (c *TSCompiler) Check(path string) []TSDiag {
 	if c.typesGl != "" {
 		args = append(args, c.typesGl)
 	}
-	out, _ := exec.Command(c.binPath, args...).CombinedOutput() // exit 2 on diags: expected
+	checkCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	checkCmd := exec.CommandContext(checkCtx, c.binPath, args...)
+	checkCmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGKILL}
+	out, _ := checkCmd.CombinedOutput() // exit 2 on diags: expected
 	var diags []TSDiag
 	for _, line := range strings.Split(string(out), "\n") {
 		if g := tsDiagRx.FindStringSubmatch(strings.TrimRight(line, "\r")); g != nil {

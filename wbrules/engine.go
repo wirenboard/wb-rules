@@ -1425,8 +1425,18 @@ func (engine *RuleEngine) Stop() {
 	engine.syncQuitCh <- q
 	<-q
 
-	// wait for the main loop to acknowledge the stop
-	<-engine.syncDone
+	// Wait for the main loop to acknowledge the stop. Drain the sync
+	// queue while waiting: the sync loop has already exited, and with a
+	// full buffer the main loop itself can block on a CallSync send
+	// before ever reaching handleStop - a drain-less wait would deadlock
+	// shutdown (thunks dropped here would never have run anyway).
+	for {
+		select {
+		case <-engine.syncDone:
+			return
+		case <-engine.syncQueue:
+		}
+	}
 }
 
 func (engine *RuleEngine) IsActive() bool {

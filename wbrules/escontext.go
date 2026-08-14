@@ -454,8 +454,15 @@ func (ctx *ESContext) LoadScenario(path string) error {
 	}
 
 	// wrap source code; exports is provided (aliasing module.exports) so
-	// CommonJS-style module files also load as plain rule files
-	src := "function F(module, exports){" + string(srcRaw) + "\n}"
+	// CommonJS-style module files also load as plain rule files.
+	// Transpiled TypeScript runs strict (tsc's own semantics): the emitted
+	// "use strict" prologue line is stripped to keep line numbers aligned,
+	// so re-add it inside the single-line wrapper.
+	prologue := ""
+	if strings.HasSuffix(path, ".ts") {
+		prologue = `"use strict";`
+	}
+	src := "function F(module, exports){" + prologue + string(srcRaw) + "\n}"
 
 	// Source code evaluation.
 	// Checking if there are extra curly braces. Compile with the real path

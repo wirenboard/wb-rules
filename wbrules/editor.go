@@ -3,7 +3,6 @@ package wbrules
 import (
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 
 	"github.com/wirenboard/wbgong"
@@ -153,12 +152,14 @@ func (editor *Editor) Check(args *EditorPathArgs, reply *EditorCheckResponse) er
 	diags, status := editor.locFileManager.CheckTsFile(entry.PhysicalPath)
 	reply.Status = status
 	reply.Diags = make([]EditorTsDiag, 0, len(diags))
-	checkedBase := filepath.Base(entry.PhysicalPath)
 	for _, d := range diags {
 		file := ""
-		if filepath.Base(d.File) != checkedBase {
-			// a diagnostic from another file pulled in by the program
-			// (import/reference); clients must not anchor it here
+		// tsgo prints paths relative to its working directory; a diagnostic
+		// belongs to the checked file iff the paths agree as suffixes -
+		// basename equality alone would mis-anchor other/dir/x.ts onto x.ts
+		if !strings.HasSuffix(entry.PhysicalPath, d.File) && !strings.HasSuffix(d.File, entry.PhysicalPath) {
+			// from another file pulled in by the program (import/reference);
+			// clients must not anchor it here
 			file = d.File
 		}
 		reply.Diags = append(reply.Diags, EditorTsDiag{

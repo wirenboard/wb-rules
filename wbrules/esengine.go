@@ -209,6 +209,11 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	engine.globalCtx = engine.ctxFactory.newESContext(engine.MaybeCallSync, "")
 	// a runaway rule (while(true) etc.) must error out, not freeze the loop
 	engine.globalCtx.SetExecutionTimeLimit(options.JsExecutionLimit)
+	// async rule callbacks that throw after an await fail as promise jobs;
+	// without this they die silently on stderr instead of the rule log
+	engine.globalCtx.SetJobErrorHandler(func(msg string) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("async rule error: %s", msg))
+	})
 
 	if options.PersistentDBFile != "" {
 		if err = engine.SetPersistentDBMode(options.PersistentDBFile,
@@ -324,6 +329,22 @@ func (engine *ESEngine) preprocessRuleSource(path string, src []byte) ([]byte, e
 	}
 	js, err := engine.tsc.Transpile(string(src), path)
 	if err != nil {
+		var syntaxErr *TSSyntaxError
+		if errors.As(err, &syntaxErr) {
+			// a file that never transpiles still deserves a terminal
+			// Editor.Check verdict - otherwise clients poll "pending" forever
+			engine.tsCheckGen[path]++
+			engine.tsCheckMu.Lock()
+			engine.tsCheckResults[path] = &tsCheckEntry{
+				gen:   engine.tsCheckGen[path],
+				ready: true,
+				diags: []TSDiag{{
+					File: path, Line: syntaxErr.Line, Column: 1,
+					Severity: "error", Message: syntaxErr.Text,
+				}},
+			}
+			engine.tsCheckMu.Unlock()
+		}
 		return nil, err
 	}
 	// generation guard: a slow check for an old revision of the file must
@@ -2905,7 +2926,7 @@ func (engine *ESEngine) CheckTsFile(physicalPath string) ([]TSDiag, string) {
 	if engine.tsc == nil {
 		return nil, TS_CHECK_UNSUPPORTED
 	}
-	if !strings.HasSuffix(physicalPath, ".ts") {
+	if !strings.HasSuffix(physicalPath, ".ts") || strings.HasSuffix(physicalPath, ".d.ts") {
 		return nil, TS_CHECK_NOT_TS
 	}
 	engine.tsCheckMu.Lock()

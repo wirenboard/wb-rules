@@ -398,3 +398,51 @@ func TestExecutionTimeLimitInPromiseJob(t *testing.T) {
 	}
 	ctx.Pop()
 }
+
+// A Go callback that re-enters JS from inside a promise job must not
+// disarm the watchdog for the rest of the job, and must not drain other
+// pending jobs mid-job (run-to-completion).
+func TestExecutionTimeLimitSurvivesNestedEntryInJob(t *testing.T) {
+	ctx := NewContext()
+	defer ctx.DestroyHeap()
+	ctx.SetExecutionTimeLimit(200 * time.Millisecond)
+
+	ran := []string{}
+	ctx.PushGlobalObject()
+	ctx.PushGoFunc(func(d *Context) int {
+		// nested JS entry: depth 0 -> 1 -> 0 while the job still runs
+		d.PevalString("1 + 1")
+		d.Pop()
+		ran = append(ran, "nested")
+		return 0
+	})
+	ctx.PutPropString(-2, "nested")
+	ctx.PushGoFunc(func(d *Context) int {
+		ran = append(ran, "other-job")
+		return 0
+	})
+	ctx.PutPropString(-2, "mark")
+	ctx.Pop()
+
+	done := make(chan int, 1)
+	go func() {
+		done <- ctx.PevalString(`
+Promise.resolve().then(function () { mark(); });
+Promise.resolve().then(function () { nested(); for (;;) {} });
+1`)
+	}()
+	select {
+	case r := <-done:
+		if r != 0 {
+			t.Fatalf("top-level eval failed: rc=%d", r)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("nested entry disarmed the watchdog; job ran forever")
+	}
+	// the first job ran to completion before the second (FIFO), and the
+	// nested call did not recursively pump it mid-job
+	if len(ran) < 2 || ran[0] != "other-job" || ran[1] != "nested" {
+		t.Fatalf("unexpected job interleaving: %v", ran)
+	}
+	ctx.Pop()
+}

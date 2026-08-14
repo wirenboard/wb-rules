@@ -111,6 +111,8 @@ type runtimeState struct {
 	deadVals   []C.JSValue             // values owned by dead realms; freed at reap
 	deadCtxs   []*C.JSContext          // realms whose handles were GC'd; freed at safe points
 	activeCtxs []*C.JSContext          // realms currently executing JS (Duktape thread semantics)
+	inJobPump  bool                    // a promise job is executing (counts as an active entry)
+	jobErrFn   func(string)            // per-heap override of JobErrorHandler
 }
 
 var (
@@ -246,7 +248,9 @@ func (d *Context) DestroyHeap() {
 func (rts *runtimeState) pushActive(ctx *C.JSContext) {
 	regMu.Lock()
 	rts.activeCtxs = append(rts.activeCtxs, ctx)
-	if len(rts.activeCtxs) == 1 {
+	// a nested entry from inside a promise job must not re-arm (and its pop
+	// must not disarm) the watchdog: the job owns the execution window
+	if len(rts.activeCtxs) == 1 && !rts.inJobPump {
 		atomic.StoreInt64(&rts.execStart, time.Now().UnixNano())
 	}
 	regMu.Unlock()
@@ -255,7 +259,7 @@ func (rts *runtimeState) pushActive(ctx *C.JSContext) {
 func (rts *runtimeState) popActive() {
 	regMu.Lock()
 	rts.activeCtxs = rts.activeCtxs[:len(rts.activeCtxs)-1]
-	if len(rts.activeCtxs) == 0 {
+	if len(rts.activeCtxs) == 0 && !rts.inJobPump {
 		atomic.StoreInt64(&rts.execStart, 0)
 	}
 	regMu.Unlock()
@@ -297,10 +301,32 @@ func (rts *runtimeState) currentActive(fallback *C.JSContext) *C.JSContext {
 }
 
 // JobErrorHandler receives stringified errors thrown by promise jobs
-// (async rule callbacks). wb-rules points it at the engine's rule log;
-// the default keeps them visible on stderr.
+// (async rule callbacks) on heaps without their own handler; the default
+// keeps them visible on stderr. Engines should install a per-heap
+// handler via SetJobErrorHandler.
 var JobErrorHandler = func(msg string) {
 	fmt.Fprintf(os.Stderr, "quickjsduk: unhandled error in promise job: %s\n", msg)
+}
+
+// SetJobErrorHandler routes this heap's promise-job errors (async rule
+// callbacks that throw or reject unhandled) to the engine's logger.
+// Called on the engine goroutine; jobs pump on the same goroutine.
+func (d *Context) SetJobErrorHandler(fn func(string)) {
+	s := d.st()
+	regMu.Lock()
+	s.rts.jobErrFn = fn
+	regMu.Unlock()
+}
+
+func (rts *runtimeState) reportJobError(msg string) {
+	regMu.Lock()
+	fn := rts.jobErrFn
+	regMu.Unlock()
+	if fn != nil {
+		fn(msg)
+		return
+	}
+	JobErrorHandler(msg)
 }
 
 // pumpJobs drains the QuickJS pending-job queue (promise reactions).
@@ -317,10 +343,22 @@ var JobErrorHandler = func(msg string) {
 func (rts *runtimeState) pumpJobs() {
 	regMu.Lock()
 	depth := len(rts.activeCtxs)
-	regMu.Unlock()
-	if depth != 0 {
-		return // still inside a JS call; jobs run when the outermost returns
+	pumping := rts.inJobPump
+	if depth == 0 && !pumping {
+		rts.inJobPump = true
 	}
+	regMu.Unlock()
+	if depth != 0 || pumping {
+		// still inside a JS call or a job (a Go callback re-entering JS
+		// returns through here at depth 0): jobs run when the true
+		// outermost entry returns, preserving run-to-completion
+		return
+	}
+	defer func() {
+		regMu.Lock()
+		rts.inJobPump = false
+		regMu.Unlock()
+	}()
 	const maxJobs = 100000
 	for i := 0; i < maxJobs; i++ {
 		var jctx *C.JSContext
@@ -342,11 +380,11 @@ func (rts *runtimeState) pumpJobs() {
 				C.JS_FreeValue(jctx, C.JS_GetException(jctx))
 			}
 			C.JS_FreeValue(jctx, exc)
-			JobErrorHandler(msg)
+			rts.reportJobError(msg)
 			// keep draining: one failed job must not stall the queue
 		}
 	}
-	JobErrorHandler(fmt.Sprintf("job queue still busy after %d jobs (self-rescheduling promise chain?)", maxJobs))
+	rts.reportJobError(fmt.Sprintf("job queue still busy after %d jobs (self-rescheduling promise chain?)", maxJobs))
 }
 
 func (rts *runtimeState) reapDeadContexts() {
@@ -608,10 +646,10 @@ func goThreadFinalize(p unsafe.Pointer) {
 	regMu.Lock()
 	cs := ctxReg[ctx]
 	if cs != nil {
-		// The realm's shim stack should be empty by now; free leftovers.
-		for _, v := range cs.stack {
-			C.JS_FreeValue(cs.ctx, v)
-		}
+		// The realm's shim stack should be empty by now; queue leftovers
+		// for the reap path - freeing here (under regMu) could run
+		// finalizers that re-enter the registry lock (see DestroyHeap)
+		cs.rts.deadVals = append(cs.rts.deadVals, cs.stack...)
 		for k, m := range cs.rts.modules {
 			if k.ctx == ctx {
 				cs.rts.deadVals = append(cs.rts.deadVals, m)
