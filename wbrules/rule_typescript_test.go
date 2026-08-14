@@ -53,8 +53,31 @@ func (s *RuleTypeScriptSuite) TestTsAsyncTypeCheck() {
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [badtypes rule fired anyway: not a number 42] (QoS 1)")
 	// ...and the async check must eventually flag line 6 (Verify waits)
 	s.Verify(regexp.MustCompile(`TS check: .*testrules_ts_badtypes\.ts:6:.*`))
-	// diagnostics are also published as retained JSON for the UI editor
-	s.Verify(regexp.MustCompile(`/wbrules/ts-check/testrules_ts_badtypes\.ts: \[\{"file":"testrules_ts_badtypes\.ts","diags":\[\{"line":6,.*"severity":"error".*\]\}\] \(QoS 1, retained\)`))
+}
+
+// Editor.Check is the on-demand authoritative verdict for editors;
+// Editor.GetTypes serves the installed declarations they validate with.
+func (s *RuleTypeScriptSuite) TestEditorCheckAndTypes() {
+	editor := NewEditor(s.engine)
+
+	var check EditorCheckResponse
+	s.Ck("Editor.Check", editor.Check(&EditorPathArgs{Path: "testrules_ts.ts"}, &check))
+	s.True(check.TsSupported)
+	s.Empty(check.Diags, "clean file must produce no diagnostics")
+
+	s.loadScripts([]string{"testrules_ts_badtypes.ts"})
+	s.SkipTill("wbrules-log -> /wbrules/updates/changed: [testrules_ts_badtypes.ts] (QoS 1)")
+	s.Ck("Editor.Check", editor.Check(&EditorPathArgs{Path: "testrules_ts_badtypes.ts"}, &check))
+	s.True(check.TsSupported)
+	s.NotEmpty(check.Diags)
+	s.Equal(6, check.Diags[0].Line)
+	s.Equal("error", check.Diags[0].Severity)
+
+	var types EditorTypesResponse
+	s.Ck("Editor.GetTypes", editor.GetTypes(&struct{}{}, &types))
+	s.Contains(types.Content, "defineRule")
+	// drain the async check warning for the badtypes file
+	s.Verify(regexp.MustCompile(`TS check: .*testrules_ts_badtypes\.ts:6:.*`))
 }
 
 func TestRuleTypeScriptSuite(t *testing.T) {

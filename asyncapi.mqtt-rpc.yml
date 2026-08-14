@@ -127,6 +127,32 @@ operations:
         $ref: '#/channels/wbrulesEditorListReply'
       messages:
         - $ref: '#/channels/wbrulesEditorListReply/messages/wbrulesEditorListReply'
+  wbrulesEditorCheck:
+    action: send
+    channel:
+      $ref: '#/channels/wbrulesEditorCheck'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/wbrulesEditorCheck/messages/wbrulesEditorCheck'
+    reply:
+      channel:
+        $ref: '#/channels/wbrulesEditorCheckReply'
+      messages:
+        - $ref: '#/channels/wbrulesEditorCheckReply/messages/wbrulesEditorCheckReply'
+  wbrulesEditorGetTypes:
+    action: send
+    channel:
+      $ref: '#/channels/wbrulesEditorGetTypes'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/wbrulesEditorGetTypes/messages/wbrulesEditorGetTypes'
+    reply:
+      channel:
+        $ref: '#/channels/wbrulesEditorGetTypesReply'
+      messages:
+        - $ref: '#/channels/wbrulesEditorGetTypesReply/messages/wbrulesEditorGetTypesReply'
   wbrulesEditorLoad:
     action: send
     channel:
@@ -197,6 +223,22 @@ components:
       name: editorListReply
       payload:
         $ref: '#/components/schemas/wbrulesEditorListReplyPayload'
+    wbrulesEditorCheck:
+      name: editorCheck
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorCheckPayload'
+    wbrulesEditorCheckReply:
+      name: editorCheckReply
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorCheckReplyPayload'
+    wbrulesEditorGetTypes:
+      name: editorGetTypes
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorGetTypesPayload'
+    wbrulesEditorGetTypesReply:
+      name: editorGetTypesReply
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorGetTypesReplyPayload'
     wbrulesEditorLoad:
       name: editorLoad
       payload:
@@ -358,6 +400,78 @@ components:
               type: boolean
             error:
               $ref: '#/components/schemas/errorItem'
+          required:
+            - content
+      required:
+        - id
+        - result
+    wbrulesEditorCheckPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            path:
+              type: string
+              description: virtual path of the rule file to type-check
+          required:
+            - path
+      required:
+        - id
+        - params
+    wbrulesEditorCheckReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: object
+          properties:
+            tsSupported:
+              type: boolean
+              description: false when the engine runs without tsgo
+            diags:
+              type: array
+              items:
+                type: object
+                properties:
+                  line:
+                    type: number
+                  column:
+                    type: number
+                  severity:
+                    type: string
+                    enum: [error, warning]
+                  message:
+                    type: string
+          required:
+            - tsSupported
+            - diags
+      required:
+        - id
+        - result
+    wbrulesEditorGetTypesPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+      required:
+        - id
+    wbrulesEditorGetTypesReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: object
+          properties:
+            content:
+              type: string
+              description: the installed wb-rules.d.ts declarations
           required:
             - content
       required:

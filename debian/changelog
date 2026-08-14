@@ -1,3 +1,12 @@
+wb-rules (2.47.0~quickjs5) unstable; urgency=medium
+
+  * Review fixes: fuse stack anchor into PcallProp/JSON cgo calls; JS
+    execution watchdog now also bounds promise jobs; .ts files fail
+    clearly when tsgo is unavailable; stop-ordering fixes; bounded
+    concurrent type checks; per-file check generation guard.
+
+ -- wb-rules QuickJS port <wb-claude-mail-00001-7@proton.me>  Fri, 14 Aug 2026 12:00:00 +0000
+
 wb-rules (2.47.0~quickjs4) unstable; urgency=medium
 
   * Publish TypeScript check results as retained JSON on

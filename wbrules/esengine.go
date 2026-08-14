@@ -133,7 +133,7 @@ type ESEngine struct {
 	persistentDB      *bolt.DB
 	modulesDirs       []string
 	tsc               *TSCompiler       // non-nil when TypeScript support is enabled
-	tsDiagsPublished  map[string]bool   // engine-loop only: files with published TS diagnostics
+	tsTypesPath       string            // installed wb-rules.d.ts (Editor.GetTypes)
 	tsCheckGen        map[string]uint64 // engine-loop only: per-file check revision
 }
 
@@ -161,11 +161,11 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		editableSources:   make(map[string]string),
 		tracker:           wbgong.NewContentTracker(),
 		persistentDBCache: make(map[string]string),
-		tsDiagsPublished:  make(map[string]bool),
 		tsCheckGen:        make(map[string]uint64),
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
 	}
+	engine.tsTypesPath = options.TsTypesPath
 	if options.TsgoPath != "" {
 		tsc := NewTSCompiler(options.TsgoPath, options.TsTypesPath)
 		if tsc.Available() {
@@ -325,45 +325,9 @@ func (engine *ESEngine) preprocessRuleSource(path string, src []byte) ([]byte, e
 				engine.Log(ENGINE_LOG_WARNING, fmt.Sprintf(
 					"TS check: %s:%d:%d: %s", d.File, d.Line, d.Column, d.Message))
 			}
-			engine.publishTsCheck(path, diags)
 		})
 	})
 	return []byte(js), nil
-}
-
-// publishTsCheck posts type-check results for one rule file as retained
-// JSON on /wbrules/ts-check/<virtual path>, so the UI editor can render
-// diagnostics at source lines. An empty diags list is published too - it
-// clears earlier squiggles after the user fixes the file.
-func (engine *ESEngine) publishTsCheck(physicalPath string, diags []TSDiag) {
-	// runs on the engine loop (via MaybeCallSync), so tsDiagsPublished
-	// needs no locking
-	if len(diags) == 0 && !engine.tsDiagsPublished[physicalPath] {
-		return // nothing shown before, nothing to clear
-	}
-	engine.tsDiagsPublished[physicalPath] = len(diags) > 0
-	virtualPath := physicalPath
-	if entry, found := engine.sources[physicalPath]; found {
-		virtualPath = entry.VirtualPath
-	}
-	type uiDiag struct {
-		Line     int    `json:"line"`
-		Column   int    `json:"column"`
-		Severity string `json:"severity"`
-		Message  string `json:"message"`
-	}
-	out := struct {
-		File  string   `json:"file"`
-		Diags []uiDiag `json:"diags"`
-	}{File: virtualPath, Diags: make([]uiDiag, 0, len(diags))}
-	for _, d := range diags {
-		out.Diags = append(out.Diags, uiDiag{Line: d.Line, Column: d.Column, Severity: d.Severity, Message: d.Message})
-	}
-	payload, err := json.Marshal(out)
-	if err != nil {
-		return
-	}
-	engine.Publish("/wbrules/ts-check/"+virtualPath, string(payload), 1, true)
 }
 
 // Stop shuts the engine down, including the TypeScript compiler child.
@@ -2903,4 +2867,26 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 	// read "cannot find module 'X'" in the UI and logs
 	ctx.PushErrorObject(duktape.DUK_ERR_ERROR, fmt.Sprintf("cannot find module %q", id))
 	return duktape.DUK_RET_INSTACK_ERROR
+}
+
+// CheckTsFile runs a synchronous on-demand type check of one .ts rule
+// file (Editor.Check RPC). The bool result reports whether TypeScript
+// support is available at all.
+func (engine *ESEngine) CheckTsFile(physicalPath string) ([]TSDiag, bool) {
+	if engine.tsc == nil || !strings.HasSuffix(physicalPath, ".ts") {
+		return nil, engine.tsc != nil
+	}
+	return engine.tsc.Check(physicalPath), true
+}
+
+// TsTypesContent returns the installed wb-rules.d.ts declarations.
+func (engine *ESEngine) TsTypesContent() (string, error) {
+	if engine.tsTypesPath == "" {
+		return "", fmt.Errorf("no type declarations configured")
+	}
+	content, err := os.ReadFile(engine.tsTypesPath)
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
 }

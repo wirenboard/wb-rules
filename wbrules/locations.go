@@ -25,6 +25,12 @@ type LocFileManager interface {
 	ScriptDir() string
 	ListSourceFiles() ([]LocFileEntry, error)
 	LiveWriteScript(virtualPath, content string) error
+	// CheckTsFile type-checks one TypeScript rule file on demand and
+	// returns its diagnostics; nil diags and false when TS support is off.
+	CheckTsFile(physicalPath string) ([]TSDiag, bool)
+	// TsTypesContent returns the installed wb-rules.d.ts so editors can
+	// validate against the API of the engine actually running.
+	TsTypesContent() (string, error)
 }
 
 // ScriptError denotes an error that was caused by JavaScript code.

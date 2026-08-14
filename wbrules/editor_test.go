@@ -2,6 +2,7 @@ package wbrules
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,6 +44,15 @@ func (s *EditorSuite) TearDownTest() {
 	s.TearDownRPC()
 	s.TearDownDataFiles()
 	s.Suite.TearDownTest()
+}
+
+// test-double stubs for the TS hooks of LocFileManager
+func (s *EditorSuite) CheckTsFile(physicalPath string) ([]TSDiag, bool) {
+	return nil, false
+}
+
+func (s *EditorSuite) TsTypesContent() (string, error) {
+	return "", fmt.Errorf("no types in editor test double")
 }
 
 func (s *EditorSuite) ScriptDir() string {
