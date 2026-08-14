@@ -3,6 +3,7 @@ package wbrules
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -37,6 +38,8 @@ type TSCompiler struct {
 
 	mapsMu   sync.Mutex
 	lineMaps map[string][]int // per transpiled file: generated line (1-based) -> source line
+
+	checkSem chan struct{} // bounds concurrent background type-check processes
 }
 
 // TSSyntaxError is a fatal transpile-time (syntax) error.
@@ -62,7 +65,7 @@ type TSDiag struct {
 const tsScriptTargetESNext = 99 // core.ScriptTarget enum value
 
 func NewTSCompiler(binPath, typesPath string) *TSCompiler {
-	c := &TSCompiler{binPath: binPath, lineMaps: map[string][]int{}}
+	c := &TSCompiler{binPath: binPath, lineMaps: map[string][]int{}, checkSem: make(chan struct{}, 2)}
 	if typesPath != "" {
 		if _, err := os.Stat(typesPath); err == nil {
 			c.typesGl = typesPath
@@ -162,8 +165,10 @@ func (c *TSCompiler) Transpile(src, fileName string) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	out, err := c.transpileLocked(src, fileName)
-	if err != nil {
-		// one respawn attempt: the child may have died
+	var syntaxErr *TSSyntaxError
+	if err != nil && !errors.As(err, &syntaxErr) {
+		// one respawn attempt for transport errors: the child may have died.
+		// A syntax error is a healthy answer - keep the warm child.
 		c.kill()
 		out, err = c.transpileLocked(src, fileName)
 	}
@@ -364,6 +369,10 @@ func (c *TSCompiler) CheckAsync(path string, report func([]TSDiag)) {
 				wbgong.Error.Printf("ts check panic for %s: %v", path, r)
 			}
 		}()
+		// a full tsgo process per check: bound the parallelism so a mass
+		// reload of many .ts files does not stampede a small controller
+		c.checkSem <- struct{}{}
+		defer func() { <-c.checkSem }()
 		report(c.Check(path))
 	}()
 }

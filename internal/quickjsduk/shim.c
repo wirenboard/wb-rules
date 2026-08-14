@@ -189,3 +189,18 @@ JSContext *qjd_new_context(JSRuntime *rt) {
 JSValue qjd_new_obj_with_opaque_id(JSContext *ctx, JSClassID cid, uint64_t id) {
     return qjd_new_obj_with_opaque(ctx, cid, (void *)(uintptr_t)id);
 }
+
+JSValue qjd_invoke(JSContext *ctx, JSValue obj, JSAtom atom, int argc, JSValue *argv) {
+    JS_UpdateStackTop(JS_GetRuntime(ctx));
+    return JS_Invoke(ctx, obj, atom, argc, argv);
+}
+
+JSValue qjd_json_stringify(JSContext *ctx, JSValue v) {
+    JS_UpdateStackTop(JS_GetRuntime(ctx));
+    return JS_JSONStringify(ctx, v, JS_UNDEFINED, JS_UNDEFINED);
+}
+
+JSValue qjd_json_parse(JSContext *ctx, const char *buf, size_t len, const char *filename) {
+    JS_UpdateStackTop(JS_GetRuntime(ctx));
+    return JS_ParseJSON(ctx, buf, len, filename);
+}

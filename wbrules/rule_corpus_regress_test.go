@@ -168,10 +168,14 @@ func TestRunawayScriptInterrupted(t *testing.T) {
 	defer cleanup()
 
 	bad := writeScript(t, "runaway.js", `while (true) {}`)
-	start := time.Now()
-	err := engine.LiveLoadFile(bad)
-	if elapsed := time.Since(start); elapsed > 10*time.Second {
-		t.Fatalf("interrupt took too long: %v", elapsed)
+	loadErr := make(chan error, 1)
+	go func() { loadErr <- engine.LiveLoadFile(bad) }()
+	var err error
+	select {
+	case err = <-loadErr:
+	case <-time.After(15 * time.Second):
+		// fail cleanly instead of hanging the whole package on regression
+		t.Fatal("interrupt did not fire: load still blocked after 15s")
 	}
 	msg := ""
 	if err != nil {

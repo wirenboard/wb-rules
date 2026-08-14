@@ -64,6 +64,11 @@ func TestWildCorpus(t *testing.T) {
 	rec := testutils.NewRecorder(t)
 	rec.SetEmptyWaitTime(time.Hour)
 	go func() {
+		// Verify's fixed per-item timeout makes it FailNow after ~5s of
+		// silence; post-test that panics the binary. Recover keeps the
+		// drainer quiet once the corpus stops producing. Remove the whole
+		// drainer once wbgong#30 (non-blocking Rec) is vendored.
+		defer func() { recover() }()
 		anything := regexp.MustCompile("(?s).*")
 		for {
 			rec.Verify(anything)
@@ -82,7 +87,7 @@ func TestWildCorpus(t *testing.T) {
 		switch {
 		case err == "":
 			ok++
-		case strings.Contains(err, "requiring module"):
+		case strings.Contains(err, "cannot find module") || strings.Contains(err, "requiring module"):
 			moduleMissing++
 		default:
 			engineErrors = append(engineErrors, fmt.Sprintf("%s: %s", filepath.Base(file), firstLine(err)))
@@ -140,6 +145,7 @@ func loadInFreshEngine(t *testing.T, rec *testutils.Recorder, path string) (scri
 		t.Fatalf("engine: %v", err)
 	}
 	engine.Start()
+	defer engine.ClosePersistentDB()
 	defer engine.Stop()
 
 	if err := engine.LiveLoadFile(path); err != nil {

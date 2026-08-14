@@ -624,8 +624,8 @@ func (o *RuleEngineOptions) SetCleanupOnStop(v bool) *RuleEngineOptions {
 type RuleEngine struct {
 	active          uint32 // atomic
 	cleanup         *ScopedCleanup
-	rev             uint32 // atomic
-	syncQueueActive atomic.Bool // read by MaybeCallSync from arbitrary goroutines
+	rev             uint32        // atomic
+	syncQueueActive atomic.Bool   // read by MaybeCallSync from arbitrary goroutines
 	syncDone        chan struct{} // closed on Stop: post-stop CallSync drops safely
 	syncQueue       chan func()
 	syncQuitCh      chan chan struct{}
@@ -1345,12 +1345,14 @@ func (engine *RuleEngine) handleStop() {
 	engine.statusMtx.Lock()
 	engine.readyCh = nil
 	engine.driverReadyCh = nil
-	engine.syncQueueActive.Store(false)
-	// Never close syncQueue: a send on a closed channel panics even inside
-	// select, and late producers (cron, timers, shell callbacks) race Stop.
-	// With no receiver their send blocks, the syncDone case wins, and the
-	// thunk is dropped safely.
+	// Order matters: syncDone must close BEFORE the active flag flips, or
+	// MaybeCallSync on a foreign goroutine can observe inactive+not-done and
+	// run the thunk inline. Never close syncQueue itself: a send on a closed
+	// channel panics even inside select, and late producers (cron, timers,
+	// shell callbacks) race Stop. With no receiver their send blocks, the
+	// syncDone case wins, and the thunk is dropped safely.
 	close(engine.syncDone)
+	engine.syncQueueActive.Store(false)
 	engine.statusMtx.Unlock()
 }
 

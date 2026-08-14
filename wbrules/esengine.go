@@ -132,8 +132,9 @@ type ESEngine struct {
 	persistentDBCache map[string]string
 	persistentDB      *bolt.DB
 	modulesDirs       []string
-	tsc               *TSCompiler     // non-nil when TypeScript support is enabled
-	tsDiagsPublished  map[string]bool // engine-loop only: files with published TS diagnostics
+	tsc               *TSCompiler       // non-nil when TypeScript support is enabled
+	tsDiagsPublished  map[string]bool   // engine-loop only: files with published TS diagnostics
+	tsCheckGen        map[string]uint64 // engine-loop only: per-file check revision
 }
 
 func init() {
@@ -161,6 +162,7 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		tracker:           wbgong.NewContentTracker(),
 		persistentDBCache: make(map[string]string),
 		tsDiagsPublished:  make(map[string]bool),
+		tsCheckGen:        make(map[string]uint64),
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
 	}
@@ -172,6 +174,16 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 			engine.ctxFactory.lineTranslator = tsc.TranslateLine
 		} else {
 			wbgong.Warn.Printf("tsgo binary not found at %s; TypeScript rules disabled", options.TsgoPath)
+		}
+	}
+	if engine.tsc == nil {
+		// without the transpiler a .ts file must fail with a clear message,
+		// not get evaluated as raw JavaScript
+		engine.ctxFactory.preprocessor = func(path string, src []byte) ([]byte, error) {
+			if strings.HasSuffix(path, ".ts") {
+				return nil, fmt.Errorf("TypeScript rules need tsgo, which is not available (see the -tsgo flag)")
+			}
+			return src, nil
 		}
 	}
 	engine.globalCtx = engine.ctxFactory.newESContext(engine.MaybeCallSync, "")
@@ -294,6 +306,11 @@ func (engine *ESEngine) preprocessRuleSource(path string, src []byte) ([]byte, e
 	if err != nil {
 		return nil, err
 	}
+	// generation guard: a slow check for an old revision of the file must
+	// not overwrite the newer check's published verdict (both counters are
+	// touched on the engine loop only)
+	engine.tsCheckGen[path]++
+	gen := engine.tsCheckGen[path]
 	engine.tsc.CheckAsync(path, func(diags []TSDiag) {
 		if !engine.IsActive() {
 			return
@@ -301,6 +318,9 @@ func (engine *ESEngine) preprocessRuleSource(path string, src []byte) ([]byte, e
 		// MaybeCallSync: the engine may have stopped while the check ran;
 		// never block a background goroutine on a dead sync queue.
 		engine.MaybeCallSync(func() {
+			if engine.tsCheckGen[path] != gen {
+				return // a newer revision of the file is being checked
+			}
 			for _, d := range diags {
 				engine.Log(ENGINE_LOG_WARNING, fmt.Sprintf(
 					"TS check: %s:%d:%d: %s", d.File, d.Line, d.Column, d.Message))
@@ -348,10 +368,11 @@ func (engine *ESEngine) publishTsCheck(physicalPath string, diags []TSDiag) {
 
 // Stop shuts the engine down, including the TypeScript compiler child.
 func (engine *ESEngine) Stop() {
+	// engine loop first: a draining .ts load must not respawn the compiler
+	engine.RuleEngine.Stop()
 	if engine.tsc != nil {
 		engine.tsc.Stop()
 	}
-	engine.RuleEngine.Stop()
 }
 
 func (engine *ESEngine) exportModSearch(ctx *ESContext) {

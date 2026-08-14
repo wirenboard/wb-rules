@@ -356,12 +356,16 @@ func TestExecutionTimeLimit(t *testing.T) {
 	ctx := NewContext()
 	defer ctx.DestroyHeap()
 	ctx.SetExecutionTimeLimit(200 * time.Millisecond)
-	start := time.Now()
-	if r := ctx.PevalString("while (true) {}"); r == 0 {
-		t.Fatal("runaway loop finished without error")
-	}
-	if elapsed := time.Since(start); elapsed > 5*time.Second {
-		t.Fatalf("interrupt took too long: %v", elapsed)
+	rc := make(chan int, 1)
+	go func() { rc <- ctx.PevalString("while (true) {}") }()
+	select {
+	case r := <-rc:
+		if r == 0 {
+			t.Fatal("runaway loop finished without error")
+		}
+	case <-time.After(10 * time.Second):
+		// fail cleanly instead of hanging the binary if the interrupt dies
+		t.Fatal("interrupt did not fire within 10s")
 	}
 	ctx.Pop()
 	// the context must remain usable after an interrupt
@@ -371,6 +375,26 @@ func TestExecutionTimeLimit(t *testing.T) {
 	}
 	if v := ctx.GetNumber(-1); v != 42 {
 		t.Fatalf("got %v", v)
+	}
+	ctx.Pop()
+}
+
+func TestExecutionTimeLimitInPromiseJob(t *testing.T) {
+	ctx := NewContext()
+	defer ctx.DestroyHeap()
+	ctx.SetExecutionTimeLimit(200 * time.Millisecond)
+	done := make(chan int, 1)
+	go func() {
+		// the spinning .then reaction runs during the post-eval job pump
+		done <- ctx.PevalString(`Promise.resolve().then(function(){ for(;;){} }); 1`)
+	}()
+	select {
+	case r := <-done:
+		if r != 0 {
+			t.Fatalf("top-level eval failed: rc=%d", r)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("promise job was not interrupted; engine would hang forever")
 	}
 	ctx.Pop()
 }

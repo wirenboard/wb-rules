@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"testing"
 
 	"github.com/wirenboard/wbgong/testutils"
@@ -20,9 +21,9 @@ type RuleTypeScriptSuite struct {
 
 func (s *RuleTypeScriptSuite) SetupTest() {
 	tsgo := os.Getenv("WB_RULES_TSGO")
-	wd, _ := os.Getwd()
+	_, thisFile, _, _ := runtime.Caller(0)
 	s.TsgoPath = tsgo
-	s.TsTypesPath = filepath.Join(wd, "..", "types", "wb-rules.d.ts")
+	s.TsTypesPath = filepath.Join(filepath.Dir(thisFile), "..", "types", "wb-rules.d.ts")
 	s.SetupSkippingDefs("testrules_ts.ts")
 }
 

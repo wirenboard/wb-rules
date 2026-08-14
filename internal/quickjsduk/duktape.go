@@ -207,6 +207,7 @@ func (d *Context) DestroyHeap() {
 			}
 		}
 	}
+	delete(rtReg, rts.rt)
 	regMu.Unlock()
 
 	for _, v := range vals {
@@ -323,7 +324,10 @@ func (rts *runtimeState) pumpJobs() {
 	const maxJobs = 100000
 	for i := 0; i < maxJobs; i++ {
 		var jctx *C.JSContext
+		// each job is an outermost JS entry for the execution watchdog
+		atomic.StoreInt64(&rts.execStart, time.Now().UnixNano())
 		r := C.qjd_execute_pending_job(rts.rt, &jctx)
+		atomic.StoreInt64(&rts.execStart, 0)
 		if r == 0 {
 			return
 		}
@@ -883,7 +887,7 @@ func (d *Context) SafeToString(idx int) string {
 		cs = C.JS_ToCStringLen(s.ctx, &n, exc)
 		C.JS_FreeValue(s.ctx, exc)
 		if cs == nil {
-			jv := C.JS_JSONStringify(s.ctx, v, C.qjd_undefined(), C.qjd_undefined())
+			jv := C.qjd_json_stringify(s.ctx, v)
 			var jn C.size_t
 			jcs := C.JS_ToCStringLen(s.ctx, &jn, jv)
 			dump := "?"
@@ -1252,7 +1256,7 @@ func (d *Context) PcallProp(objIdx int, nargs int) int {
 		argv = &s.stack[keyPos+1]
 	}
 	s.rts.pushActive(s.ctx)
-	res := C.JS_Invoke(s.ctx, obj, atom, C.int(nargs), argv)
+	res := C.qjd_invoke(s.ctx, obj, atom, C.int(nargs), argv)
 	s.rts.popActive()
 	C.JS_FreeAtom(s.ctx, atom)
 	for i := 0; i <= nargs; i++ {
@@ -1295,7 +1299,7 @@ func (d *Context) New(nargs int) {
 func (d *Context) JsonEncode(idx int) string {
 	s := d.st()
 	n := s.normalize(idx)
-	v := C.JS_JSONStringify(s.ctx, s.stack[n], C.qjd_undefined(), C.qjd_undefined())
+	v := C.qjd_json_stringify(s.ctx, s.stack[n])
 	if C.qjd_tag(v) == C.JS_TAG_EXCEPTION {
 		exc := C.JS_GetException(s.ctx)
 		JobErrorHandler("JsonEncode failed: " + safeCString(s.ctx, exc))
@@ -1319,7 +1323,7 @@ func (d *Context) JsonDecode(idx int) {
 	src := d.SafeToString(idx)
 	cs := C.CString(src)
 	cf := C.CString("json")
-	v := C.JS_ParseJSON(s.ctx, cs, C.size_t(len(src)), cf)
+	v := C.qjd_json_parse(s.ctx, cs, C.size_t(len(src)), cf)
 	C.free(unsafe.Pointer(cs))
 	C.free(unsafe.Pointer(cf))
 	if C.qjd_tag(v) == C.JS_TAG_EXCEPTION {
