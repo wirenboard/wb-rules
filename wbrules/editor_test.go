@@ -37,7 +37,7 @@ func (s *EditorSuite) SetupTest() {
 	s.RpcFixture = testutils.NewRpcFixture(
 		s.T(), "wbrules", "Editor", "wbrules",
 		NewEditor(s),
-		"ChangeState", "List", "Load", "Remove", "Rename", "Save")
+		"ChangeState", "Check", "GetTypes", "List", "Load", "Remove", "Rename", "Save")
 }
 
 func (s *EditorSuite) TearDownTest() {
