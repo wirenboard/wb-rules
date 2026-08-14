@@ -3,6 +3,7 @@ package duktape
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestEvalBasics(t *testing.T) {
@@ -349,4 +350,27 @@ log.join(' | ')
 	if got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
+}
+
+func TestExecutionTimeLimit(t *testing.T) {
+	ctx := NewContext()
+	defer ctx.DestroyHeap()
+	ctx.SetExecutionTimeLimit(200 * time.Millisecond)
+	start := time.Now()
+	if r := ctx.PevalString("while (true) {}"); r == 0 {
+		t.Fatal("runaway loop finished without error")
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("interrupt took too long: %v", elapsed)
+	}
+	ctx.Pop()
+	// the context must remain usable after an interrupt
+	ctx.SetExecutionTimeLimit(0)
+	if r := ctx.PevalString("6 * 7"); r != 0 {
+		t.Fatal("eval after interrupt failed")
+	}
+	if v := ctx.GetNumber(-1); v != 42 {
+		t.Fatalf("got %v", v)
+	}
+	ctx.Pop()
 }

@@ -5,6 +5,7 @@ JSClassID qjd_goobj_class_id;
 JSClassID qjd_thread_class_id;
 
 /* Implemented in Go (duktape.go). */
+extern int goInterrupt(JSRuntime *rt);
 extern JSValue goFuncCall(JSContext *ctx, JSValue this_val, int argc,
                           JSValue *argv, uint64_t id);
 extern void goObjFinalize(uint64_t id);
@@ -40,9 +41,14 @@ void qjd_init_class_ids(void) {
     JS_NewClassID(&qjd_thread_class_id);
 }
 
+static int interrupt_trampoline(JSRuntime *rt, void *opaque) {
+    return goInterrupt(rt);
+}
+
 void qjd_register_classes(JSRuntime *rt) {
     JS_NewClass(rt, qjd_goobj_class_id, &goobj_class);
     JS_NewClass(rt, qjd_thread_class_id, &thread_class);
+    JS_SetInterruptHandler(rt, interrupt_trampoline, NULL);
 }
 
 static JSValue go_func_trampoline(JSContext *ctx, JSValueConst this_val,
@@ -81,12 +87,40 @@ int qjd_install_require(JSContext *ctx) {
     JSValue fn = qjd_new_require(ctx, "");
     int r = JS_SetPropertyStr(ctx, glob, "require", fn);
     /* Duktape exposes a global 'Duktape' object; wb-rules assigns
-     * Duktape.modSearch on it per context. Provide an empty one. */
+     * Duktape.modSearch on it per context. Recreate the pieces user
+     * scripts rely on: a NUMERIC version and the enc/dec codecs. */
     JSValue duk = JS_NewObject(ctx);
-    JSValue ver = JS_NewString(ctx, "quickjs-shim");
-    JS_SetPropertyStr(ctx, duk, "version", ver);
+    JS_SetPropertyStr(ctx, duk, "version", JS_NewInt32(ctx, 20600));
     r |= JS_SetPropertyStr(ctx, glob, "Duktape", duk);
     JS_FreeValue(ctx, glob);
+    static const char *codecs =
+        "(function(){var B64='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';\n"
+        "function u8(s){if(typeof s!=='string'){s=String(s);}var out=[];for(var i=0;i<s.length;i++){var c=s.codePointAt(i);"
+        "if(c>0xFFFF)i++;if(c<0x80)out.push(c);else if(c<0x800){out.push(0xC0|c>>6,0x80|c&63);}"
+        "else if(c<0x10000){out.push(0xE0|c>>12,0x80|c>>6&63,0x80|c&63);}else{out.push(0xF0|c>>18,0x80|c>>12&63,0x80|c>>6&63,0x80|c&63);}}return out;}\n"
+        "function fromU8(a){var s='',i=0;while(i<a.length){var b=a[i++];var c;"
+        "if(b<0x80)c=b;else if(b<0xE0){c=(b&31)<<6|a[i++]&63;}else if(b<0xF0){c=(b&15)<<12|(a[i++]&63)<<6|a[i++]&63;}"
+        "else{c=(b&7)<<18|(a[i++]&63)<<12|(a[i++]&63)<<6|a[i++]&63;}s+=String.fromCodePoint(c);}return s;}\n"
+        "Duktape.enc=function(fmt,data){var a=u8(data);\n"
+        " if(fmt==='hex'){return a.map(function(b){return(b<16?'0':'')+b.toString(16);}).join('');}\n"
+        " if(fmt==='base64'){var s='';for(var i=0;i<a.length;i+=3){var n=(a[i]<<16)|((a[i+1]||0)<<8)|(a[i+2]||0);"
+        "s+=B64[n>>18]+B64[n>>12&63]+(i+1<a.length?B64[n>>6&63]:'=')+(i+2<a.length?B64[n&63]:'=');}return s;}\n"
+        " if(fmt==='jx'||fmt==='jc'){return JSON.stringify(data);}\n"
+        " throw new Error('Duktape.enc: unsupported format '+fmt);};\n"
+        "Duktape.dec=function(fmt,data){\n"
+        " if(fmt==='hex'){var a=[];for(var i=0;i<data.length;i+=2){a.push(parseInt(data.substr(i,2),16));}return fromU8(a);}\n"
+        " if(fmt==='base64'){var a=[],i=0;data=String(data).replace(/=+$/,'');"
+        "for(;i+1<data.length;i+=4){var n=(B64.indexOf(data[i])<<18)|(B64.indexOf(data[i+1])<<12)|"
+        "((B64.indexOf(data[i+2])&63)<<6)|(B64.indexOf(data[i+3])&63);a.push(n>>16&255);"
+        "if(data[i+2]!==undefined)a.push(n>>8&255);if(data[i+3]!==undefined)a.push(n&255);}return fromU8(a);}\n"
+        " if(fmt==='jx'||fmt==='jc'){return JSON.parse(data);}\n"
+        " throw new Error('Duktape.dec: unsupported format '+fmt);};})();";
+    JSValue polyfill = JS_Eval(ctx, codecs, strlen(codecs), "duktape-codecs", 0);
+    if (JS_IsException(polyfill)) {
+        JS_FreeValue(ctx, JS_GetException(ctx));
+        r = -1;
+    }
+    JS_FreeValue(ctx, polyfill);
     return r;
 }
 
@@ -118,4 +152,40 @@ JSValue qjd_new_obj_with_opaque(JSContext *ctx, JSClassID cid, void *p) {
     JS_FreeValue(ctx, glob);
     JS_SetOpaque(o, p);
     return o;
+}
+
+JSValue qjd_eval(JSContext *ctx, const char *input, size_t len, const char *filename, int flags) {
+    JS_UpdateStackTop(JS_GetRuntime(ctx));
+    return JS_Eval(ctx, input, len, filename, flags);
+}
+
+JSValue qjd_call(JSContext *ctx, JSValue fn, JSValue this_val, int argc, JSValue *argv) {
+    JS_UpdateStackTop(JS_GetRuntime(ctx));
+    return JS_Call(ctx, fn, this_val, argc, argv);
+}
+
+JSValue qjd_call_ctor(JSContext *ctx, JSValue fn, int argc, JSValue *argv) {
+    JS_UpdateStackTop(JS_GetRuntime(ctx));
+    return JS_CallConstructor(ctx, fn, argc, argv);
+}
+
+JSValue qjd_eval_function(JSContext *ctx, JSValue fn) {
+    JS_UpdateStackTop(JS_GetRuntime(ctx));
+    return JS_EvalFunction(ctx, fn);
+}
+
+int qjd_execute_pending_job(JSRuntime *rt, JSContext **pctx) {
+    JS_UpdateStackTop(rt);
+    return JS_ExecutePendingJob(rt, pctx);
+}
+
+JSContext *qjd_new_context(JSRuntime *rt) {
+    JS_UpdateStackTop(rt);
+    return JS_NewContext(rt);
+}
+
+/* Fabricating a pointer from an integer id must happen in C: Go's
+ * checkptr (enabled by -race) rejects unsafe.Pointer(uintptr(id)). */
+JSValue qjd_new_obj_with_opaque_id(JSContext *ctx, JSClassID cid, uint64_t id) {
+    return qjd_new_obj_with_opaque(ctx, cid, (void *)(uintptr_t)id);
 }

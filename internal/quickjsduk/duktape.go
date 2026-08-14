@@ -27,8 +27,11 @@ import "C"
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 	"unsafe"
 )
 
@@ -63,7 +66,7 @@ const (
 	DUK_COMPILE_EVAL     uint = 1 << 3
 	DUK_COMPILE_FUNCTION uint = 1 << 4
 
-	DUK_ENUM_ARRAY_INDICES_ONLY uint = 1 << 5
+	DUK_ENUM_ARRAY_INDICES_ONLY  uint = 1 << 5
 	DUK_ENUM_OWN_PROPERTIES_ONLY uint = 1 << 4
 
 	DUK_ERR_ERROR int = 100
@@ -101,6 +104,8 @@ type moduleKey struct {
 type runtimeState struct {
 	rt         *C.JSRuntime
 	primary    *C.JSContext
+	execLimit  int64 // ns; 0 = no limit
+	execStart  int64 // unix ns of the outermost JS entry (0 = idle)
 	stash      C.JSValue
 	modules    map[moduleKey]C.JSValue // require() cache per realm (Duktape: per global env)
 	deadVals   []C.JSValue             // values owned by dead realms; freed at reap
@@ -110,9 +115,10 @@ type runtimeState struct {
 
 var (
 	regMu    sync.Mutex
-	ctxReg   = map[*C.JSContext]*ctxState{}
-	goVals   = map[uint64]interface{}{}
-	enums    = map[uint64]*enumState{}
+	rtReg           = map[*C.JSRuntime]*runtimeState{}
+	ctxReg          = map[*C.JSContext]*ctxState{}
+	goVals          = map[uint64]interface{}{}
+	enums           = map[uint64]*enumState{}
 	nextID   uint64 = 1
 	initOnce sync.Once
 )
@@ -163,12 +169,13 @@ func NewContext() *Context {
 	initOnce.Do(func() { C.qjd_init_class_ids() })
 	rt := C.JS_NewRuntime()
 	C.qjd_register_classes(rt)
-	ctx := C.JS_NewContext(rt)
+	ctx := C.qjd_new_context(rt)
 	rts := &runtimeState{rt: rt, primary: ctx, modules: map[moduleKey]C.JSValue{}}
 	rts.stash = C.JS_NewObject(ctx)
 	C.qjd_install_require(ctx)
 	regMu.Lock()
 	ctxReg[ctx] = &ctxState{ctx: ctx, rts: rts}
+	rtReg[rt] = rts
 	regMu.Unlock()
 	return &Context{unsafe.Pointer(ctx)}
 }
@@ -178,32 +185,58 @@ func NewContext() *Context {
 func (d *Context) DestroyHeap() {
 	s := d.st()
 	rts := s.rts
+
+	// Collect everything under the lock, but free NOTHING while holding it:
+	// freeing can run goobj/thread finalizers synchronously, and those
+	// re-enter the registry lock.
 	regMu.Lock()
+	var vals []C.JSValue
 	for id, es := range enums {
 		if stateForLocked(es.ctx) != nil && stateForLocked(es.ctx).rts == rts {
-			C.JS_FreeValue(es.ctx, es.obj)
+			vals = append(vals, es.obj)
 			delete(enums, id)
 		}
 	}
+	var ctxs []*C.JSContext
 	for p, cs := range ctxReg {
 		if cs.rts == rts {
-			for _, v := range cs.stack {
-				C.JS_FreeValue(cs.ctx, v)
-			}
+			vals = append(vals, cs.stack...)
 			delete(ctxReg, p)
 			if p != rts.primary {
-				C.JS_FreeContext(p)
+				ctxs = append(ctxs, p)
 			}
 		}
 	}
 	regMu.Unlock()
+
+	for _, v := range vals {
+		C.JS_FreeValue(rts.primary, v)
+	}
 	for _, m := range rts.modules {
 		C.JS_FreeValue(rts.primary, m)
 	}
-	for _, v := range rts.deadVals {
-		C.JS_FreeValue(rts.primary, v)
-	}
 	C.JS_FreeValue(rts.primary, rts.stash)
+	for _, p := range ctxs {
+		C.JS_FreeContext(p)
+	}
+	// Frees above may have queued more realm handles / dead values.
+	for {
+		regMu.Lock()
+		dead := rts.deadCtxs
+		rts.deadCtxs = nil
+		dvals := rts.deadVals
+		rts.deadVals = nil
+		regMu.Unlock()
+		if len(dead) == 0 && len(dvals) == 0 {
+			break
+		}
+		for _, v := range dvals {
+			C.JS_FreeValue(rts.primary, v)
+		}
+		for _, p := range dead {
+			C.JS_FreeContext(p)
+		}
+	}
 	C.JS_FreeContext(rts.primary)
 	C.JS_RunGC(rts.rt)
 	C.JS_FreeRuntime(rts.rt)
@@ -212,13 +245,45 @@ func (d *Context) DestroyHeap() {
 func (rts *runtimeState) pushActive(ctx *C.JSContext) {
 	regMu.Lock()
 	rts.activeCtxs = append(rts.activeCtxs, ctx)
+	if len(rts.activeCtxs) == 1 {
+		atomic.StoreInt64(&rts.execStart, time.Now().UnixNano())
+	}
 	regMu.Unlock()
 }
 
 func (rts *runtimeState) popActive() {
 	regMu.Lock()
 	rts.activeCtxs = rts.activeCtxs[:len(rts.activeCtxs)-1]
+	if len(rts.activeCtxs) == 0 {
+		atomic.StoreInt64(&rts.execStart, 0)
+	}
 	regMu.Unlock()
+}
+
+// SetExecutionTimeLimit bounds any single synchronous JS execution on this
+// heap; exceeding it makes the engine interrupt the script with an
+// InternalError instead of hanging the engine loop forever (something the
+// old Duktape build could not do). Zero disables the limit.
+func (d *Context) SetExecutionTimeLimit(limit time.Duration) {
+	s := d.st()
+	atomic.StoreInt64(&s.rts.execLimit, int64(limit))
+}
+
+//export goInterrupt
+func goInterrupt(rt *C.JSRuntime) C.int {
+	regMu.Lock()
+	rts := rtReg[rt]
+	regMu.Unlock()
+	if rts == nil {
+		return 0
+	}
+	limit := atomic.LoadInt64(&rts.execLimit)
+	start := atomic.LoadInt64(&rts.execStart)
+	if limit > 0 && start > 0 && time.Now().UnixNano()-start > limit {
+		fmt.Fprintf(os.Stderr, "quickjsduk: interrupting JS execution after %v limit\n", time.Duration(limit))
+		return 1
+	}
+	return 0
 }
 
 func (rts *runtimeState) currentActive(fallback *C.JSContext) *C.JSContext {
@@ -230,10 +295,24 @@ func (rts *runtimeState) currentActive(fallback *C.JSContext) *C.JSContext {
 	return fallback
 }
 
+// JobErrorHandler receives stringified errors thrown by promise jobs
+// (async rule callbacks). wb-rules points it at the engine's rule log;
+// the default keeps them visible on stderr.
+var JobErrorHandler = func(msg string) {
+	fmt.Fprintf(os.Stderr, "quickjsduk: unhandled error in promise job: %s\n", msg)
+}
+
 // pumpJobs drains the QuickJS pending-job queue (promise reactions).
 // Called when control returns to Go at the outermost JS entry — the moment
 // an event-loop engine would run microtasks. Duktape 1.x had no promises,
-// so wb-rules itself never schedules this.
+// so wb-rules itself never schedules this. Callers must invoke it only
+// AFTER capturing any pending exception of their own call (a throwing job
+// replaces rt->current_exception).
+//
+// Known limitation (documented in PORT-QUICKJS.md): jobs execute with an
+// empty active-context stack, so Go callbacks reached from async
+// continuations dispatch to their creation realm rather than the awaiting
+// file's realm — register rules/timers synchronously, not after await.
 func (rts *runtimeState) pumpJobs() {
 	regMu.Lock()
 	depth := len(rts.activeCtxs)
@@ -241,16 +320,29 @@ func (rts *runtimeState) pumpJobs() {
 	if depth != 0 {
 		return // still inside a JS call; jobs run when the outermost returns
 	}
-	for i := 0; i < 100000; i++ {
+	const maxJobs = 100000
+	for i := 0; i < maxJobs; i++ {
 		var jctx *C.JSContext
-		r := C.JS_ExecutePendingJob(rts.rt, &jctx)
-		if r <= 0 {
-			if r < 0 && jctx != nil {
-				C.JS_FreeValue(jctx, C.JS_GetException(jctx))
-			}
+		r := C.qjd_execute_pending_job(rts.rt, &jctx)
+		if r == 0 {
 			return
 		}
+		if r < 0 && jctx != nil {
+			exc := C.JS_GetException(jctx)
+			msg := "[unstringifiable]"
+			var n C.size_t
+			if cs := C.JS_ToCStringLen(jctx, &n, exc); cs != nil {
+				msg = C.GoStringN(cs, C.int(n))
+				C.JS_FreeCString(jctx, cs)
+			} else {
+				C.JS_FreeValue(jctx, C.JS_GetException(jctx))
+			}
+			C.JS_FreeValue(jctx, exc)
+			JobErrorHandler(msg)
+			// keep draining: one failed job must not stall the queue
+		}
 	}
+	JobErrorHandler(fmt.Sprintf("job queue still busy after %d jobs (self-rescheduling promise chain?)", maxJobs))
 }
 
 func (rts *runtimeState) reapDeadContexts() {
@@ -437,7 +529,7 @@ func (d *Context) PushErrorObject(errCode int, args ...interface{}) {
 	cm := C.CString(msg)
 	arg := C.JS_NewStringLen(s.ctx, cm, C.size_t(len(msg)))
 	C.free(unsafe.Pointer(cm))
-	errv := C.JS_CallConstructor(s.ctx, ctor, 1, &arg)
+	errv := C.qjd_call_ctor(s.ctx, ctor, 1, &arg)
 	C.JS_FreeValue(s.ctx, ctor)
 	C.JS_FreeValue(s.ctx, arg)
 	if C.qjd_tag(errv) == C.JS_TAG_EXCEPTION {
@@ -448,7 +540,7 @@ func (d *Context) PushErrorObject(errCode int, args ...interface{}) {
 
 func (d *Context) PushThreadNewGlobalenv() {
 	s := d.st()
-	nctx := C.JS_NewContext(s.rts.rt)
+	nctx := C.qjd_new_context(s.rts.rt)
 	C.qjd_install_require(nctx)
 	regMu.Lock()
 	ctxReg[nctx] = &ctxState{ctx: nctx, rts: s.rts}
@@ -474,7 +566,7 @@ func (d *Context) GetContext(idx int) *Context {
 func (d *Context) PushGoObject(o interface{}) {
 	s := d.st()
 	id := registerGoVal(o)
-	s.push(C.qjd_new_obj_with_opaque(s.ctx, C.qjd_goobj_class_id, unsafe.Pointer(uintptr(id))))
+	s.push(C.qjd_new_obj_with_opaque_id(s.ctx, C.qjd_goobj_class_id, C.uint64_t(id)))
 }
 
 func (d *Context) GetGoObject(idx int) interface{} {
@@ -562,11 +654,20 @@ func goFuncCall(ctx *C.JSContext, thisVal C.JSValue, argc C.int, argv *C.JSValue
 		}
 	}
 
+	// A panic inside a Go callback is an internal invariant violation.
+	// wb-rules' contract (inherited from go-duktape) is fail-fast: log the
+	// original stack, then crash the process so systemd restarts a clean
+	// engine. We cannot let the panic unwind through the C frames (cgo
+	// would abort with a less useful message), so re-raise on a fresh
+	// goroutine after printing the real stack.
 	rc := func() (rc int) {
 		defer func() {
 			if r := recover(); r != nil {
-				fmt.Fprintf(os.Stderr, "quickjsduk: panic in go function: %v\n", r)
-				rc = DUK_RET_ERROR
+				fmt.Fprintf(os.Stderr, "quickjsduk: panic in go function: %v\n%s\n", r, debug.Stack())
+				ch := make(chan struct{})
+				go func() { close(ch); panic(r) }()
+				<-ch
+				select {} // unreachable: the goroutine panic kills the process
 			}
 		}()
 		return f(&Context{unsafe.Pointer(ctx)})
@@ -591,7 +692,14 @@ func goFuncCall(ctx *C.JSContext, thisVal C.JSValue, argc C.int, argv *C.JSValue
 		res = throwDukRcError(ctx, "Error", "error", rc)
 	}
 
-	// Unwind the frame.
+	// Unwind the frame. Defensive: a misbehaving callback may have popped
+	// beyond its own frame; log loudly instead of panicking mid-unwind.
+	if len(cs.stack) < base {
+		fmt.Fprintf(os.Stderr,
+			"quickjsduk: BUG: go callback under-popped its frame: len=%d base=%d frames=%v\n%s\n",
+			len(cs.stack), base, cs.frames, debug.Stack())
+		base = len(cs.stack)
+	}
 	for len(cs.stack) > base {
 		C.JS_FreeValue(ctx, cs.popTransfer())
 	}
@@ -646,13 +754,25 @@ func throwDukRcError(ctx *C.JSContext, ctor, kind string, rc int) C.JSValue {
 	cm := C.CString(msg)
 	arg := C.JS_NewStringLen(ctx, cm, C.size_t(len(msg)))
 	C.free(unsafe.Pointer(cm))
-	errv := C.JS_CallConstructor(ctx, ctorV, 1, &arg)
+	errv := C.qjd_call_ctor(ctx, ctorV, 1, &arg)
 	C.JS_FreeValue(ctx, ctorV)
 	C.JS_FreeValue(ctx, arg)
 	if C.qjd_tag(errv) == C.JS_TAG_EXCEPTION {
 		errv = C.JS_GetException(ctx)
 	}
 	return C.JS_Throw(ctx, errv)
+}
+
+// safeCString stringifies a value without touching the shim stack.
+func safeCString(ctx *C.JSContext, v C.JSValue) string {
+	var n C.size_t
+	if cs := C.JS_ToCStringLen(ctx, &n, v); cs != nil {
+		out := C.GoStringN(cs, C.int(n))
+		C.JS_FreeCString(ctx, cs)
+		return out
+	}
+	C.JS_FreeValue(ctx, C.JS_GetException(ctx))
+	return "[unstringifiable]"
 }
 
 func throwTypeErr(ctx *C.JSContext, msg string) C.JSValue {
@@ -867,6 +987,9 @@ func (d *Context) hasProp(obj C.JSValue, key string) bool {
 	C.free(unsafe.Pointer(ck))
 	r := C.JS_HasProperty(s.ctx, obj, atom)
 	C.JS_FreeAtom(s.ctx, atom)
+	if r < 0 {
+		C.JS_FreeValue(s.ctx, C.JS_GetException(s.ctx))
+	}
 	return r == 1
 }
 
@@ -878,8 +1001,12 @@ func (d *Context) PutPropString(objIdx int, key string) bool {
 	s := d.st()
 	obj := s.at(objIdx) // normalize while value still on stack
 	v := s.popTransfer()
-	return setPropStr(s.ctx, obj, key, v) == 0 ||
-		func() bool { C.JS_FreeValue(s.ctx, C.JS_GetException(s.ctx)); return false }()
+	rc := setPropStr(s.ctx, obj, key, v)
+	if rc < 0 {
+		C.JS_FreeValue(s.ctx, C.JS_GetException(s.ctx))
+		return false
+	}
+	return rc != 0
 }
 
 func (d *Context) DelPropString(objIdx int, key string) bool {
@@ -890,6 +1017,9 @@ func (d *Context) DelPropString(objIdx int, key string) bool {
 	C.free(unsafe.Pointer(ck))
 	r := C.JS_DeleteProperty(s.ctx, obj, atom, 0)
 	C.JS_FreeAtom(s.ctx, atom)
+	if r < 0 {
+		C.JS_FreeValue(s.ctx, C.JS_GetException(s.ctx))
+	}
 	return r == 1
 }
 
@@ -909,7 +1039,12 @@ func (d *Context) PutPropIndex(objIdx int, i uint) bool {
 	s := d.st()
 	obj := s.at(objIdx)
 	v := s.popTransfer()
-	return C.JS_SetPropertyUint32(s.ctx, obj, C.uint32_t(i), v) == 0
+	rc := C.JS_SetPropertyUint32(s.ctx, obj, C.uint32_t(i), v)
+	if rc < 0 {
+		C.JS_FreeValue(s.ctx, C.JS_GetException(s.ctx))
+		return false
+	}
+	return rc != 0
 }
 
 func (d *Context) GetGlobalString(key string) bool {
@@ -926,7 +1061,12 @@ func (d *Context) PutGlobalString(key string) bool {
 	glob := C.JS_GetGlobalObject(s.ctx)
 	defer C.JS_FreeValue(s.ctx, glob)
 	v := s.popTransfer()
-	return setPropStr(s.ctx, glob, key, v) == 0
+	rc := setPropStr(s.ctx, glob, key, v)
+	if rc < 0 {
+		C.JS_FreeValue(s.ctx, C.JS_GetException(s.ctx))
+		return false
+	}
+	return rc != 0
 }
 
 func (d *Context) SetPrototype(objIdx int) {
@@ -978,7 +1118,7 @@ func (d *Context) Enum(objIdx int, flags uint) {
 	regMu.Unlock()
 	// The enumerator lives on the stack as a goobj-class handle; its
 	// finalizer releases the registry entry (enum obj freed in Next/cleanup).
-	s.push(C.qjd_new_obj_with_opaque(s.ctx, C.qjd_goobj_class_id, unsafe.Pointer(uintptr(id))))
+	s.push(C.qjd_new_obj_with_opaque_id(s.ctx, C.qjd_goobj_class_id, C.uint64_t(id)))
 }
 
 func (d *Context) Next(enumIdx int, getValue bool) bool {
@@ -1016,14 +1156,15 @@ func (d *Context) evalRaw(src, filename string, flags C.int) C.int {
 	defer C.free(unsafe.Pointer(cs))
 	defer C.free(unsafe.Pointer(cf))
 	s.rts.pushActive(s.ctx)
-	v := C.JS_Eval(s.ctx, cs, C.size_t(len(src)), cf, flags)
+	v := C.qjd_eval(s.ctx, cs, C.size_t(len(src)), cf, flags)
 	s.rts.popActive()
-	s.rts.pumpJobs()
 	if C.qjd_tag(v) == C.JS_TAG_EXCEPTION {
 		s.push(C.JS_GetException(s.ctx))
+		s.rts.pumpJobs()
 		return 1
 	}
 	s.push(v)
+	s.rts.pumpJobs()
 	return 0
 }
 
@@ -1074,25 +1215,26 @@ func (d *Context) Pcall(nargs int) int {
 	var res C.JSValue
 	s.rts.pushActive(s.ctx)
 	if C.qjd_tag(fn) == C.JS_TAG_FUNCTION_BYTECODE {
-		res = C.JS_EvalFunction(s.ctx, C.JS_DupValue(s.ctx, fn))
+		res = C.qjd_eval_function(s.ctx, C.JS_DupValue(s.ctx, fn))
 	} else {
 		var argv *C.JSValue
 		if nargs > 0 {
 			argv = &s.stack[fnPos+1]
 		}
-		res = C.JS_Call(s.ctx, fn, C.qjd_undefined(), C.int(nargs), argv)
+		res = C.qjd_call(s.ctx, fn, C.qjd_undefined(), C.int(nargs), argv)
 	}
 	s.rts.popActive()
-	s.rts.pumpJobs()
 
 	for i := 0; i <= nargs; i++ {
 		C.JS_FreeValue(s.ctx, s.popTransfer())
 	}
 	if C.qjd_tag(res) == C.JS_TAG_EXCEPTION {
 		s.push(C.JS_GetException(s.ctx))
+		s.rts.pumpJobs()
 		return 1
 	}
 	s.push(res)
+	s.rts.pumpJobs()
 	return 0
 }
 
@@ -1112,16 +1254,17 @@ func (d *Context) PcallProp(objIdx int, nargs int) int {
 	s.rts.pushActive(s.ctx)
 	res := C.JS_Invoke(s.ctx, obj, atom, C.int(nargs), argv)
 	s.rts.popActive()
-	s.rts.pumpJobs()
 	C.JS_FreeAtom(s.ctx, atom)
 	for i := 0; i <= nargs; i++ {
 		C.JS_FreeValue(s.ctx, s.popTransfer())
 	}
 	if C.qjd_tag(res) == C.JS_TAG_EXCEPTION {
 		s.push(C.JS_GetException(s.ctx))
+		s.rts.pumpJobs()
 		return 1
 	}
 	s.push(res)
+	s.rts.pumpJobs()
 	return 0
 }
 
@@ -1134,9 +1277,8 @@ func (d *Context) New(nargs int) {
 		argv = &s.stack[fnPos+1]
 	}
 	s.rts.pushActive(s.ctx)
-	res := C.JS_CallConstructor(s.ctx, fn, C.int(nargs), argv)
+	res := C.qjd_call_ctor(s.ctx, fn, C.int(nargs), argv)
 	s.rts.popActive()
-	s.rts.pumpJobs()
 	for i := 0; i <= nargs; i++ {
 		C.JS_FreeValue(s.ctx, s.popTransfer())
 	}
@@ -1144,6 +1286,7 @@ func (d *Context) New(nargs int) {
 		res = C.JS_GetException(s.ctx)
 	}
 	s.push(res)
+	s.rts.pumpJobs()
 }
 
 // ---------------------------------------------------------------------------
@@ -1154,8 +1297,13 @@ func (d *Context) JsonEncode(idx int) string {
 	n := s.normalize(idx)
 	v := C.JS_JSONStringify(s.ctx, s.stack[n], C.qjd_undefined(), C.qjd_undefined())
 	if C.qjd_tag(v) == C.JS_TAG_EXCEPTION {
-		C.JS_FreeValue(s.ctx, C.JS_GetException(s.ctx))
-		v = C.qjd_undefined()
+		exc := C.JS_GetException(s.ctx)
+		JobErrorHandler("JsonEncode failed: " + safeCString(s.ctx, exc))
+		C.JS_FreeValue(s.ctx, exc)
+		// "null" is valid JSON; never let an empty string reach storage
+		cs := C.CString("null")
+		v = C.JS_NewStringLen(s.ctx, cs, 4)
+		C.free(unsafe.Pointer(cs))
 	}
 	C.JS_FreeValue(s.ctx, s.stack[n])
 	s.stack[n] = v
@@ -1175,8 +1323,12 @@ func (d *Context) JsonDecode(idx int) {
 	C.free(unsafe.Pointer(cs))
 	C.free(unsafe.Pointer(cf))
 	if C.qjd_tag(v) == C.JS_TAG_EXCEPTION {
-		s.push(C.JS_GetException(s.ctx))
-		return // duktape would throw; leave error pushed for visibility
+		exc := C.JS_GetException(s.ctx)
+		JobErrorHandler("JsonDecode failed: " + safeCString(s.ctx, exc))
+		C.JS_FreeValue(s.ctx, exc)
+		C.JS_FreeValue(s.ctx, s.stack[n])
+		s.stack[n] = C.qjd_undefined()
+		return
 	}
 	C.JS_FreeValue(s.ctx, s.stack[n])
 	s.stack[n] = v
@@ -1274,7 +1426,7 @@ func goRequire(ctx *C.JSContext, thisVal C.JSValue, argc C.int, argv *C.JSValue,
 	C.free(unsafe.Pointer(cidr))
 	msArgs := []C.JSValue{resolvedID, requireFn, exports, module}
 	rts.pushActive(ctx)
-	srcVal := C.JS_Call(ctx, modSearch, C.qjd_undefined(), 4, &msArgs[0])
+	srcVal := C.qjd_call(ctx, modSearch, C.qjd_undefined(), 4, &msArgs[0])
 	rts.popActive()
 	C.JS_FreeValue(ctx, resolvedID)
 	if C.qjd_tag(srcVal) == C.JS_TAG_EXCEPTION {
@@ -1311,7 +1463,7 @@ func goRequire(ctx *C.JSContext, thisVal C.JSValue, argc C.int, argv *C.JSValue,
 		wrapped := "(function(require,exports,module){" + src + "\n})"
 		cw := C.CString(wrapped)
 		cf := C.CString(filename)
-		fn := C.JS_Eval(ctx, cw, C.size_t(len(wrapped)), cf, evalGlobal)
+		fn := C.qjd_eval(ctx, cw, C.size_t(len(wrapped)), cf, evalGlobal)
 		C.free(unsafe.Pointer(cw))
 		C.free(unsafe.Pointer(cf))
 		if C.qjd_tag(fn) == C.JS_TAG_EXCEPTION {
@@ -1322,7 +1474,7 @@ func goRequire(ctx *C.JSContext, thisVal C.JSValue, argc C.int, argv *C.JSValue,
 		C.free(unsafe.Pointer(cbase))
 		callArgs := []C.JSValue{boundRequire, exports, module}
 		rts.pushActive(ctx)
-		res := C.JS_Call(ctx, fn, exports, 3, &callArgs[0])
+		res := C.qjd_call(ctx, fn, exports, 3, &callArgs[0])
 		rts.popActive()
 		C.JS_FreeValue(ctx, fn)
 		C.JS_FreeValue(ctx, boundRequire)

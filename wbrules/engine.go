@@ -625,7 +625,8 @@ type RuleEngine struct {
 	active          uint32 // atomic
 	cleanup         *ScopedCleanup
 	rev             uint32 // atomic
-	syncQueueActive bool
+	syncQueueActive atomic.Bool // read by MaybeCallSync from arbitrary goroutines
+	syncDone        chan struct{} // closed on Stop: post-stop CallSync drops safely
 	syncQueue       chan func()
 	syncQuitCh      chan chan struct{}
 	mqttClient      wbgong.MQTTClient // for service
@@ -697,7 +698,7 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 		cleanup:               MakeScopedCleanup(),
 		rev:                   0,
 		syncQueue:             make(chan func(), SYNC_QUEUE_LEN),
-		syncQueueActive:       true,
+		syncDone:              make(chan struct{}),
 		syncQuitCh:            make(chan chan struct{}, 1),
 		mqttClient:            mqtt,
 		driver:                driver,
@@ -735,6 +736,9 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
+	// active from construction: pre-Start MaybeCallSync must queue thunks
+	// into syncQueue (drained on Start), not run them inline
+	engine.syncQueueActive.Store(true)
 
 	// if options.debugQueues {
 	// engine.controlChangeChLen = 0
@@ -1010,19 +1014,38 @@ func (engine *RuleEngine) CallSync(thunk func()) {
 			if !delay.Stop() {
 				<-delay.C
 			}
+		case <-engine.syncDone:
+			wbgong.Debug.Printf("[engine] dropping CallSync thunk: engine stopped")
+			if !delay.Stop() {
+				<-delay.C
+			}
 		case <-delay.C:
 			panic("[engine] CallSync stuck!")
 		}
 	} else {
-		engine.syncQueue <- thunk
+		// A background producer (shell-command callback, TS check, timer)
+		// may race engine shutdown; sending on the closed sync queue used
+		// to panic and take the whole engine down.
+		select {
+		case engine.syncQueue <- thunk:
+		case <-engine.syncDone:
+			wbgong.Debug.Printf("[engine] dropping CallSync thunk: engine stopped")
+		}
 	}
 }
 
 func (engine *RuleEngine) MaybeCallSync(thunk func()) {
-	if engine.syncQueueActive {
+	if engine.syncQueueActive.Load() {
 		engine.CallSync(thunk)
-	} else {
-		thunk()
+		return
+	}
+	select {
+	case <-engine.syncDone:
+		// stopped engine: running the thunk here would touch the JS heap
+		// from a foreign goroutine — drop it
+		wbgong.Debug.Printf("[engine] dropping MaybeCallSync thunk: engine stopped")
+	default:
+		thunk() // not started yet (setup phase): run inline as before
 	}
 }
 
@@ -1322,8 +1345,12 @@ func (engine *RuleEngine) handleStop() {
 	engine.statusMtx.Lock()
 	engine.readyCh = nil
 	engine.driverReadyCh = nil
-	engine.syncQueueActive = false
-	close(engine.syncQueue)
+	engine.syncQueueActive.Store(false)
+	// Never close syncQueue: a send on a closed channel panics even inside
+	// select, and late producers (cron, timers, shell callbacks) race Stop.
+	// With no receiver their send blocks, the syncDone case wins, and the
+	// thunk is dropped safely.
+	close(engine.syncDone)
 	engine.statusMtx.Unlock()
 }
 
@@ -1373,7 +1400,7 @@ func (engine *RuleEngine) Start() {
 	engine.driver.OnRetainReady(func(tx wbgong.DriverTx) {
 		engine.driverReadyCh <- struct{}{}
 	})
-	engine.syncQueueActive = true
+	engine.syncQueueActive.Store(true)
 	atomic.StoreUint32(&engine.active, ENGINE_ACTIVE)
 
 	go engine.mainLoop()
@@ -1396,8 +1423,8 @@ func (engine *RuleEngine) Stop() {
 	engine.syncQuitCh <- q
 	<-q
 
-	// wait for main loop to release sync queue
-	<-engine.syncQueue
+	// wait for the main loop to acknowledge the stop
+	<-engine.syncDone
 }
 
 func (engine *RuleEngine) IsActive() bool {
@@ -1951,6 +1978,9 @@ func (engine *RuleEngine) DefineRule(rule *Rule, ctx *ESContext) (id RuleId, err
 
 // DefineMqttTracker creates new mqtt tracker and subscribe to specified topic if needed
 func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err error) {
+	// lazy-start like Publish does: trackMqtt() may be the engine client's
+	// first use when a script subscribes before anything was logged
+	engine.mqttClient.Start()
 	engine.mqttTrackerMutex.Lock()
 	defer engine.mqttTrackerMutex.Unlock()
 

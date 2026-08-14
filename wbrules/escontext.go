@@ -57,6 +57,14 @@ type ESError struct {
 type ESContextFactory struct {
 	duktapeToESContextMap map[duktape.Context]*ESContext
 	callbackIndex         ESCallback
+
+	// preprocessor transforms rule-file source before evaluation (used for
+	// TypeScript transpilation); nil means load sources as-is.
+	preprocessor func(path string, src []byte) ([]byte, error)
+
+	// lineTranslator maps generated (transpiled) line numbers back to
+	// source lines for preprocessed files; nil means identity.
+	lineTranslator func(file string, line int) (int, bool)
 }
 
 func newESContextFactory() *ESContextFactory {
@@ -432,12 +440,28 @@ func (ctx *ESContext) LoadScenario(path string) error {
 		return err
 	}
 
-	// wrap source code
-	src := "function F(module){" + string(srcRaw) + "\n}"
+	if pp := ctx.factory.preprocessor; pp != nil {
+		srcRaw, err = pp(path, srcRaw)
+		if err != nil {
+			if tsErr, ok := err.(*TSSyntaxError); ok {
+				return ESError{
+					Message:   tsErr.Error(),
+					Traceback: ESTraceback{{filename: path, line: tsErr.Line}},
+				}
+			}
+			return ESError{Message: err.Error(), Traceback: ESTraceback{{filename: path, line: 1}}}
+		}
+	}
+
+	// wrap source code; exports is provided (aliasing module.exports) so
+	// CommonJS-style module files also load as plain rule files
+	src := "function F(module, exports){" + string(srcRaw) + "\n}"
 
 	// Source code evaluation.
-	// Checking if there are extra curly braces
-	if err := ctx.PcompileString(duktape.DUK_COMPILE_EVAL, src); err != 0 {
+	// Checking if there are extra curly braces. Compile with the real path
+	// so syntax-error tracebacks carry the script file name.
+	ctx.PushString(path)
+	if err := ctx.PcompileStringFilename(duktape.DUK_COMPILE_EVAL, src); err != 0 {
 		defer ctx.Pop()
 		return ctx.GetESErrorAugmentingSyntaxErrors(path)
 	}
@@ -461,9 +485,14 @@ func (ctx *ESContext) LoadScenario(path string) error {
 	ctx.PushString(path)
 	ctx.PutPropString(-2, "filename")
 
+	// push 'exports' argument, aliased as module.exports
+	ctx.PushObject()
+	ctx.Dup(-1)
+	ctx.PutPropString(-3, "exports")
+
 	// call function
 	defer ctx.Pop()
-	if r := ctx.Pcall(1); r != 0 {
+	if r := ctx.Pcall(2); r != 0 {
 		return ctx.GetESErrorAugmentingSyntaxErrors(path)
 	}
 
@@ -568,6 +597,14 @@ func (ctx *ESContext) GetESError() (r ESError) {
 			r.Traceback = append(r.Traceback, ESLocation{groups[1], lineNumber})
 		}
 	}
+	if tr := ctx.factory.lineTranslator; tr != nil {
+		for i := range r.Traceback {
+			if src, ok := tr(r.Traceback[i].filename, r.Traceback[i].line); ok {
+				r.Traceback[i].line = src
+			}
+		}
+		stackStr = translateStackLines(stackStr, tr)
+	}
 	// Duktape's .stack embeds the message and wb-rules logged it whole;
 	// reproduce that shape (message first, frame lines after).
 	if len(r.Traceback) > 0 {
@@ -577,6 +614,24 @@ func (ctx *ESContext) GetESError() (r ESError) {
 	return
 }
 
+var stackLineRefRx = regexp.MustCompile(`([^\s():]+\.ts):(\d+)`)
+
+// translateStackLines rewrites file.ts:NN references in a stack text using
+// the transpiler's source maps, so logged tracebacks show .ts source lines.
+func translateStackLines(stack string, tr func(string, int) (int, bool)) string {
+	return stackLineRefRx.ReplaceAllStringFunc(stack, func(ref string) string {
+		g := stackLineRefRx.FindStringSubmatch(ref)
+		n, err := strconv.Atoi(g[2])
+		if err != nil {
+			return ref
+		}
+		if src, ok := tr(g[1], n); ok {
+			return fmt.Sprintf("%s:%d", g[1], src)
+		}
+		return ref
+	})
+}
+
 func (ctx *ESContext) GetESErrorAugmentingSyntaxErrors(path string) (r ESError) {
 	// SyntaxError have no script files in their stack trace,
 	// but provide line number info in the message
@@ -584,14 +639,6 @@ func (ctx *ESContext) GetESErrorAugmentingSyntaxErrors(path string) (r ESError) 
 	// for SyntaxError (requires newer duktape)
 	r = ctx.GetESError()
 	if len(r.Traceback) != 0 {
-		// QuickJS gives syntax errors a stack with position info, but the
-		// syntax-check compile runs without a filename ("input") — put the
-		// real script path in.
-		for i := range r.Traceback {
-			if r.Traceback[i].filename == "input" {
-				r.Traceback[i].filename = path
-			}
-		}
 		return
 	}
 

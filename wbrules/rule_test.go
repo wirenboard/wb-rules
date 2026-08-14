@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -102,6 +103,9 @@ type RuleSuiteBase struct {
 	VdevStorageFile  string
 	ModulesPath      string /* ':'-separated list */
 	CleanUp          func()
+
+	TsgoPath    string
+	TsTypesPath string
 }
 
 var logVerifyRx = regexp.MustCompile(`^\[(info|debug|warning|error)\] (.*)`)
@@ -268,11 +272,17 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 
 	engineOptions := NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(s.PersistentDBFile)
-	currentDir, err := os.Getwd()
-	s.Ck("os.Getwd()", err)
-	defaultModulesPath := filepath.Join(currentDir, "..", "modules")
+	// resolve from this source file, not os.Getwd(): DataFileFixture-based
+	// tests chdir into temp dirs, and a failing test can strand the process
+	// cwd there, silently breaking module resolution for every later suite
+	_, thisFile, _, _ := runtime.Caller(0)
+	defaultModulesPath := filepath.Join(filepath.Dir(thisFile), "..", "modules")
 	moduleDirs := append(strings.Split(s.ModulesPath, ":"), defaultModulesPath)
 	engineOptions.SetModulesDirs(moduleDirs)
+	if s.TsgoPath != "" {
+		engineOptions.SetTsgoPath(s.TsgoPath)
+		engineOptions.SetTsTypesPath(s.TsTypesPath)
+	}
 	s.logClient = s.Broker.MakeClient("wbrules-log")
 
 	s.engine, err = NewESEngine(s.driver, s.logClient, engineOptions)

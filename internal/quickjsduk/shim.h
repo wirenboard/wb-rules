@@ -11,6 +11,17 @@ void qjd_init_class_ids(void);
 void qjd_register_classes(JSRuntime *rt);
 
 /* JS_UNDEFINED etc. are struct-initializer macros — unusable from Go. */
+/* Stack-anchor-safe wrappers: Go goroutines migrate OS threads between
+ * cgo calls, so JS_UpdateStackTop and the deep-recursion operation must
+ * happen inside ONE cgo call or QuickJS's stack-overflow heuristic
+ * misfires ("SyntaxError: stack overflow" on perfectly fine code). */
+JSValue qjd_eval(JSContext *ctx, const char *input, size_t len, const char *filename, int flags);
+JSValue qjd_call(JSContext *ctx, JSValue fn, JSValue this_val, int argc, JSValue *argv);
+JSValue qjd_call_ctor(JSContext *ctx, JSValue fn, int argc, JSValue *argv);
+JSValue qjd_eval_function(JSContext *ctx, JSValue fn);
+int qjd_execute_pending_job(JSRuntime *rt, JSContext **pctx);
+JSContext *qjd_new_context(JSRuntime *rt);
+JSValue qjd_new_obj_with_opaque_id(JSContext *ctx, JSClassID cid, uint64_t id);
 JSValue qjd_undefined(void);
 JSValue qjd_null(void);
 JSValue qjd_true(void);
