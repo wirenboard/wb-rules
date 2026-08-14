@@ -1,3 +1,12 @@
+wb-rules (2.47.0~quickjs8) unstable; urgency=medium
+
+  * From-scratch review fixes: watchdog survives nested JS entries in
+    promise jobs; async rule errors reach the rule log; tsgo child I/O
+    deadlines; terminal Check verdicts for never-transpiled files;
+    transpiled TS runs strict; Stop() drains the sync queue.
+
+ -- wb-rules QuickJS port <wb-claude-mail-00001-7@proton.me>  Fri, 14 Aug 2026 17:00:00 +0000
+
 wb-rules (2.47.0~quickjs7) unstable; urgency=medium
 
   * Editor.Check serves the cached background verdict with a status
