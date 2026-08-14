@@ -1,0 +1,48 @@
+name: test
+
+on:
+  push:
+    branches: [master, quickjs-port]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # wbgo.so is the wbgong implementation compiled as a Go plugin; the
+      # test binary and the plugin must be built by the same toolchain in
+      # the same job or plugin.Open refuses to load it.
+      - name: checkout wbgo-private
+        uses: actions/checkout@v4
+        with:
+          repository: wirenboard/wbgo-private
+          token: ${{ secrets.WBGO_PRIVATE_TOKEN }}
+          path: wbgo-private
+
+      - name: build wbgo.so plugin
+        run: |
+          cd wbgo-private
+          go build -buildmode=plugin -o ../wbrules/wbgo.so .
+
+      - name: vet
+        run: go vet ./...
+
+      - name: unit tests (quickjs shim)
+        run: go test -count=1 ./internal/quickjsduk/
+
+      - name: unit tests (engine)
+        run: go test -count=1 -timeout 900s ./wbrules/
+
+      # The TypeScript suite needs a tsgo binary (typescript-go requires
+      # Go >= 1.26 to build); it is skipped automatically when
+      # WB_RULES_TSGO is not set. Enable it here once tsgo artifacts are
+      # published or cached.
