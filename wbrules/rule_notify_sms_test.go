@@ -74,6 +74,9 @@ func (s *RuleNotifySmsSuite) TestSmsErrorWithoutCallback() {
 	)
 }
 
+const mmcliCommand = `base64 -d | mmcli -m any --messaging-create-sms="number=88005553535"` +
+	` --messaging-create-sms-with-text=/dev/stdin -K | cut -d: -f2- | xargs mmcli --send -s`
+
 func (s *RuleNotifySmsSuite) TestSmsModemManager() {
 	s.setErrorCode(1, 0) // to make mmcli check OK
 	s.setErrorCode(2, 0) // to make mmcli call happy
@@ -84,7 +87,8 @@ func (s *RuleNotifySmsSuite) TestSmsModemManager() {
 		"tst -> /devices/test_sms/controls/send/on: [1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm should_enable] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending sms (via ModemManager): test value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [run command: mmcli -m any --messaging-create-sms=\"number=88005553535,text=\\\"test value\\\"\" -K | cut -d: -f2- | xargs mmcli --send -s] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: "+mmcliCommand+"] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: dGVzdCB2YWx1ZQ==] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sms send status: ok] (QoS 1)",
 	)
 }
@@ -99,9 +103,47 @@ func (s *RuleNotifySmsSuite) TestSmsModemManagerWithQuotes() {
 		"tst -> /devices/test_sms/controls/send_quoted/on: [1] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm should_enable] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [sending sms (via ModemManager): test \"value\" 'single'] (QoS 1)",
-		"wbrules-log -> /wbrules/log/warning: [ModemManager can't handle SMS with double quotes now, auto replaced with single ones] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [run command: mmcli -m any --messaging-create-sms=\"number=88005553535,text=\\\"test 'value' 'single'\\\"\" -K | cut -d: -f2- | xargs mmcli --send -s] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: "+mmcliCommand+"] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: dGVzdCAidmFsdWUiICdzaW5nbGUn] (QoS 1)",
 	)
+}
+
+func (s *RuleNotifySmsSuite) TestSmsModemManagerTextInjection() {
+	s.setErrorCode(1, 0) // to make mmcli check OK
+	s.setErrorCode(2, 0) // to make mmcli call happy
+
+	s.publish("/devices/test_sms/controls/send_injection/on", "1", "test_sms/send_injection")
+	s.VerifyUnordered(
+		"driver -> /devices/test_sms/controls/send_injection: [1] (QoS 1)",
+		"tst -> /devices/test_sms/controls/send_injection/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: wb-gsm should_enable] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending sms (via ModemManager): value $(id)] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [run command: "+mmcliCommand+"] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [input: dmFsdWUgJChpZCk=] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sms send status: ok] (QoS 1)",
+	)
+}
+
+func (s *RuleNotifySmsSuite) TestSmsModemManagerNonBMP() {
+	s.setErrorCode(1, 0) // to make mmcli check OK
+	s.setErrorCode(2, 0) // to make mmcli call happy
+
+	s.publish("/devices/test_sms/controls/send_nonbmp/on", "1", "test_sms/send_nonbmp")
+	s.SkipTill("wbrules-log -> /wbrules/log/info: [run command: " + mmcliCommand + "] (QoS 1)")
+	s.Verify(
+		"wbrules-log -> /wbrules/log/info: [input: 8J+PoCDRgtC10LrRgdGC] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sms send status: ok] (QoS 1)",
+	)
+}
+
+func (s *RuleNotifySmsSuite) TestSmsInvalidRecipient() {
+	s.publish("/devices/test_sms/controls/send_bad_number/on", "1", "test_sms/send_bad_number")
+	s.VerifyUnordered(
+		"driver -> /devices/test_sms/controls/send_bad_number: [1] (QoS 1)",
+		"tst -> /devices/test_sms/controls/send_bad_number/on: [1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sms send status: error] (QoS 1)",
+	)
+	s.VerifyEmpty()
 }
 
 func TestNotifySmsSuite(t *testing.T) {

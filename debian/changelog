@@ -1,3 +1,11 @@
+wb-rules (2.46.4) stable; urgency=medium
+
+  * Notify.sendSMS: fix a vulnerability that let the message text or the
+    recipient number run arbitrary commands on the controller; allow double
+    quotes and non-BMP characters in the message
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 14 Aug 2026 12:00:00 +0400
+
 wb-rules (2.46.3) stable; urgency=medium
 
   * Reduce CPU usage of control reads and writes: the object returned for
