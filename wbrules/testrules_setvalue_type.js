@@ -23,7 +23,11 @@ defineRule('setValueTypeMismatch', {
     getControl('vdev/num').setValue('not a number'); // via getControl().setValue()
     dev['vdev/num'] = 'also not a number'; // via the dev[...] proxy set trap
 
-    // reached only because neither write threw; value is still the real 0.
+    // A write to a control that does not exist is also reported to the rule
+    // console and ignored, not thrown.
+    dev['vdev/nonexistent'] = 5;
+
+    // reached only because none of the writes threw; value is still the real 0.
     log.info('after bad writes: value=' + dev['vdev/num']);
 
     // A correctly-typed write still succeeds and updates the control.

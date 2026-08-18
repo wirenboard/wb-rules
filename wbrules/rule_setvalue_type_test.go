@@ -31,7 +31,10 @@ func (s *RuleSetValueTypeSuite) TestWrongTypedWriteIsVisibleAndNonFatal() {
 			`wbrules-log -> /wbrules/log/error: \[control vdev/num: write ignored.*convert.*\] \(QoS 1\)`),
 		regexp.MustCompile(
 			`wbrules-log -> /wbrules/log/error: \[control vdev/num: write ignored.*convert.*\] \(QoS 1\)`),
-		// the rule continued past both bad writes (no throw) and read back the
+		// a write to a control that does not exist is reported too, not thrown.
+		regexp.MustCompile(
+			`wbrules-log -> /wbrules/log/error: \[.*unexisting control vdev/nonexistent.*\] \(QoS 1\)`),
+		// the rule continued past all bad writes (no throw) and read back the
 		// real value 0 (cache not poisoned).
 		"[info] after bad writes: value=0",
 		// the correctly-typed write succeeded and updated the control.
