@@ -1939,7 +1939,12 @@ func (engine *ESEngine) esVdevCellSetValue(ctx *ESContext) int {
 		value = ctx.GetJSObject(0)
 	}
 
-	ctrlProxy.SetValue(value, notifySubs)
+	// A non-nil error here means the control disappeared (all other write
+	// failures are logged-and-swallowed inside SetValue); report it to the
+	// rule console like any other failed write - a write must never throw.
+	if err := ctrlProxy.SetValue(value, notifySubs); err != nil {
+		engine.Log(ENGINE_LOG_ERROR, err.Error())
+	}
 
 	return 0
 }
