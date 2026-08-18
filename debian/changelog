@@ -1,3 +1,15 @@
+wb-rules (2.46.4) stable; urgency=medium
+
+  * A control write of a value that cannot be converted to the control's
+    datatype is now reported to the rule debug console (both
+    getControl("dev/ctrl").setValue(...) and dev["dev/ctrl"] = ...); previously
+    it went only to syslog and was invisible in the web UI. The write is still
+    ignored and the rule keeps running, so this is NOT a backward-incompatible
+    change - it just makes the mistake visible. A rejected write also no longer
+    updates the engine's cached value for that control.
+
+ -- Evgeny Boger <boger@wirenboard.com>  Tue, 18 Aug 2026 12:00:00 +0400
+
 wb-rules (2.46.3) stable; urgency=medium
 
   * Reduce CPU usage of control reads and writes: the object returned for

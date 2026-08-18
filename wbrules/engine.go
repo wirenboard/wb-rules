@@ -115,6 +115,7 @@ type proxyOwner interface {
 	Driver() wbgong.Driver
 	getRev() uint32
 	trackControlSpec(ControlSpec)
+	Log(EngineLogLevel, string)
 }
 
 type DeviceProxy struct {
@@ -432,13 +433,22 @@ func (ctrlProxy *ControlProxy) SetValue(value any, notifySubs bool) error {
 		return ctrl.SetOnValue(value)()
 	})
 
-	if isLocal && notifySubs {
-		// run update value handler immediately, don't wait for wbgong backend
+	if err == nil && isLocal && notifySubs {
+		// run update value handler immediately, don't wait for wbgong backend.
+		// Only on success: a rejected write must not poison the cached value, or
+		// a rule that catches the error and reads the control back would see the
+		// invalid value it just tried (and failed) to write.
 		ctrlProxy.updateValueHandler(nil, value, prevValue, nil)
 	}
 
 	if err != nil {
-		wbgong.Error.Printf("control %s/%s SetValue() error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, err)
+		// A wrong-typed write has been logged-and-ignored since ~2015; keep that
+		// (the rule keeps running - no back-compat break) but surface it where
+		// the user actually looks: the rule debug console. engine.Log publishes
+		// to /wbrules/log/error, which homeui shows; wbgong.Error only reached
+		// syslog. The cache was left untouched above, so reads stay consistent.
+		ctrlProxy.devProxy.owner.Log(ENGINE_LOG_ERROR,
+			fmt.Sprintf("control %s/%s: write ignored (%s)", ctrlProxy.devProxy.name, ctrlProxy.name, err))
 	}
 	return nil
 }

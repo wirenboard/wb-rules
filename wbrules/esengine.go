@@ -1939,7 +1939,10 @@ func (engine *ESEngine) esVdevCellSetValue(ctx *ESContext) int {
 		value = ctx.GetJSObject(0)
 	}
 
-	ctrlProxy.SetValue(value, notifySubs)
+	if err := ctrlProxy.SetValue(value, notifySubs); err != nil {
+		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
+		return duktape.DUK_RET_INSTACK_ERROR
+	}
 
 	return 0
 }
@@ -2084,9 +2087,13 @@ func (engine *ESEngine) initCellObjectPrototype(ctx *ESContext) {
 				return duktape.DUK_RET_TYPE_ERROR
 			}
 
-			errSet := c.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG], true)
-			if errSet != nil {
-				engine.Log(ENGINE_LOG_ERROR, errSet.Error())
+			// Surface a failed write (e.g. a value that can't be converted to
+			// the control's datatype) as a catchable JS exception so that
+			// `dev["dev/ctrl"] = value` assignments do not fail silently. The
+			// throw propagates out through the lib.js Proxy `set` traps.
+			if errSet := c.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG], true); errSet != nil {
+				ctx.PushErrorObject(duktape.DUK_ERR_ERROR, errSet.Error())
+				return duktape.DUK_RET_INSTACK_ERROR
 			}
 			return 1
 		},
