@@ -11,5 +11,6 @@ Package: wb-rules
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Breaks: wb-mqtt-confed (<< 1.0.2), wb-rules-system (<< 1.6.13), wb-mqtt-dac (<< 1.1.2)
+Recommends: modemmanager (>=1.22.0), ssmtp, curl
 Description: Wiren Board Rule Engine
  wb-rules allows you to create control scenarios using JavaScript-based rules.
