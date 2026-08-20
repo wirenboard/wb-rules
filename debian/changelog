@@ -1,3 +1,30 @@
+wb-rules (2.47.0~quickjs2) unstable; urgency=medium
+
+  * TypeScript rule support via Microsoft typescript-go: .ts files in the
+    rule directories transpile on load (about a millisecond through a
+    persistent compiler child) and run immediately; the full type check
+    runs in the background with bounded concurrency and never delays
+    execution. Findings are logged as 'TS check: file:line:col' warnings,
+    at most ten lines per file; tracebacks point at .ts source lines via
+    source maps; transpiled code runs strict.
+  * Plain .js rules are type-checked too (checkJs), against the same API
+    declarations and a registry of the controls that exist on this
+    controller, so a wrong-typed write like dev["buzzer/enabled"] = 123 is
+    flagged. For .js the check is advisory: findings are warnings and
+    complaints about valid sloppy-mode idioms are dropped; a first-line
+    // @ts-nocheck comment opts a file out.
+  * Editor.Check and Editor.GetTypes mqtt-rpc methods: cached type-check
+    verdicts (ready/pending/not-ts/unsupported) and the installed
+    wb-rules.d.ts declarations for editors (documented in asyncapi).
+  * The compiler comes from the new wb-tsgo package (a separate source
+    package building unmodified typescript-go): wb-rules Depends on
+    wb-tsgo, the -tsgo flag defaults to /usr/bin/tsgo, -ts-types points at
+    the installed declarations /usr/share/wb-rules/types/wb-rules.d.ts.
+    Without the binary, .ts files fail to load with an explicit error
+    naming the looked-up path.
+
+ -- Evgeny Boger <boger@wirenboard.com>  Wed, 19 Aug 2026 21:00:00 +0400
+
 wb-rules (2.47.0~quickjs1) unstable; urgency=medium
 
   * Replace Duktape 1.0.2 with QuickJS (Bellard 2026-06-04, pinned as git
