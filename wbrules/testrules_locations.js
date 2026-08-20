@@ -13,7 +13,7 @@ function defBarDev(name) {
 // The location of the rule "fooBar" is testrules_locations.js:14
 defineSomeDevice('foo');
 
-// The location of the rule "another" is testrules_locations.js:24 (the end of the defineRule call)
+// The location of the rule "another" is testrules_locations.js:17 (QuickJS: the start of the defineRule call)
 defineRule('another', {
   asSoonAs: function () {
     return !!dev.somedev.another;

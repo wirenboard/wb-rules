@@ -1,4 +1,4 @@
-.PHONY: all clean
+.PHONY: all clean test corpus
 
 PREFIX = /usr
 DEB_TARGET_ARCH ?= armhf
@@ -19,6 +19,12 @@ GOTEST ?= $(GO) test
 GCFLAGS :=
 LDFLAGS := -X main.version=`git describe --tags --always --dirty`
 GO_FLAGS := -buildvcs=false
+
+# Go forces -fuse-ld=gold for arm64 external linking (workaround for an
+# ancient binutils bug); binutils >= 2.44 no longer ships gold.
+ifneq ($(filter arm64 armhf,$(DEB_TARGET_ARCH)),)
+LDFLAGS += -extldflags=-fuse-ld=bfd
+endif
 GO_TEST_FLAGS := -v -cover
 
 ifeq ($(DEBUG),)
@@ -42,6 +48,13 @@ amd64:
 test:
 	cp $(WBGO_LOCAL_PATH)/amd64.wbgo.so wbrules/wbgo.so
 	$(GOTEST) $(GO_FLAGS) $(GO_TEST_FLAGS) ./wbrules
+	cd internal/quickjsduk && $(GOTEST) $(GO_FLAGS) $(GO_TEST_FLAGS) ./...
+
+# The internal Wiren Board rules corpus (private submodule) is `update = none`,
+# so recursive clones skip it; opt in explicitly. Without it TestCorpus is
+# skipped. See README, "Внутренний корпус сценариев".
+corpus:
+	git submodule update --init --checkout wbrules/testdata/corpus
 
 wb-rules: main.go wbrules/*.go
 	$(GO_ENV) $(GO) build $(GO_FLAGS)
