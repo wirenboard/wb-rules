@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +26,16 @@ import (
 )
 
 type itemType int
+
+// Editor.Check statuses. Kept in their own const block: the main block
+// below derives itemType values from iota, which counts every preceding
+// spec in the same block.
+const (
+	TS_CHECK_READY       = "ready"
+	TS_CHECK_PENDING     = "pending"
+	TS_CHECK_NOT_TS      = "not-ts"
+	TS_CHECK_UNSUPPORTED = "unsupported"
+)
 
 const (
 	LIB_FILE        = "lib.js"
@@ -85,12 +96,19 @@ type ESEngineOptions struct {
 	*RuleEngineOptions
 	PersistentDBFile     string
 	PersistentDBFileMode os.FileMode
-	ModulesDirs          []string
-	JsExecutionLimit     time.Duration  // max wall time for one synchronous JS run; 0 = unlimited
-	SpawnFunc            SpawnFunc      // runs spawn()/runShellCommand(); nil = the real Spawn
-	ReadConfigFunc       ReadConfigFunc // reads files for readConfig(); nil = os.ReadFile
-	JsMemoryLimit        int64          // max bytes for the shared JS heap; 0 = unlimited
-	LoadGuardDir         string         // dir for load-crash guard state; empty disables the guard
+	// PersistentDBOpenTimeout bounds how long opening the persistent DB may
+	// wait for the bolt file lock; 0 = the production default (1 s). Tests
+	// raise it: on a loaded CI builder a just-closed engine's lock can
+	// outlive the 1-second default and fail the next engine's construction.
+	PersistentDBOpenTimeout time.Duration
+	ModulesDirs             []string
+	TsgoPath                string         // tsgo binary for TypeScript rules ("" = TS disabled)
+	TsTypesPath             string         // wb-rules.d.ts used during async type checks
+	JsExecutionLimit        time.Duration  // max wall time for one synchronous JS run; 0 = unlimited
+	SpawnFunc               SpawnFunc      // runs spawn()/runShellCommand(); nil = the real Spawn
+	ReadConfigFunc          ReadConfigFunc // reads files for readConfig(); nil = os.ReadFile
+	JsMemoryLimit           int64          // max bytes for the shared JS heap; 0 = unlimited
+	LoadGuardDir            string         // dir for load-crash guard state; empty disables the guard
 }
 
 func NewESEngineOptions() *ESEngineOptions {
@@ -128,8 +146,22 @@ func (o *ESEngineOptions) SetPersistentDBFileMode(mode os.FileMode) {
 	o.PersistentDBFileMode = mode
 }
 
+// SetPersistentDBOpenTimeout raises the bolt file-lock timeout for opening
+// the persistent DB (0 keeps the production default of 1 second).
+func (o *ESEngineOptions) SetPersistentDBOpenTimeout(timeout time.Duration) {
+	o.PersistentDBOpenTimeout = timeout
+}
+
 func (o *ESEngineOptions) SetModulesDirs(dirs []string) {
 	o.ModulesDirs = dirs
+}
+
+func (o *ESEngineOptions) SetTsgoPath(path string) {
+	o.TsgoPath = path
+}
+
+func (o *ESEngineOptions) SetTsTypesPath(path string) {
+	o.TsTypesPath = path
 }
 
 type TimerSet struct {
@@ -163,11 +195,12 @@ type ESEngine struct {
 	spawnFunc SpawnFunc
 	// readConfigFunc reads the file for readConfig(); nil means os.ReadFile.
 	// Stubbed alongside spawnFunc when loading untrusted scripts.
-	readConfigFunc    ReadConfigFunc
-	persistentDBCache map[string]string
-	persistentDB      *bolt.DB
-	modulesDirs       []string
-	loadGuard         *loadGuard
+	readConfigFunc          ReadConfigFunc
+	persistentDBCache       map[string]string
+	persistentDB            *bolt.DB
+	persistentDBOpenTimeout time.Duration // bolt file-lock timeout; 0 = the 1 s default
+	modulesDirs             []string
+	loadGuard               *loadGuard
 
 	// orphanedCallbacks records one-shot callback stash keys whose only
 	// invocation was dropped because the engine had stopped (e.g. a spawn
@@ -180,11 +213,29 @@ type ESEngine struct {
 	// closed marks a terminal Close(): the JS heap is gone and the engine
 	// must not be used again.
 	closed bool
+
+	tsc         *TSCompiler       // non-nil when TypeScript support is enabled
+	tsTypesPath string            // installed wb-rules.d.ts (Editor.GetTypes)
+	tsCheckGen  map[string]uint64 // engine-loop only: per-file check revision
+	// tsCheckWanted is set by preprocessRuleSource (inside LoadScenario) and
+	// consumed by loadScript once the file has run: the check is scheduled
+	// only then, so the registry snapshot includes the virtual devices the
+	// file itself defines (engine loop only)
+	tsCheckWanted string
+
+	tsCheckMu      sync.Mutex
+	tsCheckResults map[string]*tsCheckEntry // latest background verdict per physical path
 }
 
 type orphanedCallback struct {
 	ctx *ESContext
 	key ESCallback
+}
+
+type tsCheckEntry struct {
+	gen   uint64
+	ready bool
+	diags []TSDiag
 }
 
 func init() {
@@ -211,12 +262,54 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		editableSources:   make(map[string]string),
 		tracker:           wbgong.NewContentTracker(),
 		persistentDBCache: make(map[string]string),
+		tsCheckGen:        make(map[string]uint64),
+		tsCheckResults:    make(map[string]*tsCheckEntry),
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
 		// detects (and, at construction, reacts to) a file that crashed the
 		// process during its last load, so a poison-pill rule can't crash-loop
 		// the engine forever
 		loadGuard: newLoadGuard(options.LoadGuardDir, LOAD_CRASH_QUARANTINE_THRESHOLD),
+	}
+	engine.tsTypesPath = options.TsTypesPath
+	if options.TsgoPath != "" {
+		// the pipeline is wired whenever a compiler path is configured;
+		// the binary itself is probed per operation (Available() is a
+		// stateless LookPath), so a tsgo installed AFTER wb-rules started
+		// is picked up on the next .ts load - no restart needed (dpkg
+		// configures the wb-tsgo dependency first, but manual installs
+		// and older-package upgrades may not)
+		engine.tsc = NewTSCompiler(options.TsgoPath, options.TsTypesPath)
+		engine.ctxFactory.preprocessor = engine.preprocessRuleSource
+		engine.ctxFactory.lineTranslator = engine.tsc.TranslateLine
+		// transpiled TypeScript runs strict (tsc's own semantics):
+		// the stripped "use strict" prologue is re-added inside the
+		// single-line wrapper, keeping line numbers aligned
+		engine.ctxFactory.wrapPrologue = func(path string) string {
+			if strings.HasSuffix(path, ".ts") && !strings.HasSuffix(path, ".d.ts") {
+				return `"use strict";`
+			}
+			return ""
+		}
+		if !engine.tsc.Available() {
+			wbgong.Error.Printf(
+				"tsgo binary not found at %s; wb-rules depends on the wb-tsgo package (broken installation?) - .ts files will fail to load until it appears",
+				options.TsgoPath)
+		}
+	} else {
+		// explicit -tsgo="": .ts files are rejected, never run as raw JS
+		engine.ctxFactory.preprocessor = func(path string, src []byte) ([]byte, error) {
+			if strings.HasSuffix(path, ".d.ts") {
+				// the deb ships wb-rules.d.ts inside a watched dir;
+				// declaration files are not executable code and must
+				// not produce a boot error
+				return []byte("// TypeScript declaration file, nothing to execute\n"), nil
+			}
+			if strings.HasSuffix(path, ".ts") {
+				return nil, fmt.Errorf(`TypeScript support is disabled (-tsgo="")`)
+			}
+			return src, nil
+		}
 	}
 	engine.globalCtx = engine.ctxFactory.newESContext(func(thunk func()) { engine.MaybeCallSync(thunk) }, "")
 	// a runaway rule (while(true) etc.) must error out, not freeze the loop
@@ -231,6 +324,7 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("async rule error: %s", msg))
 	})
 
+	engine.persistentDBOpenTimeout = options.PersistentDBOpenTimeout
 	if options.PersistentDBFile != "" {
 		if err = engine.SetPersistentDBMode(options.PersistentDBFile,
 			options.PersistentDBFileMode); err != nil {
@@ -296,6 +390,221 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	return
 }
 
+// preprocessRuleSource transpiles TypeScript rule files on load. The
+// transpile is a fast type-strip (~1 ms); the full type check runs in the
+// background afterwards and only ever produces warnings — rules run first,
+// diagnostics arrive later.
+func (engine *ESEngine) preprocessRuleSource(path string, src []byte) ([]byte, error) {
+	if strings.HasSuffix(path, ".d.ts") {
+		// declaration files carry no executable code and make the
+		// transpiler panic; they may sit in watched rule dirs
+		wbgong.Debug.Printf("skipping TypeScript declaration file %s", path)
+		return []byte("// TypeScript declaration file, nothing to execute\n"), nil
+	}
+	isTS := strings.HasSuffix(path, ".ts")
+	if !isTS && !strings.HasSuffix(path, ".js") {
+		return src, nil
+	}
+
+	js := src // .js runs as-is; .ts is type-stripped below
+	if isTS {
+		if !engine.tsc.Available() {
+			return nil, fmt.Errorf(
+				"TypeScript compiler not found at %s - wb-rules depends on the wb-tsgo package (broken installation?)",
+				engine.tsc.binPath)
+		}
+		transpiled, err := engine.tsc.Transpile(string(src), path)
+		if err != nil {
+			// any file that fails to transpile still gets a terminal
+			// Editor.Check verdict - otherwise clients poll "pending" forever
+			// (or, on reload, keep seeing the previous content's verdict)
+			diag := TSDiag{File: path, Line: 1, Column: 1, Severity: "error", Message: err.Error()}
+			var syntaxErr *TSSyntaxError
+			if errors.As(err, &syntaxErr) {
+				diag.Line = syntaxErr.Line
+				diag.Message = syntaxErr.Text
+				diag.Code = syntaxErr.Code
+			}
+			engine.tsCheckGen[path]++
+			engine.tsCheckMu.Lock()
+			engine.tsCheckResults[path] = &tsCheckEntry{
+				gen:   engine.tsCheckGen[path],
+				ready: true,
+				diags: []TSDiag{diag},
+			}
+			engine.tsCheckMu.Unlock()
+			return nil, err
+		}
+		js = []byte(transpiled)
+	}
+
+	// Background type check, for .ts and .js alike: the check runs with
+	// --checkJs, so a .js file is type-checked against the wb-rules types and
+	// the live-device registry too (e.g. dev["buzzer/enabled"] = 123). A .js
+	// file needs no transpile and still runs even without tsgo, so only
+	// request the check when tsgo is available. The request is honoured by
+	// loadScript after LoadScenario returns, not here: the registry is
+	// snapshotted when the check is scheduled, and the file's own
+	// defineVirtualDevice() calls have not run yet at this point (on a
+	// reload, runCleanups has just removed the previous incarnation's
+	// devices) - scheduling now would check the file against a registry
+	// that lacks exactly the controls it writes to most.
+	if engine.tsc.Available() && engine.tsc.CheckSupported() {
+		engine.tsCheckWanted = path
+	}
+
+	return js, nil
+}
+
+// tsCheckJournalCap bounds the "TS check:" lines one file's check writes to
+// the rule log; the full list stays available through Editor.Check.
+const tsCheckJournalCap = 10
+
+// scheduleTsCheck queues the background type check of a loaded rule file
+// (engine loop only: it touches tsCheckGen).
+func (engine *ESEngine) scheduleTsCheck(path string) {
+	// generation guard: a slow check for an old revision of the file must
+	// not overwrite the newer check's verdict (the gen counter is touched
+	// on the engine loop only)
+	engine.tsCheckGen[path]++
+	gen := engine.tsCheckGen[path]
+	engine.tsCheckMu.Lock()
+	engine.tsCheckResults[path] = &tsCheckEntry{gen: gen}
+	engine.tsCheckMu.Unlock()
+	// Generate the device registry now, on the engine loop (the driver is
+	// read here, not from the background goroutine).
+	engine.tsc.CheckAsync(path, engine.controlsRegistryDts(), func(diags []TSDiag) {
+		if !engine.IsActive() {
+			return
+		}
+		// MaybeCallSync: the engine may have stopped while the check ran;
+		// never block a background goroutine on a dead sync queue.
+		engine.MaybeCallSync(func() {
+			if engine.tsCheckGen[path] != gen {
+				return // a newer revision of the file is being checked
+			}
+			// The rules console gets diagnostics only for files the user can
+			// act on (under the editable source root). System rule packages
+			// are checked too - their verdicts stay in the Editor.Check
+			// cache and in the debug log - but journaling them would page
+			// the user about files that are not theirs to fix.
+			_, _, editable, _, cerr := engine.checkSourcePath(path)
+			journal := cerr == nil && editable
+			for i, d := range diags {
+				if !journal {
+					wbgong.Debug.Printf("TS check (system file): %s:%d:%d: %s", d.File, d.Line, d.Column, d.Message)
+					continue
+				}
+				if i == tsCheckJournalCap {
+					engine.Log(ENGINE_LOG_WARNING, fmt.Sprintf(
+						"TS check: %s: %d more diagnostics (see the file in the editor)", path, len(diags)-i))
+					break
+				}
+				engine.Log(ENGINE_LOG_WARNING, fmt.Sprintf(
+					"TS check: %s:%d:%d: %s", d.File, d.Line, d.Column, d.Message))
+			}
+			engine.tsCheckMu.Lock()
+			engine.tsCheckResults[path] = &tsCheckEntry{gen: gen, ready: true, diags: diags}
+			engine.tsCheckMu.Unlock()
+		})
+	})
+}
+
+type controlRef struct{ ref, ctrlType string }
+
+// renderControlsRegistry renders the WbControls declaration that
+// declaration-merges into the empty interface in wb-rules.d.ts. With it in
+// the check program, the stringly-referenced APIs (dev["dev/ctrl"],
+// getControl("dev/ctrl")) are typed by each live control's real type -
+// matching what the homeui editor does from its own device list. Empty
+// input yields "" so the check stays loose (no registry file added).
+// aliasNameRx: only names that are plain identifiers can be declared; a
+// defineAlias with an exotic name stays untyped (loose), never breaks the
+// generated declarations.
+var aliasNameRx = regexp.MustCompile(`^[A-Za-z_$][A-Za-z0-9_$]*$`)
+
+func renderControlsRegistry(refs []controlRef, aliases []string) string {
+	if len(refs) == 0 && len(aliases) == 0 {
+		return ""
+	}
+	// JSON string literals are valid TS string literals; unlike strconv.Quote
+	// they never emit \a or \UXXXXXXXX (which TS rejects), so an exotic control
+	// id can't produce a malformed .d.ts that fails every rule's check. Matches
+	// the editor side, which builds the registry with JSON.stringify.
+	tsStr := func(s string) string {
+		q, _ := json.Marshal(s)
+		return string(q)
+	}
+	var b strings.Builder
+	b.WriteString("interface WbControls {\n")
+	for _, r := range refs {
+		fmt.Fprintf(&b, "  %s: %s;\n", tsStr(r.ref), tsStr(r.ctrlType))
+	}
+	b.WriteString("}\n")
+	// defineAlias("heaterOn", "relay/K1") creates a bare global the checker
+	// cannot see (an accessor installed at run time): declare each alias so
+	// documented alias usage - heaterOn = true - is not "Cannot find name"
+	for _, name := range aliases {
+		if aliasNameRx.MatchString(name) {
+			fmt.Fprintf(&b, "declare var %s: any;\n", name)
+		}
+	}
+	return b.String()
+}
+
+// aliasNames lists the names created by defineAlias() so far. The alias map
+// (_WbRules.aliases) lives on the shared prototype realm, so one read covers
+// every file. Engine loop only. Best effort: on any trouble the aliases just
+// stay untyped.
+func (engine *ESEngine) aliasNames() []string {
+	if engine.globalCtx == nil {
+		return nil
+	}
+	if engine.globalCtx.PevalString("JSON.stringify(Object.keys(_WbRules.aliases))") != 0 {
+		engine.globalCtx.Pop()
+		return nil
+	}
+	var names []string
+	err := json.Unmarshal([]byte(engine.globalCtx.GetString(-1)), &names)
+	engine.globalCtx.Pop()
+	if err != nil {
+		return nil
+	}
+	sort.Strings(names)
+	return names
+}
+
+// controlsRegistryDts snapshots the driver's current device table into a
+// WbControls declaration. Must be called on the engine loop (it reads the
+// driver). Never fails the check: on any trouble it returns "" (loose).
+func (engine *ESEngine) controlsRegistryDts() string {
+	if engine.driver == nil {
+		return ""
+	}
+	var refs []controlRef
+	err := engine.driver.Access(func(tx wbgong.DriverTx) error {
+		for _, dev := range tx.GetDevicesList() {
+			devID := dev.GetId()
+			if strings.HasPrefix(devID, "system__") {
+				continue // match the editor: skip the engine's own system controls
+			}
+			for _, ctrl := range dev.ControlsList() {
+				ctrlType := ctrl.GetType()
+				if ctrlType == "" {
+					continue // type not known yet -> would map to `any` anyway
+				}
+				refs = append(refs, controlRef{devID + "/" + ctrl.GetId(), ctrlType})
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		wbgong.Error.Printf("ts check: cannot read device list for registry: %s", err)
+		return ""
+	}
+	return renderControlsRegistry(refs, engine.aliasNames())
+}
+
 // Start starts the engine loops. On a restart it first reclaims callback
 // stash entries orphaned while the engine was stopped (both Start and the
 // sweep run before any loop goroutine exists, so the JS heap access is
@@ -305,13 +614,17 @@ func (engine *ESEngine) Start() {
 	engine.RuleEngine.Start()
 }
 
-// Stop shuts the engine down. The engine can be started again; Close is the
-// terminal counterpart.
+// Stop shuts the engine down, including the TypeScript compiler child.
+// The engine can be started again; Close is the terminal counterpart.
 func (engine *ESEngine) Stop() {
+	// engine loop first: a draining .ts load must not respawn the compiler
 	engine.RuleEngine.Stop()
 	// the loops are gone: reclaim one-shot callbacks whose completion was
 	// dropped during the shutdown itself
 	engine.sweepOrphanedCallbacks()
+	if engine.tsc != nil {
+		engine.tsc.Stop()
+	}
 }
 
 // Close permanently destroys the engine: it stops the loops if they are
@@ -1017,8 +1330,31 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 	// bracket the actual evaluation with the load-crash marker: if the process
 	// dies inside LoadScenario, the surviving marker names this file next boot
 	engine.loadGuard.beginLoad(path)
+	engine.tsCheckWanted = ""
 	err = engine.trackESError(path, newLocalCtx.LoadScenario(path))
 	engine.loadGuard.endLoad(path)
+	// the type check is scheduled only now, after the file has run: its own
+	// virtual devices are in the driver's table and thus in the registry
+	// snapshot (see preprocessRuleSource); a file that failed to transpile
+	// got its terminal verdict there and does not ask for a check
+	if engine.tsCheckWanted == path {
+		engine.tsCheckWanted = ""
+		engine.scheduleTsCheck(path)
+	}
+	// Keep a load failure retryable only when it may fix itself once the
+	// environment changes - i.e. a .ts file that failed because tsgo isn't
+	// available yet (the wb-tsgo package appears after wb-rules started). We
+	// un-deduplicate it so a later reload re-runs it. NOT for a real error: a
+	// .ts with a genuine syntax/type error (tsgo present) or any .js failure is
+	// content-based, and un-tracking it would re-run it on every
+	// unchanged-content FS event, re-firing partial side effects and re-logging.
+	//
+	// The .ts/.js split here is a load-path distinction, not a language one:
+	// only .ts goes through tsgo, so only a .ts failure can be caused by tsgo
+	// being absent. Available() re-probes the tsgo binary.
+	if err != nil && strings.HasSuffix(path, ".ts") && engine.tsc != nil && !engine.tsc.Available() {
+		engine.tracker.Untrack(virtualPath)
+	}
 	return true, err
 }
 
@@ -1184,6 +1520,22 @@ func (engine *ESEngine) LiveRemoveFile(path string) error {
 
 	engine.WhenEngineReady(func() {
 		engine.tracker.Untrack(virtualPath)
+		// Drop the per-file verdict so it can't accumulate over a
+		// long-running daemon that sees many distinct paths, but KEEP the
+		// generation counter (it is 8 bytes per path ever seen) and ADVANCE
+		// it: an in-flight check of the removed content still holds the old
+		// generation, and without the bump its callback would repopulate the
+		// verdict cache for a file that no longer exists - or, if the file
+		// is re-created (save-by-rename editors) and restarted at
+		// generation 1, publish the removed content's verdict for the new
+		// file. This runs on the engine loop (tsCheckGen's owner).
+		engine.tsCheckGen[path]++
+		engine.tsCheckMu.Lock()
+		delete(engine.tsCheckResults, path)
+		engine.tsCheckMu.Unlock()
+		if engine.tsc != nil {
+			engine.tsc.Forget(path)
+		}
 		engine.runCleanups(path)
 		engine.Refresh()
 		engine.maybePublishUpdate("removed", path)
@@ -2993,8 +3345,12 @@ func (engine *ESEngine) SetPersistentDBMode(filename string, mode os.FileMode) (
 		return
 	}
 
+	openTimeout := engine.persistentDBOpenTimeout
+	if openTimeout <= 0 {
+		openTimeout = 1 * time.Second // production default, unchanged
+	}
 	engine.persistentDB, err = bolt.Open(filename, mode,
-		&bolt.Options{Timeout: 1 * time.Second})
+		&bolt.Options{Timeout: openTimeout})
 
 	if err != nil {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("can't open persistent DB file: %v", err))
@@ -3270,4 +3626,65 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 	// read "cannot find module 'X'" in the UI and logs
 	ctx.PushErrorObject(duktape.DUK_ERR_ERROR, fmt.Sprintf("cannot find module %q", id))
 	return duktape.DUK_RET_INSTACK_ERROR
+}
+
+// CheckTsFile serves the Editor.Check RPC from the background-check
+// verdict cache - every .ts/.js load/save triggers a check, so this is a
+// cheap read that never blocks the serially-dispatched RPC loop on a
+// tsgo process. Status values: "ready" (diags valid), "pending" (check
+// in flight, poll again), "not-ts" (not a checkable rule file: a .d.ts,
+// a disabled file), "unsupported" (engine runs without tsgo).
+func (engine *ESEngine) CheckTsFile(physicalPath string) ([]TSDiag, string) {
+	// tsc is nil only with -tsgo=""; a configured-but-missing binary is
+	// also "unsupported" until it appears (Available is a stateless
+	// LookPath - safe from the RPC goroutine)
+	if engine.tsc == nil || !engine.tsc.Available() || !engine.tsc.CheckSupported() {
+		return nil, TS_CHECK_UNSUPPORTED
+	}
+	checkable := (strings.HasSuffix(physicalPath, ".ts") || strings.HasSuffix(physicalPath, ".js")) &&
+		!strings.HasSuffix(physicalPath, ".d.ts")
+	if !checkable {
+		return nil, TS_CHECK_NOT_TS
+	}
+	engine.tsCheckMu.Lock()
+	entry, found := engine.tsCheckResults[physicalPath]
+	engine.tsCheckMu.Unlock()
+	if !found {
+		// loaded while tsgo was absent (a .js file runs without it), so no
+		// check was ever scheduled: schedule one now that tsgo is here, and
+		// answer pending - the next poll gets the verdict. Engine loop only
+		// (tsCheckGen); MaybeCallSync waits for the engine loop like every
+		// other editor operation but never blocks on a stopped engine.
+		engine.MaybeCallSync(func() {
+			engine.sourcesMtx.Lock()
+			_, loaded := engine.sources[physicalPath]
+			engine.sourcesMtx.Unlock()
+			if !loaded {
+				return
+			}
+			engine.tsCheckMu.Lock()
+			_, scheduled := engine.tsCheckResults[physicalPath]
+			engine.tsCheckMu.Unlock()
+			if !scheduled {
+				engine.scheduleTsCheck(physicalPath)
+			}
+		})
+		return nil, TS_CHECK_PENDING
+	}
+	if !entry.ready {
+		return nil, TS_CHECK_PENDING
+	}
+	return entry.diags, TS_CHECK_READY
+}
+
+// TsTypesContent returns the installed wb-rules.d.ts declarations.
+func (engine *ESEngine) TsTypesContent() (string, error) {
+	if engine.tsTypesPath == "" {
+		return "", fmt.Errorf("no type declarations configured")
+	}
+	content, err := os.ReadFile(engine.tsTypesPath)
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
 }
