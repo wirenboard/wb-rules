@@ -1,3 +1,77 @@
+wb-rules (2.47.0~quickjs1) unstable; urgency=medium
+
+  * Replace Duktape 1.0.2 with QuickJS (Bellard 2026-06-04, pinned as git
+    submodule third_party/quickjs, compiled in-package via
+    internal/quickjsduk). Modern JavaScript in rules: full ES2025 and
+    most of ES2026 (classes, let/const, arrow functions, destructuring,
+    template strings, Proxy, async/await and promises). Existing ES5 rules
+    run unchanged; the full upstream test suite passes. Architecture notes
+    and decision records in docs/arc42.
+  * Promise-native async API: spawn() and runShellCommand() return a
+    promise (the callback form still works); new sleep(ms), changed(control,
+    timeoutMs) and nextMqtt(topic, timeoutMs). Top-level await is allowed
+    in rule files. defineRule, timers, spawn and PersistentStorage keep
+    working after an await and stay attributed to their file.
+  * Async rule errors (exceptions after await, unhandled rejections) are
+    reported to the rule log ("async rule error: ...") instead of dying on
+    stderr.
+  * Runaway containment: -js-timeout (default 10s) interrupts a rule stuck
+    in a synchronous loop (while(true), a forgotten await) with a clear
+    message instead of freezing the engine; -js-memory-limit (default 512
+    MiB) turns an allocation bomb into a catchable out-of-memory error in
+    the offending script instead of killing the process; a file that
+    crashes the process while loading is quarantined after 3 crashes in a
+    row (until it is edited) so the editor stays reachable; the engine no
+    longer panics when a callback waits on the engine loop for too long.
+  * A rejected control write (wrong-typed value, or a control that does not
+    exist) is reported to the rule debug console with the rule's file:line
+    ("control x/y: write ignored (...) at /etc/wb-rules/foo.js:14"); it is
+    still ignored and never throws, and no longer updates the cached value.
+  * Engine hardening from the internal rules corpus: shutdown races with
+    in-flight timer/cron/shell callbacks; trackMqtt as a script's first
+    action; strict-mode writes to dev/PersistentStorage; exports/module
+    in plain rule files; readable missing-module errors; spurious "stack
+    overflow" from cgo thread migration (all covered by regression tests).
+  * The event buffer no longer panics on a driver event that arrives after
+    the engine stopped; cron is stopped with the engine.
+  * Reloading a rule file frees its JS realm: the unloaded file's callback
+    entries are swept from the engine-wide registry, where previously every
+    reload leaked the whole realm until restart.
+  * Writing a non-serializable value (an object with a reference cycle) to
+    PersistentStorage throws to the writing rule instead of being logged
+    through an unrelated channel.
+  * An exception thrown by a getter or Proxy trap while an object argument
+    is converted for a builtin (defineVirtualDevice, addControl, setValue,
+    setTitle, setEnumTitles, readConfig options) propagates to the calling
+    script - matching Duktape - instead of silently producing a partial
+    object; the rethrown error is a plain Error carrying the original
+    message. Single-property reads on script objects stay lenient.
+  * A virtual device defined after a top-level await stays tied to its
+    file: it is removed when the file is reloaded or deleted, like one
+    defined before the await.
+  * Engine shutdown is complete and safe to restart from: stopping the
+    engine now runs the removal hooks of still-pending timers and reclaims
+    shell-command callbacks that finish after the stop (previously both
+    stayed behind for the life of the process), a restarted engine no
+    longer registers a duplicate driver handler (which doubled every rule
+    trigger), editor and eval requests racing a shutdown fail fast with an
+    error instead of hanging, and the daemon destroys the whole JS runtime
+    on exit.
+  * Documented behaviour differences: a multi-line defineRule is reported
+    at its first line (was the last), StorableObject fields are not
+    enumerable, emoji in the log are UTF-8, await is a reserved word in
+    rule files (a file using await as a variable name fails to load with a
+    syntax error and needs the variable renamed), the file wrapper provides
+    an exports parameter (a file-level exports variable is now local to the
+    file), Duktape.enc/dec approximate the jx and jc formats with plain
+    JSON, Duktape.dec accepts malformed base64 leniently instead of
+    throwing, and Duktape.dec returns a string (decoded as UTF-8) rather
+    than a Duktape buffer - for text payloads this matches how a Duktape
+    buffer behaved in string contexts, but byte indexing of the result and
+    byte-exact round-trips of non-UTF-8 binary data are not preserved.
+
+ -- Evgeny Boger <boger@wirenboard.com>  Wed, 19 Aug 2026 18:00:00 +0400
+
 wb-rules (2.46.5) stable; urgency=medium
 
   * Notify.sendSMS: fix a vulnerability that let the message text or the
