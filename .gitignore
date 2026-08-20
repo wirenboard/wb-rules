@@ -47,3 +47,10 @@ debian/.debhelper
 ### direnv ###
 .direnv
 .envrc
+debian/wb-rules/
+debian/files
+debian/*.debhelper
+debian/*.substvars
+debian/debhelper-build-stamp
+wbrules/wbgo.so
+wb-rules
