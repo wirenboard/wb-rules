@@ -8,6 +8,7 @@ Rule engine for Wiren Board, version 2.0
 
 **Содержание**
 
+- [Движок QuickJS](#движок-quickjs)
 - [Правила](#правила)
 - [Определение правил](#определение-правил)
 - [Типы правил](#типы-правил)
@@ -20,6 +21,7 @@ Rule engine for Wiren Board, version 2.0
 - [Доступ к топикам meta](#доступ-к-топикам-meta)
 - [API создания/управления устройств](#api-созданияуправления-устройств)
 - [Встроенные функции и переменные](#встроенные-функции-и-переменные)
+- [Асинхронные функции и промисы](#асинхронные-функции-и-промисы)
 - [Модули](#модули)
 - [Сервис оповещений](#сервис-оповещений)
 - [Сервис алармов](#сервис-алармов)
@@ -31,27 +33,63 @@ Rule engine for Wiren Board, version 2.0
 - [Ограничения](#ограничения)
 
 
+## Движок QuickJS
+
+Начиная с версии 2.47 сценарии выполняются движком
+[QuickJS](https://bellard.org/quickjs/) (вместо Duktape 1.0.2): в правилах
+доступен современный JavaScript — полный ES2025 и почти весь ES2026
+(`Map.prototype.getOrInsert`, `Iterator.concat`, `JSON.rawJSON`,
+`Uint8Array.fromBase64`, `Math.sumPrecise`, `Error.isError`; из ES2026 не
+поддерживается только `Array.fromAsync`, а `using`/`DisposableStack` и Temporal —
+это уже ES2027)
+(классы с приватными полями, `async`/`await` и промисы, `Object.groupBy`,
+`toSorted`/`findLast`, стрелочные функции в `defineRule` и т.д.). Готовый
+пример: [sample-es2026.js](./sample-es2026.js). Движок закреплён как
+git-подмодуль `third_party/quickjs`; детали портирования — в
+[docs/arc42](./docs/arc42/) (архитектурная документация, ADR-001…003).
+
+Асинхронный код полностью поддерживается: `defineRule`, `setTimeout` и
+другие вызовы работают и после `await` — каждая область сценария получает
+собственные привязки встроенных функций, поэтому поздние регистрации
+сохраняют привязку к своему файлу (детали — в [docs/arc42](./docs/arc42/), ADR-004…007).
+`spawn()`/`runShellCommand()` возвращают Promise, доступны `sleep()`,
+`changed()` и `nextMqtt()`
+(см. [Асинхронные функции](#асинхронные-функции-и-промисы));
+пример: [sample-async.js](./sample-async.js).
+
 ## Правила
 
 Правила — специальные скрипты, предназначенные для программирования контроллеров Wiren Board. Правила представляют собой функции с определенным набором параметров.
 
-Правила пишутся на языке ECMAScript 5 (диалектом которого является Javascript) и загружаются в контроллер в папку `/etc/wb-rules`.
+Правила пишутся на JavaScript — современном, без ограничений старых
+версий движка: `const`/`let`, стрелочные функции, классы, деструктуризация,
+шаблонные строки, `async`/`await` и промисы (см. [Движок QuickJS](#движок-quickjs)) —
+и загружаются в контроллер в папку `/etc/wb-rules`.
 
-Если вы не писали на этом языке, то можете изучить синтаксис и принципы программирования с помощью учебника по JavaScript: https://learn.javascript.ru; но при этом учитывайте отличия и возможности языка ECMAScript 5: https://www.w3schools.com/js/js_es5.asp.
+Если вы не писали на этом языке, то можете изучить синтаксис и принципы
+программирования с помощью учебника по JavaScript: https://learn.javascript.ru.
+Отличие от браузера: нет `document`/`window`, вместо `alert()` используйте `log()`.
 
-* вместо `alert()` используйте `log()`;
-* `let` не поддерживается, попробуйте использовать `var`;
-* не поддерживаются функции-стрелки — это когда пишут `var sum = (a, b) => a + b;` вместо `var sum = function(a, b) {return a + b;};`, второй вариант будет работать.
+*Примечание о старых примерах.* Часть примеров в этом документе и многие
+существующие сценарии написаны в стиле ES5 (`var`, `function () {}`) — до версии
+2.47 это был единственный вариант. Такой код работает без изменений; в новых
+сценариях удобнее `const`/`let`, стрелочные функции и `async`/`await`.
+
+*Совместимость.* Единственное известное исключение: `await` теперь
+зарезервированное слово в файлах правил (файл оборачивается в async-функцию
+ради top-level `await`), поэтому сценарий, использующий `await` как имя
+переменной или функции, перестанет загружаться с синтаксической ошибкой —
+переменную нужно переименовать. Кроме того, обёртка файла передаёт параметр
+`exports` (для файлов-модулей), так что файловая переменная с именем
+`exports` теперь локальна для файла, а не глобальна.
 
 ### Определение правил
 
 Правила определяются при помощи функции defineRule:
 ```js
-defineRule(name,{
-  Тип_правила: function() {
-    ...
-  },
-  then: function() {
+defineRule(name, {
+  Тип_правила: ...,
+  then: () => {
     ...
   }
 });
@@ -60,9 +98,9 @@ defineRule(name,{
 Параметр **name** — произвольное имя правила (не обязательный); **Тип_правила** — указывается один из существующих типов правил (читайте ниже), определяет условия для срабатывания правила; **then** — определяет функцию, которая выполняется при срабатывании правила.
 Например:
 ```js
-defineRule("Examle_rule", {
+defineRule("example_rule", {
   whenChanged: "mydev/test",
-  then: function() {
+  then: () => {
     log("mydev/test changed");
   }
 });
@@ -85,7 +123,7 @@ defineRule("Examle_rule", {
 // Правило выводит в лог состояние переключателей Devices → Discrete I/O → A1_OUT и Devices → Discrete I/O → A2_OUT
 defineRule("test_whenChanged", {
   whenChanged: ["wb-gpio/A1_OUT", "wb-gpio/A2_OUT"], // топики, при изменении которых сработает правило
-  then: function (newValue, devName, cellName) {
+  then: (newValue, devName, cellName) => {
     log("devName:{}, cellName:{}, newValue:{}", devName, cellName, newValue); // вывод сообщения в лог
   }
 });
@@ -96,7 +134,7 @@ defineRule("test_whenChanged", {
 // Правило выводит в лог состояние переключателя Devices → Discrete I/O → A1_OUT
 defineRule("test_whenChanged", {
   whenChanged: "wb-gpio/A1_OUT", // топик, при изменении которого сработает правило
-  then: function (newValue, devName, cellName) {
+  then: (newValue, devName, cellName) => {
     log("devName:{}, cellName:{}, newValue:{}", devName, cellName, newValue); // вывод сообщения в лог
   }
 });
@@ -122,10 +160,8 @@ defineRule("test_whenChanged", {
 ```js
 // Правило сработает, когда переключатель Devices → Discrete I/O → A1_OUT будет включён и выключит его
 defineRule({
-  asSoonAs: function() {
-    return dev["wb-gpio/A1_OUT"]; // правило сработает, когда значение параметра изменится на истинное
-  },
-  then: function (newValue, devName, cellName) {
+  asSoonAs: () => dev["wb-gpio/A1_OUT"], // правило сработает, когда значение параметра изменится на истинное
+  then: (newValue, devName, cellName) => {
     log("Переключатель {} включён! Выключаем…", cellName);
     dev["wb-gpio/A1_OUT"] = !newValue;
     log("Выключили.");
@@ -137,7 +173,7 @@ defineRule({
 ```js
 defineRule({
   whenChanged: "wb-gpio/A1_OUT",
-  then: function (newValue, devName, cellName) {
+  then: (newValue, devName, cellName) => {
     if (newValue) {
       log("Переключатель {} включён! Выключаем…", cellName);
       dev["wb-gpio/A1_OUT"] = !newValue;
@@ -154,10 +190,8 @@ defineRule({
 ```js
 // Правило сработает, когда переключатель Devices → Discrete I/O → A1_OUT будет включён
 defineRule({
-  when: function() {
-    return dev["wb-gpio/A1_OUT"];
-  },
-  then: function (newValue, devName, cellName) {
+  when: () => dev["wb-gpio/A1_OUT"],
+  then: (newValue, devName, cellName) => {
     log("devName:{}, cellName:{}, newValue:{}", devName, cellName, newValue);
   }
 });
@@ -171,7 +205,7 @@ defineRule({
 // Правило сработает, когда переключатель Devices → Discrete I/O → A1_OUT будет включён
 defineRule({
   whenChanged: "wb-gpio/A1_OUT",
-  then: function (newValue, devName, cellName) {
+  then: (newValue, devName, cellName) => {
     if (newValue) {
       log("devName:{}, cellName:{}, newValue:{}", devName, cellName, newValue);
     }
@@ -183,7 +217,7 @@ defineRule({
 ```js
 defineRule("crontest_hourly", {
   when: cron("@hourly"),
-  then: function () {
+  then: () => {
     log("@hourly rule fired");
   }
 });
@@ -329,6 +363,41 @@ wb-rules (не использовать сохранённое значение 
 По умолчанию `readonly == false` для `switch`, `pushbutton`, `range` и `rgb` типов контролов, для всех остальных `readonly == true`.
 
 ## Таймеры
+
+В асинхронном коде вместо `setTimeout()` обычно удобнее `await sleep(ms)` —
+пауза без коллбэка и без хранения идентификатора таймера (см.
+[Асинхронные функции](#асинхронные-функции-и-промисы)):
+
+```js
+defineRule({
+  whenChanged: 'test_buzzer/enabled',
+  then: async () => {
+    dev['buzzer/enabled'] = true;
+    await sleep(2000);
+    dev['buzzer/enabled'] = false;
+  },
+});
+```
+
+Второй частый сценарий для таймера — «ждать событие, но не дольше N
+секунд». Вместо пары «таймер + подписка» у ожидающих промисов
+`changed()` и `nextMqtt()` есть аргумент таймаута: если событие не
+произошло за отведённое время, промис отклоняется, и ветка `catch` —
+это и есть «таймер сработал» (так устроен пример «детектор движения» в
+[Асинхронных функциях](#асинхронные-функции-и-промисы)):
+
+```js
+try {
+  await changed('wb-gpio/D2_IN', 30 * 1000); // ждём движение не дольше 30 с
+} catch (e) {
+  dev['wb-gpio/Relay_1'] = false;            // 30 с тишины — выключаем свет
+}
+```
+
+`setTimeout()`/`setInterval()` остаются для кода, которому нужен именно
+отменяемый таймер (`clearTimeout()`/`clearInterval()`) или совместимость
+со старыми сценариями.
+
 ### Однократные
 `setTimeout(callback, milliseconds)` запускает однократный таймер,
 вызывающий при срабатывании функцию, переданную в качестве аргумента
@@ -349,7 +418,7 @@ title: "Test Buzzer",
 
 defineRule({
   whenChanged: "test_buzzer/enabled",
-    then: function (newValue, devName, cellName) {
+    then: (newValue, devName, cellName) => {
     dev["buzzer/enabled"] = true;
     setTimeout(function () {
       dev["buzzer/enabled"] = false;
@@ -420,7 +489,7 @@ var test_interval = null;
 
 defineRule({
   whenChanged: "test_buzzer/enabled",
-  then: function (newValue, devName, cellName) {
+  then: (newValue, devName, cellName) => {
     var n = 0;
     if (dev["test_buzzer/enabled"]) {
       test_interval = setInterval(function () {
@@ -683,7 +752,7 @@ defineRule("echo", {
   // и /devices/wb-w1/controls/00042d40ffff/meta/type
   // были среди retained-значений
   whenChanged: "wb-w1/00042d40ffff",
-  then: function (newValue, devName, cellName) {
+  then: (newValue, devName, cellName) => {
     // Запуск shell-команды
     runShellCommand("echo " + devName + "/" + cellName + "=" + newValue, {
       captureOutput: true,
@@ -714,7 +783,7 @@ defineRule("funcValueChange2", {
       return dev["somedev/cellforfunc2"] > 3;
     }
   ],
-  then: function (newValue, devName, cellName) {
+  then: (newValue, devName, cellName) => {
     // при использовании whenChanged в then-функцию
     // передаётся newValue - значение изменившегося
     // параметра или функции, упомянутой в whenChanged.
@@ -752,7 +821,7 @@ defineRule("onRelayLost", {
 // отправим смс как при потере так и восстановлении связи с реле
 defineRule("onChange", {
   whenChanged: "wb-mr3_48/K1#error",
-  then: function (newValue, devName, cellName) {
+  then: (newValue, devName, cellName) => {
     if(newValue !== "") {
       Notify.sendSMS("...", "relay is broken");
     } else {
@@ -981,6 +1050,10 @@ publish("/abc/def/ghi", "0", 2, true);
 `runShellCommand(cmd, options)` вызывает `/bin/sh` с указанной
 командой следующим образом: `spawn("/bin/sh", ["-c", cmd], options)`.
 
+Обе функции возвращают Promise, что позволяет использовать их с
+`await` (см. раздел
+[Асинхронные функции](#асинхронные-функции-и-промисы)).
+
 ```js
 defineRule({
   asSoonAs: function() {
@@ -998,6 +1071,153 @@ defineRule({
       }
     });
   }
+});
+```
+
+## Асинхронные функции и промисы
+
+Правила могут быть асинхронными (`then: async () => {...}`):
+промисы и `await` работают как в обычном событийном рантайме, а
+необработанные ошибки асинхронного кода попадают в лог правил в виде
+`async rule error: ...` (с трассировкой стека).
+
+`spawn()` и `runShellCommand()` возвращают Promise, который выполняется
+при завершении процесса объектом
+`{exitCode, capturedOutput, capturedErrorOutput}` (поля `captured*`
+заполняются по правилам одноимённых опций). Ненулевой код возврата — не
+ошибка: промис выполняется успешно, код доступен в `exitCode`. Промис
+отклоняется только если процесс не удалось запустить (нет такого файла
+и т.п.). Прежний способ с `exitCallback` полностью сохранён.
+
+```js
+defineRule('report_uname', {
+  whenChanged: 'ui/report',
+  then: async () => {
+    const r = await runShellCommand('uname -a', { captureOutput: true });
+    if (r.exitCode === 0) {
+      log(r.capturedOutput);
+    }
+  },
+});
+```
+
+Замечание: если промис и `exitCallback` не используются, ненулевой код
+возврата отмечается предупреждением в журнале правил (раньше — только в
+системном журнале); при обработке результата через `await` подавить его
+можно, передав пустой `exitCallback`.
+
+`sleep(ms)` возвращает Promise, выполняющийся через `ms` миллисекунд —
+асинхронный аналог `setTimeout()`:
+
+```js
+await sleep(1000); // пауза в 1 секунду, движок не блокируется
+```
+
+`await` работает прямо на верхнем уровне файла (top-level await),
+поэтому периодическое правило — это просто цикл: без `defineRule`,
+`setInterval` и жонглирования таймерами:
+
+```js
+// полив: каждые 10 минут включать насос на 30 секунд
+for (;;) {
+  await sleep(10 * 60 * 1000);
+  dev['watering/pump'] = true;
+  await sleep(30 * 1000);
+  dev['watering/pump'] = false;
+}
+```
+
+Такой цикл работает, пока файл не выгрузят или не изменят; код после
+бесконечного цикла, разумеется, не выполнится.
+
+`changed(ctrl[, timeoutMs])` возвращает Promise со следующим изменением
+значения контрола — семантика та же, что у `whenChanged` в правилах
+(включая преобразование типов):
+
+```js
+defineRule('follow', {
+  whenChanged: 'ui/follow',
+  then: async () => {
+    const val = await changed('relay/channel1');
+    log('канал переключился в {}', val);
+  },
+});
+```
+
+Первый вызов создаёт одно постоянное анонимное правило на контрол
+(один на файл сценария); при `timeoutMs` без изменения промис
+отклоняется.
+
+Насколько это упрощает правила, видно на классическом примере из
+документации — «детектор движения с таймаутом» (движение появилось —
+свет включился; движение пропало на 30 секунд — свет выключился).
+Вместо жонглирования `setTimeout`/`clearTimeout` и глобальной
+переменной с id таймера — один линейный цикл без какого-либо состояния:
+
+```js
+const MOTION = 'wb-gpio/D2_IN';
+const LIGHT = 'wb-gpio/Relay_1';
+const OFF_DELAY_MS = 30 * 1000;
+
+for (;;) {
+  while (!(await changed(MOTION))) {}      // ждём появления движения
+  dev[LIGHT] = true;
+  try {
+    for (;;) {
+      while (await changed(MOTION)) {}     // ждём, пока движение пропадёт
+      await changed(MOTION, OFF_DELAY_MS); // вернулось за 30 с? свет остаётся
+    }
+  } catch (e) {
+    dev[LIGHT] = false;                    // 30 с без движения — выключаем
+  }
+}
+```
+
+Один вечный цикл вместо правила также снимает классическую проблему
+асинхронных обработчиков `whenChanged` — параллельные экземпляры одного
+обработчика: цикл всегда один.
+
+Бесконечный цикл на верхнем уровне может быть только один. Несколько
+независимых циклов в одном файле запускают, оборачивая каждый в
+async-функцию, вызываемую на месте (`(async () => {...})()`): каждый
+такой блок — отдельный работающий цикл, а его переменные живут в
+замыкании и не мешают соседям:
+
+```js
+(async () => {
+  for (;;) {
+    dev['wb-gpio/Relay_1'] = !dev['wb-gpio/Relay_1'];
+    await sleep(1000);
+  }
+})();
+
+(async () => {
+  let n = 0; // состояние цикла — в замыкании
+  for (;;) {
+    await changed('wb-gpio/D2_IN');
+    dev['counters/motion'] = ++n;
+  }
+})();
+```
+
+`nextMqtt(topic[, timeoutMs])` возвращает Promise со следующим «живым»
+сообщением в указанном топике (retained-сообщения из кэша брокера не
+учитываются). Результат — объект `{topic, value, retained, qos}`. Если
+задан `timeoutMs` и сообщение не пришло за отведённое время, промис
+отклоняется. Первый вызов создаёт подписку на топик; она сохраняется до
+выгрузки файла сценария.
+
+```js
+defineRule('wait_for_button', {
+  whenChanged: 'ui/arm',
+  then: async () => {
+    try {
+      const msg = await nextMqtt('/devices/buttons/controls/panic', 10000);
+      log('нажатие: {} = {}', msg.topic, msg.value);
+    } catch (e) {
+      log('кнопку так и не нажали');
+    }
+  },
 });
 ```
 
@@ -1731,7 +1951,40 @@ make test
 # Эквивалентно:
 # cp amd64.wbgo.so wbrules/wbgo.so
 # go test -v -cover ./wbrules
+# (cd internal/quickjsduk && go test -v -cover ./...)   # тесты шима движка
 ```
+
+#### Внутренний корпус сценариев (необязательно)
+
+Тест `TestCorpus` прогоняет через движок внутренний корпус сценариев Wiren
+Board (закрытый репозиторий `wirenboard/wb-rules-corpus`) и сравнивает
+результат загрузки каждого файла с зафиксированным снимком
+`wbrules/testdata/corpus-verdicts.txt` (снимок обезличен: ключ — хеш
+содержимого файла, вердикт — класс ошибки и хеш сообщения). Скрипты корпуса —
+недоверенный код: `spawn()`/`runShellCommand()` в нём подменены заглушкой, так
+что команды из скриптов на машине разработчика не выполняются.
+
+Корпус подключён как git-подмодуль `wbrules/testdata/corpus` с `update = none`,
+поэтому `git clone --recursive` и `git submodule update --init --recursive` его
+**пропускают** — внешним контрибьюторам ничего делать не нужно: без корпуса
+тест помечается как SKIP (встроенный синтетический пример `TestCorpusExample`
+выполняется всегда). CI-задача, которая должна прогонять корпус, подключает
+подмодуль явно тем же `make corpus` перед тестами и запускает тесты с
+`WB_RULES_CORPUS_REQUIRED=1`, чтобы отсутствие корпуса было ошибкой, а не SKIP.
+
+Разработчикам Wiren Board (с доступом к репозиторию корпуса):
+
+```bash
+make corpus   # git submodule update --init --checkout wbrules/testdata/corpus
+make test     # TestCorpus теперь выполняется (~5 с)
+```
+
+Также можно указать каталог явно: `WB_RULES_CORPUS=/path/to/scripts go test ./wbrules -run TestCorpus`.
+
+Если поведение движка изменилось намеренно (или подмодуль переведён на новый
+коммит корпуса), снимок обновляется командой
+`WB_RULES_CORPUS_UPDATE=1 go test ./wbrules -run TestCorpus` — diff снимка
+нужно просмотреть и закоммитить вместе с изменением.
 
 ### Сборка deb-пакета
 

@@ -1,0 +1,14 @@
+---
+# Codacy static-analysis scoping.
+exclude_paths:
+  # upstream engine, unmodified (git submodule)
+  - "third_party/**"
+  # test fixtures, including intentionally-broken corpus examples
+  - "wbrules/testdata/**"
+  # rule files fed to the engine by the Go test suites: many of them are
+  # deliberately wrong (bad types, sloppy mode, octal literals, missing
+  # modules) because the test asserts the diagnostic they produce
+  - "wbrules/testrules_*"
+  # the engine runtime: deliberately ES5-idiomatic, built around dictionary
+  # tables; TS-oriented style and injection patterns are pure noise there
+  - scripts/lib.js
