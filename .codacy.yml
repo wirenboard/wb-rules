@@ -12,3 +12,10 @@ exclude_paths:
   # the engine runtime: deliberately ES5-idiomatic, built around dictionary
   # tables; TS-oriented style and injection patterns are pure noise there
   - scripts/lib.js
+  # ambient TypeScript declarations: ESLint base rules misfire on d.ts
+  # idioms (declared-only parameters, any by contract, the & {} widening
+  # escape), none of which are executable code
+  - "types/**"
+  # Go test code: subprocess warnings here point at the fake tsgo
+  # compilers the tests deliberately spawn from temp dirs
+  - "wbrules/*_test.go"

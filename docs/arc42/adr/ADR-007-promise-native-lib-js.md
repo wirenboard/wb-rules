@@ -53,7 +53,7 @@
   дополнительная подписка в DepTracker, не отражаемая в списке именованных правил файла.
 - Регресс-тест `TestTimedOutWaitersReclaimed` event-gated, но остаётся чувствителен к нагруженной
   VM.
-- Типы этих API входят в типизированный контракт API движка (ADR-013, PR #224).
+- Типы этих API — часть контракта `types/wb-rules.d.ts` ([ADR-013](ADR-013-type-system-wb-rules-dts.md)).
 
 ### Риски и технический долг
 
@@ -64,9 +64,9 @@
 
 ## Ссылки
 
-- [ADR-004](ADR-004-one-runtime-realm-per-file.md), [ADR-005](ADR-005-microtask-pump-rejection-tracker.md), ADR-013, ADR-016 (диагностика «forgot await» в редакторе).
+- [ADR-004](ADR-004-one-runtime-realm-per-file.md), [ADR-005](ADR-005-microtask-pump-rejection-tracker.md), [ADR-013](ADR-013-type-system-wb-rules-dts.md), [ADR-016](ADR-016-custom-forgot-await-diagnostics-not-eslint.md) (диагностика «forgot await» в редакторе).
 - `scripts/lib.js` (`sleep`, `nextMqtt`, `changed`, `__wbBindRealmAPI`),
   `wbrules/esengine.go` (`esWbSpawn`), `wbrules/spawn.go`, `wbrules/rule_async_api_test.go`,
   `wbrules/rule_async_leak_test.go`.
 - README (раздел «Асинхронные функции и промисы»), `sample-async.js`.
-- PR wirenboard/wb-rules#223 (changelog `2.47.0~quickjs1`).
+- PR wirenboard/wb-rules#223 (changelog `2.47.0~quickjs1`; итоговую версию `2.47.0~quickjs2` даёт PR #224).

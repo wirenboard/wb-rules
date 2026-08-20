@@ -20,7 +20,7 @@ homeui — там, где автор правила ищет причину, —
   → топик `/wbrules/log/error` (консоль отладки homeui), **не бросает** исключение.
 - Кэш значения не «отравляется»: `updateValueHandler` срабатывает только при `err == nil`.
 - Call-site (`file:line`) вычисляется лениво из JS-стека; редактор homeui показывает такие
-  строки как lint-диагностики у строки (ADR-016).
+  строки как lint-диагностики у строки ([ADR-016](ADR-016-custom-forgot-await-diagnostics-not-eslint.md)).
 - Изменение сделано отдельным PR в master (2.46.x, Duktape), а не только в ветке QuickJS — баг не
   зависит от движка.
 
@@ -42,12 +42,12 @@ homeui — там, где автор правила ищет причину, —
 Минусы и риски:
 - Ошибка не останавливает правило; код после неверной записи выполняется с ложным
   предположением об успехе.
-- Статическая защита — через реестр типов контролов в TS (ADR-014): `dev["buzzer/enabled"] = 123`
+- Статическая защита — через реестр типов контролов в TS ([ADR-014](ADR-014-live-controls-registry-wbcontrols.md)): `dev["buzzer/enabled"] = 123`
   ловится чекером до исполнения.
 
 ## Ссылки
 
-- ADR-014 (живой реестр `WbControls`), ADR-016 (runtime-ошибки как диагностики редактора).
+- [ADR-014](ADR-014-live-controls-registry-wbcontrols.md) (живой реестр `WbControls`), [ADR-016](ADR-016-custom-forgot-await-diagnostics-not-eslint.md) (runtime-ошибки как диагностики редактора).
 - `wbrules/engine.go` (`ControlProxy.SetValueAt`, `updateValueHandler`, `Log`),
   `wbrules/rule_setvalue_type_test.go`, `wbrules/rule_setvalue_visible_test.go`.
 - PR wirenboard/wb-rules#225; homeui#1202.

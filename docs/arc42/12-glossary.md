@@ -1,6 +1,6 @@
 # 12. Глоссарий
 
-Термины в том значении, в котором они используются в коде wb-rules и этой
+Термины в том значении, в котором они используются в коде wb-rules, homeui и этой
 документации. Сгруппированы по областям; внутри группы — по алфавиту (латиница, затем
 кириллица).
 
@@ -28,7 +28,7 @@
 |---|---|
 | **Контрол (control, cell)** | Значение `/devices/<dev>/controls/<ctrl>` с метаданными (`/meta/type`, `units`, …); `ControlSpec{DeviceId, ControlId}`; «cell» — старое имя в коде (`_wbCellObject`). |
 | **Устройство / vdev (виртуальное устройство)** | Устройство `/devices/<id>`; vdev создаётся правилами через `defineVirtualDevice`, принадлежит драйверу wb-rules (`wbgo.so`), значения сохраняются в `wbrules-vdev.db`. Остальные — external. |
-| **`dev`** | Proxy-объект доступа к контролам: `dev["d/c"]`, `dev.d.c`, `dev["d/c#meta"]`; чтение идёт в Go-кэш драйвера и регистрирует зависимость правила; запись — `UpdateValue` (vdev) или `/on` (external). |
+| **`dev`** | Proxy-объект доступа к контролам: `dev["d/c"]`, `dev.d.c`, `dev["d/c#meta"]`; чтение идёт в Go-кэш драйвера и регистрирует зависимость правила; запись — `UpdateValue` (vdev) или `/on` (external). Типизирован mapped type по реестру `WbControls`. |
 | **DepTracker** | Механизм `RuleEngine`: во время проверки условия записывает, какие контролы прочитало правило (`StartTrackingDeps` → `StoreRuleDeps`), и строит `controlToRulesListMap`, чтобы на событие пересчитывать только зависимые правила. |
 | **Правило (`defineRule`)** | Именованная или анонимная единица реакции: условие (`whenChanged`, `when`, `asSoonAs`, `_cron`) + `then(newValue, device, control)`; возвращает branded `RuleId`; привязано к файлу (`ScopedCleanup`) и realm'у. |
 | **`whenChanged` / `when` / `asSoonAs`** | Виды условий: изменение контрола (или значения функции); level-triggered (пока истинно — при каждом пересчёте); edge-triggered (один раз при переходе в истину). |
@@ -44,7 +44,23 @@
 | **ScopedCleanup / LocFileEntry** | Per-file список действий отката (правила, vdev, таймеры, MQTT-трекеры) и per-file запись о расположении правил/устройств/таймеров, ошибке загрузки и флаге enabled (для `Editor.List`). |
 | **ContentTracker** | md5-дедупликация содержимого файла при перезагрузке (из `wbgong`); `Untrack` — принудить повторную загрузку того же содержимого. |
 
-## 12.3. Инфраструктура, тестирование, процесс
+## 12.3. TypeScript и редактор
+
+| Термин | Значение |
+|---|---|
+| **tsgo** | Бинарь Microsoft typescript-go (7.1-dev), пакет `wb-tsgo`, `/usr/bin/tsgo`; используется как внешний процесс: `--api --async` (транспиляция) и `--noEmit` (проверка). |
+| **Транспиляция vs проверка** | Транспиляция — перевод `.ts` в JS без типов (`transpileModule`, ~1 мс, нужна для запуска); проверка — полный type-check программы с `wb-rules.d.ts` и реестром (≈0.3 с/файл, фоном, advisory). «Run first, check later». |
+| **Source map / `lineTranslator`** | Таблица строк «сгенерированный JS → `.ts`» (V3 VLQ), по которой трейсбеки и ошибки загрузки указывают строки исходного `.ts`. |
+| **`checkJs`** | Режим проверки `.js` тем же tsgo (`--allowJs --checkJs`); диагностики для `.js` — warning, sloppy-коды 2362/2363/2410/2703 отброшены; `// @ts-nocheck` отключает. |
+| **`wb-rules.d.ts`** | Файл типов API (`types/wb-rules.d.ts`, установлен в `/usr/share/wb-rules/types/`), отдаётся редактору через `Editor.GetTypes`; vendored-копия в homeui — fallback. |
+| **Реестр `WbControls`** | Генерируемый `interface WbControls {"dev/ctrl": "type"}`, сливаемый (declaration merging) с пустым интерфейсом из d.ts: движок — из таблицы драйвера (`controlsRegistryDts`, temp `/tmp/wb-controls-*.d.ts`), homeui — из `devicesStore.cells`. Типизирует `dev[...]`, `getControl`, `changed`. |
+| **Языковой сервис (LS) в браузере** | `typescript` + `@typescript/vfs` + `@valtown/codemirror-ts` в homeui: автодополнение, hover, локальные диагностики для `.ts` и `.js`. |
+| **Squiggle** | Подчёркивание диагностики в CodeMirror (lint); в редакторе показываются локальные (LS) и контроллерные (`Editor.Check`) диагностики с dedup, плюс lens после строки и панель «N problems». |
+| **«Forgot await» диагностики** | Четыре кастомные AST-проверки (коды 990001–990004): Promise как условие, floating Promise в бесконечном цикле, `await` не-Promise, Promise в `dev[...] =`. |
+| **Editor RPC** | MQTT-RPC сервис `wbrules/Editor`: `List`, `Load`, `Save`, `Remove`, `Rename`, `ChangeState`, `Check`, `GetTypes`; виртуальный путь — относительно `-editdir`. Статусы `Check`: `ready`, `pending`, `not-ts`, `unsupported`. |
+| **Консоль правил** | Вкладка homeui, питаемая `/wbrules/log/+` (уровни, переключатель `Rule debugging`, 500 строк). |
+
+## 12.4. Инфраструктура, тестирование, процесс
 
 | Термин | Значение |
 |---|---|
