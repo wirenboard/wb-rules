@@ -1,5 +1,18 @@
 // rule engine runtime
 
+// builtins installed by the Go side (wbrules/esengine.go) before this file
+// is evaluated
+/* global _wbDefineRule, _wbDevObject, _wbCellObject,
+   _wbStartTimer, _wbStopTimer, _wbCheckCurrentTimer, _wbSpawn,
+   _wbPersistentName, _wbPersistentGet, _wbPersistentSet,
+   __wbGlobalPrototype, __wbModulePrototype, __wbVdevPrototype,
+   __wbVdevCellPrototype, log, trackMqtt */
+// the runtime is built around dictionary tables (timers, aliases, waiters);
+// dynamic keys are the design, not an injection surface
+/* eslint-disable security/detect-object-injection */
+// created here for the Go side (realm construction) and for rule scripts
+/* exported __wbGlobalPrototype, __wbModulePrototype, __wbVdevCellPrototype, sleep */
+
 // this function runs once the context is created
 // for each script
 function __esInitEnv(glob) {
@@ -117,6 +130,7 @@ var _WbRules = {
         } else {
           cellObject(name).setValue({ v: value });
         }
+        return true;
       },
     }));
   },
@@ -126,6 +140,7 @@ var _WbRules = {
     if (slashPosition > 0 && slashPosition < name.length - 1) {
       var target = _WbRules.getDevValue(o, name.slice(0, slashPosition));
       target[name.slice(slashPosition + 1)] = value;
+      return true; // strict-mode callers throw if a set trap returns falsy
     } else throw new Error('setting unsupported proxy value: ' + name);
   },
 
@@ -163,6 +178,14 @@ var _WbRules = {
   },
 
   defineRule: function (arg1, arg2) {
+    var r = _WbRules.prepareRuleDef(arg1, arg2);
+    return r.name === '' ? _wbDefineRule(r.def) : _wbDefineRule(r.name, r.def);
+  },
+
+  // transforms defineRule arguments into the engine-ready definition;
+  // the caller invokes the _wbDefineRule builtin itself so the C call
+  // happens in the caller's realm (see __wbBindRealmAPI)
+  prepareRuleDef: function (arg1, arg2) {
     var name, def;
 
     // anonymous rule handling
@@ -247,11 +270,7 @@ var _WbRules = {
       }
     });
 
-    if (name == '') {
-      return _wbDefineRule(d);
-    } else {
-      return _wbDefineRule(name, d);
-    }
+    return { name: name, def: d };
   },
 
   startTimer: function startTimer(name, ms, periodic) {
@@ -305,6 +324,23 @@ function clearInterval(id) {
 }
 
 function spawn(cmd, args, options) {
+  var settle;
+  var p = new Promise(function (resolve, reject) {
+    settle = function (result, spawnError) {
+      if (spawnError) reject(new Error('spawn ' + cmd + ': ' + spawnError));
+      else resolve(result);
+    };
+  });
+  var a = _WbRules.prepareSpawnArgs(cmd, args, options, settle);
+  _wbSpawn(a[0], a[1], a[2], a[3], a[4]);
+  return p;
+}
+
+// normalizes spawn arguments; the caller invokes the _wbSpawn builtin
+// itself so the C call happens in the caller's realm. settle(result,
+// spawnError) reports the outcome to the caller's promise (created in
+// the calling realm so post-await code keeps its file attribution).
+_WbRules.prepareSpawnArgs = function (cmd, args, options, settle) {
   if (typeof options == 'function')
     options = {
       exitCallback: options,
@@ -332,29 +368,127 @@ function spawn(cmd, args, options) {
 
   if (options.input != null) options.input = '' + options.input;
 
-  _wbSpawn(
-    [cmd].concat(args || []),
-    options.exitCallback
-      ? function (args) {
-          try {
-            options.exitCallback(
-              args.exitStatus,
-              options.captureOutput ? args.capturedOutput : null,
-              args.capturedErrorOutput
-            );
-          } catch (e) {
-            log('error running command callback for ' + cmd + ': ' + (e.stack || e));
-          }
+  var argv = [cmd].concat(args || []);
+  return [
+    argv,
+    function (args) {
+      if (args.spawnError !== undefined) {
+        // the process never started; the legacy exitCallback contract
+        // never fired for exec failures and still does not - the
+        // rejection (or the engine's own error log) carries it
+        if (settle) settle(null, args.spawnError);
+        return;
+      }
+      var result = {
+        exitCode: args.exitStatus,
+        capturedOutput: options.captureOutput ? args.capturedOutput : null,
+        capturedErrorOutput: args.capturedErrorOutput,
+      };
+      if (settle) settle(result, null);
+      if (options.exitCallback) {
+        try {
+          options.exitCallback(result.exitCode, result.capturedOutput, result.capturedErrorOutput);
+        } catch (e) {
+          log('error running command callback for ' + cmd + ': ' + (e.stack || e));
         }
-      : null,
+      } else if (result.exitCode !== 0) {
+        // fire-and-forget callers keep the failure visible in the log
+        // (callers that check exitCode via await can silence this by
+        // passing a no-op exitCallback - documented in README)
+        log.warning('command ' + argv.join(' ') + ' failed with exit status ' + result.exitCode);
+      }
+    },
     !!options.captureOutput,
     !!options.captureErrorOutput,
-    options.input
-  );
-}
+    options.input,
+  ];
+};
 
 function runShellCommand(cmd, options) {
-  spawn('/bin/sh', ['-c', cmd], options);
+  return spawn('/bin/sh', ['-c', cmd], options);
+}
+
+// part of the rule API surface: realms inherit it via the global prototype
+// eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
+function sleep(ms) {
+  return new Promise(function (resolve) {
+    setTimeout(resolve, ms);
+  });
+}
+
+var _mqttNextWaiters = {};
+// part of the rule API surface: realms inherit it via the global prototype
+// eslint-disable-next-line no-unused-vars, @typescript-eslint/no-unused-vars
+function nextMqtt(topic, timeoutMs) {
+  if (!_mqttNextWaiters[topic]) {
+    _mqttNextWaiters[topic] = [];
+    // one persistent subscription per topic feeds every waiter; it lives
+    // until the file is unloaded (bounded by distinct topics, not calls)
+    trackMqtt(topic, function (msg) {
+      if (msg.retained) return; // "next" means a live message, not the broker cache
+      var waiters = _mqttNextWaiters[topic];
+      _mqttNextWaiters[topic] = [];
+      for (var i = 0; i < waiters.length; i++) waiters[i](msg);
+    });
+  }
+  if (timeoutMs == null) {
+    return new Promise(function (resolve) {
+      _mqttNextWaiters[topic].push(resolve);
+    });
+  }
+  return new Promise(function (resolve, reject) {
+    var settle = function (v) {
+      clearTimeout(timer);
+      resolve(v);
+    };
+    var timer = setTimeout(function () {
+      // a timed-out waiter must not pile up in the queue forever
+      var ws = _mqttNextWaiters[topic];
+      var idx = ws.indexOf(settle);
+      if (idx >= 0) ws.splice(idx, 1);
+      reject(new Error('nextMqtt: no message on ' + topic + ' in ' + timeoutMs + ' ms'));
+    }, timeoutMs);
+    _mqttNextWaiters[topic].push(settle);
+  });
+}
+
+var _changeWaiters = {};
+function changed(ctrl, timeoutMs) {
+  if (!_changeWaiters[ctrl]) {
+    _changeWaiters[ctrl] = [];
+    // one persistent anonymous rule per control feeds every waiter -
+    // exact whenChanged semantics (same triggers, same value conversion)
+    defineRule({
+      whenChanged: ctrl,
+      then: function (newValue) {
+        var ws = _changeWaiters[ctrl];
+        _changeWaiters[ctrl] = [];
+        for (var i = 0; i < ws.length; i++) ws[i](newValue);
+      },
+    });
+  }
+  // not Promise.race(p, sleep(...).then(throw)): the losing timeout
+  // would later reject unhandled and land in the log as a phantom
+  // "async rule error"
+  if (timeoutMs == null) {
+    return new Promise(function (resolve) {
+      _changeWaiters[ctrl].push(resolve);
+    });
+  }
+  return new Promise(function (resolve, reject) {
+    var settle = function (v) {
+      clearTimeout(timer);
+      resolve(v);
+    };
+    var timer = setTimeout(function () {
+      // a timed-out waiter must not pile up in the queue forever
+      var ws = _changeWaiters[ctrl];
+      var idx = ws.indexOf(settle);
+      if (idx >= 0) ws.splice(idx, 1);
+      reject(new Error('changed: no change of ' + ctrl + ' in ' + timeoutMs + ' ms'));
+    }, timeoutMs);
+    _changeWaiters[ctrl].push(settle);
+  });
 }
 
 var defineAlias = _WbRules.defineAlias;
@@ -379,11 +513,12 @@ global.StorableObject = function (obj, ps, pskey) {
     return obj;
   }
 
-  // set new prototype for this object
-  var p = {
-    _ps: [],
-    _psself: null,
-  };
+  // set new prototype for this object; the bookkeeping fields are
+  // non-enumerable so a spec-correct for-in (QuickJS walks the proxy's
+  // prototype chain, unlike Duktape's legacy 'enumerate' trap) skips them
+  var p = {};
+  Object.defineProperty(p, '_ps', { value: [], writable: true });
+  Object.defineProperty(p, '_psself', { value: null, writable: true });
   p.__proto__ = obj.__proto__;
 
   obj.__proto__ = p;
@@ -426,6 +561,7 @@ global.StorableObject = function (obj, ps, pskey) {
         // update is written here
         ps.s[ps.k] = o._psself;
       }
+      return true;
     },
     enumerate: function (o) {
       var keys = Object.keys(o);
@@ -443,9 +579,14 @@ global.StorableObject = function (obj, ps, pskey) {
   return p;
 };
 
-global.PersistentStorage = function (name, options) {
+// Builds the storage proxy for an already-expanded storage name (the
+// per-file hash or global name _wbPersistentName produced). Everything
+// here is realm-neutral - _wbPersistentGet/Set take the expanded name -
+// so realm-local PersistentStorage wrappers (see __wbBindRealmAPI) can
+// delegate to it after resolving the name in the calling file's realm.
+_WbRules.makePersistentStorage = function (expandedName) {
   var p = new Proxy(
-    { name: _wbPersistentName(name, options), _psself: null },
+    { name: expandedName, _psself: null },
     {
       get: function (o, key) {
         var val = _wbPersistentGet(o.name, key);
@@ -487,7 +628,8 @@ global.PersistentStorage = function (name, options) {
           }
         }
 
-        return _wbPersistentSet(o.name, key, value);
+        _wbPersistentSet(o.name, key, value);
+        return true;
       },
     }
   );
@@ -495,6 +637,10 @@ global.PersistentStorage = function (name, options) {
   p._psself = p;
 
   return p;
+};
+
+global.PersistentStorage = function (name, options) {
+  return _WbRules.makePersistentStorage(_wbPersistentName(name, options));
 };
 
 __wbVdevPrototype.getCellValue = function (cell) {
@@ -511,3 +657,138 @@ __wbVdevPrototype.publish = function (topic, message) {
 
 var Notify = require('wb-notify');
 var Alarms = require('wb-alarms');
+
+// Per-realm API rebinding: promise jobs (code after an await) execute
+// under the realm their functions were created in, so wrappers inherited
+// from the shared prototype would call the shared realm's builtins and
+// lose file attribution. The engine compiles THIS function's source in
+// each script realm (see prepareNewContext) - the resulting closures and
+// the builtins they reference (installed as realm-local own properties)
+// all live in the script's realm, keeping attribution across awaits.
+global.__wbBindRealmAPI = function (g) {
+  g.defineRule = function (arg1, arg2) {
+    var r = _WbRules.prepareRuleDef(arg1, arg2);
+    return r.name === '' ? _wbDefineRule(r.def) : _wbDefineRule(r.name, r.def);
+  };
+  g.setTimeout = function (callback, ms) {
+    return _wbStartTimer(callback, ms, false);
+  };
+  g.setInterval = function (callback, ms) {
+    return _wbStartTimer(callback, ms, true);
+  };
+  g.startTimer = function (name, ms) {
+    _wbStartTimer(name, ms, false);
+  };
+  g.startTicker = function (name, ms) {
+    _wbStartTimer(name, ms, true);
+  };
+  g.spawn = function (cmd, args, options) {
+    var settle;
+    var p = new Promise(function (resolve, reject) {
+      settle = function (result, spawnError) {
+        if (spawnError) reject(new Error('spawn ' + cmd + ': ' + spawnError));
+        else resolve(result);
+      };
+    });
+    var a = _WbRules.prepareSpawnArgs(cmd, args, options, settle);
+    _wbSpawn(a[0], a[1], a[2], a[3], a[4]);
+    return p;
+  };
+  g.runShellCommand = function (cmd, options) {
+    return g.spawn('/bin/sh', ['-c', cmd], options);
+  };
+  // diagnostics: total parked changed()/nextMqtt() waiters in this file
+  // (leak canary for tests; not a public API)
+  g.__wbAsyncWaiters = function () {
+    var n = 0;
+    var count = function (m) {
+      Object.keys(m).forEach(function (k) {
+        n += m[k].length;
+      });
+    };
+    count(changeWaiters);
+    count(mqttNextWaiters);
+    return n;
+  };
+  g.sleep = function (ms) {
+    return new Promise(function (resolve) {
+      g.setTimeout(resolve, ms);
+    });
+  };
+  var changeWaiters = {};
+  g.changed = function (ctrl, timeoutMs) {
+    if (!changeWaiters[ctrl]) {
+      changeWaiters[ctrl] = [];
+      // defineRule here is the realm-local wrapper: the rule belongs to
+      // THIS file and is cleaned up when it reloads
+      g.defineRule({
+        whenChanged: ctrl,
+        then: function (newValue) {
+          var ws = changeWaiters[ctrl];
+          changeWaiters[ctrl] = [];
+          for (var i = 0; i < ws.length; i++) ws[i](newValue);
+        },
+      });
+    }
+    // not Promise.race with a throwing sleep: the losing timeout would
+    // later reject unhandled - a phantom "async rule error" in the log
+    if (timeoutMs == null) {
+      return new Promise(function (resolve) {
+        changeWaiters[ctrl].push(resolve);
+      });
+    }
+    return new Promise(function (resolve, reject) {
+      var settle = function (v) {
+        clearTimeout(timer);
+        resolve(v);
+      };
+      var timer = g.setTimeout(function () {
+        // a timed-out waiter must not pile up in the queue forever
+        var ws = changeWaiters[ctrl];
+        var idx = ws.indexOf(settle);
+        if (idx >= 0) ws.splice(idx, 1);
+        reject(new Error('changed: no change of ' + ctrl + ' in ' + timeoutMs + ' ms'));
+      }, timeoutMs);
+      changeWaiters[ctrl].push(settle);
+    });
+  };
+  var mqttNextWaiters = {};
+  g.nextMqtt = function (topic, timeoutMs) {
+    if (!mqttNextWaiters[topic]) {
+      mqttNextWaiters[topic] = [];
+      // trackMqtt here is the realm-local builtin: the subscription is
+      // attributed to this file and cleaned up when it reloads
+      trackMqtt(topic, function (msg) {
+        if (msg.retained) return; // "next" means a live message, not the broker cache
+        var waiters = mqttNextWaiters[topic];
+        mqttNextWaiters[topic] = [];
+        for (var i = 0; i < waiters.length; i++) waiters[i](msg);
+      });
+    }
+    if (timeoutMs == null) {
+      return new Promise(function (resolve) {
+        mqttNextWaiters[topic].push(resolve);
+      });
+    }
+    return new Promise(function (resolve, reject) {
+      var settle = function (v) {
+        clearTimeout(timer);
+        resolve(v);
+      };
+      var timer = g.setTimeout(function () {
+        // a timed-out waiter must not pile up in the queue forever
+        var ws = mqttNextWaiters[topic];
+        var idx = ws.indexOf(settle);
+        if (idx >= 0) ws.splice(idx, 1);
+        reject(new Error('nextMqtt: no message on ' + topic + ' in ' + timeoutMs + ' ms'));
+      }, timeoutMs);
+      mqttNextWaiters[topic].push(settle);
+    });
+  };
+  g.PersistentStorage = function (name, options) {
+    // _wbPersistentName is the realm-local builtin: it attributes a
+    // local storage to THIS file even after an await (promise jobs run
+    // under the function's creation realm, not the shared one)
+    return _WbRules.makePersistentStorage(_wbPersistentName(name, options));
+  };
+};

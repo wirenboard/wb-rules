@@ -58,6 +58,12 @@ const (
 // errors
 var (
 	ControlNotFoundError = errors.New("Control is not found")
+
+	// ErrEngineStopped is returned by the synchronous engine entry points
+	// (CallSync and the callers that wait on it: EvalScript, LiveLoadFile,
+	// LiveWriteScript) when the engine has stopped and the requested work
+	// was dropped instead of run.
+	ErrEngineStopped = errors.New("rule engine is stopped")
 )
 
 type ControlSpec struct {
@@ -411,6 +417,15 @@ func (ctrlProxy *ControlProxy) Value() (v any) {
 }
 
 func (ctrlProxy *ControlProxy) SetValue(value any, notifySubs bool) error {
+	return ctrlProxy.SetValueAt(value, notifySubs, nil)
+}
+
+// SetValueAt is SetValue with a lazily computed caller location: where (may be
+// nil) is called only when the write is rejected, and its "file:line" result
+// is appended to the console message so the user can see WHICH rule wrote the
+// bad value (and the editor can mark the line). Successful writes never pay
+// for it.
+func (ctrlProxy *ControlProxy) SetValueAt(value any, notifySubs bool, where func() string) error {
 	if wbgong.DebuggingEnabled() {
 		wbgong.Debug.Printf("[ctrlProxy %s/%s] SetValue(%v)", ctrlProxy.devProxy.name, ctrlProxy.name, value)
 	}
@@ -435,9 +450,9 @@ func (ctrlProxy *ControlProxy) SetValue(value any, notifySubs bool) error {
 
 	if err == nil && isLocal && notifySubs {
 		// run update value handler immediately, don't wait for wbgong backend.
-		// Only on success: a rejected write must not poison the cached value, or
-		// a rule that catches the error and reads the control back would see the
-		// invalid value it just tried (and failed) to write.
+		// Only on success: a rejected write (e.g. a value that can't be coerced
+		// to the control's datatype) must not poison the cached value, or every
+		// reader - including the writing rule - would then read the bad value.
 		ctrlProxy.updateValueHandler(nil, value, prevValue, nil)
 	}
 
@@ -447,8 +462,13 @@ func (ctrlProxy *ControlProxy) SetValue(value any, notifySubs bool) error {
 		// the user actually looks: the rule debug console. engine.Log publishes
 		// to /wbrules/log/error, which homeui shows; wbgong.Error only reached
 		// syslog. The cache was left untouched above, so reads stay consistent.
-		ctrlProxy.devProxy.owner.Log(ENGINE_LOG_ERROR,
-			fmt.Sprintf("control %s/%s: write ignored (%s)", ctrlProxy.devProxy.name, ctrlProxy.name, err))
+		msg := fmt.Sprintf("control %s/%s: write ignored (%s)", ctrlProxy.devProxy.name, ctrlProxy.name, err)
+		if where != nil {
+			if at := where(); at != "" {
+				msg += " at " + at
+			}
+		}
+		ctrlProxy.devProxy.owner.Log(ENGINE_LOG_ERROR, msg)
 	}
 	return nil
 }
@@ -632,15 +652,19 @@ func (o *RuleEngineOptions) SetCleanupOnStop(v bool) *RuleEngineOptions {
 }
 
 type RuleEngine struct {
-	active          uint32 // atomic
-	cleanup         *ScopedCleanup
-	rev             uint32 // atomic
-	syncQueueActive bool
-	syncQueue       chan func()
-	syncQuitCh      chan chan struct{}
-	mqttClient      wbgong.MQTTClient // for service
-	driver          wbgong.Driver
-	driverReadyCh   chan struct{}
+	active        uint32 // atomic
+	cleanup       *ScopedCleanup
+	rev           uint32        // atomic
+	syncDone      chan struct{} // closed on Stop: post-stop CallSync fails fast
+	syncQueue     chan func()
+	syncQuitCh    chan chan struct{}
+	mqttClient    wbgong.MQTTClient // for service
+	driver        wbgong.Driver
+	driverReadyCh chan struct{}
+	// the persistent driver handler must be registered exactly once:
+	// wbgo's OnDriverEvent appends, so re-registering on every Start would
+	// deliver each driver event (and each rule trigger) once per restart
+	driverHandlerOnce sync.Once
 
 	eventBuffer *EventBuffer
 
@@ -707,7 +731,7 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 		cleanup:               MakeScopedCleanup(),
 		rev:                   0,
 		syncQueue:             make(chan func(), SYNC_QUEUE_LEN),
-		syncQueueActive:       true,
+		syncDone:              make(chan struct{}),
 		syncQuitCh:            make(chan chan struct{}, 1),
 		mqttClient:            mqtt,
 		driver:                driver,
@@ -745,14 +769,13 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
-
 	// if options.debugQueues {
 	// engine.controlChangeChLen = 0
 	// } else {
 	// engine.controlChangeChLen = ENGINE_CONTROL_CHANGE_QUEUE_LEN
 	// }
 
-	engine.readyQueue = wbgong.NewDeferredList(engine.CallSync)
+	engine.readyQueue = wbgong.NewDeferredList(func(thunk func()) { engine.CallSync(thunk) })
 	engine.timerDeferQueue = wbgong.NewDeferredList(engine.CallHere)
 
 	s := metrics.NewSet()
@@ -1012,28 +1035,115 @@ func (engine *RuleEngine) driverEventHandler(event wbgong.DriverEvent) {
 	engine.eventBuffer.PushEvent(cce)
 }
 
-func (engine *RuleEngine) CallSync(thunk func()) {
+// syncStopCh returns the current stop channel. The syncDone field is
+// reassigned by Start and closed by handleStop on different goroutines
+// while CallSync/MaybeCallSync read it from arbitrary producer goroutines,
+// so every access goes through statusMtx. A caller that captured the
+// channel of a previous engine run just sees it closed and drops its
+// thunk - exactly what should happen to a straggler.
+func (engine *RuleEngine) syncStopCh() chan struct{} {
+	engine.statusMtx.Lock()
+	defer engine.statusMtx.Unlock()
+	return engine.syncDone
+}
+
+// CallSync enqueues thunk for the engine loop and returns nil, or drops it
+// and returns ErrEngineStopped when the engine has stopped. Fire-and-forget
+// callers may ignore the error; a caller that waits for a result computed by
+// the thunk MUST check it - the dropped thunk will never run, so the wait
+// would hang forever (CallSyncWait packages the full pattern, including the
+// case of a thunk accepted here and then discarded by Stop's queue drain).
+func (engine *RuleEngine) CallSync(thunk func()) error {
+	syncDone := engine.syncStopCh()
+	// Deterministic on a stopped engine: without this priority check the
+	// select below picks randomly between the closed stop channel and the
+	// buffered queue send, quietly parking half the thunks in a queue no
+	// loop is reading.
+	select {
+	case <-syncDone:
+		wbgong.Debug.Printf("[engine] dropping CallSync thunk: engine stopped")
+		return ErrEngineStopped
+	default:
+	}
 	if atomic.LoadUint32(&engine.debugEnabled) == ATOMIC_TRUE {
+		// In debug mode, surface a main loop that hasn't drained the sync
+		// queue in ENGINE_CALLSYNC_TIMEOUT - almost always a runaway
+		// synchronous rule (while(true), while(sleep(x)), ...) blocking the
+		// loop. This used to panic, but panicking crashes the whole process
+		// and, on restart, reloads the offending file -> crash loop that also
+		// kills the Editor RPC. Instead warn (once) and keep waiting: the
+		// execution watchdog will interrupt the runaway, after which the send
+		// below succeeds and the engine recovers on its own.
 		delay := time.NewTimer(ENGINE_CALLSYNC_TIMEOUT)
 		select {
 		case engine.syncQueue <- thunk:
 			if !delay.Stop() {
 				<-delay.C
 			}
+			return nil
+		case <-syncDone:
+			if !delay.Stop() {
+				<-delay.C
+			}
+			wbgong.Debug.Printf("[engine] dropping CallSync thunk: engine stopped")
+			return ErrEngineStopped
 		case <-delay.C:
-			panic("[engine] CallSync stuck!")
+			wbgong.Error.Printf("[engine] CallSync blocked for %s (runaway rule blocking the main loop?); still waiting for the engine to recover", ENGINE_CALLSYNC_TIMEOUT)
 		}
-	} else {
-		engine.syncQueue <- thunk
+	}
+	// A background producer (shell-command callback, TS check, timer) may race
+	// engine shutdown; sending on the closed sync queue used to panic and take
+	// the whole engine down. Block until the engine accepts the thunk or stops.
+	select {
+	case engine.syncQueue <- thunk:
+		return nil
+	case <-syncDone:
+		wbgong.Debug.Printf("[engine] dropping CallSync thunk: engine stopped")
+		return ErrEngineStopped
 	}
 }
 
-func (engine *RuleEngine) MaybeCallSync(thunk func()) {
-	if engine.syncQueueActive {
-		engine.CallSync(thunk)
-	} else {
+// CallSyncWait runs thunk on the engine loop and returns nil once it has
+// completed. It returns ErrEngineStopped when the engine stopped before the
+// thunk could run - whether the thunk was refused outright or accepted and
+// then discarded by Stop's queue drain. Deterministic: by the time the stop
+// channel closes the sync loop has already exited (see Stop), so a pending
+// thunk can no longer be mid-run - it either completed (done is closed) or
+// will never run.
+func (engine *RuleEngine) CallSyncWait(thunk func()) error {
+	syncDone := engine.syncStopCh()
+	done := make(chan struct{})
+	if err := engine.CallSync(func() {
+		defer close(done)
 		thunk()
+	}); err != nil {
+		return err
 	}
+	select {
+	case <-done:
+		return nil
+	case <-syncDone:
+		select {
+		case <-done: // completed just before the stop
+			return nil
+		default:
+			return ErrEngineStopped
+		}
+	}
+}
+
+// MaybeCallSync is the entry point for background producers (shell-command
+// completions, cron, MQTT trackers): the thunk is always queued to the
+// engine loop, never run inline on the calling goroutine - the JS heap is
+// single-threaded. Before the first Start the queue simply buffers it (the
+// loop drains the backlog on Start); after Stop it is dropped and
+// ErrEngineStopped returned, so the producer can release resources that
+// only the thunk would have released. Historically this ran thunks inline
+// during pre-Start setup; that inline path was also reachable in the
+// Stop->Start transition window, where it executed JS on a foreign
+// goroutine - queueing unconditionally closes that window.
+func (engine *RuleEngine) MaybeCallSync(thunk func()) error {
+	return engine.CallSync(thunk)
 }
 
 func (engine *RuleEngine) CallHere(thunk func()) {
@@ -1178,16 +1288,24 @@ func (engine *RuleEngine) fireTimer(n TimerId) {
 
 	if !entry.periodic {
 		engine.timersMutex.Lock()
-		engine.removeTimer(n)
+		removed := engine.removeTimer(n)
 		engine.timersMutex.Unlock()
+		if removed != nil {
+			removed.handleRemove()
+		}
 	}
 }
 
-func (engine *RuleEngine) removeTimer(n TimerId) {
+// removeTimer forgets the timer; the caller holds timersMutex and must run
+// handleRemove() on the returned entry AFTER releasing it - removal hooks
+// may touch the JS heap (the timer-callback stash sweep in esWbStartTimer)
+// or enqueue engine work, neither of which may happen under the mutex.
+func (engine *RuleEngine) removeTimer(n TimerId) *TimerEntry {
 	if entry, found := engine.timers[n]; found {
-		entry.handleRemove()
 		delete(engine.timers, n)
+		return entry
 	}
+	return nil
 }
 
 func (engine *RuleEngine) StopTimerByName(name string) {
@@ -1195,8 +1313,11 @@ func (engine *RuleEngine) StopTimerByName(name string) {
 
 	for n, entry := range engine.timers {
 		if entry != nil && name == entry.name {
-			engine.removeTimer(n)
+			removed := engine.removeTimer(n)
 			engine.timersMutex.Unlock()
+			if removed != nil {
+				removed.handleRemove()
+			}
 			entry.stop()
 			return
 		}
@@ -1208,8 +1329,11 @@ func (engine *RuleEngine) StopTimerByName(name string) {
 func (engine *RuleEngine) StopTimerByIndex(n TimerId) {
 	if entry, found := engine.FindTimerByIndex(n); found {
 		engine.timersMutex.Lock()
-		engine.removeTimer(n)
+		removed := engine.removeTimer(n)
 		engine.timersMutex.Unlock()
+		if removed != nil {
+			removed.handleRemove()
+		}
 
 		entry.stop()
 	} else {
@@ -1298,7 +1422,7 @@ func (engine *RuleEngine) setupCron() {
 		engine.cron.Stop()
 	}
 
-	engine.cron = newCronProxy(engine.cronMaker(), engine.CallSync)
+	engine.cron = newCronProxy(engine.cronMaker(), func(thunk func()) { engine.CallSync(thunk) })
 	// note for rule reloading: will need to restart cron
 	// to reload rules properly
 	func() {
@@ -1317,6 +1441,14 @@ func (engine *RuleEngine) setupCron() {
 func (engine *RuleEngine) handleStop() {
 	wbgong.Debug.Printf("engine stopped")
 
+	// setupCron only stopped the PREVIOUS cron on reload; a stopped engine
+	// otherwise leaves its last cron goroutine running (a leak per engine
+	// start/stop cycle, visible in the corpus run)
+	if engine.cron != nil {
+		engine.cron.Stop()
+		engine.cron = nil
+	}
+
 	engine.timersMutex.Lock()
 	timerEntries := make([]*TimerEntry, 0, len(engine.timers))
 	for _, entry := range engine.timers {
@@ -1327,13 +1459,25 @@ func (engine *RuleEngine) handleStop() {
 
 	for _, entry := range timerEntries {
 		entry.stop()
+		// Run the removal hooks, exactly as StopTimerByIndex would have:
+		// they sweep the timer callbacks' stash entries (esWbStartTimer)
+		// and the per-context timer bookkeeping. Discarding the entries
+		// without them pinned every pending timer callback - and the whole
+		// realm each one references - for the life of the process. Safe
+		// here: Stop() terminates the sync loop before closing the event
+		// buffer, so when the main loop reaches this point it is the only
+		// goroutine touching the JS heap.
+		entry.handleRemove()
 	}
 
 	engine.statusMtx.Lock()
 	engine.readyCh = nil
 	engine.driverReadyCh = nil
-	engine.syncQueueActive = false
-	close(engine.syncQueue)
+	// Never close syncQueue itself: a send on a closed channel panics even
+	// inside select, and late producers (cron, timers, shell callbacks)
+	// race Stop. With no receiver their send blocks, the syncDone case in
+	// CallSync wins, and the thunk is dropped safely.
+	close(engine.syncDone)
 	engine.statusMtx.Unlock()
 }
 
@@ -1375,15 +1519,42 @@ func (engine *RuleEngine) updateDebugEnabled() {
 }
 
 func (engine *RuleEngine) Start() {
-	engine.readyCh = make(chan struct{})
-	engine.driverReadyCh = make(chan struct{}, 1)
 	engine.eventBuffer = NewEventBuffer()
 
-	engine.driver.OnDriverEvent(engine.driverEventHandler)
-	engine.driver.OnRetainReady(func(tx wbgong.DriverTx) {
-		engine.driverReadyCh <- struct{}{}
+	// Under statusMtx: handleStop nils these fields and the OnRetainReady
+	// closure below reads driverReadyCh from the driver goroutine.
+	engine.statusMtx.Lock()
+	engine.readyCh = make(chan struct{})
+	engine.driverReadyCh = make(chan struct{}, 1)
+	engine.statusMtx.Unlock()
+
+	// register the persistent driver handler once: OnDriverEvent appends,
+	// and a second registration on restart would deliver every event twice
+	engine.driverHandlerOnce.Do(func() {
+		engine.driver.OnDriverEvent(engine.driverEventHandler)
 	})
-	engine.syncQueueActive = true
+	// OnRetainReady must be re-armed per Start (the driver fires each
+	// registration once). The send is non-blocking: with the driver already
+	// ready, a registration left over from a previous run fires again on the
+	// next ready transition, and a second send would wedge the driver loop
+	// on the 1-slot channel (or block forever on the nil channel of a
+	// stopped engine).
+	engine.driver.OnRetainReady(func(tx wbgong.DriverTx) {
+		engine.statusMtx.Lock()
+		ch := engine.driverReadyCh
+		engine.statusMtx.Unlock()
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	})
+	// re-arm the stop signal: handleStop closed the previous one, and
+	// CallSync selects on it - without this a Start after Stop would drop
+	// every thunk on the closed channel and leave the engine inert. Under
+	// statusMtx: producers read the field through syncStopCh concurrently.
+	engine.statusMtx.Lock()
+	engine.syncDone = make(chan struct{})
+	engine.statusMtx.Unlock()
 	atomic.StoreUint32(&engine.active, ENGINE_ACTIVE)
 
 	go engine.mainLoop()
@@ -1399,15 +1570,30 @@ func (engine *RuleEngine) Stop() {
 		engine.cleanup.RunAllCleanups()
 	}
 
-	engine.eventBuffer.Close()
-
-	// stop sync loop
+	// Stop the sync loop FIRST, before the event buffer: once this
+	// handshake returns, no goroutine but the main loop can touch the JS
+	// heap, which is what lets handleStop (reached below when the buffer
+	// closes) run the timers' removal hooks - they sweep JS callback stash
+	// entries.
 	q := make(chan struct{})
 	engine.syncQuitCh <- q
 	<-q
 
-	// wait for main loop to release sync queue
-	<-engine.syncQueue
+	engine.eventBuffer.Close()
+
+	// Wait for the main loop to acknowledge the stop. Drain the sync
+	// queue while waiting: the sync loop has already exited, and with a
+	// full buffer the main loop itself can block on a CallSync send
+	// before ever reaching handleStop - a drain-less wait would deadlock
+	// shutdown (thunks dropped here would never have run anyway).
+	syncDone := engine.syncStopCh()
+	for {
+		select {
+		case <-syncDone:
+			return
+		case <-engine.syncQueue:
+		}
+	}
 }
 
 func (engine *RuleEngine) IsActive() bool {
@@ -1961,6 +2147,9 @@ func (engine *RuleEngine) DefineRule(rule *Rule, ctx *ESContext) (id RuleId, err
 
 // DefineMqttTracker creates new mqtt tracker and subscribe to specified topic if needed
 func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err error) {
+	// lazy-start like Publish does: trackMqtt() may be the engine client's
+	// first use when a script subscribes before anything was logged
+	engine.mqttClient.Start()
 	engine.mqttTrackerMutex.Lock()
 	defer engine.mqttTrackerMutex.Unlock()
 

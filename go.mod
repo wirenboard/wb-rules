@@ -1,6 +1,6 @@
 module github.com/wirenboard/wb-rules
 
-go 1.24.0
+go 1.26.5
 
 require (
 	github.com/DisposaBoy/JsonConfigReader v0.0.0-20201129172854-99cf318d67e7
@@ -21,3 +21,5 @@ require (
 	golang.org/x/sys v0.38.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/wirenboard/go-duktape => ./internal/quickjsduk

@@ -14,6 +14,7 @@ type EventBuffer struct {
 
 	currentBuffer []*ControlChangeEvent
 	observer      chan struct{}
+	closed        bool
 }
 
 func NewEventBuffer() *EventBuffer {
@@ -30,6 +31,14 @@ func (eb *EventBuffer) Observe() <-chan struct{} {
 func (eb *EventBuffer) PushEvent(e *ControlChangeEvent) {
 	eb.Lock()
 	defer eb.Unlock()
+
+	// The driver delivers events from its own goroutine and keeps doing so
+	// for a moment after the engine has stopped; a send on the closed
+	// observer channel would panic (a select with a default case does not
+	// protect against that). Drop events after Close - nobody is listening.
+	if eb.closed {
+		return
+	}
 
 	eb.currentBuffer = append(eb.currentBuffer, e)
 
@@ -57,5 +66,11 @@ func (eb *EventBuffer) length() int {
 }
 
 func (eb *EventBuffer) Close() {
+	eb.Lock()
+	defer eb.Unlock()
+	if eb.closed {
+		return
+	}
+	eb.closed = true
 	close(eb.observer)
 }
