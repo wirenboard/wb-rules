@@ -1,11 +1,9 @@
 wb-rules (2.47.0) stable; urgency=medium
 
-  * Add removeVirtualDevice(id) global function and remove() method of the
-    virtual device object: a script can now delete a virtual device it has
-    defined (the driver unpublishes all its retained MQTT topics) and define
-    the same id again without reloading the whole file. Only devices defined
-    by scripts in the current run can be removed; external devices and the
-    rule engine settings device are rejected with an error
+  * Add removeVirtualDevice(id) and the remove() method of the device object:
+    a script can remove a virtual device created by wb-rules, the driver
+    unpublishes its MQTT topics and the same id can be defined again without
+    reloading the file
 
  -- Vitalii Gaponov <vitalii.gaponov@wirenboard.com>  Sat, 22 Aug 2026 12:00:00 +0400
 

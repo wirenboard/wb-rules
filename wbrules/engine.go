@@ -689,12 +689,6 @@ type RuleEngine struct {
 
 	cleanupOnStop bool
 
-	// vdevs is the registry of virtual devices defined by scripts
-	// (DefineVirtualDevice) and not removed yet. It lets
-	// RemoveVirtualDevice() and scoped cleanup agree on who removes what.
-	vdevsMutex sync.Mutex
-	vdevs      map[string]*vdevEntry
-
 	deviceProxyCache sync.Map
 
 	// subscriptions to control change events
@@ -748,7 +742,6 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 		cleanupOnStop:      options.cleanupOnStop,
 		tracks:             make(map[string]map[uint32]MqttTracker),
 		trackedRetained:    make(map[string]map[string]wbgong.MQTTMessage),
-		vdevs:              make(map[string]*vdevEntry),
 
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
@@ -1792,61 +1785,33 @@ func (engine *RuleEngine) GetDevice(devId string) error {
 	return nil
 }
 
-// vdevEntry is a registry record of a script-defined virtual device
-type vdevEntry struct {
-	dev wbgong.LocalDevice
-}
-
-// forgetVirtualDevice deletes the registry record of a virtual device.
-// Returns false if the registry holds another record (or none) for this id,
-// i.e. the device was already removed via RemoveVirtualDevice() or defined
-// again after that.
-func (engine *RuleEngine) forgetVirtualDevice(devId string, entry *vdevEntry) bool {
-	engine.vdevsMutex.Lock()
-	defer engine.vdevsMutex.Unlock()
-	if current, ok := engine.vdevs[devId]; !ok || current != entry {
-		return false
-	}
-	delete(engine.vdevs, devId)
-	return true
-}
-
-// RemoveVirtualDevice removes a virtual device previously defined by a script
-// via DefineVirtualDevice() and makes the driver unpublish all its retained
-// MQTT topics. Only script-defined devices of the current run can be removed
-// this way: external devices (including leftovers of a previous wb-rules run,
-// which the driver registers as external) and the engine settings device are
-// rejected with an error.
+// RemoveVirtualDevice removes a virtual device created by a script
+// and unpublishes its MQTT topics. External devices are rejected.
 func (engine *RuleEngine) RemoveVirtualDevice(devId string) error {
 	if devId == RULE_ENGINE_SETTINGS_DEV_NAME {
 		return fmt.Errorf("cannot remove device %s: it is the rule engine settings device", devId)
 	}
 
-	engine.vdevsMutex.Lock()
-	entry, ok := engine.vdevs[devId]
-	if ok {
-		delete(engine.vdevs, devId)
-	}
-	engine.vdevsMutex.Unlock()
+	errAccess := engine.driver.Access(func(tx wbgong.DriverTx) (err error) {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		localDevice, isLocal := dev.(wbgong.LocalDevice)
+		if !isLocal {
+			return wbgong.ExternalDeviceError
+		}
 
-	if !ok {
-		// not defined by any script: tell 'no such device' from 'not ours'
-		return engine.driver.Access(func(tx wbgong.DriverTx) error {
-			if tx.GetDevice(devId) == nil {
-				return fmt.Errorf("cannot remove device %s: %w", devId, wbgong.DeviceNotExistError)
-			}
-			return fmt.Errorf("cannot remove device %s: %w", devId, wbgong.ExternalDeviceError)
-		})
-	}
+		err = tx.RemoveDevice(localDevice)()
 
-	err := engine.driver.Access(func(tx wbgong.DriverTx) error {
-		return tx.RemoveDevice(entry.dev)()
+		return
 	})
-	if err != nil {
-		return fmt.Errorf("cannot remove device %s: %w", devId, err)
+
+	if errAccess != nil {
+		return fmt.Errorf("cannot remove device %s: %w", devId, errAccess)
 	}
 
-	// invalidate device/control proxies (dev["id/ctrl"]) referring to the removed device
+	// invalidate device/control proxies
 	atomic.AddUint32(&engine.rev, 1)
 	return nil
 }
@@ -1972,19 +1937,13 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 		return err
 	}
 
-	entry := &vdevEntry{dev: dev}
-	engine.vdevsMutex.Lock()
-	engine.vdevs[devId] = entry
-	engine.vdevsMutex.Unlock()
-
 	// defer cleanup
 	engine.cleanup.AddCleanup(func() {
-		// nothing to do if the device was removed via RemoveVirtualDevice()
-		// (and maybe defined again since then)
-		if !engine.forgetVirtualDevice(devId, entry) {
-			return
-		}
 		err := engine.driver.Access(func(tx wbgong.DriverTx) error {
+			// already removed via RemoveVirtualDevice()
+			if dev.IsDeleted() {
+				return nil
+			}
 			return tx.RemoveDevice(dev)()
 		})
 		if err != nil {

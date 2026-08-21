@@ -1,13 +1,10 @@
-/* global defineRule, defineVirtualDevice, removeVirtualDevice, getDevice, log */
+/* global defineRule, defineVirtualDevice, removeVirtualDevice, getDevice, setTimeout, log */
 
 function defineTarget(title, value) {
   defineVirtualDevice('vdev_rm', {
     title: title,
     cells: {
-      sw: {
-        type: 'switch',
-        value: value,
-      },
+      sw: { type: 'switch', value: value },
     },
   });
 }
@@ -21,6 +18,7 @@ defineVirtualDevice('ctl', {
     redefine: { type: 'switch', value: false },
     removeByMethod: { type: 'switch', value: false },
     removeBad: { type: 'switch', value: false },
+    redefineByTimer: { type: 'switch', value: false },
   },
 });
 
@@ -44,7 +42,6 @@ defineRule('remove', {
 defineRule('redefine', {
   whenChanged: 'ctl/redefine',
   then: function () {
-    // the id of a removed device can be used again
     defineTarget('VDevRm2', true);
     log('exists after redefine: {}', getDevice('vdev_rm') !== undefined);
   },
@@ -61,8 +58,21 @@ defineRule('removeByMethod', {
 defineRule('removeBad', {
   whenChanged: 'ctl/removeBad',
   then: function () {
+    tryRemove('vdev_rm'); // ok
+    tryRemove('vdev_rm'); // already removed
     tryRemove('somedev'); // external device
-    tryRemove('nonexistent');
+    tryRemove('nonexistent'); // never existed
     tryRemove('wbrules'); // rule engine settings device
+  },
+});
+
+defineRule('redefineByTimer', {
+  whenChanged: 'ctl/redefineByTimer',
+  then: function () {
+    // timer callbacks run in the file cleanup scope, unlike rule callbacks
+    setTimeout(function () {
+      defineTarget('VDevRm3', true);
+      log('redefined by timer');
+    }, 1000);
   },
 });
