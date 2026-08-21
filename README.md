@@ -786,6 +786,18 @@ getDevicesList().filter(function (d) { return d.isVirtual(); }).forEach(function
 
 К девайсу можно добавлять контролы динамически при помощи метода `addControl(<id контрола>, {описание параметров})`, удалять — `removeControl(<id контрола>)`.
 
+Виртуальное устройство можно удалить целиком: глобальной функцией `removeVirtualDevice(<id девайса>)`
+или методом `remove()` объекта устройства. Драйвер снимает все retained-топики устройства, после чего
+его id можно снова использовать в `defineVirtualDevice()`. Удалить можно только устройство, созданное
+через `defineVirtualDevice()`; для внешнего или несуществующего устройства возникает исключение.
+
+```js
+var vdev = defineVirtualDevice("tmpDevice", { cells: { x: { type: "switch", value: false } } });
+// ...
+vdev.remove(); // или removeVirtualDevice("tmpDevice")
+log(getDevice("tmpDevice")); // undefined
+```
+
 Для проверки контрола на существование можно воспользоваться функцией `isControlExists(<id контрола>)`. Так как при попытке установить
 значения контролов не виртуальных (внешних) девайсов возникает исключение — для проверки на принадлежность девайса можно использовать
 метод `isVirtual()`.
@@ -805,6 +817,7 @@ getDevice("deviceID").controlsList().forEach(function(ctrl) {
 * `getCellId(string) => string`
 * `addControl(string, {описание параметров})`
 * `removeControl(string)`
+* `remove()`
 * `getControl(string) => __wbVdevCellPrototype`
 * `isControlExists(string) => boolean`
 * `controlsList() => []__wbVdevCellPrototype`
