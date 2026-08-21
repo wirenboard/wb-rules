@@ -772,6 +772,19 @@ defineRule("onChange", {
 
 К девайсу можно добавлять контролы динамически при помощи метода `addControl(<id контрола>, {описание параметров})`, удалять — `removeControl(<id контрола>)`.
 
+Виртуальное устройство целиком можно удалить из правила глобальной функцией `removeVirtualDevice(<id девайса>)`
+или методом `remove()` объекта устройства. Драйвер при этом снимает все retained-топики устройства в MQTT,
+а его id можно снова использовать в `defineVirtualDevice()`, не перезагружая файл правил. Удалить можно только
+устройство, созданное правилами в текущем запуске wb-rules: для внешних устройств (в том числе оставшихся
+в брокере от предыдущего запуска wb-rules) и для устройства настроек движка будет выброшено исключение.
+
+```js
+var vdev = defineVirtualDevice("tmpDevice", { cells: { x: { type: "switch", value: false } } });
+// ...
+vdev.remove();                 // или removeVirtualDevice("tmpDevice")
+log(getDevice("tmpDevice"));   // undefined
+```
+
 Для проверки контрола на существование можно воспользоваться функцией `isControlExists(<id контрола>)`. Так как при попытке установить
 значения контролов не виртуальных (внешних) девайсов возникает исключение — для проверки на принадлежность девайса можно использовать
 метод `isVirtual()`.
@@ -791,6 +804,7 @@ getDevice("deviceID").controlsList().forEach(function(ctrl) {
 * `getCellId(string) => string`
 * `addControl(string, {описание параметров})`
 * `removeControl(string)`
+* `remove()`
 * `getControl(string) => __wbVdevCellPrototype`
 * `isControlExists(string) => boolean`
 * `controlsList() => []__wbVdevCellPrototype`

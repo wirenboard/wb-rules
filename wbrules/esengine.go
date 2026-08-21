@@ -205,6 +205,7 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		"enableRule":           engine.esWbEnableRule,
 		"runRule":              engine.esWbRunRule,
 		"defineVirtualDevice":  engine.esDefineVirtualDevice,
+		"removeVirtualDevice":  engine.esRemoveVirtualDevice,
 		"getDevice":            engine.esGetDevice,
 		"getControl":           engine.esGetControl,
 		"_wbPersistentName":    engine.esPersistentName,
@@ -320,6 +321,7 @@ func (engine *ESEngine) initVdevPrototype(ctx *ESContext) {
 		"getControl":      engine.esVdevGetControl,
 		"isControlExists": engine.esVdevControlExists,
 		"removeControl":   engine.esVdevRemoveControl,
+		"remove":          engine.esVdevRemove,
 		"controlsList":    engine.esVdevControlsList,
 		"isVirtual":       engine.esVdevIsVirtual,
 		"setError":        engine.esVdevSetError,
@@ -575,6 +577,42 @@ func (engine *ESEngine) loadLib() error {
 		}
 	}
 	return noLibJs
+}
+
+// unregisterSourceItem removes the named item from the list of items
+// defined by the current source file (the list is shown by the editor RPC)
+func (engine *ESEngine) unregisterSourceItem(ctx *ESContext, typ itemType, name string) {
+	currentPath := ctx.GetCurrentFilename()
+	if currentPath == "" {
+		return
+	}
+
+	engine.sourcesMtx.Lock()
+	defer engine.sourcesMtx.Unlock()
+
+	currentSource := engine.sources[currentPath]
+	if currentSource == nil {
+		return
+	}
+
+	var items *[]LocItem
+	switch typ {
+	case SOURCE_ITEM_DEVICE:
+		items = &currentSource.Devices
+	case SOURCE_ITEM_RULE:
+		items = &currentSource.Rules
+	case SOURCE_ITEM_TIMER:
+		items = &currentSource.Timers
+	default:
+		return
+	}
+
+	for i, item := range *items {
+		if item.Name == name {
+			*items = append((*items)[:i], (*items)[i+1:]...)
+			return
+		}
+	}
 }
 
 func (engine *ESEngine) registerSourceItem(ctx *ESContext, typ itemType, name string) {
@@ -1331,6 +1369,45 @@ func (engine *ESEngine) esVdevRemoveControl(ctx *ESContext) int {
 		wbgong.Error.Printf("Error in removing control %s on device %s: %v", ctrlId, devId, errControl)
 	}
 	return 1
+}
+
+// removeVirtualDeviceFromScript removes a script-defined virtual device
+// on behalf of the running script; throws a JS error on failure
+func (engine *ESEngine) removeVirtualDeviceFromScript(ctx *ESContext, devId string) int {
+	if err := engine.RemoveVirtualDevice(devId); err != nil {
+		wbgong.Error.Printf("device removal error: %v", err)
+		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
+		return duktape.DUK_RET_INSTACK_ERROR
+	}
+	engine.unregisterSourceItem(ctx, SOURCE_ITEM_DEVICE, devId)
+	return 0
+}
+
+// removeVirtualDevice(id) removes a virtual device defined by a script
+// and unpublishes its MQTT topics
+func (engine *ESEngine) esRemoveVirtualDevice(ctx *ESContext) int {
+	if ctx.GetTop() != 1 || !ctx.IsString(0) {
+		engine.Log(ENGINE_LOG_ERROR, "removeVirtualDevice(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+	return engine.removeVirtualDeviceFromScript(ctx, ctx.GetString(0))
+}
+
+// remove() method of the virtual device object, same as removeVirtualDevice(id)
+func (engine *ESEngine) esVdevRemove(ctx *ESContext) int {
+	// push this
+	ctx.PushThis()
+	// [ this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	ctx.Pop()
+	// [ ]
+	if err != nil {
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	return engine.removeVirtualDeviceFromScript(ctx, devId)
 }
 
 func (engine *ESEngine) esVdevControlExists(ctx *ESContext) int {
