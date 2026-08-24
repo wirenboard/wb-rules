@@ -4,6 +4,9 @@ wb-rules (2.47.0) stable; urgency=medium
     a script can remove a virtual device created by wb-rules, the driver
     unpublishes its MQTT topics and the same id can be defined again without
     reloading the file
+  * Add wipeDevice(id) and the wipe() method: erase all known retained MQTT
+    topics of an external device (intended for dead devices and leftovers of
+    a previous wb-rules run); virtual devices are rejected
 
  -- Vitalii Gaponov <vitalii.gaponov@wirenboard.com>  Sat, 22 Aug 2026 12:00:00 +0400
 

@@ -1,4 +1,4 @@
-/* global defineRule, defineVirtualDevice, removeVirtualDevice, getDevice, log */
+/* global defineRule, defineVirtualDevice, removeVirtualDevice, wipeDevice, getDevice, log */
 
 function defineTarget(title, value) {
   defineVirtualDevice('vdev_rm', {
@@ -19,6 +19,8 @@ defineVirtualDevice('ctl', {
     removeByMethod: { type: 'switch', value: false },
     removeBad: { type: 'switch', value: false },
     redefineByTimer: { type: 'switch', value: false },
+    wipeExternal: { type: 'switch', value: false },
+    wipeBad: { type: 'switch', value: false },
   },
 });
 
@@ -26,6 +28,15 @@ function tryRemove(id) {
   try {
     removeVirtualDevice(id);
     log('removed {}', id);
+  } catch (e) {
+    log('error: {}', e.message);
+  }
+}
+
+function tryWipe(id) {
+  try {
+    wipeDevice(id);
+    log('wiped {}', id);
   } catch (e) {
     log('error: {}', e.message);
   }
@@ -42,6 +53,7 @@ defineRule('remove', {
 defineRule('redefine', {
   whenChanged: 'ctl/redefine',
   then: function () {
+    // the id of a removed device can be used again
     defineTarget('VDevRm2', true);
     log('exists after redefine: {}', getDevice('vdev_rm') !== undefined);
   },
@@ -74,5 +86,22 @@ defineRule('redefineByTimer', {
       defineTarget('VDevRm3', true);
       log('redefined by timer');
     }, 1000);
+  },
+});
+
+defineRule('wipeExternal', {
+  whenChanged: 'ctl/wipeExternal',
+  then: function () {
+    getDevice('somedev').wipe(); // same as wipeDevice('somedev')
+    log('external wiped');
+  },
+});
+
+defineRule('wipeBad', {
+  whenChanged: 'ctl/wipeBad',
+  then: function () {
+    tryWipe('vdev_rm'); // virtual - use removeVirtualDevice()
+    tryWipe('nonexistent'); // never existed
+    tryWipe('wbrules'); // local (engine settings device)
   },
 });

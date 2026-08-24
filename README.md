@@ -784,6 +784,13 @@ vdev.remove(); // или removeVirtualDevice("tmpDevice")
 log(getDevice("tmpDevice")); // undefined
 ```
 
+Функция `wipeDevice(<id девайса>)` и метод `wipe()` дополняют `removeVirtualDevice()` с другой стороны:
+они работают только с внешними устройствами — стирают из брокера все retained-топики устройства,
+известные движку; обработав пустые retained, драйвер забывает устройство. Для виртуального устройства
+возникает исключение — используйте `removeVirtualDevice()`. Предназначены для мёртвых устройств и
+остатков предыдущего запуска wb-rules: живое внешнее устройство после стирания может не
+переопубликовать свои meta-топики до перезапуска своего драйвера.
+
 Для проверки контрола на существование можно воспользоваться функцией `isControlExists(<id контрола>)`. Так как при попытке установить
 значения контролов не виртуальных (внешних) девайсов возникает исключение — для проверки на принадлежность девайса можно использовать
 метод `isVirtual()`.
@@ -804,6 +811,7 @@ getDevice("deviceID").controlsList().forEach(function(ctrl) {
 * `addControl(string, {описание параметров})`
 * `removeControl(string)`
 * `remove()`
+* `wipe()`
 * `getControl(string) => __wbVdevCellPrototype`
 * `isControlExists(string) => boolean`
 * `controlsList() => []__wbVdevCellPrototype`
