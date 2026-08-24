@@ -103,11 +103,14 @@ type moduleKey struct {
 }
 
 type runtimeState struct {
-	rt         *C.JSRuntime
-	primary    *C.JSContext
-	execLimit  int64 // ns; 0 = no limit
-	execStart  int64 // unix ns of the outermost JS entry (0 = idle)
-	aborted    int32 // the interrupt handler fired and has not been reported yet
+	rt      *C.JSRuntime
+	primary *C.JSContext
+	// atomic.Int64, not a bare int64 under sync/atomic: on 32-bit builds
+	// (armhf) a 64-bit atomic panics unless the field is 8-byte aligned,
+	// which a plain field only gets by luck of struct layout
+	execLimit  atomic.Int64 // ns; 0 = no limit
+	execStart  atomic.Int64 // unix ns of the outermost JS entry (0 = idle)
+	aborted    int32        // the interrupt handler fired and has not been reported yet
 	stash      C.JSValue
 	modules    map[moduleKey]C.JSValue // require() cache per realm (Duktape: per global env)
 	deadVals   []C.JSValue             // values owned by dead realms; freed at reap
@@ -183,7 +186,7 @@ func (d *Context) st() *ctxState {
 		// JsonEncode): arm the watchdog window here too, otherwise such a
 		// loop is invisible to the interrupt handler. Pcall & co. re-arm
 		// at their entry; the outermost pop and the job pump clear it.
-		atomic.StoreInt64(&s.rts.execStart, time.Now().UnixNano())
+		s.rts.execStart.Store(time.Now().UnixNano())
 	}
 	return s
 }
@@ -274,7 +277,7 @@ func (rts *runtimeState) pushActive(ctx *C.JSContext) {
 	// a nested entry from inside a promise job must not re-arm (and its pop
 	// must not disarm) the watchdog: the job owns the execution window
 	if len(rts.activeCtxs) == 1 && !rts.inJobPump {
-		atomic.StoreInt64(&rts.execStart, time.Now().UnixNano())
+		rts.execStart.Store(time.Now().UnixNano())
 	}
 	regMu.Unlock()
 }
@@ -283,7 +286,7 @@ func (rts *runtimeState) popActive() {
 	regMu.Lock()
 	rts.activeCtxs = rts.activeCtxs[:len(rts.activeCtxs)-1]
 	if len(rts.activeCtxs) == 0 && !rts.inJobPump {
-		atomic.StoreInt64(&rts.execStart, 0)
+		rts.execStart.Store(0)
 	}
 	regMu.Unlock()
 }
@@ -294,7 +297,7 @@ func (rts *runtimeState) popActive() {
 // old Duktape build could not do). Zero disables the limit.
 func (d *Context) SetExecutionTimeLimit(limit time.Duration) {
 	s := d.st()
-	atomic.StoreInt64(&s.rts.execLimit, int64(limit))
+	s.rts.execLimit.Store(int64(limit))
 }
 
 // SetMemoryLimit caps the total bytes the JS heap on this runtime may
@@ -320,8 +323,8 @@ func goInterrupt(rt *C.JSRuntime) C.int {
 	if rts == nil {
 		return 0
 	}
-	limit := atomic.LoadInt64(&rts.execLimit)
-	start := atomic.LoadInt64(&rts.execStart)
+	limit := rts.execLimit.Load()
+	start := rts.execStart.Load()
 	if limit > 0 && start > 0 && time.Now().UnixNano()-start > limit {
 		atomic.StoreInt32(&rts.aborted, 1)
 		return 1
@@ -347,7 +350,7 @@ func (rts *runtimeState) relabelInterrupt(msg string) (string, bool) {
 	if !atomic.CompareAndSwapInt32(&rts.aborted, 1, 0) {
 		return msg, false
 	}
-	return execTimeoutMessage(atomic.LoadInt64(&rts.execLimit)) + msg[len(interruptedPrefix):], true
+	return execTimeoutMessage(rts.execLimit.Load()) + msg[len(interruptedPrefix):], true
 }
 
 // ExecTimeoutAbort reports whether msg - the text of the error just caught -
@@ -580,9 +583,9 @@ func (rts *runtimeState) pumpJobs() {
 		var jctx *C.JSContext
 		// each job is an outermost JS entry for the execution watchdog
 		jobStart := time.Now().UnixNano()
-		atomic.StoreInt64(&rts.execStart, jobStart)
+		rts.execStart.Store(jobStart)
 		r := C.qjd_execute_pending_job(rts.rt, &jctx, 1) // the pump runs at depth 0: outermost
-		atomic.StoreInt64(&rts.execStart, 0)
+		rts.execStart.Store(0)
 		if r == 0 {
 			return
 		}
