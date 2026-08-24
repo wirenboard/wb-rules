@@ -132,6 +132,7 @@ type TSDiag struct {
 }
 
 const tsScriptTargetESNext = 99 // core.ScriptTarget enum value
+const tsModuleKindCommonJS = 1  // core.ModuleKind enum value
 
 func NewTSCompiler(binPath, typesPath string) *TSCompiler {
 	c := &TSCompiler{binPath: binPath, lineMaps: map[string][]int{}, checkSem: make(chan struct{}, 2)}
@@ -398,6 +399,15 @@ func (c *TSCompiler) transpileLocked(src, fileName string) (string, error) {
 				"compilerOptions": map[string]any{
 					"target":    tsScriptTargetESNext,
 					"sourceMap": true,
+					// CommonJS output: import/export statements become require()
+					// calls and exports.* assignments, which the async function
+					// wrapper (require, exports and module are its parameters)
+					// runs as-is - ESM syntax left in place would be a
+					// SyntaxError there. Top-level await passes through
+					// untouched. esModuleInterop lets a default import of a
+					// CommonJS module (import fs from "fs") work.
+					"module":          tsModuleKindCommonJS,
+					"esModuleInterop": true,
 				},
 				"reportDiagnostics": true,
 			},
@@ -646,9 +656,11 @@ func (c *TSCompiler) checkMany(paths []string, registryDts string) (map[string][
 	paths = present
 	// --pretty false: diagnostics in the plain "path(line,col): error TSnnnn"
 	// form the parser below expects, whatever the default becomes
+	// --esModuleInterop: the transpiler emits interop helpers, so a default
+	// import of a CommonJS module (import fs from "fs") must type-check too.
 	args := []string{"--noEmit", "--pretty", "false", "--target", "esnext", "--lib", "esnext",
 		"--strict", "false", "--module", "esnext", "--moduleDetection", "force",
-		"--allowJs", "--checkJs"}
+		"--esModuleInterop", "--allowJs", "--checkJs"}
 	args = append(args, paths...)
 	args = append(args, c.typesGl)
 	// The registry (a generated `interface WbControls { ... }` built from the
