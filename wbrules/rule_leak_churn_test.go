@@ -600,3 +600,29 @@ func TestLeakChurnWatchdogAbort(t *testing.T) {
 	})
 	h.mustLoad("fine.js", `log("still alive");`)
 }
+
+// (k) MQTT-RPC churn: each cycle a file serves a method, calls it through
+// the broker (request out, reply back into the same file), asks for a
+// presence, then unloads - the reply and request subscriptions, the
+// presence topics, the inflight entry, the presence waiter's timer and
+// the unload hook's callback must all be reclaimed with the file.
+func TestLeakChurnMqttRpc(t *testing.T) {
+	h := newChurnHarness(t, nil)
+	h.mustLoad("rpcdev.js", `defineVirtualDevice("rpcdev", {cells: {got: {type: "value", value: 0}}});`)
+	path := filepath.Join(h.dir, "rpcchurn.js")
+	runChurn(t, h, func(i int) {
+		h.mustLoad("rpcchurn.js", fmt.Sprintf(`
+MqttRpc.defineService("Churn", {Echo: function (p) { return p.v; }});
+MqttRpc.hasMethod("wbrules-scripts", "Churn", "Echo");
+MqttRpc.call("wbrules-scripts", "Churn", "Echo", {v: %d}).then(function (v) { dev["rpcdev/got"] = v; });
+`, i+1))
+		h.waitEval(`'' + dev["rpcdev/got"]`, fmt.Sprintf("%d", i+1))
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := h.engine.LiveRemoveFile(path); err != nil {
+			t.Fatalf("remove %d: %v", i, err)
+		}
+		h.sync() // LiveRemoveFile only schedules; wait for the cleanups
+	})
+}
