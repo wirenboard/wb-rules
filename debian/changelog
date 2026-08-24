@@ -23,7 +23,17 @@ wb-rules (2.47.0~quickjs2.1) unstable; urgency=medium
     Without the binary, .ts files fail to load with an explicit error
     naming the looked-up path.
 
- -- Evgeny Boger <boger@wirenboard.com>  Wed, 19 Aug 2026 21:00:00 +0400
+  * MQTT-RPC from rules: the wb-mqtt-rpc module (also the MqttRpc global)
+    calls any /rpc/v1 method with a promise (call, hasMethod, waitForMethod,
+    service proxies, RpcError/TimeoutError), ships typed wrappers for the
+    controller's services (wb-mqtt-serial, wb-mqtt-db, wb-rules Editor,
+    wb-mqtt-confed, wb-mqtt-logs, wb-diag-collect, wb-device-manager,
+    wb-mqtt-dali) and serves methods defined in a rule file
+    (MqttRpc.defineService) with presence topics cleared on unload. One
+    engine addition (_wbAddCleanup: a JS unload hook); everything else is
+    JavaScript, per rule file.
+
+ -- Evgeny Boger <boger@wirenboard.com>  Mon, 24 Aug 2026 23:00:00 +0400
 
 wb-rules (2.47.0~quickjs1) unstable; urgency=medium
 

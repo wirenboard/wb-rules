@@ -837,6 +837,757 @@ interface String {
 }
 
 // ---------------------------------------------------------------------------
+// MQTT-RPC (modules/wb-mqtt-rpc.js, available as the MqttRpc global)
+// ---------------------------------------------------------------------------
+
+/**
+ * MQTT-RPC: call the methods that wb-mqtt-serial, wb-mqtt-db and the other
+ * controller services publish, and serve methods of your own. Requests go to
+ * /rpc/v1/<driver>/<service>/<method>/<clientId>, replies come back on
+ * .../reply; every call returns a Promise. `MqttRpc` and
+ * `require("wb-mqtt-rpc")` are the same per-file instance.
+ */
+declare namespace MqttRpc {
+  /** Options accepted by every call. */
+  interface CallOptions {
+    /**
+     * Milliseconds to wait for the reply; default `MqttRpc.defaults.timeout`
+     * (60000). 0 waits forever.
+     */
+    timeout?: number;
+    /**
+     * Wait for the method's presence topic before sending: `true` waits up
+     * to the call timeout, a number is its own limit in ms. Useful at boot,
+     * when the rules may start before the service does.
+     */
+    waitForMethod?: boolean | number;
+  }
+
+  interface HasMethodOptions {
+    /** Milliseconds to wait for the retained presence; default 3000. */
+    timeout?: number;
+  }
+
+  /** The `error` member of an MQTT-RPC reply. */
+  interface ErrorObject {
+    code: number;
+    message: string;
+    data?: any;
+  }
+
+  /**
+   * A call rejected by the server (code/message/data as sent), and what a
+   * served handler throws to answer with a specific error.
+   */
+  class RpcError extends Error {
+    constructor(code: number, message: string, data?: any);
+    code: number;
+    data?: any;
+  }
+
+  /**
+   * No reply within the timeout (or, for waitForMethod, no presence in
+   * time): code -32600 and data "MqttTimeoutError", like the web UI's.
+   */
+  class TimeoutError extends RpcError {
+    constructor(message: string, data?: any);
+  }
+
+  /** JSON-RPC 2.0 reserved codes plus the client-side timeout code. */
+  const ErrorCode: {
+    readonly PARSE_ERROR: -32700;
+    readonly INVALID_REQUEST: -32600;
+    readonly METHOD_NOT_FOUND: -32601;
+    readonly INVALID_PARAMS: -32602;
+    readonly INTERNAL_ERROR: -32603;
+    readonly SERVER_ERROR: -32000;
+    readonly TIMEOUT: -32600;
+  };
+
+  /** Per-file defaults; assign to change them for this file. */
+  const defaults: {
+    /** Reply timeout in ms (60000). */
+    timeout: number;
+    /** hasMethod() wait in ms (3000). */
+    hasMethodTimeout: number;
+  };
+
+  /** This file's client id: the last level of its request topics. */
+  const clientId: string;
+
+  /** The driver id defineService() uses when none is given. */
+  const DEFAULT_SERVICE_DRIVER: "wbrules-scripts";
+
+  /**
+   * Calls /rpc/v1/<driver>/<service>/<method>. `params` goes out as the
+   * request's `params` ({} when omitted). Resolves with the reply's `result`;
+   * rejects with RpcError (server error) or TimeoutError.
+   */
+  function call<R = any>(
+    driver: string,
+    service: string,
+    method: string,
+    params?: object | null,
+    options?: CallOptions
+  ): Promise<R>;
+
+  /**
+   * Whether the method is currently served (its retained presence topic
+   * holds a value). Resolves false if nothing shows up within the wait; the
+   * answer is kept up to date afterwards, so repeated calls are instant.
+   */
+  function hasMethod(
+    driver: string,
+    service: string,
+    method: string,
+    options?: HasMethodOptions
+  ): Promise<boolean>;
+
+  /**
+   * Resolves as soon as the method is served; rejects with TimeoutError
+   * after `timeoutMs` (default: the call timeout; 0 waits forever).
+   */
+  function waitForMethod(
+    driver: string,
+    service: string,
+    method: string,
+    timeoutMs?: number
+  ): Promise<void>;
+
+  /** A method of a service proxy: `params` as the request's `params`. */
+  type Method<P = any, R = any> = {} extends P
+    ? (params?: P | null, options?: CallOptions) => Promise<R>
+    : (params: P, options?: CallOptions) => Promise<R>;
+
+  /** call/hasMethod/waitForMethod bound to one driver/service pair. */
+  interface ServiceProxy {
+    readonly driver: string;
+    readonly service: string;
+    call<R = any>(method: string, params?: object | null, options?: CallOptions): Promise<R>;
+    hasMethod(method: string, options?: HasMethodOptions): Promise<boolean>;
+    waitForMethod(method: string, timeoutMs?: number): Promise<void>;
+  }
+
+  /**
+   * A proxy for one service, plus one function per listed method:
+   * `MqttRpc.service("wbrules", "Editor", ["List"]).List()`.
+   */
+  function service<M extends string = never>(
+    driver: string,
+    service: string,
+    methods?: readonly M[]
+  ): ServiceProxy & { [K in M]: Method<any, any> };
+
+  /** What a served handler gets besides the params. */
+  interface Request {
+    driver: string;
+    service: string;
+    method: string;
+    /** The caller's client id (last level of the request topic). */
+    clientId: string;
+    id: number | string | null;
+    /** The request topic; the reply goes to `topic + "/reply"`. */
+    topic: string;
+  }
+
+  /**
+   * A served method: returns the result (or a Promise of it). Throw an
+   * RpcError to answer with a specific code; any other exception answers
+   * -32603 and is logged.
+   */
+  type Handler<P = any, R = any> = (params: P, request: Request) => R | Promise<R>;
+
+  interface ServiceDefinition {
+    driver: string;
+    service: string;
+    /** Every method served under driver/service so far. */
+    methods: string[];
+  }
+
+  /**
+   * Serves methods at /rpc/v1/<driver>/<service>/<name>: each is announced
+   * on its retained presence topic and answered until the file unloads
+   * (reload, removal, engine stop), which clears the presence. The default
+   * driver is "wbrules-scripts" - "wbrules" is the engine's own Editor
+   * server, which answers -32601 for services it does not know.
+   */
+  function defineService(service: string, methods: Record<string, Handler>): ServiceDefinition;
+  function defineService(
+    driver: string,
+    service: string,
+    methods: Record<string, Handler>
+  ): ServiceDefinition;
+
+  // ---- wb-mqtt-serial ----
+
+  namespace Serial {
+    type BaudRate = 110 | 300 | 600 | 1200 | 2400 | 4800 | 9600 | 19200 | 38400 | 57600 | 115200;
+    type Parity = "N" | "E" | "O";
+    /** A serial port with its line settings (all required). */
+    interface SerialPort {
+      path: string;
+      baud_rate: BaudRate;
+      parity: Parity;
+      data_bits: 5 | 6 | 7 | 8;
+      stop_bits: 1 | 2;
+    }
+    /** A Modbus TCP endpoint. */
+    interface TcpPort {
+      ip: string;
+      port: number;
+    }
+    /** A device from wb-mqtt-serial's config: port and protocol settings come from there. */
+    interface ConfiguredDevice {
+      device_id: string;
+    }
+    /** Request time budget, all in ms. */
+    interface Timeouts {
+      /** Per-response wait; default 500 (at least the port's configured value). */
+      response_timeout?: number;
+      /** Inter-frame gap; default 20. */
+      frame_timeout?: number;
+      /** Queueing plus execution; default 10000. Exceeding it answers -32600 "Request timeout". */
+      total_timeout?: number;
+    }
+    interface RawRequest {
+      protocol?: "raw";
+      /** Bytes to send: text, or hex when format is "HEX". */
+      msg: string;
+      /** Number of response bytes to wait for. */
+      response_size: number;
+      format?: "STR" | "HEX";
+    }
+    interface ModbusRequest {
+      protocol: "modbus" | "modbus-tcp";
+      slave_id: number;
+      function: 1 | 2 | 3 | 4 | 5 | 6 | 15 | 16 | 23;
+      address: number;
+      /** Registers/bits to read; default 1. */
+      count?: number;
+      write_address?: number;
+      write_count?: number;
+      /** Data to write, for the write functions. */
+      msg?: string;
+      format?: "STR" | "HEX";
+    }
+    type PortLoadParams = (SerialPort | TcpPort | ConfiguredDevice) & (RawRequest | ModbusRequest) & Timeouts;
+    interface PortLoadResult {
+      /** The response bytes (data only for Modbus), text or hex per `format`. */
+      response?: string;
+      /** A Modbus exception instead of data. */
+      exception?: { code: number; msg: string };
+    }
+    interface PortSetupItem {
+      slave_id: number;
+      baud_rate: BaudRate;
+      parity: Parity;
+      data_bits: number;
+      stop_bits: number;
+      /** Serial number: address the device by it instead of slave_id. */
+      sn?: number;
+      /** The new settings; parity as 0 (N), 1 (O), 2 (E). */
+      cfg: { baud_rate?: number; parity?: 0 | 1 | 2; stop_bits?: number; slave_id?: number };
+    }
+    type PortSetupParams = ({ path: string } | TcpPort) & { items: PortSetupItem[]; total_timeout?: number };
+    type PortScanParams = (SerialPort | TcpPort) &
+      Timeouts & {
+        protocol?: "modbus" | "modbus-tcp";
+        /** Fast Modbus scan command; default 70. */
+        command?: 70 | 96;
+        mode?: "all" | "start" | "next";
+      };
+    interface ScannedDevice {
+      sn: number;
+      device_signature: string;
+      fw_signature: string;
+      configured_device_type?: string;
+      errors: { id: string; message: string }[];
+      cfg: { slave_id: number; baud_rate: number; parity: string; data_bits: number; stop_bits: number };
+      fw: { version: string };
+    }
+    interface PortScanResult {
+      devices: ScannedDevice[];
+      /** Set when the scan stopped early; `devices` holds what was found. */
+      error?: string;
+    }
+    type DeviceProbeParams = (SerialPort | TcpPort) &
+      Timeouts & { slave_id: number; protocol?: "modbus" | "modbus-tcp" };
+    /** The probed device, or {} when nothing answers. */
+    type DeviceProbeResult = ScannedDevice | {};
+    /** A device by port + address + template, or by its config id. */
+    type DeviceAddress =
+      | ((SerialPort | (TcpPort & { modbus_mode?: "RTU" | "TCP" })) & {
+          slave_id: number | string;
+          device_type: string;
+        })
+      | ConfiguredDevice;
+    type DeviceLoadConfigParams = DeviceAddress & Timeouts & { force?: boolean };
+    interface DeviceLoadConfigResult {
+      parameters: Record<string, any>;
+      fw?: string;
+      model?: string;
+    }
+    type DeviceLoadParams = DeviceAddress & Timeouts & { channels?: string[]; parameters?: string[] };
+    interface DeviceLoadResult {
+      channels: Record<string, any>;
+      parameters: Record<string, any>;
+      readonly: string[];
+    }
+    type DeviceSetParams = DeviceAddress &
+      Timeouts & { channels?: Record<string, any>; parameters?: Record<string, any> };
+    type DeviceSetPollParams = (
+      | (({ path: string } | TcpPort) & { slave_id: number | string })
+      | ConfiguredDevice
+    ) & {
+      /** false pauses polling of the device (resumes by itself after 10 min). */
+      poll: boolean;
+    };
+    interface ConfigLoadParams {
+      /** Language of titles/descriptions; default "en". */
+      lang?: string;
+    }
+    interface DeviceType {
+      name: string;
+      type: string;
+      deprecated: boolean;
+      protocol: string;
+      "mqtt-id": string;
+      "with-subdevices"?: boolean;
+      "user-defined"?: boolean;
+      hw?: { signature: string; fw?: string }[];
+    }
+    interface DeviceTypeGroup {
+      name: string;
+      types: DeviceType[];
+    }
+    interface ConfigLoadResult {
+      config: any;
+      schema: any;
+      types: DeviceTypeGroup[];
+    }
+    interface ConfigGetSchemaParams {
+      /** A device type, or "protocol:<name>" for a protocol's generic schema. */
+      type: string;
+    }
+    interface TemplatesUploadParams {
+      /** The template file's JSON text. */
+      content: string;
+      filename: string;
+      lang?: string;
+      /** Replace a template that configured devices use (else error.data is "template-in-use"). */
+      force?: boolean;
+    }
+    interface TemplatesDeleteParams {
+      type: string;
+      lang?: string;
+      force?: boolean;
+    }
+    interface TemplatesResult {
+      types: DeviceTypeGroup[];
+    }
+    type ConfiguredPort =
+      | { path: string; baud_rate: number; data_bits: number; parity: string; stop_bits: number }
+      | { address: string; port: number };
+    interface FwUpdatePort {
+      path: string;
+      baud_rate?: number;
+      parity?: string;
+      data_bits?: number;
+      stop_bits?: number;
+    }
+    interface FwUpdateTarget {
+      slave_id: number;
+      port: FwUpdatePort | { address: string; port: number };
+      protocol?: "modbus" | "modbus-tcp";
+    }
+    interface FirmwareComponent {
+      model: string;
+      fw: string;
+      available_fw: string;
+      has_update: boolean;
+    }
+    interface FirmwareInfo {
+      fw: string;
+      available_fw: string;
+      can_update: boolean;
+      fw_has_update: boolean;
+      bootloader: string;
+      available_bootloader: string;
+      bootloader_has_update: boolean;
+      model: string;
+      components: Record<string, FirmwareComponent>;
+    }
+    type FwUpdateParams = FwUpdateTarget & { type?: "firmware" | "bootloader" | "components" | "component" };
+    interface FwClearErrorParams {
+      slave_id: number;
+      port: { path: string };
+      type?: "firmware" | "bootloader";
+    }
+    /** The fw-update service (also served by wb-device-manager). */
+    interface FwUpdateService extends ServiceProxy {
+      GetFirmwareInfo: Method<FwUpdateTarget, FirmwareInfo>;
+      /** Returns "Ok" at once; progress is on the retained .../firmware_update/state topic. */
+      Update: Method<FwUpdateParams, "Ok">;
+      ClearError: Method<FwClearErrorParams, "Ok">;
+      Restore: Method<FwUpdateTarget, "Ok">;
+    }
+  }
+
+  /** wb-mqtt-serial: the Modbus/serial device driver. */
+  const serial: {
+    readonly driver: "wb-mqtt-serial";
+    config: ServiceProxy & {
+      /** The driver config with its schema and the known device types. */
+      Load: Method<Serial.ConfigLoadParams, Serial.ConfigLoadResult>;
+      /** The JSON schema of one device type. */
+      GetSchema: Method<Serial.ConfigGetSchemaParams, any>;
+    };
+    templates: ServiceProxy & {
+      /** Installs a user device template. */
+      Upload: Method<Serial.TemplatesUploadParams, Serial.TemplatesResult>;
+      Delete: Method<Serial.TemplatesDeleteParams, Serial.TemplatesResult>;
+    };
+    ports: ServiceProxy & {
+      /** The configured ports. */
+      Load: Method<{}, Serial.ConfiguredPort[]>;
+    };
+    port: ServiceProxy & {
+      /**
+       * Sends one raw or Modbus request through a port (queued after the
+       * current poll cycle). Without an explicit timeout the call waits
+       * for `total_timeout` plus a margin.
+       */
+      Load: Method<Serial.PortLoadParams, Serial.PortLoadResult>;
+      /** Changes line settings/addresses of devices on a port. */
+      Setup: Method<Serial.PortSetupParams, {}>;
+      /** Fast Modbus scan of a port. */
+      Scan: Method<Serial.PortScanParams, Serial.PortScanResult>;
+    };
+    device: ServiceProxy & {
+      /** Reads a device's settings (cached per configured device unless `force`). */
+      LoadConfig: Method<Serial.DeviceLoadConfigParams, Serial.DeviceLoadConfigResult>;
+      /** Reads channels and parameters of a device. */
+      Load: Method<Serial.DeviceLoadParams, Serial.DeviceLoadResult>;
+      /** Writes channels and parameters of a device. */
+      Set: Method<Serial.DeviceSetParams, {}>;
+      /** Identifies the device at an address. */
+      Probe: Method<Serial.DeviceProbeParams, Serial.DeviceProbeResult>;
+      /** Pauses/resumes polling of a configured device. */
+      SetPoll: Method<Serial.DeviceSetPollParams, {}>;
+    };
+    fwUpdate: Serial.FwUpdateService;
+  };
+
+  // ---- wb-mqtt-db ----
+
+  namespace Db {
+    /** A channel as [device, control]. */
+    type Channel = [string, string];
+    interface GetValuesParams {
+      channels: Channel[];
+      /** Record layout: 0 (default, verbose) or 1 (compact). */
+      ver?: 0 | 1;
+      /** Time window, UNIX seconds. */
+      timestamp?: { gt?: number; lt?: number };
+      /** Start after this record id. */
+      uid?: { gt: number };
+      /** Records to return; `has_more` tells whether more exist. */
+      limit?: number;
+      /** Averaging interval, ms. */
+      min_interval?: number;
+      /** Averaging target: at most this many records (overrides min_interval). */
+      max_records?: number;
+      /** Server-side budget, seconds (default 9). Without an explicit timeout the call waits for it. */
+      request_timeout?: number;
+      /** ver 1 only: `t` with a millisecond fraction. */
+      with_milliseconds?: boolean;
+    }
+    /** ver 0 record. */
+    interface Value {
+      uid: number;
+      device: string;
+      control: string;
+      /** UNIX seconds. */
+      timestamp: number;
+      value: string;
+      min?: string;
+      max?: string;
+      retain: boolean;
+    }
+    /** ver 1 record. */
+    interface CompactValue {
+      i: number;
+      /** Channel index in the request's `channels`. */
+      c: number;
+      /** UNIX seconds. */
+      t: number;
+      v: string;
+      min?: string;
+      max?: string;
+      retain: boolean;
+    }
+    interface GetValuesResult<V = Value | CompactValue> {
+      values: V[];
+      /** More records exist beyond `limit`. */
+      has_more?: boolean;
+    }
+    interface GetChannelsResult {
+      /** "device/control" -> record count and last timestamp (UNIX seconds). */
+      channels: Record<string, { items: number; last_ts: number }>;
+    }
+  }
+
+  /** wb-mqtt-db: the history database. */
+  const db: {
+    readonly driver: "db_logger";
+    history: ServiceProxy & {
+      /** History records; the layout follows `ver` (0: Value, 1: CompactValue). */
+      get_values: {
+        (params: Db.GetValuesParams & { ver: 1 }, options?: CallOptions): Promise<
+          Db.GetValuesResult<Db.CompactValue>
+        >;
+        (params: Db.GetValuesParams & { ver?: 0 }, options?: CallOptions): Promise<
+          Db.GetValuesResult<Db.Value>
+        >;
+        (params: Db.GetValuesParams, options?: CallOptions): Promise<Db.GetValuesResult>;
+      };
+      get_channels: Method<{}, Db.GetChannelsResult>;
+    };
+  };
+
+  // ---- wb-rules (the editor of this very engine) ----
+
+  namespace RulesEditor {
+    interface Location {
+      line: number;
+      name: string;
+    }
+    interface ScriptError {
+      message: string;
+      traceback: Location[];
+    }
+    interface FileEntry {
+      virtualPath: string;
+      enabled: boolean;
+      error?: ScriptError;
+      rules: Location[];
+      devices: Location[];
+      timers: Location[];
+    }
+    interface LoadResult {
+      content: string;
+      enabled: boolean;
+      error?: ScriptError;
+    }
+    interface SaveResult {
+      path: string;
+      /** A load error of the saved file, when it has one. */
+      error?: any;
+      traceback?: Location[];
+    }
+    interface Diag {
+      file?: string;
+      line: number;
+      column: number;
+      severity: string;
+      message: string;
+      code?: number;
+    }
+    interface CheckResult {
+      status: "ready" | "pending" | "not-ts" | "unsupported";
+      diags: Diag[];
+    }
+  }
+
+  /** wb-rules: the rule editor RPC. Error codes 1000-1009 with data "EditorError". */
+  const rules: {
+    readonly driver: "wbrules";
+    Editor: ServiceProxy & {
+      List: Method<{}, RulesEditor.FileEntry[]>;
+      Load: Method<{ path: string }, RulesEditor.LoadResult>;
+      Save: Method<{ path: string; content: string }, RulesEditor.SaveResult>;
+      Remove: Method<{ path: string }, boolean>;
+      Rename: Method<{ path: string; new_path: string }, boolean>;
+      ChangeState: Method<{ path: string; state: boolean }, boolean>;
+      /** The background type-check verdict of a file (poll while "pending"). */
+      Check: Method<{ path: string }, RulesEditor.CheckResult>;
+      /** The API declarations (this file). */
+      GetTypes: Method<{}, { content: string }>;
+    };
+  };
+
+  // ---- wb-mqtt-confed ----
+
+  namespace Confed {
+    interface ConfigEntry {
+      title: string;
+      description: string;
+      configPath: string;
+      schemaPath: string;
+      editor: string;
+      titleTranslations?: Record<string, string>;
+      descriptionTranslations?: Record<string, string>;
+    }
+    interface LoadResult {
+      configPath: string;
+      /** The config file's content, parsed. */
+      content: any;
+      schema: any;
+      editor: string;
+    }
+  }
+
+  /** wb-mqtt-confed: the configuration editor. Error codes 1002/1003/1006 with data "EditorError". */
+  const confed: {
+    readonly driver: "confed";
+    Editor: ServiceProxy & {
+      List: Method<{}, Confed.ConfigEntry[]>;
+      /** `path` is a configPath from List. */
+      Load: Method<{ path: string }, Confed.LoadResult>;
+      /** Writes the config and restarts the services that depend on it. */
+      Save: Method<{ path: string; content: any }, { path: string }>;
+    };
+  };
+
+  // ---- wb-mqtt-logs ----
+
+  namespace Logs {
+    interface ListResult {
+      boots: { hash: string; start: number; end?: number }[];
+      services: string[];
+    }
+    interface LoadParams {
+      /** A boot hash from List; default: the current boot. */
+      boot?: string;
+      service?: string;
+      /** Start time, UNIX seconds. */
+      time?: number;
+      /** syslog levels 0..7; default all. */
+      levels?: number[];
+      pattern?: string;
+      regex?: boolean;
+      "case-sensitive"?: boolean;
+      cursor?: { id: string; direction?: "backward" | "forward" };
+      /** Records to return; default and maximum 100. */
+      limit?: number;
+    }
+    interface Entry {
+      msg: string;
+      /** UNIX milliseconds. */
+      time: number;
+      /** syslog level; absent for 6 (info). */
+      level?: number;
+      service?: string;
+      /** Present on the first and last entries: pass it back to page. */
+      cursor?: string;
+    }
+  }
+
+  /** wb-mqtt-logs: journal access. */
+  const logs: {
+    readonly driver: "wb_logs";
+    logs: ServiceProxy & {
+      List: Method<{}, Logs.ListResult>;
+      Load: Method<Logs.LoadParams, Logs.Entry[]>;
+      /** Aborts a running Load. */
+      CancelLoad: Method<{}, null>;
+    };
+  };
+
+  // ---- wb-diag-collect ----
+
+  /** wb-diag-collect: the diagnostics archive. */
+  const diag: {
+    readonly driver: "diag";
+    main: ServiceProxy & {
+      /** Starts collecting; the archive is announced on /wb-diag-collect/artifact. */
+      diag: Method<{}, "Ok">;
+      /** Liveness probe: "1". */
+      status: Method<{}, "1">;
+    };
+  };
+
+  // ---- wb-device-manager ----
+
+  namespace DeviceManager {
+    interface BusScanStartParams {
+      scan_type?: "extended" | "standard" | "bootloader";
+      preserve_old_results?: boolean;
+      /** `path` is a serial device or "IP:PORT". */
+      port?: { path: string; protocol?: "modbus" | "modbus-tcp" };
+      out_of_order_slave_ids?: number[];
+    }
+  }
+
+  /** wb-device-manager: the serial bus scanner. Busy answers -33100. */
+  const deviceManager: {
+    readonly driver: "wb-device-manager";
+    busScan: ServiceProxy & {
+      /** Returns "Ok" at once; progress and results are on the retained /wb-device-manager/state topic. */
+      Start: Method<DeviceManager.BusScanStartParams, "Ok">;
+      Stop: Method<{}, "Ok">;
+    };
+    fwUpdate: Serial.FwUpdateService;
+  };
+
+  // ---- wb-mqtt-dali ----
+
+  namespace Dali {
+    interface CommandResult {
+      status: "ok" | "error";
+      response?: { raw: number | null; value: string };
+      error?: string;
+    }
+    interface CommandInfo {
+      name: string;
+      category: string;
+      snippet: string;
+    }
+    interface GatewayEntry {
+      id: string;
+      name: string;
+      buses: {
+        id: string;
+        name: string;
+        devices: { id: string; name: string; groups: number[] }[];
+        commissioning: Record<string, any>;
+      }[];
+    }
+  }
+
+  /** wb-mqtt-dali: the DALI gateway (Editor methods follow its own docs and may change). */
+  const dali: {
+    readonly driver: "wb-mqtt-dali";
+    Editor: ServiceProxy & {
+      GetList: Method<{}, Dali.GatewayEntry[]>;
+      GetGateway: Method<{ gatewayId: string }, { config: Record<string, any> }>;
+      SetGateway: Method<{ gatewayId: string; config: Record<string, any> }, any>;
+      GetBus: Method<{ busId: string }, { config: Record<string, any>; schema: any }>;
+      SetBus: Method<{ busId: string; config: Record<string, any> }, any>;
+      ScanBus: Method<{ busId: string }, { status: "started" | "already_running"; progressTopic: string }>;
+      StopScanBus: Method<{ busId: string }, { status: "stopped" | "not_running" }>;
+      GetDevice: Method<{ deviceId: string; forceReload?: boolean }, { config: Record<string, any>; schema: any }>;
+      SetDevice: Method<{ deviceId: string; config: Record<string, any> }, any>;
+      GetGroup: Method<{ groupId: string }, Record<string, any>>;
+      SetGroup: Method<{ groupId: string; config: Record<string, any> }, {}>;
+      IdentifyDevice: Method<{ deviceId: string }, {}>;
+      ResetDeviceSettings: Method<{ deviceId: string }, {}>;
+      ResetDevice: Method<{ deviceId: string }, {}>;
+    };
+    Bus: ServiceProxy & {
+      /** Runs DALI commands ("DAPC(A0, 0xFE)") atomically on a bus; one result per command. */
+      SendCommand: Method<{ busId: string; commands: string[] }, Dali.CommandResult[]>;
+      ListCommands: Method<{}, Dali.CommandInfo[]>;
+    };
+  };
+}
+
+/** The MQTT-RPC module as a module: the same per-file instance as the global. */
+declare module "wb-mqtt-rpc" {
+  export = MqttRpc;
+}
+
+// ---------------------------------------------------------------------------
 // Module system
 // ---------------------------------------------------------------------------
 
@@ -856,6 +1607,8 @@ declare const module: {
   exports: Record<string, any>;
 };
 
+/** The MQTT-RPC module: the same per-file instance as the MqttRpc global. */
+declare function require(id: "wb-mqtt-rpc"): typeof MqttRpc;
 declare function require(id: string): any;
 /**
  * wb-rules resolves `require("x.mod")` against its own module directories
