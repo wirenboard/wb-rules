@@ -23,3 +23,11 @@ defineRule("ts_fs_thrower", {
     throw new Error("ts-fs-boom"); // line 23: asserted by TestTsFsErrorLineNumbers
   },
 });
+
+defineRule("ts_fs_async_thrower", {
+  whenChanged: "somedev/temp",
+  then: async () => {
+    await fs.readFile(__filename);
+    throw new Error("ts-fs-async-boom"); // line 31: asserted by TestTsFsAsyncErrorLineNumbers
+  },
+});

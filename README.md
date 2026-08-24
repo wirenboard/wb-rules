@@ -107,8 +107,14 @@ JSDoc-подсказка `/** @type {ControlsSpec} */ var cells = {...}` сни�
 (то же, что `module.exports` в JavaScript-сценариях). Импортировать можно
 встроенные модули (`fs`) и модули из каталогов wb-rules (`"my-helper.mod"`);
 относительный путь вида `"./x"` не ищется рядом со сценарием — имя модуля
-всё равно разрешается по каталогам модулей. Top-level `await` при этом
-сохраняется.
+всё равно разрешается по каталогам модулей, а модули там могут быть только
+`.js` (проверка типов при этом может разрешить `"./x"` в соседний `x.ts` и
+ничего не заметить — в рантайме такой импорт упадёт с «cannot find module»).
+Неиспользуемый `import` компилятор выбрасывает вместе с `require()`, поэтому
+модуль, нужный только ради побочного эффекта, подключайте как `import "x.mod"`.
+Модуль вида `module.exports = function …` импортируйте по умолчанию
+(`import h from "x.mod"`), а не как `import * as h` — пространство имён не
+вызываемо. Top-level `await` при этом сохраняется.
 
 ## Правила
 
@@ -1298,12 +1304,19 @@ const fs = require("fs"); // также require("fs/promises"), require("node:fs
   (`fs.readFile(path, cb)` — ошибка `ERR_INVALID_ARG_TYPE`);
   `fs.readFile === fs.promises.readFile`, `require("fs/promises")` — тот же
   набор функций;
-- `fs.exists(path)` — промис-версия `existsSync` (в Node.js её нет);
+- `fs.exists(path)` — промис-версия `existsSync` (в `fs.promises` Node.js
+  такой функции нет, а `fs.exists(path, cb)` там устарела);
 - `fs.watch(path[, options], listener)` принимает слушатель напрямую и
   возвращает объект с `close()` (не EventEmitter); рекурсивное наблюдение
-  (`recursive: true`) не поддерживается;
+  (`recursive: true`) не поддерживается; все наблюдатели процесса делят
+  один экземпляр inotify, лимит — `fs.inotify.max_user_watches`;
 - `readFile` отказывается читать файлы больше 10 МиБ
-  (`ERR_FS_FILE_TOO_LARGE`) — одна JS-куча обслуживает все сценарии;
+  (`ERR_FS_FILE_TOO_LARGE`, `RangeError`) — одна JS-куча обслуживает все
+  сценарии;
+- `Stats.birthtime` — это `ctime` (stat(2) не отдаёт время создания);
+  `{bigint: true}` не поддерживается;
+- имена файлов не в UTF-8 читаются с заменой недопустимых байтов (U+FFFD),
+  такие записи каталога по имени не открыть;
 - нет файловых дескрипторов (`open`/`read`/`write`/`fstat`), потоков,
   `cp`, `link`, `chown`, `opendir`, `statfs`.
 
@@ -1316,7 +1329,13 @@ const fs = require("fs"); // также require("fs/promises"), require("node:fs
 блокируют его на время операции — все правила и таймеры ждут. Для
 больших файлов, сетевых и медленных носителей используйте асинхронные
 версии: ввод-вывод выполняется в фоне, а промис завершается в потоке
-движка, поэтому код после `await` по-прежнему однопоточный.
+движка, поэтому код после `await` по-прежнему однопоточный. Чтение
+именованного канала (FIFO) без писателя или зависшего сетевого пути
+блокирует синхронный вызов навсегда (сторожевой таймер движка прерывает
+только JavaScript, не системный вызов), а асинхронный — оставляет
+висящую операцию; не читайте такие пути из правил. Число одновременных
+асинхронных операций не ограничено: `Promise.all` над тысячами файлов
+откроет тысячи файлов сразу — обрабатывайте такие списки порциями.
 
 ### Функции
 
@@ -1325,15 +1344,15 @@ const fs = require("fs"); // также require("fs/promises"), require("node:fs
 
 | Функция | Результат | Примечания |
 |---|---|---|
-| `readFile(path[, options])` | `string` | `options`: `"utf8"` или `{encoding, flag}`; не больше 10 МиБ |
+| `readFile(path[, options])` | `string` | `options`: `"utf8"` или `{encoding, flag}` (`flag: "a+"` создаёт отсутствующий файл и возвращает `""`); не больше 10 МиБ |
 | `writeFile(path, data[, options])` | — | `data` — строка; `{mode, flag}`; `flag: "w"` по умолчанию (`"wx"` — только новый файл, `"a"` — дописать); запись не атомарна: для конфигов пишите во временный файл и `rename` |
 | `appendFile(path, data[, options])` | — | как `writeFile` с `flag: "a"` |
 | `stat(path[, options])`, `lstat(path[, options])` | `Stats` | `size`, `mode`, `uid`, `gid`, `mtimeMs`, `mtime` (`Date`), …; методы `isFile()`, `isDirectory()`, `isSymbolicLink()`, …; `{throwIfNoEntry: false}` — `undefined` вместо `ENOENT` |
 | `readdir(path[, options])` | `string[]` или `Dirent[]` | имена отсортированы; `{withFileTypes: true}` — объекты `Dirent` с `name`, `parentPath`, `isFile()`, `isDirectory()`, …; `{recursive: true}` — обход подкаталогов (имена относительно `path`) |
-| `exists(path)` | `boolean` | никогда не бросает исключение |
+| `exists(path)` | `boolean` | `false` для отсутствующего пути и для не-строки, без исключения |
 | `mkdir(path[, options])` | `string \| undefined` | `{recursive: true}` создаёт цепочку и возвращает первый созданный каталог; `{mode}` (по умолчанию `0o777` с учётом umask); число или строка `"755"` вместо `options` — режим |
 | `rm(path[, options])` | — | файл или, с `{recursive: true}`, каталог с содержимым; `{force: true}` — не ошибаться на отсутствующем пути |
-| `rmdir(path)` | — | только пустой каталог |
+| `rmdir(path[, options])` | — | только пустой каталог; `{recursive: true}` — устаревшее в Node.js написание `rm(path, {recursive: true})`, по-прежнему только для каталога |
 | `unlink(path)` | — | файл; каталог — ошибка `EISDIR` |
 | `rename(oldPath, newPath)` | — | атомарно в пределах файловой системы |
 | `copyFile(src, dest[, mode])` | — | права копируются; `mode: fs.constants.COPYFILE_EXCL` — не перезаписывать |
@@ -1346,8 +1365,7 @@ const fs = require("fs"); // также require("fs/promises"), require("node:fs
 | `truncate(path[, len])` | — | |
 | `utimes(path, atime, mtime)` | — | секунды, числовая строка или `Date` |
 
-Только синхронно: `fs.existsSync`, а также `fs.watch()` (см. ниже).
-Константы: `fs.constants.F_OK`, `R_OK`, `W_OK`, `X_OK`, `COPYFILE_EXCL`,
+Только синхронно: `fs.watch()` (см. ниже). Константы: `fs.constants.F_OK`, `R_OK`, `W_OK`, `X_OK`, `COPYFILE_EXCL`,
 `S_IFMT`, `S_IFREG`, `S_IFDIR`, `S_IFLNK`, ….
 
 ### Ошибки

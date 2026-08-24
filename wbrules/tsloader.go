@@ -628,9 +628,12 @@ func pathsRefSameFile(a, b string) bool {
 func (c *TSCompiler) checkMany(paths []string, registryDts string) (map[string][]TSDiag, error) {
 	// --lib esnext: no DOM globals, so rule-script names like 'history'
 	// or 'name' don't collide with browser declarations.
-	// --module esnext + --moduleDetection force: rule files may use
+	// --module preserve + --moduleDetection force: rule files may use
 	// top-level await (the runtime wraps them in an async function), which
-	// TypeScript only permits in a module.
+	// TypeScript only permits in a module; "preserve" (unlike esnext) also
+	// accepts the CommonJS forms the transpiler emits and runs -
+	// `import x = require("m")` and `export =` - instead of flagging them
+	// as syntax errors (TS1202/TS1203) that block the rest of the check.
 	// --allowJs --checkJs: type-check .js rule files too (against the wb-rules
 	// types + the live-device registry), so a wrong-typed write like
 	// dev["buzzer/enabled"] = 123 is caught in legacy .js as well as .ts. No-op
@@ -659,7 +662,7 @@ func (c *TSCompiler) checkMany(paths []string, registryDts string) (map[string][
 	// --esModuleInterop: the transpiler emits interop helpers, so a default
 	// import of a CommonJS module (import fs from "fs") must type-check too.
 	args := []string{"--noEmit", "--pretty", "false", "--target", "esnext", "--lib", "esnext",
-		"--strict", "false", "--module", "esnext", "--moduleDetection", "force",
+		"--strict", "false", "--module", "preserve", "--moduleDetection", "force",
 		"--esModuleInterop", "--allowJs", "--checkJs"}
 	args = append(args, paths...)
 	args = append(args, c.typesGl)

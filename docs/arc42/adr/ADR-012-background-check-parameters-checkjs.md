@@ -15,7 +15,7 @@
 ## Решение
 
 Командная строка `wbrules/tsloader.go: checkMany`:
-`tsgo --noEmit --pretty false --target esnext --lib esnext --strict false --module esnext --moduleDetection force
+`tsgo --noEmit --pretty false --target esnext --lib esnext --strict false --module preserve --esModuleInterop --moduleDetection force
 --allowJs --checkJs <paths…> /usr/share/wb-rules/types/wb-rules.d.ts /tmp/wb-controls-*.d.ts`
 
 - **Батчинг**: запросы в течение `checkBatchDelay` = 300 мс собираются в одну программу
@@ -25,7 +25,7 @@
   нестрогого кода правил; `strictNullChecks` завалил бы существующие правила null-ошибками.
   Типовой контракт пинится `testrules_ts_typeassert.ts` под `--strict false` **и** `true`.
 - **`--lib esnext`** (без DOM): DOM-глобалы вроде `history` конфликтовали с именами в правилах.
-- **`--module esnext --moduleDetection force`**: ради top-level await ([ADR-006](ADR-006-top-level-await.md)).
+- **`--module preserve --moduleDetection force --esModuleInterop`**: ради top-level await ([ADR-006](ADR-006-top-level-await.md)). С ADR-017 транспилятор выдаёт CommonJS: `preserve` (не `esnext`) принимает и `import x = require()`/`export =`, которые рантайм исполняет, а `--esModuleInterop` нужен для `import fs from "fs"`.
 - **Пропуск `.d.ts`**: `transpileModule` в tsgo паникует на них; `/usr/share/wb-rules` — watched dir,
   где лежит `types/wb-rules.d.ts`.
 - **checkJs для `.js`** (`--allowJs --checkJs`; в редакторе `checkJs:true`): диагностики для `.js` —

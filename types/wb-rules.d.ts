@@ -895,7 +895,7 @@ declare var exports: Record<string, any>;
 declare module "fs" {
   export type Encoding = "utf8" | "utf-8";
   /** Node's file system flags (the `flag` option of writeFile/appendFile). */
-  export type OpenFlag = "r" | "r+" | "w" | "wx" | "w+" | "wx+" | "a" | "ax" | "a+" | "ax+";
+  export type OpenFlag = "r" | "rs" | "r+" | "rs+" | "w" | "wx" | "w+" | "wx+" | "a" | "ax" | "a+" | "ax+" | "as" | "as+";
   /** A permission mode: an integer or an octal string such as "644". */
   export type Mode = number | string;
   /** A timestamp for utimes: seconds since the epoch, a numeric string or a Date. */
@@ -903,6 +903,7 @@ declare module "fs" {
 
   export interface ReadFileOptions {
     encoding?: Encoding | null;
+    /** Default "r"; a creating flag ("a+") yields "" for a new file. */
     flag?: OpenFlag;
   }
   export interface WriteFileOptions {
@@ -915,7 +916,7 @@ declare module "fs" {
   export interface StatOptions {
     /** BigInt stats are not supported. */
     bigint?: false;
-    /** false: return undefined for a missing path instead of throwing ENOENT. */
+    /** false: return undefined for a missing path (ENOENT/ENOTDIR) instead of throwing. */
     throwIfNoEntry?: boolean;
   }
   export interface ReaddirOptions {
@@ -1036,17 +1037,21 @@ declare module "fs" {
   export function writeFileSync(path: string, data: string, options?: WriteFileOptions | Encoding | null): void;
   /** Appends data, creating the file if needed (flag "a"). */
   export function appendFileSync(path: string, data: string, options?: WriteFileOptions | Encoding | null): void;
+  export function statSync(path: string, options?: StatOptions & { throwIfNoEntry?: true }): Stats;
   export function statSync(path: string, options: StatOptions & { throwIfNoEntry: false }): Stats | undefined;
-  export function statSync(path: string, options?: StatOptions): Stats;
+  export function statSync(path: string, options?: StatOptions): Stats | undefined;
   /** Like statSync but does not follow a final symbolic link. */
+  export function lstatSync(path: string, options?: StatOptions & { throwIfNoEntry?: true }): Stats;
   export function lstatSync(path: string, options: StatOptions & { throwIfNoEntry: false }): Stats | undefined;
-  export function lstatSync(path: string, options?: StatOptions): Stats;
+  export function lstatSync(path: string, options?: StatOptions): Stats | undefined;
   export function readdirSync(path: string, options: ReaddirOptions & { withFileTypes: true }): Dirent[];
   export function readdirSync(path: string, options?: (ReaddirOptions & { withFileTypes?: false }) | Encoding | null): string[];
+  export function readdirSync(path: string, options?: ReaddirOptions | Encoding | null): string[] | Dirent[];
   /** true if the path exists (follows symlinks); never throws. */
   export function existsSync(path: string): boolean;
   export function mkdirSync(path: string, options: MkdirOptions & { recursive: true }): string | undefined;
   export function mkdirSync(path: string, options?: (MkdirOptions & { recursive?: false }) | Mode | null): void;
+  export function mkdirSync(path: string, options?: MkdirOptions | Mode | null): string | undefined;
   /** Removes an empty directory. */
   export function rmdirSync(path: string, options?: RmdirOptions): void;
   /** Removes a file, or a directory tree with { recursive: true }. */
@@ -1062,8 +1067,8 @@ declare module "fs" {
   export function realpathSync(path: string, options?: EncodingOptions | Encoding | null): string;
   /** Returns the target of a symbolic link. */
   export function readlinkSync(path: string, options?: EncodingOptions | Encoding | null): string;
-  /** Creates a symbolic link at path pointing to target (type is ignored). */
-  export function symlinkSync(target: string, path: string, type?: string | null): void;
+  /** Creates a symbolic link at path pointing to target (type only matters on Windows). */
+  export function symlinkSync(target: string, path: string, type?: "dir" | "file" | "junction" | null): void;
   export function chmodSync(path: string, mode: Mode): void;
   /** Creates a unique directory prefix + six random characters and returns its path. */
   export function mkdtempSync(prefix: string, options?: EncodingOptions | Encoding | null): string;
@@ -1088,16 +1093,20 @@ declare module "fs" {
   export function readFile(path: string, options?: ReadFileOptions | Encoding | null): Promise<string>;
   export function writeFile(path: string, data: string, options?: WriteFileOptions | Encoding | null): Promise<void>;
   export function appendFile(path: string, data: string, options?: WriteFileOptions | Encoding | null): Promise<void>;
+  export function stat(path: string, options?: StatOptions & { throwIfNoEntry?: true }): Promise<Stats>;
   export function stat(path: string, options: StatOptions & { throwIfNoEntry: false }): Promise<Stats | undefined>;
-  export function stat(path: string, options?: StatOptions): Promise<Stats>;
+  export function stat(path: string, options?: StatOptions): Promise<Stats | undefined>;
+  export function lstat(path: string, options?: StatOptions & { throwIfNoEntry?: true }): Promise<Stats>;
   export function lstat(path: string, options: StatOptions & { throwIfNoEntry: false }): Promise<Stats | undefined>;
-  export function lstat(path: string, options?: StatOptions): Promise<Stats>;
+  export function lstat(path: string, options?: StatOptions): Promise<Stats | undefined>;
   export function readdir(path: string, options: ReaddirOptions & { withFileTypes: true }): Promise<Dirent[]>;
   export function readdir(path: string, options?: (ReaddirOptions & { withFileTypes?: false }) | Encoding | null): Promise<string[]>;
+  export function readdir(path: string, options?: ReaddirOptions | Encoding | null): Promise<string[] | Dirent[]>;
   /** Promise form of existsSync (a wb-rules addition; Node's fs.promises has no exists). */
   export function exists(path: string): Promise<boolean>;
   export function mkdir(path: string, options: MkdirOptions & { recursive: true }): Promise<string | undefined>;
   export function mkdir(path: string, options?: (MkdirOptions & { recursive?: false }) | Mode | null): Promise<void>;
+  export function mkdir(path: string, options?: MkdirOptions | Mode | null): Promise<string | undefined>;
   export function rmdir(path: string, options?: RmdirOptions): Promise<void>;
   export function rm(path: string, options?: RmOptions): Promise<void>;
   export function unlink(path: string): Promise<void>;
@@ -1106,7 +1115,7 @@ declare module "fs" {
   export function access(path: string, mode?: number): Promise<void>;
   export function realpath(path: string, options?: EncodingOptions | Encoding | null): Promise<string>;
   export function readlink(path: string, options?: EncodingOptions | Encoding | null): Promise<string>;
-  export function symlink(target: string, path: string, type?: string | null): Promise<void>;
+  export function symlink(target: string, path: string, type?: "dir" | "file" | "junction" | null): Promise<void>;
   export function chmod(path: string, mode: Mode): Promise<void>;
   export function mkdtemp(prefix: string, options?: EncodingOptions | Encoding | null): Promise<string>;
   export function truncate(path: string, len?: number | null): Promise<void>;
@@ -1138,15 +1147,19 @@ declare module "fs/promises" {
   export function readFile(path: string, options?: ReadFileOptions | Encoding | null): Promise<string>;
   export function writeFile(path: string, data: string, options?: WriteFileOptions | Encoding | null): Promise<void>;
   export function appendFile(path: string, data: string, options?: WriteFileOptions | Encoding | null): Promise<void>;
+  export function stat(path: string, options?: StatOptions & { throwIfNoEntry?: true }): Promise<Stats>;
   export function stat(path: string, options: StatOptions & { throwIfNoEntry: false }): Promise<Stats | undefined>;
-  export function stat(path: string, options?: StatOptions): Promise<Stats>;
+  export function stat(path: string, options?: StatOptions): Promise<Stats | undefined>;
+  export function lstat(path: string, options?: StatOptions & { throwIfNoEntry?: true }): Promise<Stats>;
   export function lstat(path: string, options: StatOptions & { throwIfNoEntry: false }): Promise<Stats | undefined>;
-  export function lstat(path: string, options?: StatOptions): Promise<Stats>;
+  export function lstat(path: string, options?: StatOptions): Promise<Stats | undefined>;
   export function readdir(path: string, options: ReaddirOptions & { withFileTypes: true }): Promise<Dirent[]>;
   export function readdir(path: string, options?: (ReaddirOptions & { withFileTypes?: false }) | Encoding | null): Promise<string[]>;
+  export function readdir(path: string, options?: ReaddirOptions | Encoding | null): Promise<string[] | Dirent[]>;
   export function exists(path: string): Promise<boolean>;
   export function mkdir(path: string, options: MkdirOptions & { recursive: true }): Promise<string | undefined>;
   export function mkdir(path: string, options?: (MkdirOptions & { recursive?: false }) | Mode | null): Promise<void>;
+  export function mkdir(path: string, options?: MkdirOptions | Mode | null): Promise<string | undefined>;
   export function rmdir(path: string, options?: RmdirOptions): Promise<void>;
   export function rm(path: string, options?: RmOptions): Promise<void>;
   export function unlink(path: string): Promise<void>;
@@ -1155,7 +1168,7 @@ declare module "fs/promises" {
   export function access(path: string, mode?: number): Promise<void>;
   export function realpath(path: string, options?: EncodingOptions | Encoding | null): Promise<string>;
   export function readlink(path: string, options?: EncodingOptions | Encoding | null): Promise<string>;
-  export function symlink(target: string, path: string, type?: string | null): Promise<void>;
+  export function symlink(target: string, path: string, type?: "dir" | "file" | "junction" | null): Promise<void>;
   export function chmod(path: string, mode: Mode): Promise<void>;
   export function mkdtemp(prefix: string, options?: EncodingOptions | Encoding | null): Promise<string>;
   export function truncate(path: string, len?: number | null): Promise<void>;

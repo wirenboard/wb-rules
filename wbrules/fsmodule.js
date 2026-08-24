@@ -48,7 +48,8 @@ const constants = Object.freeze({
   S_IFSOCK,
 });
 
-const FLAGS = new Set(['r', 'r+', 'w', 'wx', 'w+', 'wx+', 'a', 'ax', 'a+', 'ax+']);
+const FLAGS = new Set(['r', 'rs', 'r+', 'rs+', 'w', 'wx', 'w+', 'wx+', 'a', 'ax', 'a+', 'ax+', 'as', 'as+']);
+const SYMLINK_TYPES = new Set(['dir', 'file', 'junction']);
 
 // ---------------------------------------------------------------------------
 // errors (Node's shapes: TypeError with code for bad arguments, Error with
@@ -102,7 +103,7 @@ function callbacksUnsupported(name) {
 // fromDescriptor rebuilds the Error the engine described for a failed
 // asynchronous operation (synchronous ones throw the Error directly).
 function fromDescriptor(d) {
-  const e = new Error(d.message);
+  const e = d.code === 'ERR_FS_FILE_TOO_LARGE' ? new RangeError(d.message) : new Error(d.message);
   e.code = d.code;
   if (d.errno !== undefined) e.errno = d.errno;
   e.syscall = d.syscall;
@@ -158,7 +159,7 @@ function getMode(value, name, fallback) {
 function getFlag(value, fallback) {
   if (value === null || value === undefined) return fallback;
   if (typeof value !== 'string' || !FLAGS.has(value)) {
-    throw invalidArgValue('flag', value, "must be one of 'r', 'r+', 'w', 'wx', 'w+', 'wx+', 'a', 'ax', 'a+', 'ax+'");
+    throw invalidArgValue('flag', value, "must be one of 'r', 'rs', 'r+', 'rs+', 'w', 'wx', 'w+', 'wx+', 'a', 'ax', 'a+', 'ax+', 'as', 'as+'");
   }
   return value;
 }
@@ -168,10 +169,16 @@ function getData(value) {
   return value;
 }
 
-function getInteger(value, name, fallback, min = 0) {
+function getInteger(value, name, fallback, min = 0, max = Infinity) {
   if (value === null || value === undefined) return fallback;
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < min) {
-    throw invalidArgValue(name, value, `must be an integer >= ${min}`);
+  if (typeof value !== 'number') throw invalidArgType(name, 'number', value);
+  if (!Number.isInteger(value) || value < min || value > max) {
+    const range = max === Infinity ? `>= ${min}` : `in the range ${min}..${max}`;
+    throw codedError(
+      RangeError,
+      'ERR_OUT_OF_RANGE',
+      `The value of "${name}" is out of range. It must be an integer ${range}. Received ${String(value)}`
+    );
   }
   return value;
 }
@@ -181,7 +188,11 @@ function toSeconds(value, name) {
     if (!Number.isFinite(value)) throw invalidArgValue(name, value, 'must be a finite number');
     return value;
   }
-  if (value instanceof Date) return value.getTime() / 1000;
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    if (!Number.isFinite(ms)) throw invalidArgValue(name, value, 'must be a valid Date');
+    return ms / 1000;
+  }
   if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) {
     return Number(value);
   }
@@ -291,7 +302,7 @@ const ops = {
   readFile(path, options) {
     const o = getOptions(options, { encoding: 'utf8', flag: 'r' });
     checkEncoding(o.encoding);
-    return { op: 'readFile', args: [getPath(path)] };
+    return { op: 'readFile', args: [getPath(path), getFlag(o.flag, 'r')] };
   },
 
   writeFile(path, data, options) {
@@ -314,13 +325,13 @@ const ops = {
 
   stat(path, options) {
     const o = getOptions(options, { bigint: false, throwIfNoEntry: true });
-    if (o.bigint) throw invalidArgValue('options.bigint', o.bigint, 'is not supported');
+    if (o.bigint) throw invalidArgValue('options.bigint', o.bigint, 'is not supported (BigInt stats)');
     return { op: 'stat', args: [getPath(path)], map: toStats, ifNoEntry: o.throwIfNoEntry === false };
   },
 
   lstat(path, options) {
     const o = getOptions(options, { bigint: false, throwIfNoEntry: true });
-    if (o.bigint) throw invalidArgValue('options.bigint', o.bigint, 'is not supported');
+    if (o.bigint) throw invalidArgValue('options.bigint', o.bigint, 'is not supported (BigInt stats)');
     return { op: 'lstat', args: [getPath(path)], map: toStats, ifNoEntry: o.throwIfNoEntry === false };
   },
 
@@ -353,16 +364,17 @@ const ops = {
     return { op: 'mkdir', args: [getPath(path), recursive, mode], map: nullToUndefined };
   },
 
-  // {recursive: true} is Node's deprecated spelling of rm(path, {recursive: true})
+  // {recursive: true} is Node's deprecated spelling of rm(path, {recursive:
+  // true}) that still refuses anything but a directory
   rmdir(path, options) {
     const o = getOptions(options, { recursive: false });
-    if (o.recursive) return { op: 'rm', args: [getPath(path), true, false] };
+    if (o.recursive) return { op: 'rm', args: [getPath(path), true, false, true] };
     return { op: 'rmdir', args: [getPath(path)] };
   },
 
   rm(path, options) {
     const o = getOptions(options, { recursive: false, force: false });
-    return { op: 'rm', args: [getPath(path), !!o.recursive, !!o.force] };
+    return { op: 'rm', args: [getPath(path), !!o.recursive, !!o.force, false] };
   },
 
   unlink(path) {
@@ -374,15 +386,20 @@ const ops = {
   },
 
   copyFile(src, dest, mode) {
-    const m = getInteger(mode, 'mode', 0);
+    const m = getInteger(mode, 'mode', 0, 0, 7);
     return {
       op: 'copyFile',
-      args: [getPath(src, 'src'), getPath(dest, 'dest'), (m & constants.COPYFILE_EXCL) !== 0],
+      args: [
+        getPath(src, 'src'),
+        getPath(dest, 'dest'),
+        (m & constants.COPYFILE_EXCL) !== 0,
+        (m & constants.COPYFILE_FICLONE_FORCE) !== 0,
+      ],
     };
   },
 
   access(path, mode) {
-    return { op: 'access', args: [getPath(path), getInteger(mode, 'mode', constants.F_OK)] };
+    return { op: 'access', args: [getPath(path), getInteger(mode, 'mode', constants.F_OK, 0, 7)] };
   },
 
   realpath(path, options) {
@@ -397,8 +414,15 @@ const ops = {
     return { op: 'readlink', args: [getPath(path)] };
   },
 
-  // the type argument only matters on Windows
-  symlink(target, path) {
+  // the type argument only matters on Windows; it is validated like Node does
+  symlink(target, path, type) {
+    if (type !== null && type !== undefined && (typeof type !== 'string' || !SYMLINK_TYPES.has(type))) {
+      throw codedError(
+        TypeError,
+        'ERR_FS_INVALID_SYMLINK_TYPE',
+        `Symlink type must be one of "dir", "file", or "junction". Received "${String(type)}"`
+      );
+    }
     return { op: 'symlink', args: [getPath(target, 'target'), getPath(path)] };
   },
 
@@ -420,6 +444,21 @@ const ops = {
     return { op: 'utimes', args: [getPath(path), toSeconds(atime, 'atime'), toSeconds(mtime, 'mtime')] };
   },
 };
+
+// throwIfNoEntry: false answers undefined for a missing path - including a
+// path through a non-directory component, as Node does
+function isNoEntry(e) {
+  return !!e && (e.code === 'ENOENT' || e.code === 'ENOTDIR');
+}
+
+// Node reports an oversized file as a RangeError
+function asRangeError(e) {
+  const r = new RangeError(e.message);
+  r.code = e.code;
+  r.syscall = e.syscall;
+  if (e.path !== undefined) r.path = e.path;
+  return r;
+}
 
 function prepare(name, args) {
   if (args.length > 0 && typeof args[args.length - 1] === 'function') {
@@ -452,7 +491,8 @@ Object.keys(ops).forEach((name) => {
     try {
       result = _wbFsSync(spec.op, spec.args);
     } catch (e) {
-      if (spec.ifNoEntry && e && e.code === 'ENOENT') return undefined;
+      if (spec.ifNoEntry && isNoEntry(e)) return undefined;
+      if (e && e.code === 'ERR_FS_FILE_TOO_LARGE') throw asRangeError(e);
       throw e;
     }
     return finish(spec, result);
@@ -470,7 +510,7 @@ Object.keys(ops).forEach((name) => {
     return callAsync(spec.op, spec.args).then(
       (result) => finish(spec, result),
       (e) => {
-        if (spec.ifNoEntry && e.code === 'ENOENT') return undefined;
+        if (spec.ifNoEntry && isNoEntry(e)) return undefined;
         throw e;
       }
     );

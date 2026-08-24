@@ -17,12 +17,29 @@ var fileWatcher = fs.watch(dir + '/file.txt', function (eventType, filename) {
 });
 log('watching: ' + (dirWatcher instanceof fs.FSWatcher) + ' ' + (typeof fileWatcher.close));
 
+var dir2Watcher = null;
+defineRule('secondWatcher', {
+  whenChanged: 'somedev/temp',
+  then: function (value) {
+    if (value === 21) {
+      dirWatcher.close();
+      log('first watcher closed');
+      return;
+    }
+    dir2Watcher = fs.watch(dir, function (eventType, filename) {
+      log('dir2 event: ' + eventType + ' ' + filename);
+    });
+    log('second watcher added');
+  },
+});
+
 defineRule('closeWatchers', {
   whenChanged: 'somedev/sw',
   then: function () {
     dirWatcher.close();
     dirWatcher.close(); // idempotent
     fileWatcher.close();
+    if (dir2Watcher) dir2Watcher.close();
     log('watchers closed');
   },
 });

@@ -118,6 +118,34 @@ log('err flag: ' + errInfo(function () { fs.writeFileSync(dir + '/x', 'x', { fla
 log('err callback: ' + errInfo(function () { fs.readFileSync(dir + '/a/hello.txt', function () {}); }));
 log('err recursive watch: ' + errInfo(function () { fs.watch(dir, { recursive: true }, function () {}); }));
 log('err watch missing: ' + errInfo(function () { fs.watch(dir + '/nope', function () {}); }));
+// review-round cases
+fs.copyFileSync(dir + '/a/hello.txt', dir + '/a/hello.txt');
+fs.symlinkSync(dir + '/a/hello.txt', dir + '/a/hello-link');
+fs.copyFileSync(dir + '/a/hello.txt', dir + '/a/hello-link');
+log('copy onto itself: ' + fs.readFileSync(dir + '/a/hello.txt') + ' | ' + fs.readFileSync(dir + '/a/hello-link'));
+fs.unlinkSync(dir + '/a/hello-link');
+log('err rmdir recursive file: ' + errInfo(function () { fs.rmdirSync(dir + '/a/hello.txt', { recursive: true }); }));
+log('readFile a+: [' + fs.readFileSync(dir + '/a/created-by-read.txt', { flag: 'a+' }) + '] ' + fs.existsSync(dir + '/a/created-by-read.txt'));
+fs.unlinkSync(dir + '/a/created-by-read.txt');
+log('err readFile flag: ' + errInfo(function () { fs.readFileSync(dir + '/a/hello.txt', { flag: 'q' }); }));
+log('stat through file: ' + fs.statSync(dir + '/a/hello.txt/x', { throwIfNoEntry: false }));
+log('err utimes NaN date: ' + errInfo(function () { fs.utimesSync(dir + '/a/hello.txt', new Date(NaN), 1); }));
+log('err symlink type: ' + errInfo(function () { fs.symlinkSync(dir + '/a/hello.txt', dir + '/a/l2', 'bogus'); }));
+log('err access range: ' + errInfo(function () { fs.accessSync(dir + '/a/hello.txt', 8); }) + ' ' + (function () { try { fs.accessSync(dir + '/a/hello.txt', 8); } catch (e) { return e instanceof RangeError; } })());
+log('err copy ficlone force: ' + errInfo(function () { fs.copyFileSync(dir + '/a/hello.txt', dir + '/a/c2', fs.constants.COPYFILE_FICLONE_FORCE); }));
+fs.symlinkSync(dir + '/a/loop-b', dir + '/a/loop-a');
+fs.symlinkSync(dir + '/a/loop-a', dir + '/a/loop-b');
+log('err realpath loop: ' + errInfo(function () { fs.realpathSync(dir + '/a/loop-a'); }));
+fs.unlinkSync(dir + '/a/loop-a');
+fs.unlinkSync(dir + '/a/loop-b');
+fs.symlinkSync(dir + '/nowhere', dir + '/dangling');
+log('err mkdir over dangling link: ' + errInfo(function () { fs.mkdirSync(dir + '/dangling', { recursive: true }); }));
+fs.unlinkSync(dir + '/dangling');
+fs.writeFileSync(dir + '/setgid.txt', 'x', { mode: 0o2640 });
+log('setgid mode: ' + (fs.statSync(dir + '/setgid.txt').mode & 0o7777).toString(8));
+fs.writeFileSync(dir + '/big.txt', '');
+fs.truncateSync(dir + '/big.txt', 11 * 1024 * 1024);
+log('err too large: ' + errInfo(function () { fs.readFileSync(dir + '/big.txt'); }) + ' ' + (function () { try { fs.readFileSync(dir + '/big.txt'); } catch (e) { return e instanceof RangeError; } })());
 log('sync done');
 
 // ---- the promise API (after this await the file is a top-level-await file)
@@ -164,6 +192,11 @@ try {
   await fs.readFile(123);
 } catch (e) {
   log('async err path type: ' + e.code);
+}
+try {
+  await fs.readFile(dir + '/big.txt');
+} catch (e) {
+  log('async err too large: ' + e.code + ' ' + (e instanceof RangeError));
 }
 await fs.rm(dir + '/c', { recursive: true });
 log('async rm: ' + fs.existsSync(dir + '/c'));

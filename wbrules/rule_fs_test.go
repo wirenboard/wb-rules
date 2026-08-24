@@ -70,6 +70,19 @@ func (s *RuleFsSuite) TestFsModule() {
 		"[info] err callback: ERR_INVALID_ARG_TYPE true true",
 		"[info] err recursive watch: ERR_FEATURE_UNAVAILABLE_ON_PLATFORM true true",
 		"[info] err watch missing: ENOENT true false watch errno=-2 path=/fs-sandbox/nope",
+		"[info] copy onto itself: hello world | hello world",
+		"[info] err rmdir recursive file: ENOTDIR true false rmdir errno=-20 path=/fs-sandbox/a/hello.txt",
+		"[info] readFile a+: [] true",
+		"[info] err readFile flag: ERR_INVALID_ARG_VALUE true true",
+		"[info] stat through file: undefined",
+		"[info] err utimes NaN date: ERR_INVALID_ARG_VALUE true true",
+		"[info] err symlink type: ERR_FS_INVALID_SYMLINK_TYPE true true",
+		"[info] err access range: ERR_OUT_OF_RANGE true false true",
+		"[info] err copy ficlone force: ENOTSUP true false copyfile errno=-95 path=/fs-sandbox/a/hello.txt dest=/fs-sandbox/a/c2",
+		"[info] err realpath loop: ELOOP true false realpath errno=-40 path=/fs-sandbox/a/loop-a",
+		"[info] err mkdir over dangling link: EEXIST true false mkdir errno=-17 path=/fs-sandbox/dangling",
+		"[info] setgid mode: 2640",
+		"[info] err too large: ERR_FS_FILE_TOO_LARGE true false read path=/fs-sandbox/big.txt true",
 		"[info] sync done",
 	)
 	s.SkipTill("[changed] testrules_fs.js")
@@ -90,6 +103,7 @@ func (s *RuleFsSuite) TestFsModule() {
 		"[info] async err rename: ENOENT dest=/fs-sandbox/nope2",
 		"[info] async err callback: ERR_INVALID_ARG_TYPE true",
 		"[info] async err path type: ERR_INVALID_ARG_TYPE",
+		"[info] async err too large: ERR_FS_FILE_TOO_LARGE true",
 		"[info] async rm: false",
 		"[info] parallel: 1,2,3",
 		"[info] done: false",
@@ -111,6 +125,38 @@ func (s *RuleFsSuite) TestFsModuleShadowsFiles() {
 	s.Ck("LiveLoadScript", s.engine.LiveLoadFile(script))
 	s.Verify("[info] shadow: true function")
 	s.SkipTill("[changed] testrules_fs_shadow.js")
+}
+
+// Completions that a stopping engine accepts and then drops in its queue
+// drain must not leave their callback stash entries behind: the orphan
+// note is taken before the thunk is queued and swept at Stop.
+func (s *RuleFsSuite) TestAsyncCompletionsSweptAtStop() {
+	// the callback stash is runtime-wide: measure against a baseline
+	s.engine.Stop()
+	baseline := stashCallbackCount(s.engine.globalCtx)
+	s.engine.Start()
+	// a few MiB per read keeps completions in flight past the Stop below
+	big := filepath.Join(s.DataFileTempDir(), "inflight-big.bin")
+	s.Ck("truncate", os.WriteFile(big, make([]byte, 4<<20), 0o644))
+	script := filepath.Join(s.DataFileTempDir(), "testrules_fs_inflight.js")
+	s.Ck("write", os.WriteFile(script, []byte(
+		"var fs = require('fs');\n"+
+			"for (var i = 0; i < 40; i++) fs.readFile('"+big+"').then(function () {});\n"+
+			"log('inflight');\n"), 0o644))
+	s.Ck("LiveLoadScript", s.engine.LiveLoadFile(script))
+	s.Verify("[info] inflight")
+	s.SkipTill("[changed] testrules_fs_inflight.js")
+	s.engine.Stop()
+	// completions still running at Stop note their orphan after the
+	// sweep and are reclaimed at the next boundary: cycle the engine until
+	// every one of the 40 has come in and been swept
+	s.WaitFor(func() bool {
+		s.engine.Start()
+		s.engine.Stop()
+		return stashCallbackCount(s.engine.globalCtx) == baseline && s.engine.OrphanedCallbackCount() == 0
+	})
+	s.Equal(baseline, stashCallbackCount(s.engine.globalCtx), "every completion's stash entry must be swept")
+	s.engine.Start()
 }
 
 func TestRuleFsSuite(t *testing.T) {
@@ -165,6 +211,44 @@ func (s *RuleFsWatchSuite) TestWatchEvents() {
 	s.Ck("write", os.WriteFile(filepath.Join(s.sandbox(), "after-close.txt"), []byte("x"), 0o644))
 	time.Sleep(200 * time.Millisecond)
 	s.VerifyEmpty()
+}
+
+// Two watchers on one path share a kernel watch descriptor (the engine
+// holds one inotify instance for all watchers); both receive every event,
+// closing one leaves the other, the instance goes with the last watcher.
+func (s *RuleFsWatchSuite) TestWatchSharedDescriptor() {
+	s.publish("/devices/somedev/controls/temp", "20", "somedev/temp")
+	s.SkipTill("[info] second watcher added")
+	s.Equal(3, s.engine.FsWatcherCount())
+	s.True(s.engine.FsWatchInstanceOpen())
+	s.Ck("write", os.WriteFile(filepath.Join(s.sandbox(), "shared.txt"), []byte("x"), 0o644))
+	s.Verify(
+		"[info] dir event: rename shared.txt",
+		"[info] dir2 event: rename shared.txt",
+		"[info] dir event: change shared.txt",
+		"[info] dir2 event: change shared.txt",
+	)
+	// close the first directory watcher only: the second keeps the watch
+	s.publish("/devices/somedev/controls/temp", "21", "somedev/temp")
+	s.SkipTill("[info] first watcher closed")
+	s.Equal(2, s.engine.FsWatcherCount())
+	s.Ck("remove", os.Remove(filepath.Join(s.sandbox(), "shared.txt")))
+	s.Verify("[info] dir2 event: rename shared.txt")
+	// close everything: the inotify instance is released
+	s.publish("/devices/somedev/controls/sw", "1", "somedev/sw")
+	s.SkipTill("[info] watchers closed")
+	s.Equal(0, s.engine.FsWatcherCount())
+	s.False(s.engine.FsWatchInstanceOpen())
+	// and comes back with the next watcher - created inside a rule
+	// callback, it still belongs to the file and dies with it
+	s.publish("/devices/somedev/controls/temp", "22", "somedev/temp")
+	s.SkipTill("[info] second watcher added")
+	s.Equal(1, s.engine.FsWatcherCount())
+	s.True(s.engine.FsWatchInstanceOpen())
+	s.RemoveScript("testrules_fs_watch.js")
+	s.SkipTill("[removed] testrules_fs_watch.js")
+	s.Equal(0, s.engine.FsWatcherCount())
+	s.False(s.engine.FsWatchInstanceOpen())
 }
 
 func (s *RuleFsWatchSuite) TestWatchClosedOnReload() {

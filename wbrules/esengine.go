@@ -207,7 +207,7 @@ type ESEngine struct {
 	// completing after Stop). The recording goroutine cannot sweep them
 	// itself - that would touch the JS heap concurrently - so they are swept
 	// at the next single-threaded boundary: Start, Stop or Close.
-	orphanedCallbacks    []orphanedCallback
+	orphanedCallbacks    map[orphanedCallback]struct{}
 	orphanedCallbacksMtx sync.Mutex
 
 	// closed marks a terminal Close(): the JS heap is gone and the engine
@@ -226,11 +226,9 @@ type ESEngine struct {
 	tsCheckMu      sync.Mutex
 	tsCheckResults map[string]*tsCheckEntry // latest background verdict per physical path
 
-	// fs.watch watchers of the built-in fs module (fswatch.go), keyed by
-	// the id handed to JS; closed per file on reload and wholesale at Stop
-	fsWatchers    map[uint64]*fsWatcher
-	fsWatchersMtx sync.Mutex
-	fsWatcherSeq  uint64
+	// fs.watch of the built-in fs module (fswatch.go): the shared inotify
+	// instance and its watchers; closed per file on reload, wholesale at Stop
+	fsWatch fsWatchState
 }
 
 type orphanedCallback struct {
@@ -272,7 +270,6 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		tsCheckResults:    make(map[string]*tsCheckEntry),
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
-		fsWatchers:        make(map[uint64]*fsWatcher),
 		// detects (and, at construction, reacts to) a file that crashed the
 		// process during its last load, so a poison-pill rule can't crash-loop
 		// the engine forever
@@ -328,6 +325,12 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	// async rule callbacks that throw after an await fail as promise jobs;
 	// without this they die silently on stderr instead of the rule log
 	engine.globalCtx.SetJobErrorHandler(func(msg string) {
+		// the tracker hands over the raw stack: map generated lines of .ts
+		// files back to source lines like the synchronous error path does
+		// (the CommonJS interop preamble alone shifts them by dozens)
+		if tr := engine.ctxFactory.lineTranslator; tr != nil {
+			msg = translateStackLines(msg, tr)
+		}
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("async rule error: %s", msg))
 	})
 
@@ -674,8 +677,28 @@ func (engine *ESEngine) Close() {
 // completion thunk the stopped engine dropped.
 func (engine *ESEngine) noteOrphanedCallback(ctx *ESContext, key ESCallback) {
 	engine.orphanedCallbacksMtx.Lock()
-	engine.orphanedCallbacks = append(engine.orphanedCallbacks, orphanedCallback{ctx, key})
+	if engine.orphanedCallbacks == nil {
+		engine.orphanedCallbacks = make(map[orphanedCallback]struct{})
+	}
+	engine.orphanedCallbacks[orphanedCallback{ctx, key}] = struct{}{}
 	engine.orphanedCallbacksMtx.Unlock()
+}
+
+// forgetOrphanedCallback withdraws a note: the completion thunk did run
+// and swept the entry itself. Producers note BEFORE queueing their thunk
+// because a stopping engine can accept a thunk and then discard it in
+// the queue drain, which MaybeCallSync cannot report.
+func (engine *ESEngine) forgetOrphanedCallback(ctx *ESContext, key ESCallback) {
+	engine.orphanedCallbacksMtx.Lock()
+	delete(engine.orphanedCallbacks, orphanedCallback{ctx, key})
+	engine.orphanedCallbacksMtx.Unlock()
+}
+
+// OrphanedCallbackCount reports pending notes (tests).
+func (engine *ESEngine) OrphanedCallbackCount() int {
+	engine.orphanedCallbacksMtx.Lock()
+	defer engine.orphanedCallbacksMtx.Unlock()
+	return len(engine.orphanedCallbacks)
 }
 
 func (engine *ESEngine) sweepOrphanedCallbacks() {
@@ -683,7 +706,7 @@ func (engine *ESEngine) sweepOrphanedCallbacks() {
 	orphans := engine.orphanedCallbacks
 	engine.orphanedCallbacks = nil
 	engine.orphanedCallbacksMtx.Unlock()
-	for _, o := range orphans {
+	for o := range orphans {
 		// no-op when the context was invalidated meanwhile (reload swept it)
 		o.ctx.RemoveCallback(o.key)
 	}
@@ -1434,6 +1457,8 @@ func (engine *ESEngine) runCleanups(path string) {
 
 		// cleanup timers of this context
 		engine.runTimerCleanups(engine.localCtxs[path])
+		// and its fs.watch watchers
+		engine.runFsWatchCleanups(localCtx)
 
 		// TODO: launch internal cleanups
 		engine.removeThreadFromStorage(engine.globalCtx, path)

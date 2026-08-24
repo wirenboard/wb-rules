@@ -284,6 +284,12 @@ func fsOpArgs(ctx *ESContext) (string, []any, bool) {
 	if ctx.GetTop() < 2 || !ctx.IsString(0) || !ctx.IsArray(1) {
 		return "", nil, false
 	}
+	// no operation takes more than a handful of arguments; the array
+	// converter preallocates by length, so a forged huge length must not
+	// reach it
+	if ctx.GetLength(1) > 8 {
+		return "", nil, false
+	}
 	// GetJSObject converts the stack top: bring the array there (the async
 	// variant has its callback above it)
 	ctx.Dup(1)
@@ -326,7 +332,13 @@ func (engine *ESEngine) esWbFsAsync(ctx *ESContext) int {
 	callbackKey := ctx.storeCallback(2)
 	go func() {
 		result, err := runFsOp(op, args)
+		// noted before the thunk is queued: a stopping engine may accept
+		// it and then drop it in its queue drain, which MaybeCallSync
+		// cannot report - the note gets the entry swept at the next
+		// single-threaded boundary; the thunk withdraws it when it runs
+		engine.noteOrphanedCallback(ctx, callbackKey)
 		dropErr := engine.MaybeCallSync(func() {
+			engine.forgetOrphanedCallback(ctx, callbackKey)
 			if !ctx.IsValid() {
 				// the file was reloaded or removed: invalidate() swept the
 				// stash entry, and the promise it settled died with the realm
@@ -345,9 +357,7 @@ func (engine *ESEngine) esWbFsAsync(ctx *ESContext) int {
 			}
 			ctx.invokeCallback(callbackKey, objx.New(reply))
 		})
-		if dropErr != nil {
-			engine.noteOrphanedCallback(ctx, callbackKey)
-		}
+		_ = dropErr // the note already covers the dropped case
 	}()
 	return 0
 }
@@ -363,9 +373,18 @@ func fsTooLarge(path string, size int64) *fsError {
 	return newFsCodeError("ERR_FS_FILE_TOO_LARGE", "read", path, msg)
 }
 
+// readFile(path, flag)
 func fsReadFile(a *fsArgs) (any, *fsError) {
-	path := a.str(0)
-	f, err := os.Open(path)
+	path, flag := a.str(0), a.str(1)
+	if a.err != nil {
+		return nil, a.err
+	}
+	flags, ok := fsOpenFlags[flag]
+	if !ok {
+		return nil, newFsCodeError("ERR_INVALID_ARG_VALUE", "open", path, "invalid file open flag "+flag)
+	}
+	// Node's default mode for the files a creating flag ("a+", "w+") makes
+	f, err := os.OpenFile(path, flags, 0o666)
 	if err != nil {
 		return nil, fsErrFromGo(err, "open", path)
 	}
@@ -386,7 +405,11 @@ func fsReadFile(a *fsArgs) (any, *fsError) {
 // fsOpenFlags are Node's file system flags (the "flag" option).
 var fsOpenFlags = map[string]int{
 	"r":   os.O_RDONLY,
+	"rs":  os.O_RDONLY | os.O_SYNC,
 	"r+":  os.O_RDWR,
+	"rs+": os.O_RDWR | os.O_SYNC,
+	"as":  os.O_WRONLY | os.O_CREATE | os.O_APPEND | os.O_SYNC,
+	"as+": os.O_RDWR | os.O_CREATE | os.O_APPEND | os.O_SYNC,
 	"w":   os.O_WRONLY | os.O_CREATE | os.O_TRUNC,
 	"wx":  os.O_WRONLY | os.O_CREATE | os.O_TRUNC | os.O_EXCL,
 	"w+":  os.O_RDWR | os.O_CREATE | os.O_TRUNC,
@@ -395,6 +418,23 @@ var fsOpenFlags = map[string]int{
 	"ax":  os.O_WRONLY | os.O_CREATE | os.O_APPEND | os.O_EXCL,
 	"a+":  os.O_RDWR | os.O_CREATE | os.O_APPEND,
 	"ax+": os.O_RDWR | os.O_CREATE | os.O_APPEND | os.O_EXCL,
+}
+
+// posixMode converts a POSIX mode (0o7777 bits) to Go's FileMode, whose
+// setuid/setgid/sticky bits live elsewhere than in the low 12 bits - a
+// plain cast would silently drop them.
+func posixMode(mode uint32) os.FileMode {
+	fm := os.FileMode(mode & 0o777)
+	if mode&unix.S_ISUID != 0 {
+		fm |= os.ModeSetuid
+	}
+	if mode&unix.S_ISGID != 0 {
+		fm |= os.ModeSetgid
+	}
+	if mode&unix.S_ISVTX != 0 {
+		fm |= os.ModeSticky
+	}
+	return fm
 }
 
 // writeFile(path, data, flag, mode)
@@ -407,7 +447,7 @@ func fsWriteFile(a *fsArgs) (any, *fsError) {
 	if !ok {
 		return nil, newFsCodeError("ERR_INVALID_ARG_VALUE", "open", path, "invalid file open flag "+flag)
 	}
-	f, err := os.OpenFile(path, flags, os.FileMode(uint32(mode)))
+	f, err := os.OpenFile(path, flags, posixMode(uint32(mode)))
 	if err != nil {
 		return nil, fsErrFromGo(err, "open", path)
 	}
@@ -582,8 +622,16 @@ func fsMkdir(a *fsArgs) (any, *fsError) {
 			}
 			continue
 		}
-		if err := unix.Mkdir(prefix, uint32(mode)); err != nil && err != syscall.EEXIST {
-			return nil, fsErrFromGo(err, "mkdir", path)
+		if err := unix.Mkdir(prefix, uint32(mode)); err != nil {
+			if err != syscall.EEXIST {
+				return nil, fsErrFromGo(err, "mkdir", path)
+			}
+			// created meanwhile - or a dangling symlink sits there (Stat
+			// failed, Mkdir says it exists): only a directory passes
+			if err := unix.Stat(prefix, &st); err != nil || st.Mode&unix.S_IFMT != unix.S_IFDIR {
+				return nil, newFsErrno(syscall.EEXIST, "mkdir", path)
+			}
+			continue
 		}
 		if first == nil {
 			first = prefix
@@ -603,9 +651,10 @@ func fsRmdir(a *fsArgs) (any, *fsError) {
 	return nil, nil
 }
 
-// rm(path, recursive, force)
+// rm(path, recursive, force, dirOnly); dirOnly serves rmdir's deprecated
+// {recursive: true} spelling, which must still refuse a non-directory.
 func fsRm(a *fsArgs) (any, *fsError) {
-	path, recursive, force := a.str(0), a.boolean(1), a.boolean(2)
+	path, recursive, force, dirOnly := a.str(0), a.boolean(1), a.boolean(2), a.boolean(3)
 	if a.err != nil {
 		return nil, a.err
 	}
@@ -614,9 +663,15 @@ func fsRm(a *fsArgs) (any, *fsError) {
 		if force && err == syscall.ENOENT {
 			return nil, nil
 		}
+		if dirOnly {
+			return nil, fsErrFromGo(err, "rmdir", path)
+		}
 		return nil, fsErrFromGo(err, "lstat", path)
 	}
 	if st.Mode&unix.S_IFMT != unix.S_IFDIR {
+		if dirOnly {
+			return nil, newFsErrno(syscall.ENOTDIR, "rmdir", path)
+		}
 		if err := unix.Unlink(path); err != nil && !(force && err == syscall.ENOENT) {
 			return nil, fsErrFromGo(err, "unlink", path)
 		}
@@ -658,41 +713,65 @@ func fsRename(a *fsArgs) (any, *fsError) {
 	return nil, nil
 }
 
-// copyFile(src, dest, excl): a byte copy preserving the source's mode.
+// copyFile(src, dest, excl, ficloneForce): a byte copy preserving the
+// source's mode, in libuv's order - open both, compare identities, only
+// then truncate - so copying a file onto itself (same path, a symlink or
+// a hard link to it) is a no-op instead of wiping the source.
 func fsCopyFile(a *fsArgs) (any, *fsError) {
-	src, dest, excl := a.str(0), a.str(1), a.boolean(2)
+	src, dest, excl, ficloneForce := a.str(0), a.str(1), a.boolean(2), a.boolean(3)
 	if a.err != nil {
 		return nil, a.err
+	}
+	if ficloneForce {
+		// no reflink support here; Node reports the same when the
+		// filesystem cannot clone
+		return nil, newFsErrnoDest(syscall.ENOTSUP, "copyfile", src, dest)
 	}
 	in, err := os.Open(src)
 	if err != nil {
 		return nil, fsErrFromGoDest(err, "copyfile", src, dest)
 	}
 	defer in.Close()
-	st, err := in.Stat()
-	if err != nil {
+	var srcSt unix.Stat_t
+	if err := unix.Fstat(int(in.Fd()), &srcSt); err != nil {
 		return nil, fsErrFromGoDest(err, "copyfile", src, dest)
 	}
-	if st.IsDir() {
+	if srcSt.Mode&unix.S_IFMT == unix.S_IFDIR {
 		return nil, newFsErrnoDest(syscall.EISDIR, "copyfile", src, dest)
 	}
-	flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	perm := posixMode(srcSt.Mode & 0o7777)
+	flags := os.O_WRONLY | os.O_CREATE
 	if excl {
 		flags |= os.O_EXCL
 	}
-	out, err := os.OpenFile(dest, flags, st.Mode().Perm())
+	out, err := os.OpenFile(dest, flags, perm)
 	if err != nil {
+		return nil, fsErrFromGoDest(err, "copyfile", src, dest)
+	}
+	var destSt unix.Stat_t
+	if err := unix.Fstat(int(out.Fd()), &destSt); err != nil {
+		out.Close()
+		return nil, fsErrFromGoDest(err, "copyfile", src, dest)
+	}
+	if srcSt.Dev == destSt.Dev && srcSt.Ino == destSt.Ino {
+		// the same file: nothing to copy
+		out.Close()
+		return nil, nil
+	}
+	if err := out.Truncate(0); err != nil {
+		out.Close()
 		return nil, fsErrFromGoDest(err, "copyfile", src, dest)
 	}
 	if _, err := io.Copy(out, in); err != nil {
 		out.Close()
 		return nil, fsErrFromGoDest(err, "copyfile", src, dest)
 	}
-	if err := out.Close(); err != nil {
+	// an existing destination keeps OpenFile's mode argument unapplied
+	if err := out.Chmod(perm); err != nil {
+		out.Close()
 		return nil, fsErrFromGoDest(err, "copyfile", src, dest)
 	}
-	// an existing destination keeps OpenFile's mode argument unapplied
-	if err := os.Chmod(dest, st.Mode().Perm()); err != nil {
+	if err := out.Close(); err != nil {
 		return nil, fsErrFromGoDest(err, "copyfile", src, dest)
 	}
 	return nil, nil
@@ -716,6 +795,10 @@ func fsRealpath(a *fsArgs) (any, *fsError) {
 	}
 	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
+		if strings.Contains(err.Error(), "too many links") {
+			// EvalSymlinks reports a symlink loop as a plain error
+			return nil, newFsErrno(syscall.ELOOP, "realpath", path)
+		}
 		return nil, fsErrFromGo(err, "realpath", path)
 	}
 	abs, err := filepath.Abs(resolved)

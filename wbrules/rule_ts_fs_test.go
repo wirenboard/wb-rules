@@ -38,6 +38,19 @@ func (s *RuleTsFsSuite) TestTsFsErrorLineNumbers() {
 	)
 }
 
+// An error thrown after an await is reported by the promise-rejection
+// tracker, not the synchronous error path; its stack must be mapped to
+// .ts lines just the same (the interop preamble shifts generated lines).
+func (s *RuleTsFsSuite) TestTsFsAsyncErrorLineNumbers() {
+	s.Ck("LiveLoadScript", s.LiveLoadScript("testrules_ts_fs.ts"))
+	s.SkipTill("[info] ts fs async: true")
+	s.publish("/devices/somedev/controls/temp", "20", "somedev/temp")
+	s.Verify(
+		"tst -> /devices/somedev/controls/temp: [20] (QoS 1, retained)",
+		regexp.MustCompile(`(?s:async rule error:.*ts-fs-async-boom.*testrules_ts_fs\.ts:31.*)`),
+	)
+}
+
 func TestRuleTsFsSuite(t *testing.T) {
 	if tsgoForTests() == "" {
 		t.Skip("no tsgo: WB_RULES_TSGO not set and /usr/bin/tsgo absent")

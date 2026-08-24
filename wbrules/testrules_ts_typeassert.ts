@@ -381,10 +381,22 @@ function __fsModule() {
   const p5: Promise<void> = nodeFs.writeFile("/tmp/x", "y");
   // @ts-expect-error - the promise variant returns a Promise, not the text
   const notText: string = fs.readFile("/tmp/x");
+  // non-literal option values fall back to the union results
+  const flag: boolean = Math.random() > 0.5;
+  // (with a boolean variable the result may be undefined - under strict
+  // null checks assigning it to a plain Stats is an error, but this
+  // fixture must also stay clean under --strict false, so no assertion)
+  const maybeStats: import("fs").Stats | undefined = fs.statSync("/tmp/x", { throwIfNoEntry: flag });
+  const either: string[] | import("fs").Dirent[] = fs.readdirSync("/tmp", { withFileTypes: flag });
+  const maybeCreated: string | undefined = fs.mkdirSync("/tmp/z", { recursive: flag });
+  fs.symlinkSync("/tmp/x", "/tmp/y", "file");
+  // @ts-expect-error - only Node's symlink types
+  fs.symlinkSync("/tmp/x", "/tmp/y", "bogus");
+  fs.readFileSync("/tmp/x", { flag: "a+" });
   // an unknown module is still `any`
   const other = require("some-other-module");
   other.anything();
-  return [text, text2, text3, size, isFile, mtime, maybe, notMaybe, direntName, isDir, created, nothing, exists, p1, p2, p3, p4, p5, notText];
+  return [text, text2, text3, size, isFile, mtime, maybe, notMaybe, direntName, isDir, created, nothing, exists, p1, p2, p3, p4, p5, notText, maybeStats, either, maybeCreated];
 }
 
 // keep "unused function" style checkers quiet without executing anything

@@ -39,7 +39,7 @@ wb-rules (2.47.0~quickjs2.1) unstable; urgency=medium
     wrapper runs as-is. Previously any import statement failed the file with
     a SyntaxError.
 
- -- Evgeny Boger <boger@wirenboard.com>  Wed, 19 Aug 2026 21:00:00 +0400
+ -- Evgeny Boger <boger@wirenboard.com>  Mon, 24 Aug 2026 23:30:00 +0400
 
 wb-rules (2.47.0~quickjs1) unstable; urgency=medium
 

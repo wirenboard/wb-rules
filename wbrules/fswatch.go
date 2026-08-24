@@ -1,17 +1,32 @@
 package wbrules
 
-// fs.watch for the built-in fs module: one inotify instance per watcher,
-// read by its own goroutine, events delivered to the JS listener on the
-// engine loop. Implemented directly over inotify(7) through x/sys/unix
-// (already a dependency) rather than a watcher library, so the wbgo.so
-// plugin's dependency set stays untouched.
+// fs.watch for the built-in fs module: ONE inotify instance per engine
+// (like libuv's per-loop instance) shared by every watcher, read by one
+// goroutine, events delivered to the JS listeners on the engine loop.
+// Implemented directly over inotify(7) through x/sys/unix (already a
+// dependency) rather than a watcher library, so the wbgo.so plugin's
+// dependency set stays untouched.
 //
-// Lifecycle: a watcher belongs to the rule file that created it - the
-// file's cleanup scope closes it on reload/removal; Stop closes every
-// watcher; the kernel dropping the watch (the watched path deleted or its
-// filesystem unmounted, reported as IN_IGNORED) closes it too. Closing
-// from JS (FSWatcher.close) and every other path meet in close(), which
-// is idempotent; the listener's stash entry is swept on the engine loop.
+// Why one instance: inotify instances are a scarce per-user resource
+// (fs.inotify.max_user_instances, typically 128, shared with every other
+// root daemon on the controller), watches are plentiful
+// (max_user_watches, thousands). A watcher costs one watch descriptor;
+// watchers of the same inode share the descriptor (the kernel returns the
+// same wd, and every watcher subscribes with the same mask).
+//
+// Lifecycle: a watcher belongs to the realm (rule file) that created it
+// and is tracked per context like timers are (ctxTimers): runCleanups
+// closes the file's watchers on reload/removal on the engine loop, Stop
+// closes every watcher after the loops are gone, the kernel dropping a
+// watch (the watched path deleted or its filesystem unmounted, reported
+// as IN_IGNORED) closes the watchers on it. Closing from JS
+// (FSWatcher.close) and every other path meet in close(), which is
+// idempotent; the listener's stash entry is swept on the engine loop.
+// No per-watcher entry goes on the file's cleanup list: with -cleanup the
+// list runs from the Stop caller's goroutine while JS may still execute,
+// and a heap-touching entry there would race the interpreter. The
+// instance itself is opened on the first watcher and released when the
+// last one goes.
 
 import (
 	"os"
@@ -41,10 +56,28 @@ type fsWatcher struct {
 	key      ESCallback
 	path     string
 	baseName string
-	file     *os.File // the inotify descriptor, pollable through the runtime
+	wd       int32
+	inst     *os.File // the instance the wd belongs to
 
 	closed    atomic.Bool
 	closeOnce sync.Once
+}
+
+// fsWatchState is the engine's shared inotify instance and its watcher
+// tables; all fields are guarded by mu except file, which is replaced
+// only under mu and read by the reader goroutine that owns it.
+type fsWatchState struct {
+	mu   sync.Mutex
+	file *os.File // nil while no watcher exists
+	// fd is file's descriptor kept apart: (*os.File).Fd() would switch the
+	// descriptor to blocking mode and detach it from the runtime poller,
+	// after which Close no longer wakes the reader's pending Read
+	fd       int
+	seq      uint64
+	byID     map[uint64]*fsWatcher
+	byWd     map[int32][]*fsWatcher
+	byCtx    map[*ESContext]map[uint64]*fsWatcher // per realm, for runCleanups
+	watchers int                                  // == len(byID)
 }
 
 // _wbFsWatch(path, listener) -> watcher id. The listener receives
@@ -55,42 +88,76 @@ func (engine *ESEngine) esWbFsWatch(ctx *ESContext) int {
 		return duktape.DUK_RET_TYPE_ERROR
 	}
 	path := ctx.GetString(0)
-	fd, err := unix.InotifyInit1(unix.IN_CLOEXEC | unix.IN_NONBLOCK)
+	st := &engine.fsWatch
+	st.mu.Lock()
+	if st.file == nil {
+		fd, err := unix.InotifyInit1(unix.IN_CLOEXEC | unix.IN_NONBLOCK)
+		if err != nil {
+			st.mu.Unlock()
+			return throwFsError(ctx, fsErrFromGo(err, "watch", path))
+		}
+		// a non-blocking descriptor registered with the runtime poller:
+		// Read parks in the netpoller and Close wakes it, which is what
+		// lets the last close() stop the reader without a side channel
+		st.file = os.NewFile(uintptr(fd), "inotify")
+		st.fd = fd
+		st.byID = make(map[uint64]*fsWatcher)
+		st.byWd = make(map[int32][]*fsWatcher)
+		if st.byCtx == nil {
+			st.byCtx = make(map[*ESContext]map[uint64]*fsWatcher)
+		}
+		go engine.fsWatchLoop(st.file)
+	}
+	wd, err := unix.InotifyAddWatch(st.fd, path, fsWatchMask)
 	if err != nil {
+		if st.watchers == 0 {
+			// nothing else uses the instance: give it back right away
+			st.file.Close()
+			st.file = nil
+			st.fd = -1
+		}
+		st.mu.Unlock()
 		return throwFsError(ctx, fsErrFromGo(err, "watch", path))
 	}
-	if _, err := unix.InotifyAddWatch(fd, path, fsWatchMask); err != nil {
-		unix.Close(fd)
-		return throwFsError(ctx, fsErrFromGo(err, "watch", path))
-	}
+	st.seq++
 	w := &fsWatcher{
+		id:       st.seq,
 		engine:   engine,
 		ctx:      ctx,
 		key:      ctx.storeCallback(1),
 		path:     path,
 		baseName: filepath.Base(path),
-		// a non-blocking descriptor registered with the runtime poller:
-		// Read parks in the netpoller and Close wakes it, which is what
-		// lets close() stop the goroutine without a side channel
-		file: os.NewFile(uintptr(fd), "inotify:"+path),
+		wd:       int32(wd),
+		inst:     st.file,
 	}
-	engine.fsWatchersMtx.Lock()
-	engine.fsWatcherSeq++
-	w.id = engine.fsWatcherSeq
-	engine.fsWatchers[w.id] = w
-	engine.fsWatchersMtx.Unlock()
-
-	// the watcher dies with its file: the cleanup runs on the engine loop
-	// during reload/removal, where sweeping the stash entry is safe
-	if currentFilename := ctx.GetCurrentFilename(); currentFilename != "" {
-		engine.cleanup.PushCleanupScope(currentFilename)
-		defer engine.cleanup.PopCleanupScope(currentFilename)
+	st.byID[w.id] = w
+	st.byWd[w.wd] = append(st.byWd[w.wd], w)
+	if st.byCtx[ctx] == nil {
+		st.byCtx[ctx] = make(map[uint64]*fsWatcher)
 	}
-	engine.cleanup.AddCleanup(func() { w.close(true) })
+	st.byCtx[ctx][w.id] = w
+	st.watchers++
+	st.mu.Unlock()
 
-	go w.loop()
 	ctx.PushNumber(float64(w.id))
 	return 1
+}
+
+// runFsWatchCleanups closes the watchers of a realm that is being torn
+// down (reload/removal); runs on the engine loop from runCleanups, where
+// sweeping the stash entries is safe (invalidate() would sweep them too,
+// but the kernel watches must go now).
+func (engine *ESEngine) runFsWatchCleanups(ctx *ESContext) {
+	st := &engine.fsWatch
+	st.mu.Lock()
+	watchers := make([]*fsWatcher, 0, len(st.byCtx[ctx]))
+	for _, w := range st.byCtx[ctx] {
+		watchers = append(watchers, w)
+	}
+	st.mu.Unlock()
+	for _, w := range watchers {
+		w.close(true)
+	}
 }
 
 // _wbFsWatchClose(id): FSWatcher.close(); unknown ids (already closed)
@@ -100,9 +167,10 @@ func (engine *ESEngine) esWbFsWatchClose(ctx *ESContext) int {
 		return duktape.DUK_RET_TYPE_ERROR
 	}
 	id := uint64(ctx.GetNumber(0))
-	engine.fsWatchersMtx.Lock()
-	w := engine.fsWatchers[id]
-	engine.fsWatchersMtx.Unlock()
+	st := &engine.fsWatch
+	st.mu.Lock()
+	w := st.byID[id]
+	st.mu.Unlock()
 	if w != nil {
 		w.close(true)
 	}
@@ -112,22 +180,88 @@ func (engine *ESEngine) esWbFsWatchClose(ctx *ESContext) int {
 // closeFsWatchers closes every watcher; called at Stop, after the loops
 // are gone (single-threaded, so sweeping stash entries is safe).
 func (engine *ESEngine) closeFsWatchers() {
-	engine.fsWatchersMtx.Lock()
-	watchers := make([]*fsWatcher, 0, len(engine.fsWatchers))
-	for _, w := range engine.fsWatchers {
-		watchers = append(watchers, w)
-	}
-	engine.fsWatchersMtx.Unlock()
-	for _, w := range watchers {
+	for _, w := range engine.fsWatch.snapshot() {
 		w.close(true)
 	}
 }
 
 // FsWatcherCount reports live watchers (tests: cleanup and Stop sweep).
 func (engine *ESEngine) FsWatcherCount() int {
-	engine.fsWatchersMtx.Lock()
-	defer engine.fsWatchersMtx.Unlock()
-	return len(engine.fsWatchers)
+	engine.fsWatch.mu.Lock()
+	defer engine.fsWatch.mu.Unlock()
+	return engine.fsWatch.watchers
+}
+
+// FsWatchInstanceOpen reports whether the shared inotify instance is
+// currently held (tests: it must be released with the last watcher).
+func (engine *ESEngine) FsWatchInstanceOpen() bool {
+	engine.fsWatch.mu.Lock()
+	defer engine.fsWatch.mu.Unlock()
+	return engine.fsWatch.file != nil
+}
+
+func (st *fsWatchState) snapshot() []*fsWatcher {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	out := make([]*fsWatcher, 0, len(st.byID))
+	for _, w := range st.byID {
+		out = append(out, w)
+	}
+	return out
+}
+
+// forWd returns the watchers subscribed to a watch descriptor.
+func (st *fsWatchState) forWd(wd int32) []*fsWatcher {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return append([]*fsWatcher(nil), st.byWd[wd]...)
+}
+
+// detach removes the watcher from the tables, drops the kernel watch when
+// it was the last subscriber of its descriptor, and releases the inotify
+// instance when it was the last watcher altogether.
+func (st *fsWatchState) detach(w *fsWatcher) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if _, ok := st.byID[w.id]; !ok {
+		return
+	}
+	delete(st.byID, w.id)
+	st.watchers--
+	if perCtx := st.byCtx[w.ctx]; perCtx != nil {
+		delete(perCtx, w.id)
+		if len(perCtx) == 0 {
+			delete(st.byCtx, w.ctx)
+		}
+	}
+	rest := st.byWd[w.wd][:0]
+	for _, o := range st.byWd[w.wd] {
+		if o != w {
+			rest = append(rest, o)
+		}
+	}
+	if len(rest) > 0 {
+		st.byWd[w.wd] = rest
+		return
+	}
+	delete(st.byWd, w.wd)
+	if st.file == nil || st.file != w.inst {
+		// the instance is gone (or already replaced): nothing to remove
+		return
+	}
+	if st.watchers == 0 {
+		// the reader goroutine wakes from Read with an error and exits;
+		// the kernel watches die with the descriptor. Closing an inotify
+		// descriptor costs milliseconds (an RCU grace period in the
+		// kernel), so it happens off the engine loop.
+		file := st.file
+		st.file = nil
+		st.fd = -1
+		go file.Close()
+		return
+	}
+	// EINVAL when the kernel already removed it (IN_IGNORED): harmless
+	unix.InotifyRmWatch(st.fd, uint32(w.wd))
 }
 
 // close stops the watcher. sweep must be true only on the engine loop (or
@@ -137,10 +271,7 @@ func (engine *ESEngine) FsWatcherCount() int {
 func (w *fsWatcher) close(sweep bool) {
 	w.closeOnce.Do(func() {
 		w.closed.Store(true)
-		w.file.Close()
-		w.engine.fsWatchersMtx.Lock()
-		delete(w.engine.fsWatchers, w.id)
-		w.engine.fsWatchersMtx.Unlock()
+		w.engine.fsWatch.detach(w)
 		if sweep {
 			w.ctx.RemoveCallback(w.key)
 		} else {
@@ -149,26 +280,49 @@ func (w *fsWatcher) close(sweep bool) {
 	})
 }
 
-// finish is the reader goroutine's exit path: the sweep must happen on the
-// loop, so it is scheduled there; a stopped engine sweeps at its next
-// boundary instead.
-func (w *fsWatcher) finish() {
+// closeFromReader closes a watcher on the reader goroutine's behalf: the
+// stash sweep must happen on the loop, so it is scheduled there. The
+// orphan note is taken before the thunk is queued: a stopping engine may
+// accept the thunk and then drop it in its queue drain, and the note is
+// what gets the entry swept at the next single-threaded boundary (the
+// thunk itself withdraws it when it does run).
+func (w *fsWatcher) closeFromReader() {
 	if w.closed.Load() {
 		return
 	}
-	if err := w.engine.MaybeCallSync(func() { w.close(true) }); err != nil {
+	w.engine.noteOrphanedCallback(w.ctx, w.key)
+	if err := w.engine.MaybeCallSync(func() {
+		w.engine.forgetOrphanedCallback(w.ctx, w.key)
+		w.close(true)
+	}); err != nil {
 		w.close(false)
 	}
 }
 
-func (w *fsWatcher) loop() {
-	defer w.finish()
+// fsWatchLoop reads the shared instance until its descriptor is closed
+// (detach closes it with the last watcher).
+func (engine *ESEngine) fsWatchLoop(file *os.File) {
 	buf := make([]byte, 64*1024)
 	for {
-		n, err := w.file.Read(buf)
+		n, err := file.Read(buf)
 		if err != nil {
-			// closed (by close()) or a fatal descriptor error: either way
-			// the watcher is over
+			// closed by detach with the last watcher (nothing left to do),
+			// or a fatal descriptor error: then the instance is over and
+			// the watchers still pointing at it are closed
+			engine.fsWatch.mu.Lock()
+			fatal := engine.fsWatch.file == file
+			if fatal {
+				engine.fsWatch.file = nil
+				engine.fsWatch.fd = -1
+			}
+			engine.fsWatch.mu.Unlock()
+			if fatal {
+				for _, w := range engine.fsWatch.snapshot() {
+					if w.inst == file {
+						w.closeFromReader()
+					}
+				}
+			}
 			return
 		}
 		off := 0
@@ -187,25 +341,31 @@ func (w *fsWatcher) loop() {
 				name = string(raw)
 			}
 			off += unix.SizeofInotifyEvent + nameLen
-			switch {
-			case ev.Mask&unix.IN_Q_OVERFLOW != 0:
-				w.engine.fsLogWarning("fs.watch(%s): inotify event queue overflowed, events were lost", w.path)
+			if ev.Mask&unix.IN_Q_OVERFLOW != 0 {
+				engine.fsLogWarning("fs.watch: inotify event queue overflowed, events were lost")
 				continue
-			case ev.Mask&unix.IN_IGNORED != 0:
+			}
+			watchers := engine.fsWatch.forWd(ev.Wd)
+			if ev.Mask&unix.IN_IGNORED != 0 {
 				// the kernel removed the watch: the path was deleted or its
 				// filesystem unmounted. Node's watcher goes silent forever
 				// here; ours frees its resources.
-				return
+				for _, w := range watchers {
+					w.closeFromReader()
+				}
+				continue
 			}
 			eventType := "change"
 			if ev.Mask&fsWatchRenameMask != 0 {
 				eventType = "rename"
 			}
-			filename := name
-			if filename == "" {
-				filename = w.baseName
+			for _, w := range watchers {
+				filename := name
+				if filename == "" {
+					filename = w.baseName
+				}
+				w.deliver(eventType, filename)
 			}
-			w.deliver(eventType, filename)
 		}
 	}
 }
