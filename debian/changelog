@@ -7,6 +7,10 @@ wb-rules (2.47.0~quickjs1) unstable; urgency=medium
     template strings, Proxy, async/await and promises). Existing ES5 rules
     run unchanged; the full upstream test suite passes. Architecture notes
     and decision records in docs/arc42.
+  * 32-bit builds (WB6/WB7): fractional numbers were classified as objects
+    by the engine's type checks (raw QuickJS value tag under NaN boxing),
+    breaking float control values in the stock hwmon and battery rules;
+    the normalized tag is used now and the float path is pinned by tests.
   * Promise-native async API: spawn() and runShellCommand() return a
     promise (the callback form still works); new sleep(ms), changed(control,
     timeoutMs) and nextMqtt(topic, timeoutMs). Top-level await is allowed
