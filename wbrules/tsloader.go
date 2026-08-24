@@ -44,8 +44,10 @@ type TSCompiler struct {
 	mapsMu   sync.Mutex
 	lineMaps map[string][]int // per transpiled file: generated line (1-based) -> source line
 
-	checkSem  chan struct{} // bounds concurrent background type-check processes
-	checkRuns int64         // tsgo --noEmit processes started so far (tests assert batching)
+	checkSem chan struct{} // bounds concurrent background type-check processes
+	// atomic.Int64: a bare int64 under sync/atomic panics on 32-bit builds
+	// (armhf) unless 8-byte aligned, and this field was not
+	checkRuns atomic.Int64 // tsgo --noEmit processes started so far (tests assert batching)
 
 	// rootCtx parents every transient tsgo --noEmit run; Stop cancels it so
 	// active check processes die with the engine instead of running out
@@ -61,7 +63,7 @@ type TSCompiler struct {
 }
 
 // CheckRuns reports how many type-check processes were started (tests).
-func (c *TSCompiler) CheckRuns() int64 { return atomic.LoadInt64(&c.checkRuns) }
+func (c *TSCompiler) CheckRuns() int64 { return c.checkRuns.Load() }
 
 // checkRequest is one queued CheckAsync call.
 type checkRequest struct {
@@ -682,7 +684,7 @@ func (c *TSCompiler) checkMany(paths []string, registryDts string) (map[string][
 	var outBuf boundedBuffer
 	checkCmd.Stdout = &outBuf
 	checkCmd.Stderr = &outBuf
-	atomic.AddInt64(&c.checkRuns, 1)
+	c.checkRuns.Add(1)
 	runErr := checkCmd.Run() // exit 1 on diags: expected
 	out := outBuf.String()
 	for _, p := range paths {
