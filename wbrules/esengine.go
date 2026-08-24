@@ -225,6 +225,12 @@ type ESEngine struct {
 
 	tsCheckMu      sync.Mutex
 	tsCheckResults map[string]*tsCheckEntry // latest background verdict per physical path
+
+	// fs.watch watchers of the built-in fs module (fswatch.go), keyed by
+	// the id handed to JS; closed per file on reload and wholesale at Stop
+	fsWatchers    map[uint64]*fsWatcher
+	fsWatchersMtx sync.Mutex
+	fsWatcherSeq  uint64
 }
 
 type orphanedCallback struct {
@@ -266,6 +272,7 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		tsCheckResults:    make(map[string]*tsCheckEntry),
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
+		fsWatchers:        make(map[uint64]*fsWatcher),
 		// detects (and, at construction, reacts to) a file that crashed the
 		// process during its last load, so a poison-pill rule can't crash-loop
 		// the engine forever
@@ -619,8 +626,11 @@ func (engine *ESEngine) Start() {
 func (engine *ESEngine) Stop() {
 	// engine loop first: a draining .ts load must not respawn the compiler
 	engine.RuleEngine.Stop()
-	// the loops are gone: reclaim one-shot callbacks whose completion was
-	// dropped during the shutdown itself
+	// the loops are gone: fs.watch watchers can no longer deliver, and
+	// their listeners' stash entries are swept single-threaded here
+	engine.closeFsWatchers()
+	// reclaim one-shot callbacks whose completion was dropped during the
+	// shutdown itself
 	engine.sweepOrphanedCallbacks()
 	if engine.tsc != nil {
 		engine.tsc.Stop()
@@ -1118,6 +1128,10 @@ func (engine *ESEngine) esBuiltinFuncs() map[string]func(*ESContext) int {
 		"_wbStopTimer":         engine.esWbStopTimer,
 		"_wbCheckCurrentTimer": engine.esWbCheckCurrentTimer,
 		"_wbSpawn":             engine.esWbSpawn,
+		"_wbFsSync":            engine.esWbFsSync,
+		"_wbFsAsync":           engine.esWbFsAsync,
+		"_wbFsWatch":           engine.esWbFsWatch,
+		"_wbFsWatchClose":      engine.esWbFsWatchClose,
 		"_wbDefineRule":        engine.esWbDefineRule,
 		"runRules":             engine.esWbRunRules,
 		"readConfig":           engine.esReadConfig,
@@ -3571,6 +3585,15 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 	// get module name (id)
 	id := ctx.GetString(0)
 	wbgong.Debug.Printf("[modsearch] required module %s", id)
+
+	// engine-provided modules come first and shadow same-named files, as
+	// Node's core modules do; they have no module.static storage
+	if src, ok := builtinModuleSource(id); ok {
+		ctx.PushString(builtinModuleFilename(id))
+		ctx.PutPropString(3, MODULE_FILENAME_PROP)
+		ctx.PushString(src)
+		return 1
+	}
 
 	// try to find this module in directory
 	for _, dir := range engine.modulesDirs {

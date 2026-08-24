@@ -42,6 +42,7 @@
 | 014 | Живой реестр `WbControls`: серверный (таблица драйвера) + клиентский (homeui devicesStore) | Принято, реализовано | 2026-08-17 | [ADR-014](adr/ADR-014-live-controls-registry-wbcontrols.md) |
 | 015 | Редактор homeui: TS language service в браузере + вердикт контроллера через `Editor.Check`/`GetTypes` | Принято, реализовано | 2026-08-14 | [ADR-015](adr/ADR-015-homeui-editor-ts-language-service-plus-controller-verdict.md) |
 | 016 | Кастомные диагностики «forgot await» вместо ESLint в браузере | Принято, реализовано | 2026-08-18 | [ADR-016](adr/ADR-016-custom-forgot-await-diagnostics-not-eslint.md) |
+| 017 | Файловая система как встроенный модуль `fs` (промисы + `…Sync`, Node-формы данных, inotify через `x/sys`, CommonJS-эмит для `import` в `.ts`) | Принято, реализовано | 2026-08-24 | [ADR-017](adr/ADR-017-fs-builtin-module.md) |
 
 ## Карта зависимостей между решениями
 
@@ -49,6 +50,7 @@
 - ADR-003/004 → ADR-005 (pump), ADR-006 (TLA), ADR-007 (async-библиотека), ADR-008 (guardrails).
 - ADR-010 (tsgo) → ADR-011 (пакет), ADR-012 (параметры проверки), ADR-014 (серверный реестр).
 - ADR-013 (d.ts) → ADR-014 (реестр), ADR-015 (редактор) → ADR-016 (диагностики).
+- ADR-004 (realm на файл), ADR-007 (промис-нативная библиотека), ADR-013 (d.ts) → ADR-017 (модуль `fs`).
 
 ## Что сознательно не решено (roadmap)
 

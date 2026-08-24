@@ -22,6 +22,7 @@ Rule engine for Wiren Board, version 2.0
 - [API создания/управления устройств](#api-созданияуправления-устройств)
 - [Встроенные функции и переменные](#встроенные-функции-и-переменные)
 - [Асинхронные функции и промисы](#асинхронные-функции-и-промисы)
+- [Файловая система: модуль `fs`](#файловая-система-модуль-fs)
 - [Модули](#модули)
 - [Сервис оповещений](#сервис-оповещений)
 - [Сервис алармов](#сервис-алармов)
@@ -100,9 +101,14 @@ JSDoc-подсказка `/** @type {ControlsSpec} */ var cells = {...}` сни�
 перезагрузке), проверяются одним запуском компилятора; в журнал попадает не
 больше десяти сообщений на файл, полный список доступен редактору правил.
 
-Ограничение: ES-модули (`import`/`export`) в файлах сценариев не
-поддерживаются — используйте `require()` и `module.exports`, как в
-JavaScript-сценариях.
+`import`/`export` в `.ts`-сценариях работают: компилятор выдаёт CommonJS,
+поэтому `import * as fs from "fs"` или `import fs from "fs"` превращаются в
+`require("fs")`, а `export const x = …` — в присваивание `exports.x`
+(то же, что `module.exports` в JavaScript-сценариях). Импортировать можно
+встроенные модули (`fs`) и модули из каталогов wb-rules (`"my-helper.mod"`);
+относительный путь вида `"./x"` не ищется рядом со сценарием — имя модуля
+всё равно разрешается по каталогам модулей. Top-level `await` при этом
+сохраняется.
 
 ## Правила
 
@@ -1268,6 +1274,198 @@ defineRule('wait_for_button', {
 });
 ```
 
+## Файловая система: модуль `fs`
+
+Встроенный модуль `fs` даёт сценариям доступ к файловой системе в стиле
+Node.js — чтение и запись файлов, каталоги, ссылки, права, наблюдение за
+изменениями — без `runShellCommand("cat …")`:
+
+```js
+const fs = require("fs"); // также require("fs/promises"), require("node:fs")
+```
+
+В TypeScript-сценариях модуль импортируется обычным образом
+(`import * as fs from "fs"`, `import fs from "fs"`,
+`import { readFileSync } from "fs"`), типы входят в
+[types/wb-rules.d.ts](./types/wb-rules.d.ts), поэтому редактор правил
+подсказывает функции и проверяет аргументы.
+
+Отличия от Node.js:
+
+- файлы читаются и пишутся как строки UTF-8: `Buffer` нет, опция `encoding`
+  принимает только `"utf8"`;
+- асинхронные функции возвращают `Promise`, колбэки не поддерживаются
+  (`fs.readFile(path, cb)` — ошибка `ERR_INVALID_ARG_TYPE`);
+  `fs.readFile === fs.promises.readFile`, `require("fs/promises")` — тот же
+  набор функций;
+- `fs.exists(path)` — промис-версия `existsSync` (в Node.js её нет);
+- `fs.watch(path[, options], listener)` принимает слушатель напрямую и
+  возвращает объект с `close()` (не EventEmitter); рекурсивное наблюдение
+  (`recursive: true`) не поддерживается;
+- `readFile` отказывается читать файлы больше 10 МиБ
+  (`ERR_FS_FILE_TOO_LARGE`) — одна JS-куча обслуживает все сценарии;
+- нет файловых дескрипторов (`open`/`read`/`write`/`fstat`), потоков,
+  `cp`, `link`, `chown`, `opendir`, `statfs`.
+
+**Важно:** модуль работает с правами процесса wb-rules (root) и без
+ограничений на пути — так же, как `spawn()`. Пути используются как есть;
+относительные разрешаются от рабочего каталога процесса, поэтому в
+сценариях используйте абсолютные.
+
+Синхронные функции (`…Sync`) выполняются в потоке движка правил и
+блокируют его на время операции — все правила и таймеры ждут. Для
+больших файлов, сетевых и медленных носителей используйте асинхронные
+версии: ввод-вывод выполняется в фоне, а промис завершается в потоке
+движка, поэтому код после `await` по-прежнему однопоточный.
+
+### Функции
+
+Каждая операция есть в двух видах: синхронная `fs.<name>Sync(...)` и
+асинхронная `fs.<name>(...)`, возвращающая `Promise` того же результата.
+
+| Функция | Результат | Примечания |
+|---|---|---|
+| `readFile(path[, options])` | `string` | `options`: `"utf8"` или `{encoding, flag}`; не больше 10 МиБ |
+| `writeFile(path, data[, options])` | — | `data` — строка; `{mode, flag}`; `flag: "w"` по умолчанию (`"wx"` — только новый файл, `"a"` — дописать); запись не атомарна: для конфигов пишите во временный файл и `rename` |
+| `appendFile(path, data[, options])` | — | как `writeFile` с `flag: "a"` |
+| `stat(path[, options])`, `lstat(path[, options])` | `Stats` | `size`, `mode`, `uid`, `gid`, `mtimeMs`, `mtime` (`Date`), …; методы `isFile()`, `isDirectory()`, `isSymbolicLink()`, …; `{throwIfNoEntry: false}` — `undefined` вместо `ENOENT` |
+| `readdir(path[, options])` | `string[]` или `Dirent[]` | имена отсортированы; `{withFileTypes: true}` — объекты `Dirent` с `name`, `parentPath`, `isFile()`, `isDirectory()`, …; `{recursive: true}` — обход подкаталогов (имена относительно `path`) |
+| `exists(path)` | `boolean` | никогда не бросает исключение |
+| `mkdir(path[, options])` | `string \| undefined` | `{recursive: true}` создаёт цепочку и возвращает первый созданный каталог; `{mode}` (по умолчанию `0o777` с учётом umask); число или строка `"755"` вместо `options` — режим |
+| `rm(path[, options])` | — | файл или, с `{recursive: true}`, каталог с содержимым; `{force: true}` — не ошибаться на отсутствующем пути |
+| `rmdir(path)` | — | только пустой каталог |
+| `unlink(path)` | — | файл; каталог — ошибка `EISDIR` |
+| `rename(oldPath, newPath)` | — | атомарно в пределах файловой системы |
+| `copyFile(src, dest[, mode])` | — | права копируются; `mode: fs.constants.COPYFILE_EXCL` — не перезаписывать |
+| `access(path[, mode])` | — | исключение, если путь недоступен для `mode` (`fs.constants.F_OK`, `R_OK`, `W_OK`, `X_OK`, по умолчанию `F_OK`) |
+| `realpath(path)` | `string` | абсолютный путь без символических ссылок |
+| `readlink(path)` | `string` | цель символической ссылки |
+| `symlink(target, path)` | — | создать символическую ссылку `path` → `target` |
+| `chmod(path, mode)` | — | `mode` — число (`0o644`) или восьмеричная строка (`"644"`) |
+| `mkdtemp(prefix)` | `string` | уникальный каталог `prefix` + 6 случайных символов, права `0700` |
+| `truncate(path[, len])` | — | |
+| `utimes(path, atime, mtime)` | — | секунды, числовая строка или `Date` |
+
+Только синхронно: `fs.existsSync`, а также `fs.watch()` (см. ниже).
+Константы: `fs.constants.F_OK`, `R_OK`, `W_OK`, `X_OK`, `COPYFILE_EXCL`,
+`S_IFMT`, `S_IFREG`, `S_IFDIR`, `S_IFLNK`, ….
+
+### Ошибки
+
+Ошибки операций — объекты `Error` с теми же полями, что в Node.js:
+`code` (`"ENOENT"`, `"EACCES"`, `"EEXIST"`, `"EISDIR"`, `"ENOTDIR"`,
+`"ENOTEMPTY"`, …), `errno` (отрицательное число), `syscall`, `path` и,
+для операций с двумя путями, `dest`; сообщение вида
+`ENOENT: no such file or directory, open '/etc/nope'`. Неверные аргументы
+(не строка вместо пути, неизвестный флаг, неподдерживаемая кодировка)
+дают `TypeError` с `code` `ERR_INVALID_ARG_TYPE` или `ERR_INVALID_ARG_VALUE`.
+Синхронные функции бросают исключение, асинхронные — отклоняют промис.
+
+```js
+const fs = require("fs");
+
+try {
+  const text = fs.readFileSync("/etc/wb-rules/my.conf");
+} catch (e) {
+  if (e.code === "ENOENT") log("no config yet");
+  else log.error("cannot read config: {}", e.message);
+}
+```
+
+### Примеры
+
+Температура процессора из sysfs (синхронное чтение маленького файла —
+нормально):
+
+```js
+const fs = require("fs");
+
+defineVirtualDevice("sys", {
+  title: "System",
+  cells: { cpu_temp: { type: "temperature", value: 0, readonly: true } },
+});
+
+defineRule("cpu_temp", {
+  when: cron("@every 10s"),
+  then: () => {
+    const raw = fs.readFileSync("/sys/class/thermal/thermal_zone0/temp");
+    dev["sys/cpu_temp"] = parseInt(raw, 10) / 1000;
+  },
+});
+```
+
+Журнал событий: асинхронная дозапись с обработкой ошибки.
+
+```js
+const fs = require("fs");
+const LOG = "/var/log/wb-rules-events.log";
+
+defineRule("log_motion", {
+  whenChanged: "motion/detected",
+  then: async (value) => {
+    try {
+      await fs.appendFile(LOG, `${new Date().toISOString()} motion=${value}\n`);
+    } catch (e) {
+      log.error("cannot write {}: {} ({})", LOG, e.message, e.code);
+    }
+  },
+});
+```
+
+Обработка каталога целиком с `await` на верхнем уровне сценария:
+
+```js
+const fs = require("fs");
+
+const dir = "/mnt/data/reports";
+await fs.mkdir(dir, { recursive: true });
+for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+  if (entry.isFile() && entry.name.endsWith(".tmp")) {
+    await fs.rm(`${dir}/${entry.name}`);
+  }
+}
+log("reports: {}", (await fs.readdir(dir)).join(", "));
+```
+
+Атомарная запись конфигурации (запись во временный файл и переименование):
+
+```js
+const fs = require("fs");
+
+function saveConfig(path, obj) {
+  const tmp = `${path}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2));
+  fs.renameSync(tmp, path);
+}
+```
+
+### Наблюдение за изменениями: `fs.watch()`
+
+`fs.watch(path[, options], listener)` следит за файлом или каталогом
+(через inotify) и вызывает `listener(eventType, filename)` в потоке движка:
+`eventType` — `"rename"` (создание, удаление, переименование) или
+`"change"` (запись, изменение атрибутов); `filename` — имя изменившейся
+записи каталога или имя самого наблюдаемого файла. Возвращается объект с
+методом `close()`. Наблюдатель закрывается автоматически при перезагрузке
+или удалении файла сценария, а также когда наблюдаемый путь удалён.
+
+```js
+const fs = require("fs");
+const CONFIG = "/etc/wb-rules/heating.conf";
+
+let config = readConfig(CONFIG);
+const watcher = fs.watch(CONFIG, (eventType) => {
+  log("heating config {}: reloading", eventType);
+  config = readConfig(CONFIG);
+});
+// watcher.close() — прекратить наблюдение
+```
+
+Многие редакторы и утилиты сохраняют файл через временный файл и `rename`:
+наблюдатель на самом файле тогда получает `"rename"` и перестаёт работать
+(старый inode удалён — так же ведёт себя Node.js). Если это ваш случай,
+наблюдайте за каталогом и фильтруйте по `filename`.
+
 ## Модули
 Начиная с версии 2.0, в движке правил wb-rules появилась поддержка подключаемых JS-модулей. Поддержка похожа по поведению на аналогичную в Node.js, но с некоторыми особенностями.
 
@@ -1277,6 +1475,10 @@ defineRule('wait_for_button', {
 2. `/usr/share/wb-rules-modules` — папка с системными модулями.
 
 Таким образом, пользовательские модули удобно складывать в `/etc/wb-rules-modules`.
+
+Встроенные модули движка (`fs`, `fs/promises`, см.
+[Файловая система](#файловая-система-модуль-fs)) разрешаются раньше файлов и
+перекрывают одноимённые файлы в этих каталогах — как модули ядра в Node.js.
 
 Добавить свои пути можно редактированием `/etc/default/wb-rules` добавлением путей к переменной WB_RULES_MODULES через разделитель `:`:
 ```js

@@ -14,7 +14,7 @@ graph TD
         G -.прототип.-> R2
     end
     LOOP["engine loop (одна горутина):<br/>syncQueue → syncLoop · CallSync/MaybeCallSync ·<br/>после каждого возврата из JS на глубине 0 — pumpJobs()"]
-    SRC["источники входов в JS: события контролов (EventBuffer),<br/>таймеры, cron, trackMqtt, spawn-колбэки, Editor RPC (LiveWriteScript)"]
+    SRC["источники входов в JS: события контролов (EventBuffer),<br/>таймеры, cron, trackMqtt, spawn-колбэки, завершения fs-операций и события fs.watch,<br/>Editor RPC (LiveWriteScript)"]
     SRC --> LOOP --> RT
 ```
 
@@ -22,6 +22,7 @@ graph TD
 - **Runtime и realm.** Общая куча + по одному `JSContext` (realm) на файл правил (`PushThreadNewGlobalenv`, handle в stash `_esThreads[path]`); глобал файла наследует `__wbGlobalPrototype` (lib.js); `require()`-кэш per-realm (модуль инициализируется в каждом файле), `module.static` и `PersistentStorage(name,{global:true})` — явные каналы обмена; `global.__proto__` — escape hatch. Это «cooperative namespacing», не security boundary (ADR-004).
 - **Атрибуция после `await`.** Realm-чувствительные API (`defineRule`, таймеры, `spawn`, `sleep`, `changed`, `nextMqtt`, `PersistentStorage`) компилируются в каждом realm'е через `__wbBindRealmAPI`, поэтому код после `await` (promise job без активного Go-контекста) по-прежнему привязан к своему файлу и очищается при reload (ADR-007).
 - **Microtask pump.** Шим дренирует `JS_ExecutePendingJob` при возврате на глубину 0 (`maxJobs=100000` за ход — иначе `reportJobError` «job queue still busy»), необработанные rejection'ы собирает host-tracker и отдаёт в лог после дренажа (ADR-005). Файл оборачивается в `async function F(module, exports)`: синхронная ошибка = отклонённый промис ⇒ ошибка загрузки; `await` верхнего уровня = pending (ADR-006).
+- **Модуль `fs`** (ADR-017) следует той же схеме: `require("fs")` компилирует встроенный `fsmodule.js` в realm'е файла (промисы и ошибки принадлежат файлу), синхронные операции выполняются на engine loop, асинхронные — в горутине с доставкой результата через `MaybeCallSync` по жизненному циклу `spawn`; события `fs.watch` читает горутина inotify и передаёт слушателю тем же путём.
 - **Промис-нативные API** реализованы в `lib.js`, а не в Go: ненулевой exit `spawn` резолвит (shell-style), reject только при невозможности запуска; `nextMqtt` пропускает retained; `changed` — одно постоянное анонимное правило на контрол на файл; таймауты — через `setTimeout`/`clearTimeout` + splice ожидающего (не `Promise.race`) (ADR-007).
 
 ## 8.2 Обработка ошибок и логирование
@@ -62,7 +63,7 @@ Per-file лимитов RSS нет (общая куча, ADR-004); все руч
 
 - Триггеры: fsnotify через DirWatcher (regexp `(^|/)[^/.][^/]*\.(js|ts)(\.disabled)?$`), `Editor.Save` (`LiveWriteScript`, принудительно), `Rename`/`ChangeState` (переименование ±`.disabled`), `Remove` (`LiveRemoveFile` → `/wbrules/updates/removed`).
 - Дедупликация: `wbgong.ContentTracker` (md5 содержимого; mtime в целых секундах); `.ts`, не загрузившийся из-за отсутствия tsgo, `Untrack`-ается, чтобы повторная загрузка того же содержимого сработала после появления компилятора.
-- Порядок: `runCleanups(path)` (правила `Destroy`, vdev `RemoveDevice` → пересоздание при новой загрузке, mqtt-трекеры, таймеры `runTimerCleanups`, persistent-кэш) → `localCtx.invalidate()` (поздние колбэки пропускаются как «context invalid») → новый realm → `LoadScenario` → `Refresh()` (rev++, `setupCron`, пересборка DepTracker, `uninitializedRules`) → `/wbrules/updates/changed`. Глобальный realm и его объекты переживают reload.
+- Порядок: `runCleanups(path)` (правила `Destroy`, vdev `RemoveDevice` → пересоздание при новой загрузке, mqtt-трекеры, таймеры `runTimerCleanups`, watcher'ы `fs.watch`, persistent-кэш) → `localCtx.invalidate()` (поздние колбэки пропускаются как «context invalid») → новый realm → `LoadScenario` → `Refresh()` (rev++, `setupCron`, пересборка DepTracker, `uninitializedRules`) → `/wbrules/updates/changed`. Глобальный realm и его объекты переживают reload.
 - `.disabled`: файл регистрируется как `LocFileEntry{Enabled:false}` без исполнения; `Editor.Save` сохраняет суффикс, если файл был отключён.
 - Удаление/пересоздание vdev при каждом сохранении вскрыло гонку в драйвере (фантомное external-устройство при быстрых сохранениях) — исправлено в wbgo-private (#100), а не обходом в wb-rules.
 
@@ -106,7 +107,7 @@ graph LR
 
 ## 8.9 Безопасность и ограничения
 
-- Нет изоляции на уровне ОС: процесс работает от `root`, все realm'ы — в одном адресном пространстве; `spawn()`/`runShellCommand()` выполняют произвольные команды через `/bin/sh -c`; `readConfig` читает любые файлы; `publish`/`trackMqtt` — любые топики. Доверие к авторам правил предполагается (тот же уровень, что SSH на контроллер).
+- Нет изоляции на уровне ОС: процесс работает от `root`, все realm'ы — в одном адресном пространстве; `spawn()`/`runShellCommand()` выполняют произвольные команды через `/bin/sh -c`; `readConfig` читает, а модуль `fs` читает, пишет и удаляет любые файлы (ADR-017: песочница путей сознательно не вводилась — она не добавила бы защиты при наличии `spawn`); `publish`/`trackMqtt` — любые топики. Доверие к авторам правил предполагается (тот же уровень, что SSH на контроллер).
 - Секреты (токены Telegram, SMTP и т. п.) живут открытым текстом в файлах правил и в `/etc/wb-rules/alarms.conf`; попадают в бэкапы — известный риск.
 - HTTP `-http` привязан к `127.0.0.1:9090` (pprof не наружу); Editor RPC доступен всем клиентам брокера — контроль доступа делегирован ACL mosquitto.
 - Дочерние процессы tsgo умирают вместе с движком (`Pdeathsig`), проверка ограничена по времени и параллелизму.

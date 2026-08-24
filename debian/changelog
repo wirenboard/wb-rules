@@ -23,6 +23,22 @@ wb-rules (2.47.0~quickjs2.1) unstable; urgency=medium
     Without the binary, .ts files fail to load with an explicit error
     naming the looked-up path.
 
+  * Built-in fs module: require('fs') (also 'fs/promises' and the node:
+    spellings) gives rule scripts a Node.js-shaped filesystem API - readFile,
+    writeFile, appendFile, stat/lstat, readdir, exists, mkdir, rm, rmdir,
+    unlink, rename, copyFile, access, realpath, readlink, symlink, chmod,
+    mkdtemp, truncate, utimes - each as a blocking ...Sync function and as a
+    promise-returning one (await fs.readFile(path)), plus fs.watch over
+    inotify. Files are UTF-8 strings; readFile refuses files over 10 MiB.
+    Errors carry Node's code/errno/syscall/path fields; Stats and Dirent
+    have Node's methods. Watchers close with their rule file. The API is
+    typed in wb-rules.d.ts, so the editor and the background check know it.
+  * TypeScript rule files may use import and export: the transpiler emits
+    CommonJS (import * as fs from 'fs', import fs from 'fs' and export const
+    x become require() calls and exports assignments), which the file
+    wrapper runs as-is. Previously any import statement failed the file with
+    a SyntaxError.
+
  -- Evgeny Boger <boger@wirenboard.com>  Wed, 19 Aug 2026 21:00:00 +0400
 
 wb-rules (2.47.0~quickjs1) unstable; urgency=medium
