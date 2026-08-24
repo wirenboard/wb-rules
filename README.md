@@ -1058,7 +1058,8 @@ trackMqtt("/devices/wb-adc/controls/Vin", function(message) {
 воспроизводит его (как retained) трекерам, которые подпишутся на тот же
 шаблон позже — например, после перезагрузки файла. Для потоков одноразовых
 сообщений (запросы и ответы RPC), где это бесполезно и память только растёт,
-кэш отключается третьим аргументом: `trackMqtt(topic, callback, { cache: false })`.
+кэш отключается третьим аргументом: `trackMqtt(topic, callback, { cache: false })`
+(решает первый подписчик шаблона; остальные его разделяют).
 
 ### Публикация сообщений в MQTT `publish()`
 
@@ -1790,8 +1791,9 @@ try {
 * `MqttRpc.hasMethod(driver, service, method[, timeoutMs])` — Promise с
   `true`, если метод сейчас обслуживается, и `false`, если за `timeoutMs`
   (по умолчанию 3000, `MqttRpc.defaults.hasMethodTimeout`) его
-  retained-топик так и не появился. Ответ запоминается и обновляется по
-  подписке, повторные проверки мгновенны;
+  retained-топик так и не появился (`0` — ждать `true` сколько угодно).
+  Ответ запоминается и обновляется по подписке, повторные проверки
+  мгновенны;
 * `MqttRpc.waitForMethod(driver, service, method[, timeoutMs])` — Promise,
   который выполнится, как только метод появится, или отклонится с
   `TimeoutError` (`data` `"MqttMethodUnavailable"`; по умолчанию ждёт

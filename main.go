@@ -175,6 +175,10 @@ func main() {
 	engine.Start()
 	// terminal shutdown: Close stops the engine and destroys the native JS
 	// runtime (heap + process-global registries) instead of leaving it behind
+	// runs after engine.Close() (deferred later): flushes what the
+	// cleanups published (-cleanup: retained clears of virtual devices and
+	// served RPC presence) before the process exits
+	defer engineMqttClient.Stop()
 	defer engine.Close()
 
 	gotSome := false

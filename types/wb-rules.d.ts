@@ -592,6 +592,7 @@ interface TrackMqttOptions {
    * subscription and replays it (as retained) to trackers that subscribe
    * to the same pattern later. `false` turns that off for the pattern -
    * for one-off request/reply streams, where the memory would only grow.
+   * The first tracker of a pattern decides for everyone sharing it.
    */
   cache?: boolean;
 }
@@ -959,8 +960,9 @@ declare namespace MqttRpc {
   /**
    * Whether the method is currently served (its retained presence topic
    * holds a value). Resolves false if nothing shows up within the wait
-   * (default `MqttRpc.defaults.hasMethodTimeout`, 3000 ms); the answer is
-   * kept up to date afterwards, so repeated calls are instant.
+   * (default `MqttRpc.defaults.hasMethodTimeout`, 3000 ms; 0 waits for
+   * true indefinitely); the answer is kept up to date afterwards, so
+   * repeated calls are instant.
    */
   function hasMethod(
     driver: string,

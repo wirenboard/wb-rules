@@ -28,6 +28,11 @@ defineRule('rpc_forever', {
     // Infinity and 0 both mean "no limit": no timer, the reply settles it
     var r = await MqttRpc.call('svc', 'S', 'M', { limit: 'none' }, { timeout: Infinity });
     log('forever result: {}', JSON.stringify(r));
+    // the same through the per-file default
+    MqttRpc.defaults.timeout = Infinity;
+    var r2 = await MqttRpc.call('svc', 'S', 'M', { limit: 'default' });
+    MqttRpc.defaults.timeout = 60000;
+    log('forever result 2: {}', JSON.stringify(r2));
   },
 });
 
@@ -215,6 +220,12 @@ defineRule('rpc_bad', {
       checks.push(e instanceof TypeError);
     }
     try {
+      // @ts-expect-error - waitForMethod is true or a number (the runtime check is what is tested)
+      MqttRpc.call('svc', 'S', 'M', {}, { waitForMethod: '5' });
+    } catch (e) {
+      checks.push(e instanceof TypeError);
+    }
+    try {
       // @ts-expect-error - a handler must be a function (the runtime check is what is tested)
       MqttRpc.defineService('Bad', { X: 1 });
     } catch (e) {
@@ -247,6 +258,11 @@ MqttRpc.defineService('Demo', {
   },
   Func: function () {
     return function () {};
+  },
+  BadData: function () {
+    var o = {};
+    o.self = o;
+    throw new MqttRpc.RpcError(4321, 'with unserializable data', o);
   },
 });
 

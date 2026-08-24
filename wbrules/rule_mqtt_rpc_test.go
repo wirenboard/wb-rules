@@ -182,7 +182,7 @@ func (s *MqttRpcSuite) TestRequireAndGlobalAgree() {
 
 func (s *MqttRpcSuite) TestArgumentValidation() {
 	s.publish("/devices/rpctest/controls/bad/on", "1", "rpctest/bad")
-	s.SkipTill("wbrules-log -> /wbrules/log/info: [bad args rejected: true,true,true,true,true] (QoS 1)")
+	s.SkipTill("wbrules-log -> /wbrules/log/info: [bad args rejected: true,true,true,true,true,true] (QoS 1)")
 }
 
 // ---- server ----
@@ -246,6 +246,7 @@ var servedPresenceTopics = []string{
 	"/rpc/v1/wbrules-scripts/Demo/Nothing",
 	"/rpc/v1/wbrules-scripts/Demo/Circular",
 	"/rpc/v1/wbrules-scripts/Demo/Func",
+	"/rpc/v1/wbrules-scripts/Demo/BadData",
 	"/rpc/v1/custom-driver/Other/Ping",
 }
 
@@ -256,6 +257,11 @@ func (s *MqttRpcSuite) TestNonSerializableResult() {
 	s.Verify(sent,
 		regexp.MustCompile(`^wbrules-log -> /wbrules/log/error: \[MqttRpc: reply on /rpc/v1/wbrules-scripts/Demo/Circular/cli1 is not JSON-serializable: `),
 		regexp.MustCompile(`^wbrules-log -> /rpc/v1/wbrules-scripts/Demo/Circular/cli1/reply: \[\{"id":1,"error":\{"code":-32603,"message":"reply is not JSON-serializable: `))
+	// an RpcError whose data cannot travel keeps its code and message
+	sent = s.request("/rpc/v1/wbrules-scripts/Demo/BadData/cli1", `{"id":9,"params":{}}`)
+	s.Verify(sent,
+		regexp.MustCompile(`^wbrules-log -> /wbrules/log/error: \[MqttRpc: reply on /rpc/v1/wbrules-scripts/Demo/BadData/cli1 is not JSON-serializable: `),
+		`wbrules-log -> /rpc/v1/wbrules-scripts/Demo/BadData/cli1/reply: [{"id":9,"error":{"code":4321,"message":"with unserializable data"}}] (QoS 1)`)
 	// a function has no JSON form: null, not a reply without a result member
 	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/Func/cli1", `{"id":2,"params":{}}`, `{"id":2,"result":null}`)
 	// by-position params are fine, a scalar is -32602
@@ -288,7 +294,8 @@ func (s *MqttRpcSuite) TestRedefinitionInTheSameFile() {
 func (s *MqttRpcSuite) TestInfiniteTimeout() {
 	s.publish("/devices/rpctest/controls/forever/on", "1", "rpctest/forever")
 	s.SkipTill(`wbrules-log -> /wbrules/log/info: [forever result: {"echo":{"limit":"none"},"method":"M"}] (QoS 1)`)
-	s.VerifyEmpty() // in particular: no timer was created for the call
+	s.SkipTill(`wbrules-log -> /wbrules/log/info: [forever result 2: {"echo":{"limit":"default"},"method":"M"}] (QoS 1)`)
+	s.VerifyEmpty() // in particular: no timer was created for either call
 }
 
 // The -cleanup flag (RunAllCleanups on engine stop) now runs JS unload

@@ -19,7 +19,7 @@
 // owns its client id, reply subscription, presence watchers and served
 // methods - all attributed to the file and released when it reloads.
 
-/* global trackMqtt, publish, setTimeout, clearTimeout, _wbAddCleanup, log, module */
+/* global trackMqtt, publish, setTimeout, clearTimeout, _wbAddCleanup, log, module, __filename */
 /* eslint-disable security/detect-object-injection */
 
 var RPC_PREFIX = '/rpc/v1/';
@@ -130,18 +130,22 @@ function checkTimeout(value) {
   return value === Infinity ? 0 : value;
 }
 
+// the fallback is checked too: defaults.timeout is a plain assignable field
 function timeoutOf(options, fallback) {
   if (options && options.timeout !== undefined && options.timeout !== null) {
     return checkTimeout(options.timeout);
   }
-  return fallback;
+  return checkTimeout(fallback);
 }
 
 // hasMethod/waitForMethod take the wait either positionally (like
 // nextMqtt(topic, timeoutMs)) or as {timeout} (like call's options)
 function presenceTimeoutOf(arg, fallback) {
-  if (arg === undefined || arg === null) return fallback;
+  if (arg === undefined || arg === null) return checkTimeout(fallback);
   if (typeof arg === 'number') return checkTimeout(arg);
+  if (typeof arg !== 'object') {
+    throw new TypeError('MqttRpc: the wait must be a number of milliseconds or {timeout}');
+  }
   return timeoutOf(arg, fallback);
 }
 
@@ -251,6 +255,9 @@ function call(driver, service, method, params, options) {
   };
   var wait = options ? options.waitForMethod : undefined;
   if (wait !== undefined && wait !== null && wait !== false) {
+    if (wait !== true && typeof wait !== 'number') {
+      throw new TypeError('MqttRpc: waitForMethod must be true or a number of milliseconds');
+    }
     // true: as long as the call itself may take (0 = forever carries over)
     return waitForMethod(driver, service, method, wait === true ? timeout : wait).then(send);
   }
@@ -322,9 +329,10 @@ function dropWaiter(entry, fn) {
 
 // hasMethod(driver, service, method[, timeoutMs | {timeout}]) -> Promise<boolean>
 //   resolves true once the presence topic is seen, false when nothing is
-//   retained there within the wait (default 3000 ms). The answer is
-//   remembered and kept up to date by the subscription, so repeated calls
-//   are instant and a service that appears later flips to true.
+//   retained there within the wait (default 3000 ms; 0 = wait for true
+//   forever). The answer is remembered and kept up to date by the
+//   subscription, so repeated calls are instant and a service that
+//   appears later flips to true.
 function hasMethod(driver, service, method, timeoutArg) {
   checkTopicPart('driver', driver);
   checkTopicPart('service', service);
@@ -436,7 +444,9 @@ var cleanupRegistered = false;
 // requests - the engine would fan a request out to both subscriptions
 // and the caller would get two replies (one of them -32601)
 var registry = module.static;
-if (!registry.owners) registry.owners = {};
+if (!registry.owners) registry.owners = {}; // "driver/service" -> { clientId, file }
+// the file this instance belongs to (realm global), for the owner message
+var ownFile = typeof __filename === 'string' ? __filename : clientId;
 
 function replyTo(topic, body) {
   var text;
@@ -446,9 +456,14 @@ function replyTo(topic, body) {
     // a circular result, a BigInt in data, ...: the caller still gets an
     // answer (never a silent timeout), the author gets a log line
     log.error('MqttRpc: reply on {} is not JSON-serializable: {}', topic, e.message);
-    text = JSON.stringify(
-      errorReply(body.id, ErrorCode.INTERNAL_ERROR, 'reply is not JSON-serializable: ' + e.message)
-    );
+    if (body.error) {
+      // an error whose data cannot travel keeps its code and message
+      text = JSON.stringify(errorReply(body.id, body.error.code, body.error.message));
+    } else {
+      text = JSON.stringify(
+        errorReply(body.id, ErrorCode.INTERNAL_ERROR, 'reply is not JSON-serializable: ' + e.message)
+      );
+    }
   }
   publish(topic + '/reply', text, 1, false);
 }
@@ -549,7 +564,7 @@ function makeRequestHandler(entry) {
 function clearPresence() {
   Object.keys(served).forEach(function (key) {
     var entry = served[key];
-    if (registry.owners[key] === clientId) delete registry.owners[key];
+    if (registry.owners[key] && registry.owners[key].clientId === clientId) delete registry.owners[key];
     Object.keys(entry.methods).forEach(function (method) {
       try {
         publish(methodTopic(entry.driver, entry.service, method), '', 1, true);
@@ -593,12 +608,12 @@ function defineService(driver, svc, methods) {
   var entry = served[key];
   if (!entry) {
     var owner = registry.owners[key];
-    if (owner !== undefined && owner !== clientId) {
+    if (owner !== undefined && owner.clientId !== clientId) {
       throw new Error(
-        'MqttRpc.defineService: ' + key + ' is already served by another rule file (' + owner + ')'
+        'MqttRpc.defineService: ' + key + ' is already served by another rule file (' + owner.file + ')'
       );
     }
-    registry.owners[key] = clientId;
+    registry.owners[key] = { clientId: clientId, file: ownFile };
     entry = served[key] = { driver: driver, service: svc, methods: {} };
     // one subscription per service covers every method and requester; no
     // replay cache: requests are one-off, and every requester id would
@@ -766,9 +781,10 @@ Object.keys(services).forEach(function (name) {
   api[name] = services[name];
 });
 
-// the reply subscription goes out at load, ahead of the first request by
-// the rest of the module's evaluation (SUBSCRIBE and PUBLISH travel on the
-// same connection, in order)
+// the reply subscription is requested at load, so it is normally in place
+// long before the first request goes out (the MQTT client queues both; a
+// request sent in the same tick as the module load still has a tiny
+// window in which a very fast reply could precede the SUBSCRIBE)
 ensureReplySubscription();
 
 module.exports = api;
