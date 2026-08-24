@@ -1,4 +1,4 @@
-wb-rules (2.47.0~quickjs2) unstable; urgency=medium
+wb-rules (2.47.0~quickjs2.1) unstable; urgency=medium
 
   * TypeScript rule support via Microsoft typescript-go: .ts files in the
     rule directories transpile on load (about a millisecond through a
