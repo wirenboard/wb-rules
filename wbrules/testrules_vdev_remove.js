@@ -1,4 +1,4 @@
-/* global defineRule, defineVirtualDevice, removeVirtualDevice, getDevice, setTimeout, log */
+/* global defineRule, defineVirtualDevice, removeVirtualDevice, getDevice, log */
 
 function defineTarget(title, value) {
   defineVirtualDevice('vdev_rm', {
