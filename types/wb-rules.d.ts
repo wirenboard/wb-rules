@@ -586,8 +586,21 @@ interface MqttMessage {
   retained: boolean;
   qos: number;
 }
+interface TrackMqttOptions {
+  /**
+   * The engine remembers the last message of every topic under the
+   * subscription and replays it (as retained) to trackers that subscribe
+   * to the same pattern later. `false` turns that off for the pattern -
+   * for one-off request/reply streams, where the memory would only grow.
+   */
+  cache?: boolean;
+}
 /** Subscribes to an MQTT topic ("#" and "+" wildcards are allowed). */
-declare function trackMqtt(topic: string, callback: (message: MqttMessage) => void): void;
+declare function trackMqtt(
+  topic: string,
+  callback: (message: MqttMessage) => void,
+  options?: TrackMqttOptions
+): void;
 /**
  * Resolves with the next live (non-retained) MQTT message on the topic.
  * With timeoutMs set, rejects if no message arrives in time.
@@ -857,14 +870,15 @@ declare namespace MqttRpc {
     timeout?: number;
     /**
      * Wait for the method's presence topic before sending: `true` waits up
-     * to the call timeout, a number is its own limit in ms. Useful at boot,
-     * when the rules may start before the service does.
+     * to the call timeout, a number is its own limit in ms (0: forever);
+     * the reply timeout starts only after that. Useful at boot, when the
+     * rules may start before the service does.
      */
     waitForMethod?: boolean | number;
   }
 
-  interface HasMethodOptions {
-    /** Milliseconds to wait for the retained presence; default 3000. */
+  interface PresenceOptions {
+    /** Milliseconds to wait for the retained presence. */
     timeout?: number;
   }
 
@@ -876,18 +890,28 @@ declare namespace MqttRpc {
   }
 
   /**
-   * A call rejected by the server (code/message/data as sent), and what a
-   * served handler throws to answer with a specific error.
+   * A call rejected by the server: `code`, `message` and `data` exactly as
+   * sent, plus the target the call went to (toString() shows both). Also
+   * what a served handler throws to answer with a specific error.
    */
-  class RpcError extends Error {
+  class RpcError extends Error implements ErrorObject {
     constructor(code: number, message: string, data?: any);
     code: number;
     data?: any;
+    /** Set on errors raised by a call (not on ones you construct). */
+    driver?: string;
+    service?: string;
+    method?: string;
   }
 
   /**
-   * No reply within the timeout (or, for waitForMethod, no presence in
-   * time): code -32600 and data "MqttTimeoutError", like the web UI's.
+   * The client gave up waiting: no reply within the timeout (data
+   * "MqttTimeoutError", as the web UI marks its own timeouts) or, for
+   * waitForMethod, no presence in time (data "MqttMethodUnavailable").
+   * Its code is ErrorCode.TIMEOUT (-33000, the client-side timeout code
+   * wb-device-manager uses); server-side timeouts arrive as plain
+   * RpcErrors with whatever code the service sends (-32600 in
+   * wb-mqtt-serial and wb-mqtt-db). Test with `instanceof`.
    */
   class TimeoutError extends RpcError {
     constructor(message: string, data?: any);
@@ -901,7 +925,8 @@ declare namespace MqttRpc {
     readonly INVALID_PARAMS: -32602;
     readonly INTERNAL_ERROR: -32603;
     readonly SERVER_ERROR: -32000;
-    readonly TIMEOUT: -32600;
+    /** Client-side: no reply / no presence in time (TimeoutError). */
+    readonly TIMEOUT: -33000;
   };
 
   /** Per-file defaults; assign to change them for this file. */
@@ -933,25 +958,27 @@ declare namespace MqttRpc {
 
   /**
    * Whether the method is currently served (its retained presence topic
-   * holds a value). Resolves false if nothing shows up within the wait; the
-   * answer is kept up to date afterwards, so repeated calls are instant.
+   * holds a value). Resolves false if nothing shows up within the wait
+   * (default `MqttRpc.defaults.hasMethodTimeout`, 3000 ms); the answer is
+   * kept up to date afterwards, so repeated calls are instant.
    */
   function hasMethod(
     driver: string,
     service: string,
     method: string,
-    options?: HasMethodOptions
+    timeout?: number | PresenceOptions
   ): Promise<boolean>;
 
   /**
    * Resolves as soon as the method is served; rejects with TimeoutError
-   * after `timeoutMs` (default: the call timeout; 0 waits forever).
+   * (data "MqttMethodUnavailable") after the wait (default: the call
+   * timeout; 0 waits forever).
    */
   function waitForMethod(
     driver: string,
     service: string,
     method: string,
-    timeoutMs?: number
+    timeout?: number | PresenceOptions
   ): Promise<void>;
 
   /** A method of a service proxy: `params` as the request's `params`. */
@@ -964,19 +991,27 @@ declare namespace MqttRpc {
     readonly driver: string;
     readonly service: string;
     call<R = any>(method: string, params?: object | null, options?: CallOptions): Promise<R>;
-    hasMethod(method: string, options?: HasMethodOptions): Promise<boolean>;
-    waitForMethod(method: string, timeoutMs?: number): Promise<void>;
+    hasMethod(method: string, timeout?: number | PresenceOptions): Promise<boolean>;
+    waitForMethod(method: string, timeout?: number | PresenceOptions): Promise<void>;
   }
 
   /**
    * A proxy for one service, plus one function per listed method:
-   * `MqttRpc.service("wbrules", "Editor", ["List"]).List()`.
+   * `MqttRpc.service("wbrules", "Editor", ["List"]).List()`. Method names
+   * must not clash with the proxy's own members. Give a type argument to
+   * declare the methods' params/results: `MqttRpc.service<MyApi>(d, s,
+   * ["Get"])` where `MyApi = { Get: MqttRpc.Method<Params, Result> }`.
    */
   function service<M extends string = never>(
     driver: string,
     service: string,
     methods?: readonly M[]
   ): ServiceProxy & { [K in M]: Method<any, any> };
+  function service<T extends Record<string, Method<any, any>>>(
+    driver: string,
+    service: string,
+    methods: readonly (keyof T & string)[]
+  ): ServiceProxy & T;
 
   /** What a served handler gets besides the params. */
   interface Request {
@@ -1021,15 +1056,19 @@ declare namespace MqttRpc {
   // ---- wb-mqtt-serial ----
 
   namespace Serial {
-    type BaudRate = 110 | 300 | 600 | 1200 | 2400 | 4800 | 9600 | 19200 | 38400 | 57600 | 115200;
-    type Parity = "N" | "E" | "O";
+    /** 110 … 115200 (the driver validates); any number is accepted here so port settings held in variables pass. */
+    type BaudRate = 110 | 300 | 600 | 1200 | 2400 | 4800 | 9600 | 19200 | 38400 | 57600 | 115200 | (number & {});
+    /** "N", "E" or "O". */
+    type Parity = "N" | "E" | "O" | (string & {});
     /** A serial port with its line settings (all required). */
     interface SerialPort {
       path: string;
       baud_rate: BaudRate;
       parity: Parity;
-      data_bits: 5 | 6 | 7 | 8;
-      stop_bits: 1 | 2;
+      /** 5 … 8 */
+      data_bits: number;
+      /** 1 or 2 */
+      stop_bits: number;
     }
     /** A Modbus TCP endpoint. */
     interface TcpPort {
@@ -1057,9 +1096,8 @@ declare namespace MqttRpc {
       response_size: number;
       format?: "STR" | "HEX";
     }
-    interface ModbusRequest {
-      protocol: "modbus" | "modbus-tcp";
-      slave_id: number;
+    /** The Modbus part of a request: function code and register address. */
+    interface ModbusHeader {
       function: 1 | 2 | 3 | 4 | 5 | 6 | 15 | 16 | 23;
       address: number;
       /** Registers/bits to read; default 1. */
@@ -1070,50 +1108,70 @@ declare namespace MqttRpc {
       msg?: string;
       format?: "STR" | "HEX";
     }
-    type PortLoadParams = (SerialPort | TcpPort | ConfiguredDevice) & (RawRequest | ModbusRequest) & Timeouts;
+    interface ModbusRequest extends ModbusHeader {
+      protocol: "modbus" | "modbus-tcp";
+      slave_id: number;
+    }
+    /**
+     * Either an explicit port with a raw or Modbus request, or a configured
+     * device (`device_id`) with just the Modbus header - its port, protocol
+     * and address come from the driver's config.
+     */
+    type PortLoadParams = (
+      | ((SerialPort | TcpPort) & (RawRequest | ModbusRequest))
+      | (ConfiguredDevice & ModbusHeader & { protocol?: "modbus" | "modbus-tcp"; slave_id?: number })
+    ) &
+      Timeouts;
     interface PortLoadResult {
       /** The response bytes (data only for Modbus), text or hex per `format`. */
       response?: string;
       /** A Modbus exception instead of data. */
       exception?: { code: number; msg: string };
     }
+    /** One device to set up: addressed by `slave_id` or by serial number `sn`. */
     interface PortSetupItem {
-      slave_id: number;
-      baud_rate: BaudRate;
-      parity: Parity;
-      data_bits: number;
-      stop_bits: number;
-      /** Serial number: address the device by it instead of slave_id. */
+      slave_id?: number;
+      /** Serial number (Fast Modbus): address the device by it instead of slave_id. */
       sn?: number;
+      /** Current line settings of the device; defaults: 9600 N 8 2. */
+      baud_rate?: BaudRate;
+      parity?: Parity;
+      data_bits?: number;
+      stop_bits?: number;
       /** The new settings; parity as 0 (N), 1 (O), 2 (E). */
-      cfg: { baud_rate?: number; parity?: 0 | 1 | 2; stop_bits?: number; slave_id?: number };
+      cfg?: { baud_rate?: number; parity?: 0 | 1 | 2; stop_bits?: number; slave_id?: number };
     }
-    type PortSetupParams = ({ path: string } | TcpPort) & { items: PortSetupItem[]; total_timeout?: number };
-    type PortScanParams = (SerialPort | TcpPort) &
-      Timeouts & {
-        protocol?: "modbus" | "modbus-tcp";
-        /** Fast Modbus scan command; default 70. */
-        command?: 70 | 96;
-        mode?: "all" | "start" | "next";
-      };
+    type PortSetupParams = ({ path: string } | TcpPort) & {
+      items: PortSetupItem[];
+      /** ms; default 10000. */
+      total_timeout?: number;
+    };
+    type PortScanParams = (SerialPort | TcpPort) & {
+      /** ms; default 10000. */
+      total_timeout?: number;
+      /** Fast Modbus scan command; default 70. */
+      command?: 70 | 96;
+      mode?: "all" | "start" | "next";
+    };
+    /** A device found by a scan or probe; every field is present only when it could be read. */
     interface ScannedDevice {
-      sn: number;
-      device_signature: string;
-      fw_signature: string;
+      /** Serial number, as a decimal string. */
+      sn?: string;
+      device_signature?: string;
+      fw_signature?: string;
       configured_device_type?: string;
-      errors: { id: string; message: string }[];
-      cfg: { slave_id: number; baud_rate: number; parity: string; data_bits: number; stop_bits: number };
-      fw: { version: string };
+      errors?: { id: string; message: string }[];
+      cfg?: { slave_id: number; data_bits: number; baud_rate?: number; parity?: string; stop_bits?: number };
+      fw?: { version: string };
     }
     interface PortScanResult {
       devices: ScannedDevice[];
       /** Set when the scan stopped early; `devices` holds what was found. */
       error?: string;
     }
-    type DeviceProbeParams = (SerialPort | TcpPort) &
-      Timeouts & { slave_id: number; protocol?: "modbus" | "modbus-tcp" };
-    /** The probed device, or {} when nothing answers. */
-    type DeviceProbeResult = ScannedDevice | {};
+    type DeviceProbeParams = (SerialPort | TcpPort) & { slave_id: number; protocol?: "modbus" | "modbus-tcp" };
+    /** The probed device; {} (every field absent) when nothing answers. */
+    type DeviceProbeResult = ScannedDevice;
     /** A device by port + address + template, or by its config id. */
     type DeviceAddress =
       | ((SerialPort | (TcpPort & { modbus_mode?: "RTU" | "TCP" })) & {
@@ -1187,7 +1245,7 @@ declare namespace MqttRpc {
     }
     type ConfiguredPort =
       | { path: string; baud_rate: number; data_bits: number; parity: string; stop_bits: number }
-      | { address: string; port: number };
+      | { address: string; port: number; mode?: "modbus-tcp" };
     interface FwUpdatePort {
       path: string;
       baud_rate?: number;
@@ -1195,9 +1253,10 @@ declare namespace MqttRpc {
       data_bits?: number;
       stop_bits?: number;
     }
-    interface FwUpdateTarget {
+    /** A device to flash: wb-mqtt-serial takes serial ports only; wb-device-manager also `{address, port}`. */
+    interface FwUpdateTarget<Port = FwUpdatePort> {
       slave_id: number;
-      port: FwUpdatePort | { address: string; port: number };
+      port: Port;
       protocol?: "modbus" | "modbus-tcp";
     }
     interface FirmwareComponent {
@@ -1217,19 +1276,21 @@ declare namespace MqttRpc {
       model: string;
       components: Record<string, FirmwareComponent>;
     }
-    type FwUpdateParams = FwUpdateTarget & { type?: "firmware" | "bootloader" | "components" | "component" };
+    type FwUpdateParams<Port = FwUpdatePort> = FwUpdateTarget<Port> & {
+      type?: "firmware" | "bootloader" | "component";
+    };
     interface FwClearErrorParams {
       slave_id: number;
       port: { path: string };
       type?: "firmware" | "bootloader";
     }
-    /** The fw-update service (also served by wb-device-manager). */
-    interface FwUpdateService extends ServiceProxy {
-      GetFirmwareInfo: Method<FwUpdateTarget, FirmwareInfo>;
+    /** The fw-update service of wb-mqtt-serial (serial ports) and wb-device-manager (serial or TCP). */
+    interface FwUpdateService<Port = FwUpdatePort> extends ServiceProxy {
+      GetFirmwareInfo: Method<FwUpdateTarget<Port>, FirmwareInfo>;
       /** Returns "Ok" at once; progress is on the retained .../firmware_update/state topic. */
-      Update: Method<FwUpdateParams, "Ok">;
+      Update: Method<FwUpdateParams<Port>, "Ok">;
       ClearError: Method<FwClearErrorParams, "Ok">;
-      Restore: Method<FwUpdateTarget, "Ok">;
+      Restore: Method<FwUpdateTarget<Port>, "Ok">;
     }
   }
 
@@ -1254,8 +1315,8 @@ declare namespace MqttRpc {
     port: ServiceProxy & {
       /**
        * Sends one raw or Modbus request through a port (queued after the
-       * current poll cycle). Without an explicit timeout the call waits
-       * for `total_timeout` plus a margin.
+       * current poll cycle). Without an explicit timeout the call waits at
+       * least `total_timeout` plus a margin.
        */
       Load: Method<Serial.PortLoadParams, Serial.PortLoadResult>;
       /** Changes line settings/addresses of devices on a port. */
@@ -1270,7 +1331,7 @@ declare namespace MqttRpc {
       Load: Method<Serial.DeviceLoadParams, Serial.DeviceLoadResult>;
       /** Writes channels and parameters of a device. */
       Set: Method<Serial.DeviceSetParams, {}>;
-      /** Identifies the device at an address. */
+      /** Identifies the device at an address (fixed 10 s budget on the server). */
       Probe: Method<Serial.DeviceProbeParams, Serial.DeviceProbeResult>;
       /** Pauses/resumes polling of a configured device. */
       SetPoll: Method<Serial.DeviceSetPollParams, {}>;
@@ -1297,7 +1358,7 @@ declare namespace MqttRpc {
       min_interval?: number;
       /** Averaging target: at most this many records (overrides min_interval). */
       max_records?: number;
-      /** Server-side budget, seconds (default 9). Without an explicit timeout the call waits for it. */
+      /** Server-side budget, seconds (default 9). Without an explicit timeout the call waits at least that long. */
       request_timeout?: number;
       /** ver 1 only: `t` with a millisecond fraction. */
       with_milliseconds?: boolean;
@@ -1364,7 +1425,7 @@ declare namespace MqttRpc {
     }
     interface ScriptError {
       message: string;
-      traceback: Location[];
+      traceback: Location[] | null;
     }
     interface FileEntry {
       virtualPath: string;
@@ -1389,7 +1450,7 @@ declare namespace MqttRpc {
       file?: string;
       line: number;
       column: number;
-      severity: string;
+      severity: "error" | "warning";
       message: string;
       code?: number;
     }
@@ -1457,7 +1518,7 @@ declare namespace MqttRpc {
       services: string[];
     }
     interface LoadParams {
-      /** A boot hash from List; default: the current boot. */
+      /** A boot hash from List; default: all boots. */
       boot?: string;
       service?: string;
       /** Start time, UNIX seconds. */
@@ -1527,7 +1588,7 @@ declare namespace MqttRpc {
       Start: Method<DeviceManager.BusScanStartParams, "Ok">;
       Stop: Method<{}, "Ok">;
     };
-    fwUpdate: Serial.FwUpdateService;
+    fwUpdate: Serial.FwUpdateService<Serial.FwUpdatePort | { address: string; port: number }>;
   };
 
   // ---- wb-mqtt-dali ----
@@ -1551,6 +1612,8 @@ declare namespace MqttRpc {
         name: string;
         devices: { id: string; name: string; groups: number[] }[];
         commissioning: Record<string, any>;
+        bus_monitor_enabled?: boolean;
+        bus_monitor_syslog_enabled?: boolean;
       }[];
     }
   }
@@ -1560,7 +1623,7 @@ declare namespace MqttRpc {
     readonly driver: "wb-mqtt-dali";
     Editor: ServiceProxy & {
       GetList: Method<{}, Dali.GatewayEntry[]>;
-      GetGateway: Method<{ gatewayId: string }, { config: Record<string, any> }>;
+      GetGateway: Method<{ gatewayId: string }, { config: Record<string, any>; schema: any }>;
       SetGateway: Method<{ gatewayId: string; config: Record<string, any> }, any>;
       GetBus: Method<{ busId: string }, { config: Record<string, any>; schema: any }>;
       SetBus: Method<{ busId: string; config: Record<string, any> }, any>;

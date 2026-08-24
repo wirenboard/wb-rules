@@ -3,6 +3,7 @@ package wbrules
 import (
 	"testing"
 
+	"github.com/wirenboard/wbgong"
 	"github.com/wirenboard/wbgong/testutils"
 )
 
@@ -60,6 +61,37 @@ func (s *RuleTrackMqttSuite) TestTracker() {
 	s.VerifyEmpty()
 }
 
+// trackMqtt(topic, cb, {cache: false}): the subscription keeps no
+// last-value cache, so a tracker joining the pattern later gets nothing
+// replayed (request/reply streams: one-off messages, unbounded topics).
+type RuleTrackMqttNoCacheSuite struct {
+	RuleSuiteBase
+}
+
+func (s *RuleTrackMqttNoCacheSuite) SetupTest() {
+	s.SetupSkippingDefs("testrules_track_mqtt_nocache.js")
+}
+
+func (s *RuleTrackMqttNoCacheSuite) TestNoReplayForLateJoiner() {
+	s.client.Publish(wbgong.MQTTMessage{Topic: "/nocache/one", Payload: "first", QoS: 1})
+	s.Verify(
+		"tst -> /nocache/one: [first] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [nocache A: /nocache/one = first retained=false] (QoS 1)",
+	)
+	// a second file joins the same pattern: with the default cache it would
+	// be handed "first" as a retained replay; without one it hears only
+	// what comes next
+	s.Ck("LiveLoadScript", s.LiveLoadScript("testrules_track_mqtt_nocache2.js"))
+	s.SkipTill("wbrules-log -> /wbrules/updates/changed: [testrules_track_mqtt_nocache2.js] (QoS 1)")
+	s.VerifyEmpty()
+	s.client.Publish(wbgong.MQTTMessage{Topic: "/nocache/one", Payload: "second", QoS: 1})
+	s.VerifyUnordered(
+		"tst -> /nocache/one: [second] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [nocache A: /nocache/one = second retained=false] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [nocache B: /nocache/one = second retained=false] (QoS 1)",
+	)
+}
+
 func TestTrackMqtt(t *testing.T) {
-	testutils.RunSuites(t, new(RuleTrackMqttSuite))
+	testutils.RunSuites(t, new(RuleTrackMqttSuite), new(RuleTrackMqttNoCacheSuite))
 }

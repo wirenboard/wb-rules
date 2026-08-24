@@ -710,6 +710,10 @@ type RuleEngine struct {
 	// subscription. See newTrackHandler for why every message is cached, not
 	// only the ones flagged retained.
 	trackedRetained map[string]map[string]wbgong.MQTTMessage
+	// subscription patterns whose trackers opted out of the replay cache
+	// (trackMqtt(topic, cb, {cache: false}): request/reply streams where
+	// remembering the last message per topic is useless and unbounded)
+	trackedNoCache map[string]bool
 
 	cleanupOnStop bool
 
@@ -766,6 +770,7 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 		cleanupOnStop:      options.cleanupOnStop,
 		tracks:             make(map[string]map[uint32]MqttTracker),
 		trackedRetained:    make(map[string]map[string]wbgong.MQTTMessage),
+		trackedNoCache:     make(map[string]bool),
 
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
@@ -1564,10 +1569,15 @@ func (engine *RuleEngine) Start() {
 func (engine *RuleEngine) Stop() {
 	atomic.StoreUint32(&engine.active, ENGINE_STOP)
 
-	// run all necessary cleanups
+	// run all necessary cleanups - on the engine loop: cleanups include
+	// JS unload hooks (_wbAddCleanup) since the MQTT-RPC module, and JS
+	// must never run concurrently with the loop's own callbacks on the
+	// same heap (the sync loop is still alive at this point)
 	if engine.cleanupOnStop {
 		wbgong.Info.Println("[engine] Performing MQTT cleanup on stop")
-		engine.cleanup.RunAllCleanups()
+		if err := engine.CallSyncWait(engine.cleanup.RunAllCleanups); err != nil {
+			wbgong.Warn.Printf("[engine] cleanup on stop skipped: %s", err)
+		}
 	}
 
 	// Stop the sync loop FIRST, before the event buffer: once this
@@ -2145,8 +2155,10 @@ func (engine *RuleEngine) DefineRule(rule *Rule, ctx *ESContext) (id RuleId, err
 	return
 }
 
-// DefineMqttTracker creates new mqtt tracker and subscribe to specified topic if needed
-func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err error) {
+// DefineMqttTracker creates new mqtt tracker and subscribe to specified
+// topic if needed. cache=false turns off the last-value replay cache for
+// the subscription pattern (decided by the tracker that creates it).
+func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext, cache bool) (err error) {
 	// lazy-start like Publish does: trackMqtt() may be the engine client's
 	// first use when a script subscribes before anything was logged
 	engine.mqttClient.Start()
@@ -2161,6 +2173,9 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 	_, alreadySubscribed := engine.tracks[topic]
 	if !alreadySubscribed {
 		engine.tracks[topic] = make(MqttTrackerMap)
+		if !cache {
+			engine.trackedNoCache[topic] = true
+		}
 		engine.mqttClient.Subscribe(engine.newTrackHandler(topic), topic)
 	}
 	engine.tracks[topic][trackerID] = tracker
@@ -2195,6 +2210,7 @@ func (engine *RuleEngine) DefineMqttTracker(topic string, ctx *ESContext) (err e
 		if len(engine.tracks[topic]) < 1 {
 			delete(engine.tracks, topic)
 			delete(engine.trackedRetained, topic)
+			delete(engine.trackedNoCache, topic)
 			engine.mqttClient.Unsubscribe(topic)
 		}
 	})
@@ -2237,7 +2253,7 @@ func (engine *RuleEngine) newTrackHandler(subTopic string) func(wbgong.MQTTMessa
 		// fresh subscription would deliver nothing for it: drop it from the cache.
 		if msg.Payload == "" {
 			delete(engine.trackedRetained[subTopic], msg.Topic)
-		} else {
+		} else if !engine.trackedNoCache[subTopic] {
 			topicCache := engine.trackedRetained[subTopic]
 			if topicCache == nil {
 				topicCache = make(map[string]wbgong.MQTTMessage)

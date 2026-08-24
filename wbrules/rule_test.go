@@ -94,6 +94,8 @@ type RuleSuiteBase struct {
 	client, driverClient, logClient wbgong.MQTTClient
 
 	engine *ESEngine
+	// build the engine with cleanup-on-stop (the -cleanup flag)
+	CleanupOnStop bool
 
 	controlChange <-chan *ControlChangeEvent
 
@@ -309,6 +311,9 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 	if s.TsgoPath != "" {
 		engineOptions.SetTsgoPath(s.TsgoPath)
 		engineOptions.SetTsTypesPath(s.TsTypesPath)
+	}
+	if s.CleanupOnStop {
+		engineOptions.SetCleanupOnStop(true)
 	}
 	s.logClient = s.Broker.MakeClient("wbrules-log")
 

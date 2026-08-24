@@ -14,7 +14,10 @@ async function __mqttRpcGeneric() {
   );
   const ok: boolean = typed.ok;
   const present: boolean = await MqttRpc.hasMethod("d", "s", "m", { timeout: 500 });
+  const present1: boolean = await MqttRpc.hasMethod("d", "s", "m", 500);
   await MqttRpc.waitForMethod("d", "s", "m", 0);
+  await MqttRpc.waitForMethod("d", "s", "m", { timeout: 1000 });
+  await MqttRpc.call("d", "s", "m", {}, { waitForMethod: 5000 });
 
   // a proxy carries the listed methods, and call() for the rest
   const editor = MqttRpc.service("wbrules", "Editor", ["List", "Load"]);
@@ -24,6 +27,13 @@ async function __mqttRpcGeneric() {
   const present2: boolean = await editor.hasMethod("Check");
   const plain = MqttRpc.service("d", "s");
   await plain.call("m");
+  // a typed proxy for a service the module does not know
+  type MyApi = { Get: MqttRpc.Method<{ key: string }, { value: number }>; Ping: MqttRpc.Method<{}, "pong"> };
+  const mine = MqttRpc.service<MyApi>("my-driver", "Store", ["Get", "Ping"]);
+  const value: number = (await mine.Get({ key: "k" })).value;
+  const pong: "pong" = await mine.Ping();
+  // @ts-expect-error - Get needs its key
+  await mine.Get({});
   // @ts-expect-error - a method that was not listed is not a property
   await editor.Remove({ path: "x.js" });
   // @ts-expect-error - params must be an object
@@ -37,8 +47,9 @@ async function __mqttRpcGeneric() {
 
   const err = new MqttRpc.RpcError(-32000, "x", { why: 1 });
   const code: number = err.code;
+  const target: string | undefined = err.method;
   const timedOut: boolean = err instanceof MqttRpc.TimeoutError;
-  const t: -32600 = MqttRpc.ErrorCode.TIMEOUT;
+  const t: -33000 = MqttRpc.ErrorCode.TIMEOUT;
   MqttRpc.defaults.timeout = 5000;
   const id: string = MqttRpc.clientId;
   const driver: "wbrules-scripts" = MqttRpc.DEFAULT_SERVICE_DRIVER;
@@ -72,18 +83,22 @@ async function __mqttRpcServices() {
     total_timeout: 10000,
   });
   const resp: string | undefined = raw.response;
-  const modbus = await MqttRpc.serial.port.Load({
-    device_id: "wb-map12e_1",
-    protocol: "modbus",
-    slave_id: 1,
-    function: 3,
-    address: 0x80,
-    count: 2,
-  });
+  // a configured device: port, protocol and address come from the config
+  const modbus = await MqttRpc.serial.port.Load({ device_id: "wb-map12e_1", function: 3, address: 0x80, count: 2 });
   if (modbus.exception) {
     const c: number = modbus.exception.code;
   }
+  // Modbus TCP with an explicit endpoint
+  await MqttRpc.serial.port.Load({ ip: "192.168.1.50", port: 502, protocol: "modbus-tcp", slave_id: 1, function: 3, address: 0 });
+  // port settings held in a variable (widened types) are accepted
+  const port = { path: "/dev/ttyRS485-2", baud_rate: 9600, parity: "N", data_bits: 8, stop_bits: 2 };
+  await MqttRpc.serial.port.Scan(port);
+  // the module's own results feed back into requests
   const ports = await MqttRpc.serial.ports.Load();
+  const firstPort = ports[0];
+  if ("path" in firstPort) {
+    await MqttRpc.serial.port.Scan(firstPort);
+  }
   const cfg = await MqttRpc.serial.config.Load({ lang: "ru" });
   const groups: MqttRpc.Serial.DeviceTypeGroup[] = cfg.types;
   const schema: any = await MqttRpc.serial.config.GetSchema({ type: "WB-MR6C" });
@@ -94,7 +109,13 @@ async function __mqttRpcServices() {
     data_bits: 8,
     stop_bits: 2,
   });
-  const sn: number = scan.devices[0].sn;
+  const sn: string | undefined = scan.devices[0].sn;
+  const probed = await MqttRpc.serial.device.Probe({ ...port, slave_id: 1 });
+  const probedSn: string | undefined = probed.sn;
+  const found = scan.devices[0];
+  if (found.cfg) {
+    await MqttRpc.serial.port.Load({ ...port, protocol: "modbus", slave_id: found.cfg.slave_id, function: 3, address: 0 });
+  }
   const info = await MqttRpc.serial.fwUpdate.GetFirmwareInfo({
     slave_id: 1,
     port: { path: "/dev/ttyRS485-1" },
@@ -106,18 +127,18 @@ async function __mqttRpcServices() {
   await MqttRpc.serial.device.Set({ device_id: "wb-mr6c_1", channels: { K1: 1 } });
   await MqttRpc.serial.device.SetPoll({ device_id: "wb-mr6c_1", poll: false });
   await MqttRpc.serial.templates.Upload({ content: "{}", filename: "my.json" });
+  await MqttRpc.serial.port.Setup({ path: "/dev/ttyRS485-1", items: [{ sn: 4265607, cfg: { slave_id: 12 } }] });
+  await MqttRpc.serial.fwUpdate.Update({ slave_id: 1, port: { path: "/dev/ttyRS485-1" }, type: "bootloader" });
   // @ts-expect-error - a serial port needs its line settings
   await MqttRpc.serial.port.Load({ path: "/dev/ttyRS485-1", msg: "00", response_size: 1 });
-  await MqttRpc.serial.port.Scan({
-    path: "/dev/ttyRS485-1",
-    // @ts-expect-error - a baud rate is one of the known values
-    baud_rate: 9601,
-    parity: "N",
-    data_bits: 8,
-    stop_bits: 2,
-  });
   // @ts-expect-error - a Modbus request needs the function code
   await MqttRpc.serial.port.Load({ device_id: "x", protocol: "modbus", slave_id: 1, address: 0 });
+  // @ts-expect-error - a raw request needs an explicit port, not a configured device
+  await MqttRpc.serial.port.Load({ device_id: "x", msg: "00", response_size: 1 });
+  // @ts-expect-error - wb-mqtt-serial flashes over serial ports only
+  await MqttRpc.serial.fwUpdate.GetFirmwareInfo({ slave_id: 1, port: { address: "10.0.0.1", port: 502 } });
+  // @ts-expect-error - "components" is not a software type
+  await MqttRpc.serial.fwUpdate.Update({ slave_id: 1, port: { path: "/dev/ttyRS485-1" }, type: "components" });
 
   // wb-mqtt-db
   const hist = await MqttRpc.db.history.get_values({
@@ -182,6 +203,8 @@ async function __mqttRpcServices() {
     slave_id: 1,
     port: { path: "/dev/ttyRS485-1" },
   });
+  // wb-device-manager also flashes over Modbus TCP
+  await MqttRpc.deviceManager.fwUpdate.GetFirmwareInfo({ slave_id: 1, port: { address: "10.0.0.1", port: 502 } });
   // @ts-expect-error - scan_type is one of the known kinds
   await MqttRpc.deviceManager.busScan.Start({ scan_type: "slow" });
 

@@ -15,6 +15,51 @@ defineVirtualDevice('rpctest', {
     typed: { type: 'switch', value: false },
     same: { type: 'switch', value: false },
     bad: { type: 'switch', value: false },
+    nullid: { type: 'switch', value: false },
+    waitcall: { type: 'switch', value: false },
+    forever: { type: 'switch', value: false },
+    redefine: { type: 'switch', value: false },
+  },
+});
+
+defineRule('rpc_forever', {
+  whenChanged: 'rpctest/forever',
+  then: async function () {
+    // Infinity and 0 both mean "no limit": no timer, the reply settles it
+    var r = await MqttRpc.call('svc', 'S', 'M', { limit: 'none' }, { timeout: Infinity });
+    log('forever result: {}', JSON.stringify(r));
+  },
+});
+
+defineRule('rpc_redefine', {
+  whenChanged: 'rpctest/redefine',
+  then: function () {
+    // the same file may redefine a method (a warning, the new handler wins)
+    MqttRpc.defineService('Demo', {
+      Nothing: function () {
+        return 'replaced';
+      },
+    });
+  },
+});
+
+defineRule('rpc_nullid', {
+  whenChanged: 'rpctest/nullid',
+  then: async function () {
+    try {
+      await MqttRpc.call('svc', 'S', 'Garbled', {});
+      log('nullid: unexpectedly resolved');
+    } catch (e) {
+      log('nullid: {}', describeError(e));
+    }
+  },
+});
+
+defineRule('rpc_waitcall', {
+  whenChanged: 'rpctest/waitcall',
+  then: async function () {
+    var r = await MqttRpc.call('svc', 'S', 'M', { after: 'presence' }, { waitForMethod: 1000 });
+    log('waitcall result: {}', JSON.stringify(r));
   },
 });
 
@@ -33,7 +78,13 @@ function describeError(e) {
     ' error=' +
     (e instanceof Error) +
     ' msg=' +
-    e.message
+    e.message +
+    ' target=' +
+    e.driver +
+    '/' +
+    e.service +
+    '/' +
+    e.method
   );
 }
 
@@ -115,7 +166,18 @@ defineRule('rpc_typed', {
     var v = await MqttRpc.db.history.get_values({ channels: [['wb-adc', 'Vin']], limit: 1 });
     log('typed result: {}', JSON.stringify(v));
     // the serial port budget stretches the client timeout beyond the default
-    MqttRpc.serial.port.Load({ path: '/dev/ttyRS485-1', total_timeout: 90000 }).catch(function () {});
+    MqttRpc.serial.port
+      .Load({
+        path: '/dev/ttyRS485-1',
+        baud_rate: 9600,
+        parity: 'N',
+        data_bits: 8,
+        stop_bits: 2,
+        msg: '0A03008000018499',
+        response_size: 8,
+        total_timeout: 90000,
+      })
+      .catch(function () {});
   },
 });
 
@@ -137,6 +199,7 @@ defineRule('rpc_bad', {
       checks.push(e instanceof TypeError);
     }
     try {
+      // @ts-expect-error - params must be an object (the runtime check is what is tested)
       MqttRpc.call('svc', 'S', 'M', 42);
     } catch (e) {
       checks.push(e instanceof TypeError);
@@ -147,6 +210,12 @@ defineRule('rpc_bad', {
       checks.push(e instanceof TypeError);
     }
     try {
+      MqttRpc.service('svc', 'S', ['call']);
+    } catch (e) {
+      checks.push(e instanceof TypeError);
+    }
+    try {
+      // @ts-expect-error - a handler must be a function (the runtime check is what is tested)
       MqttRpc.defineService('Bad', { X: 1 });
     } catch (e) {
       checks.push(e instanceof TypeError);
@@ -171,6 +240,14 @@ MqttRpc.defineService('Demo', {
     return Promise.resolve(params.v * 2);
   },
   Nothing: function () {},
+  Circular: function () {
+    var o = { name: 'loop' };
+    o.self = o;
+    return o;
+  },
+  Func: function () {
+    return function () {};
+  },
 });
 
 MqttRpc.defineService('custom-driver', 'Other', {

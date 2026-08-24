@@ -54,6 +54,9 @@ func (s *MqttRpcSuite) SetupTest() {
 			reply = `{"id":` + string(req.ID) + `,"result":{"echo":` + string(req.Params) + `,"method":"` + m[3] + `"}}`
 		case "Err":
 			reply = `{"id":` + string(req.ID) + `,"error":{"code":-32602,"message":"bad params","data":"EditorError"}}`
+		case "Garbled":
+			// what a server answers when it cannot read the request at all
+			reply = `{"id":null,"error":{"code":-32700,"message":"Parse error"}}`
 		default:
 			return
 		}
@@ -100,7 +103,7 @@ func (s *MqttRpcSuite) TestCallRoundTrip() {
 
 func (s *MqttRpcSuite) TestErrorReply() {
 	s.publish("/devices/rpctest/controls/err/on", "1", "rpctest/err")
-	s.SkipTill(`wbrules-log -> /wbrules/log/info: [err: name=RpcError code=-32602 data="EditorError" rpc=true timeout=false error=true msg=svc/S/Err: bad params] (QoS 1)`)
+	s.SkipTill(`wbrules-log -> /wbrules/log/info: [err: name=RpcError code=-32602 data="EditorError" rpc=true timeout=false error=true msg=bad params target=svc/S/Err] (QoS 1)`)
 }
 
 func (s *MqttRpcSuite) TestTimeout() {
@@ -108,12 +111,26 @@ func (s *MqttRpcSuite) TestTimeout() {
 	s.SkipTill("new fake timer: 1, 500")
 	ts := s.AdvanceTime(500 * time.Millisecond)
 	s.FireTimer(1, ts)
-	s.SkipTill(`wbrules-log -> /wbrules/log/info: [timeout: name=TimeoutError code=-32600 data="MqttTimeoutError" rpc=true timeout=true error=true msg=svc/S/Slow: no reply in 500 ms] (QoS 1)`)
+	s.SkipTill(`wbrules-log -> /wbrules/log/info: [timeout: name=TimeoutError code=-33000 data="MqttTimeoutError" rpc=true timeout=true error=true msg=no reply from svc/S/Slow in 500 ms target=svc/S/Slow] (QoS 1)`)
 	// a reply arriving after the deadline finds nobody waiting and is dropped silently
 	req := s.lastRequest()
 	s.client.Publish(wbgong.MQTTMessage{Topic: req.Topic + "/reply", Payload: `{"id":` + string(req.ID) + `,"result":1}`, QoS: 1})
 	s.Verify("tst -> " + req.Topic + `/reply: [{"id":1,"result":1}] (QoS 1)`)
 	s.VerifyEmpty()
+}
+
+func (s *MqttRpcSuite) TestNullIdReplySettlesTheOnlyCall() {
+	s.publish("/devices/rpctest/controls/nullid/on", "1", "rpctest/nullid")
+	s.SkipTill(`wbrules-log -> /wbrules/log/info: [nullid: name=RpcError code=-32700 data=undefined rpc=true timeout=false error=true msg=Parse error target=svc/S/Garbled] (QoS 1)`)
+}
+
+func (s *MqttRpcSuite) TestCallWaitsForMethod() {
+	s.publish("/devices/rpctest/controls/waitcall/on", "1", "rpctest/waitcall")
+	// the presence wait is armed, nothing was sent yet
+	s.SkipTill("new fake timer: 1, 1000")
+	s.client.Publish(wbgong.MQTTMessage{Topic: "/rpc/v1/svc/S/M", Payload: "1", QoS: 1, Retained: true})
+	s.SkipTill(`wbrules-log -> /wbrules/log/info: [waitcall result: {"echo":{"after":"presence"},"method":"M"}] (QoS 1)`)
+	s.Equal(1, len(s.requests), "exactly one request, sent after the presence arrived")
 }
 
 func (s *MqttRpcSuite) TestHasMethod() {
@@ -140,7 +157,7 @@ func (s *MqttRpcSuite) TestWaitForMethod() {
 	s.SkipTill("new fake timer: 2, 200")
 	ts := s.AdvanceTime(200 * time.Millisecond)
 	s.FireTimer(2, ts)
-	s.SkipTill(`wbrules-log -> /wbrules/log/info: [Never: name=TimeoutError code=-32600 data="MqttTimeoutError" rpc=true timeout=true error=true msg=svc/S/Never: method not available after 200 ms] (QoS 1)`)
+	s.SkipTill(`wbrules-log -> /wbrules/log/info: [Never: name=TimeoutError code=-33000 data="MqttMethodUnavailable" rpc=true timeout=true error=true msg=svc/S/Never not available after 200 ms target=svc/S/Never] (QoS 1)`)
 }
 
 func (s *MqttRpcSuite) TestServiceProxy() {
@@ -155,7 +172,7 @@ func (s *MqttRpcSuite) TestTypedServices() {
 	cid := s.clientID()
 	// port/Load carries total_timeout: the client waits for that budget plus a margin
 	s.SkipTill("new fake timer: 2, 100000")
-	s.SkipTill("wbrules-log -> /rpc/v1/wb-mqtt-serial/port/Load/" + cid + `: [{"id":2,"params":{"path":"/dev/ttyRS485-1","total_timeout":90000}}] (QoS 1)`)
+	s.SkipTill("wbrules-log -> /rpc/v1/wb-mqtt-serial/port/Load/" + cid + `: [{"id":2,"params":{"path":"/dev/ttyRS485-1","baud_rate":9600,"parity":"N","data_bits":8,"stop_bits":2,"msg":"0A03008000018499","response_size":8,"total_timeout":90000}}] (QoS 1)`)
 }
 
 func (s *MqttRpcSuite) TestRequireAndGlobalAgree() {
@@ -165,7 +182,7 @@ func (s *MqttRpcSuite) TestRequireAndGlobalAgree() {
 
 func (s *MqttRpcSuite) TestArgumentValidation() {
 	s.publish("/devices/rpctest/controls/bad/on", "1", "rpctest/bad")
-	s.SkipTill("wbrules-log -> /wbrules/log/info: [bad args rejected: true,true,true,true] (QoS 1)")
+	s.SkipTill("wbrules-log -> /wbrules/log/info: [bad args rejected: true,true,true,true,true] (QoS 1)")
 }
 
 // ---- server ----
@@ -227,7 +244,77 @@ var servedPresenceTopics = []string{
 	"/rpc/v1/wbrules-scripts/Demo/Boom",
 	"/rpc/v1/wbrules-scripts/Demo/Later",
 	"/rpc/v1/wbrules-scripts/Demo/Nothing",
+	"/rpc/v1/wbrules-scripts/Demo/Circular",
+	"/rpc/v1/wbrules-scripts/Demo/Func",
 	"/rpc/v1/custom-driver/Other/Ping",
+}
+
+func (s *MqttRpcSuite) TestNonSerializableResult() {
+	// a circular result cannot go on the wire: the caller gets -32603 (not a
+	// timeout) and the author a log line
+	sent := s.request("/rpc/v1/wbrules-scripts/Demo/Circular/cli1", `{"id":1,"params":{}}`)
+	s.Verify(sent,
+		regexp.MustCompile(`^wbrules-log -> /wbrules/log/error: \[MqttRpc: reply on /rpc/v1/wbrules-scripts/Demo/Circular/cli1 is not JSON-serializable: `),
+		regexp.MustCompile(`^wbrules-log -> /rpc/v1/wbrules-scripts/Demo/Circular/cli1/reply: \[\{"id":1,"error":\{"code":-32603,"message":"reply is not JSON-serializable: `))
+	// a function has no JSON form: null, not a reply without a result member
+	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/Func/cli1", `{"id":2,"params":{}}`, `{"id":2,"result":null}`)
+	// by-position params are fine, a scalar is -32602
+	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/Echo/cli1", `{"id":3,"params":[1,2]}`,
+		`{"id":3,"result":{"params":[1,2],"method":"Echo","client":"cli1"}}`)
+	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/Echo/cli1", `{"id":4,"params":5}`,
+		`{"id":4,"error":{"code":-32602,"message":"invalid params: not an object"}}`)
+}
+
+func (s *MqttRpcSuite) TestSecondFileCannotServeTheSameService() {
+	path := s.CopyDataFileToTempDir("testrules_mqtt_rpc_dup.js", "testrules_mqtt_rpc_dup.js")
+	err := s.engine.LiveLoadFile(path)
+	s.Require().Error(err, "the second file must fail to load")
+	s.Contains(err.Error(), "wbrules-scripts/Demo is already served by another rule file")
+	s.SkipTill("wbrules-log -> /wbrules/updates/changed: [testrules_mqtt_rpc_dup.js] (QoS 1)")
+	s.Contains(loadedEntryError(s.T(), s.engine, path), "wbrules-scripts/Demo is already served by another rule file")
+	// the first file still answers, and only once
+	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/Echo/cli1", `{"id":1,"params":{"x":1}}`,
+		`{"id":1,"result":{"params":{"x":1},"method":"Echo","client":"cli1"}}`)
+	s.VerifyEmpty()
+}
+
+func (s *MqttRpcSuite) TestRedefinitionInTheSameFile() {
+	s.publish("/devices/rpctest/controls/redefine/on", "1", "rpctest/redefine")
+	s.SkipTill("wbrules-log -> /wbrules/log/warning: [MqttRpc: wbrules-scripts/Demo/Nothing redefined] (QoS 1)")
+	s.SkipTill("wbrules-log -> /rpc/v1/wbrules-scripts/Demo/Nothing: [1] (QoS 1, retained)")
+	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/Nothing/cli2", `{"id":1,"params":{}}`, `{"id":1,"result":"replaced"}`)
+}
+
+func (s *MqttRpcSuite) TestInfiniteTimeout() {
+	s.publish("/devices/rpctest/controls/forever/on", "1", "rpctest/forever")
+	s.SkipTill(`wbrules-log -> /wbrules/log/info: [forever result: {"echo":{"limit":"none"},"method":"M"}] (QoS 1)`)
+	s.VerifyEmpty() // in particular: no timer was created for the call
+}
+
+// The -cleanup flag (RunAllCleanups on engine stop) now runs JS unload
+// hooks: they must execute on the engine loop, and the served methods'
+// presence must be cleared by the stop.
+type MqttRpcCleanupOnStopSuite struct {
+	RuleSuiteBase
+}
+
+func (s *MqttRpcCleanupOnStopSuite) SetupTest() {
+	s.CleanupOnStop = true
+	s.SetupSkippingDefs("testrules_mqtt_rpc.js")
+}
+
+func (s *MqttRpcCleanupOnStopSuite) TestPresenceClearedOnStop() {
+	// a request in flight through a served async handler while stopping
+	s.client.Publish(wbgong.MQTTMessage{Topic: "/rpc/v1/wbrules-scripts/Demo/Later/cli1", Payload: `{"id":1,"params":{"v":1}}`, QoS: 1})
+	s.SkipTill(`wbrules-log -> /rpc/v1/wbrules-scripts/Demo/Later/cli1/reply: [{"id":1,"result":2}] (QoS 1)`)
+	s.engine.Stop()
+	for _, topic := range servedPresenceTopics {
+		s.SkipTill("wbrules-log -> " + topic + ": [] (QoS 1, retained)")
+	}
+	// the stop-time cleanups (unsubscribes, virtual device removal) were all
+	// issued before Stop returned: a sentinel published now drains them
+	s.client.Publish(wbgong.MQTTMessage{Topic: "/test/stopped", Payload: "1", QoS: 1})
+	s.SkipTill("tst -> /test/stopped: [1] (QoS 1)")
 }
 
 func (s *MqttRpcSuite) TestPresenceFollowsTheFile() {
@@ -252,5 +339,5 @@ func (s *MqttRpcSuite) TestPresenceFollowsTheFile() {
 }
 
 func TestMqttRpc(t *testing.T) {
-	testutils.RunSuites(t, new(MqttRpcSuite))
+	testutils.RunSuites(t, new(MqttRpcSuite), new(MqttRpcCleanupOnStopSuite))
 }

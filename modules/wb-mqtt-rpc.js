@@ -19,7 +19,7 @@
 // owns its client id, reply subscription, presence watchers and served
 // methods - all attributed to the file and released when it reloads.
 
-/* global trackMqtt, publish, setTimeout, clearTimeout, _wbAddCleanup, log */
+/* global trackMqtt, publish, setTimeout, clearTimeout, _wbAddCleanup, log, module */
 /* eslint-disable security/detect-object-injection */
 
 var RPC_PREFIX = '/rpc/v1/';
@@ -27,7 +27,9 @@ var DEFAULT_TIMEOUT_MS = 60000; // same as the web UI's RPC_TIMEOUT
 var HAS_METHOD_TIMEOUT_MS = 3000; // same as the web UI's METHOD_AVAILABLE_TIMEOUT
 var DEFAULT_SERVICE_DRIVER = 'wbrules-scripts';
 
-// JSON-RPC 2.0 reserved codes plus the web UI's client-side timeout code
+// JSON-RPC 2.0 reserved codes plus the client-side timeout code
+// (wb-device-manager's -33000: the org's precedent for "the caller gave
+// up"; server-side timeouts keep whatever code the service sends)
 var ErrorCode = {
   PARSE_ERROR: -32700,
   INVALID_REQUEST: -32600,
@@ -35,7 +37,7 @@ var ErrorCode = {
   INVALID_PARAMS: -32602,
   INTERNAL_ERROR: -32603,
   SERVER_ERROR: -32000,
-  TIMEOUT: -32600,
+  TIMEOUT: -33000,
 };
 
 // ---------------------------------------------------------------------------
@@ -43,8 +45,9 @@ var ErrorCode = {
 // ---------------------------------------------------------------------------
 
 // RpcError(code, message[, data]) - what a call rejects with when the
-// server answers with an error object, and what a served handler throws to
-// answer with a specific code. Plain ES5 subclassing so instanceof works.
+// server answers with an error object (code/message/data exactly as sent;
+// the target goes into driver/service/method), and what a served handler
+// throws to answer with a specific code. ES5 subclassing so instanceof works.
 function RpcError(code, message, data) {
   var e = new Error(message);
   this.name = 'RpcError';
@@ -56,14 +59,23 @@ function RpcError(code, message, data) {
 RpcError.prototype = Object.create(Error.prototype);
 RpcError.prototype.constructor = RpcError;
 RpcError.prototype.toString = function () {
-  var s = this.name + ' ' + this.code + ': ' + this.message;
-  if (this.data !== undefined) s += ' (' + tryStringify(this.data) + ')';
+  var s = this.name + ' ' + this.code;
+  if (this.driver) s += ' (' + this.driver + '/' + this.service + '/' + this.method + ')';
+  s += ': ' + this.message;
+  if (this.data !== undefined) s += ' [' + tryStringify(this.data) + ']';
   return s;
 };
 
-// TimeoutError - no reply in time (or, for waitForMethod, no presence in
-// time). code/data mirror the web UI's timeout rejection so error handling
-// written for the frontend carries over.
+function withTarget(err, driver, service, method) {
+  err.driver = driver;
+  err.service = service;
+  err.method = method;
+  return err;
+}
+
+// TimeoutError - the client gave up: no reply in time (data
+// "MqttTimeoutError", the marker the web UI puts on its own timeouts) or,
+// for waitForMethod, no presence in time (data "MqttMethodUnavailable").
 function TimeoutError(message, data) {
   RpcError.call(this, ErrorCode.TIMEOUT, message, data === undefined ? 'MqttTimeoutError' : data);
   this.name = 'TimeoutError';
@@ -110,14 +122,27 @@ function checkParams(params) {
   return params;
 }
 
+// a wait in ms; 0 and Infinity both mean "no limit"
+function checkTimeout(value) {
+  if (typeof value !== 'number' || value < 0 || isNaN(value)) {
+    throw new TypeError('MqttRpc: timeout must be a non-negative number of milliseconds');
+  }
+  return value === Infinity ? 0 : value;
+}
+
 function timeoutOf(options, fallback) {
   if (options && options.timeout !== undefined && options.timeout !== null) {
-    if (typeof options.timeout !== 'number' || options.timeout < 0 || isNaN(options.timeout)) {
-      throw new TypeError('MqttRpc: timeout must be a non-negative number of milliseconds');
-    }
-    return options.timeout;
+    return checkTimeout(options.timeout);
   }
   return fallback;
+}
+
+// hasMethod/waitForMethod take the wait either positionally (like
+// nextMqtt(topic, timeoutMs)) or as {timeout} (like call's options)
+function presenceTimeoutOf(arg, fallback) {
+  if (arg === undefined || arg === null) return fallback;
+  if (typeof arg === 'number') return checkTimeout(arg);
+  return timeoutOf(arg, fallback);
 }
 
 function randomId(length) {
@@ -152,8 +177,9 @@ function ensureReplySubscription() {
   replySubscribed = true;
   // one subscription per file for every reply addressed to its client id;
   // trackMqtt attributes it to this file, so a reload drops it together
-  // with the (then stale) client id
-  trackMqtt(RPC_PREFIX + '+/+/+/' + clientId + '/reply', onReply);
+  // with the (then stale) client id. No replay cache: replies are one-off
+  // and can be large (a history query, a log page)
+  trackMqtt(RPC_PREFIX + '+/+/+/' + clientId + '/reply', onReply, { cache: false });
 }
 
 function onReply(msg) {
@@ -168,14 +194,26 @@ function onReply(msg) {
     return;
   }
   if (!isPlainObject(reply) || !hasOwn(reply, 'id')) return;
-  var call = inflight[reply.id];
+  var id = reply.id;
+  if (id === null) {
+    // a server that could not read the request (-32700/-32600) answers
+    // with a null id; when exactly one call waits on that reply topic the
+    // error is unambiguously its own - better than waiting out the timeout
+    var only = null;
+    Object.keys(inflight).forEach(function (k) {
+      if (inflight[k].replyTopic === msg.topic) only = only === null ? k : false;
+    });
+    if (!only || reply.error === undefined || reply.error === null) return;
+    id = only;
+  }
+  var call = inflight[id];
   // unknown id: a late reply to a call that already timed out, or a
   // duplicate; nothing waits for it
   if (!call) return;
   // ids are unique per client, so the topic can only differ if a server
   // echoed a foreign id - never settle a call with somebody else's answer
   if (msg.topic !== call.replyTopic) return;
-  delete inflight[reply.id];
+  delete inflight[id];
   if (call.timer !== null) clearTimeout(call.timer);
   if (reply.error !== undefined && reply.error !== null) {
     call.reject(errorFromReply(reply.error, call));
@@ -185,20 +223,23 @@ function onReply(msg) {
 }
 
 function errorFromReply(err, call) {
-  var where = call.driver + '/' + call.service + '/' + call.method;
+  var e;
   if (isPlainObject(err)) {
     var code = typeof err.code === 'number' ? err.code : ErrorCode.SERVER_ERROR;
     var message = typeof err.message === 'string' ? err.message : tryStringify(err);
-    return new RpcError(code, where + ': ' + message, err.data);
+    e = new RpcError(code, message, err.data);
+  } else {
+    e = new RpcError(ErrorCode.SERVER_ERROR, tryStringify(err), err);
   }
-  return new RpcError(ErrorCode.SERVER_ERROR, where + ': ' + tryStringify(err), err);
+  return withTarget(e, call.driver, call.service, call.method);
 }
 
 // call(driver, service, method[, params[, options]]) -> Promise<result>
 //   options.timeout        ms to wait for the reply (default 60000; 0 = forever)
-//   options.waitForMethod  true or ms: wait for the method's presence topic
-//                          before sending (services that start later than
-//                          the rules would otherwise get a timeout)
+//   options.waitForMethod  true or ms (0 = forever): wait for the method's
+//                          presence topic before sending (services that
+//                          start later than the rules would otherwise get
+//                          a timeout); the reply timeout starts after that
 function call(driver, service, method, params, options) {
   checkTopicPart('driver', driver);
   checkTopicPart('service', service);
@@ -208,9 +249,10 @@ function call(driver, service, method, params, options) {
   var send = function () {
     return sendRequest(driver, service, method, p, timeout);
   };
-  if (options && options.waitForMethod) {
-    var wait = options.waitForMethod === true ? undefined : options.waitForMethod;
-    return waitForMethod(driver, service, method, wait).then(send);
+  var wait = options ? options.waitForMethod : undefined;
+  if (wait !== undefined && wait !== null && wait !== false) {
+    // true: as long as the call itself may take (0 = forever carries over)
+    return waitForMethod(driver, service, method, wait === true ? timeout : wait).then(send);
   }
   return send();
 }
@@ -233,8 +275,13 @@ function sendRequest(driver, service, method, params, timeout) {
       entry.timer = setTimeout(function () {
         delete inflight[id];
         reject(
-          new TimeoutError(
-            driver + '/' + service + '/' + method + ': no reply in ' + timeout + ' ms'
+          withTarget(
+            new TimeoutError(
+              'no reply from ' + driver + '/' + service + '/' + method + ' in ' + timeout + ' ms'
+            ),
+            driver,
+            service,
+            method
           )
         );
       }, timeout);
@@ -273,16 +320,16 @@ function dropWaiter(entry, fn) {
   if (idx >= 0) entry.waiters.splice(idx, 1);
 }
 
-// hasMethod(driver, service, method[, options]) -> Promise<boolean>
+// hasMethod(driver, service, method[, timeoutMs | {timeout}]) -> Promise<boolean>
 //   resolves true once the presence topic is seen, false when nothing is
-//   retained there within options.timeout (default 3000) ms. The answer is
+//   retained there within the wait (default 3000 ms). The answer is
 //   remembered and kept up to date by the subscription, so repeated calls
 //   are instant and a service that appears later flips to true.
-function hasMethod(driver, service, method, options) {
+function hasMethod(driver, service, method, timeoutArg) {
   checkTopicPart('driver', driver);
   checkTopicPart('service', service);
   checkTopicPart('method', method);
-  var timeout = timeoutOf(options, defaults.hasMethodTimeout);
+  var timeout = presenceTimeoutOf(timeoutArg, defaults.hasMethodTimeout);
   var entry = watchPresence(methodTopic(driver, service, method));
   if (entry.known) return Promise.resolve(entry.available);
   return new Promise(function (resolve) {
@@ -307,17 +354,15 @@ function hasMethod(driver, service, method, options) {
   });
 }
 
-// waitForMethod(driver, service, method[, timeoutMs]) -> Promise<void>
+// waitForMethod(driver, service, method[, timeoutMs | {timeout}]) -> Promise<void>
 //   resolves as soon as the method is served; rejects with TimeoutError
-//   after timeoutMs (default: the call timeout; 0 = wait forever)
-function waitForMethod(driver, service, method, timeoutMs) {
+//   (data "MqttMethodUnavailable") after the wait (default: the call
+//   timeout; 0 = wait forever)
+function waitForMethod(driver, service, method, timeoutArg) {
   checkTopicPart('driver', driver);
   checkTopicPart('service', service);
   checkTopicPart('method', method);
-  var timeout = timeoutMs === undefined || timeoutMs === null ? defaults.timeout : timeoutMs;
-  if (typeof timeout !== 'number' || timeout < 0 || isNaN(timeout)) {
-    throw new TypeError('MqttRpc: timeout must be a non-negative number of milliseconds');
-  }
+  var timeout = presenceTimeoutOf(timeoutArg, defaults.timeout);
   var entry = watchPresence(methodTopic(driver, service, method));
   if (entry.available) return Promise.resolve();
   return new Promise(function (resolve, reject) {
@@ -330,8 +375,14 @@ function waitForMethod(driver, service, method, timeoutMs) {
       timer = setTimeout(function () {
         dropWaiter(entry, settle);
         reject(
-          new TimeoutError(
-            driver + '/' + service + '/' + method + ': method not available after ' + timeout + ' ms'
+          withTarget(
+            new TimeoutError(
+              driver + '/' + service + '/' + method + ' not available after ' + timeout + ' ms',
+              'MqttMethodUnavailable'
+            ),
+            driver,
+            service,
+            method
           )
         );
       }, timeout);
@@ -355,15 +406,18 @@ function service(driver, svc, methods) {
     call: function (method, params, options) {
       return call(driver, svc, method, params, options);
     },
-    hasMethod: function (method, options) {
-      return hasMethod(driver, svc, method, options);
+    hasMethod: function (method, timeoutArg) {
+      return hasMethod(driver, svc, method, timeoutArg);
     },
-    waitForMethod: function (method, timeoutMs) {
-      return waitForMethod(driver, svc, method, timeoutMs);
+    waitForMethod: function (method, timeoutArg) {
+      return waitForMethod(driver, svc, method, timeoutArg);
     },
   };
   (methods || []).forEach(function (method) {
     checkTopicPart('method', method);
+    if (hasOwn(proxy, method)) {
+      throw new TypeError('MqttRpc.service: method name ' + method + ' clashes with the proxy API');
+    }
     proxy[method] = function (params, options) {
       return call(driver, svc, method, params, options);
     };
@@ -377,9 +431,26 @@ function service(driver, svc, methods) {
 
 var served = {}; // "driver/service" -> { driver, service, methods: {name: handler} }
 var cleanupRegistered = false;
+// heap-wide (every file's instance shares module.static): which file
+// serves which driver/service, so two files cannot answer the same
+// requests - the engine would fan a request out to both subscriptions
+// and the caller would get two replies (one of them -32601)
+var registry = module.static;
+if (!registry.owners) registry.owners = {};
 
 function replyTo(topic, body) {
-  publish(topic + '/reply', JSON.stringify(body), 1, false);
+  var text;
+  try {
+    text = JSON.stringify(body);
+  } catch (e) {
+    // a circular result, a BigInt in data, ...: the caller still gets an
+    // answer (never a silent timeout), the author gets a log line
+    log.error('MqttRpc: reply on {} is not JSON-serializable: {}', topic, e.message);
+    text = JSON.stringify(
+      errorReply(body.id, ErrorCode.INTERNAL_ERROR, 'reply is not JSON-serializable: ' + e.message)
+    );
+  }
+  publish(topic + '/reply', text, 1, false);
 }
 
 function errorReply(id, code, message, data) {
@@ -432,6 +503,11 @@ function makeRequestHandler(entry) {
       return;
     }
     var params = req.params === undefined || req.params === null ? {} : req.params;
+    if (typeof params !== 'object') {
+      // JSON-RPC params are by-name (object) or by-position (array)
+      replyTo(msg.topic, errorReply(id, ErrorCode.INVALID_PARAMS, 'invalid params: not an object'));
+      return;
+    }
     var request = {
       driver: entry.driver,
       service: entry.service,
@@ -445,7 +521,12 @@ function makeRequestHandler(entry) {
       resolve(handler(params, request));
     }).then(
       function (result) {
-        replyTo(msg.topic, { id: id, result: result === undefined ? null : result });
+        // undefined, a function, a symbol: nothing JSON can carry -> null
+        // (JSON.stringify would silently drop the result member instead)
+        if (result === undefined || typeof result === 'function' || typeof result === 'symbol') {
+          result = null;
+        }
+        replyTo(msg.topic, { id: id, result: result });
       },
       function (err) {
         if (!(err instanceof RpcError)) {
@@ -468,8 +549,13 @@ function makeRequestHandler(entry) {
 function clearPresence() {
   Object.keys(served).forEach(function (key) {
     var entry = served[key];
+    if (registry.owners[key] === clientId) delete registry.owners[key];
     Object.keys(entry.methods).forEach(function (method) {
-      publish(methodTopic(entry.driver, entry.service, method), '', 1, true);
+      try {
+        publish(methodTopic(entry.driver, entry.service, method), '', 1, true);
+      } catch (e) {
+        log.error('MqttRpc: cannot clear the presence of {}/{}/{}: {}', entry.driver, entry.service, method, e);
+      }
     });
   });
   served = {};
@@ -506,9 +592,18 @@ function defineService(driver, svc, methods) {
   var key = driver + '/' + svc;
   var entry = served[key];
   if (!entry) {
+    var owner = registry.owners[key];
+    if (owner !== undefined && owner !== clientId) {
+      throw new Error(
+        'MqttRpc.defineService: ' + key + ' is already served by another rule file (' + owner + ')'
+      );
+    }
+    registry.owners[key] = clientId;
     entry = served[key] = { driver: driver, service: svc, methods: {} };
-    // one subscription per service covers every method and requester
-    trackMqtt(RPC_PREFIX + driver + '/' + svc + '/+/+', makeRequestHandler(entry));
+    // one subscription per service covers every method and requester; no
+    // replay cache: requests are one-off, and every requester id would
+    // otherwise pin its last request for the file's lifetime
+    trackMqtt(RPC_PREFIX + driver + '/' + svc + '/+/+', makeRequestHandler(entry), { cache: false });
   }
   Object.keys(methods).forEach(function (name) {
     if (hasOwn(entry.methods, name)) {
@@ -533,6 +628,7 @@ function budgetedMethod(driver, svc, method, budgetField, unitMs, marginMs) {
   return function (params, options) {
     if (
       (!options || options.timeout === undefined || options.timeout === null) &&
+      defaults.timeout > 0 && // 0 = no limit already
       isPlainObject(params) &&
       typeof params[budgetField] === 'number' &&
       params[budgetField] * unitMs + marginMs > defaults.timeout
@@ -628,7 +724,8 @@ var services = {
 ['Load', 'Setup', 'Scan'].forEach(function (method) {
   services.serial.port[method] = budgetedMethod('wb-mqtt-serial', 'port', method, 'total_timeout', 1, 10000);
 });
-['LoadConfig', 'Load', 'Set', 'Probe'].forEach(function (method) {
+// (Probe runs on a fixed server-side budget: nothing to stretch)
+['LoadConfig', 'Load', 'Set'].forEach(function (method) {
   services.serial.device[method] = budgetedMethod(
     'wb-mqtt-serial',
     'device',
@@ -668,5 +765,10 @@ var api = {
 Object.keys(services).forEach(function (name) {
   api[name] = services[name];
 });
+
+// the reply subscription goes out at load, ahead of the first request by
+// the rest of the module's evaluation (SUBSCRIBE and PUBLISH travel on the
+// same connection, in order)
+ensureReplySubscription();
 
 module.exports = api;

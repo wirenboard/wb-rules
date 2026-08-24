@@ -3188,12 +3188,26 @@ func (engine *ESEngine) esWbAddCleanup(ctx *ESContext) int {
 	return 0
 }
 
+// trackMqtt(topic, callback[, options]) - options.cache=false turns off
+// the last-value replay for the subscription (see DefineMqttTracker)
 func (engine *ESEngine) trackMqtt(ctx *ESContext) int {
 	if ctx.GetTop() < 2 || !ctx.IsString(0) || !ctx.IsFunction(1) {
 		engine.Log(ENGINE_LOG_ERROR, "bad track definition")
 		return duktape.DUK_RET_ERROR
 	}
 	topic := ctx.GetString(0)
+	cache := true
+	if ctx.GetTop() >= 3 && ctx.IsObject(2) {
+		ctx.GetPropString(2, "cache")
+		if ctx.IsBoolean(-1) {
+			cache = ctx.ToBoolean(-1)
+		}
+		ctx.Pop()
+	}
+	// the callback must be on top: DefineMqttTracker wraps stack index -1
+	for ctx.GetTop() > 2 {
+		ctx.Pop()
+	}
 
 	currentFilename := ctx.GetCurrentFilename()
 	if currentFilename != "" {
@@ -3201,7 +3215,7 @@ func (engine *ESEngine) trackMqtt(ctx *ESContext) int {
 		defer engine.cleanup.PopCleanupScope(currentFilename)
 	}
 
-	engine.DefineMqttTracker(topic, ctx)
+	engine.DefineMqttTracker(topic, ctx, cache)
 
 	return 1
 }

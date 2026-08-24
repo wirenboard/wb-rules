@@ -801,7 +801,11 @@ global.__wbBindRealmAPI = function (g) {
     configurable: true,
     enumerable: false,
     get: function () {
-      return require('wb-mqtt-rpc');
+      var m = require('wb-mqtt-rpc');
+      // resolved once: from now on a plain property (require would still
+      // return the cached instance, but not for free)
+      Object.defineProperty(g, 'MqttRpc', { configurable: true, enumerable: false, value: m });
+      return m;
     },
   });
 };
