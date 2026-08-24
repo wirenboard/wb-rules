@@ -252,6 +252,25 @@ func (devProxy *DeviceProxy) isVirtual() (isLocal bool, err error) {
 	return
 }
 
+func (devProxy *DeviceProxy) getDriverId() (driverId string, err error) {
+	devId := devProxy.name
+
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[devProxy] getDriverId for device %s", devId)
+	}
+
+	err = devProxy.owner.Driver().Access(func(tx wbgong.DriverTx) error {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		driverId = dev.GetDriverId()
+		return nil
+	})
+
+	return
+}
+
 func (devProxy *DeviceProxy) SetMeta(key, metaValue string) {
 	devId := devProxy.name
 
@@ -1783,6 +1802,30 @@ func (engine *RuleEngine) GetDevice(devId string) error {
 		return errAccess
 	}
 	return nil
+}
+
+// GetDeviceIds returns sorted ids of all devices registered in the driver:
+// virtual devices of the running scripts and external devices discovered
+// from retained MQTT
+func (engine *RuleEngine) GetDeviceIds() ([]string, error) {
+	var ids []string
+	errAccess := engine.driver.Access(func(tx wbgong.DriverTx) error {
+		for _, dev := range tx.GetDevicesList() {
+			if dev.IsDeleted() {
+				continue
+			}
+			ids = append(ids, dev.GetId())
+		}
+		return nil
+	})
+
+	if errAccess != nil {
+		return nil, errAccess
+	}
+
+	// GetDevicesList() order is unspecified
+	sort.Strings(ids)
+	return ids, nil
 }
 
 func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error {

@@ -1,3 +1,11 @@
+wb-rules (2.47.0) stable; urgency=medium
+
+  * Add getDevicesList() returning device objects for all devices known to
+    the engine (virtual and external), and the getDriverId() method of the
+    device object returning the /meta/driver value
+
+ -- Vitalii Gaponov <vitalii.gaponov@wirenboard.com>  Mon, 24 Aug 2026 12:00:00 +0400
+
 wb-rules (2.46.5) stable; urgency=medium
 
   * Notify.sendSMS: fix a vulnerability that let the message text or the
