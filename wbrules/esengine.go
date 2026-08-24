@@ -206,6 +206,7 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		"runRule":              engine.esWbRunRule,
 		"defineVirtualDevice":  engine.esDefineVirtualDevice,
 		"getDevice":            engine.esGetDevice,
+		"getDevicesList":       engine.esGetDevicesList,
 		"getControl":           engine.esGetControl,
 		"_wbPersistentName":    engine.esPersistentName,
 		"trackMqtt":            engine.trackMqtt,
@@ -322,6 +323,7 @@ func (engine *ESEngine) initVdevPrototype(ctx *ESContext) {
 		"removeControl":   engine.esVdevRemoveControl,
 		"controlsList":    engine.esVdevControlsList,
 		"isVirtual":       engine.esVdevIsVirtual,
+		"getDriverId":     engine.esVdevGetDriverId,
 		"setError":        engine.esVdevSetError,
 		"getError":        engine.esVdevGetError,
 		// getCellValue and setCellValue are defined in lib.js
@@ -1065,6 +1067,64 @@ func (engine *ESEngine) esGetDevice(ctx *ESContext) int {
 	return 1
 }
 
+// makeDeviceObject pushes a device object for the given device id,
+// same as the one returned by getDevice()
+func (engine *ESEngine) makeDeviceObject(ctx *ESContext, devId string) {
+	// create virtual device object
+	ctx.PushObject()
+	// [ vDevObject ]
+
+	// get global object first
+	ctx.PushGlobalObject()
+	// [ vDevObject global ]
+
+	// get prototype object
+	ctx.GetPropString(-1, VDEV_OBJ_PROTO_NAME)
+	// [ vDevObject global __wbVdevPrototype ]
+
+	// apply prototype
+	ctx.SetPrototype(-3)
+	// [ vDevObject global ]
+
+	ctx.Pop()
+	// [ vDevObject ]
+
+	// push device ID property
+	ctx.PushString(devId)
+	// [ vDevObject devId ]
+
+	ctx.PutPropString(-2, VDEV_OBJ_PROP_DEVID)
+	// [ vDevObject ]
+}
+
+// getDevicesList() returns device objects for all devices registered
+// in the driver: virtual devices of the running scripts and external
+// devices discovered from retained MQTT
+func (engine *ESEngine) esGetDevicesList(ctx *ESContext) int {
+	if ctx.GetTop() != 0 {
+		engine.Log(ENGINE_LOG_ERROR, "getDevicesList(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+
+	ids, err := engine.GetDeviceIds()
+	if err != nil {
+		wbgong.Error.Printf("device listing error: %v", err)
+		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
+		return duktape.DUK_RET_INSTACK_ERROR
+	}
+
+	vIndex := ctx.PushArray()
+	// [ arr ]
+	for i, devId := range ids {
+		engine.makeDeviceObject(ctx, devId)
+		// [ arr vDevObject ]
+		ctx.PutPropIndex(vIndex, uint(i))
+		// [ arr ]
+	}
+
+	return 1
+}
+
 func (engine *ESEngine) esGetControl(ctx *ESContext) int {
 	if ctx.GetTop() != 1 || !ctx.IsString(0) {
 		engine.Log(ENGINE_LOG_ERROR, "getControl(): bad parameters")
@@ -1172,6 +1232,33 @@ func (engine *ESEngine) esVdevIsVirtual(ctx *ESContext) int {
 	}
 
 	ctx.PushBoolean(isVirtual)
+
+	return 1
+}
+
+// getDriverId() method of the device object: the value of /meta/driver
+func (engine *ESEngine) esVdevGetDriverId(ctx *ESContext) int {
+	// push this
+	ctx.PushThis()
+	// [ cell | this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+		// [ cell | ]
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+	ctx.Pop()
+	devProxy := engine.GetDeviceProxy(devId)
+	driverId, errDriver := devProxy.getDriverId()
+	if errDriver != nil {
+		wbgong.Error.Printf("getDriverId(): error in executing function: %s", errDriver)
+		return duktape.DUK_RET_ERROR
+	}
+
+	ctx.PushString(driverId)
 
 	return 1
 }
