@@ -1891,12 +1891,12 @@ const hex = await relay.raw('0c03008000018499', 8);   // произвольны�
 
 ```javascript
 const meter = MqttRpc.serial.device('wb-map12e_1');
-const urms = await meter.readChannel('Urms L1');                       // одно значение
+const urms = await meter.readChannel('Urms L1');                       // 230.12
 const values = await meter.readChannels('Urms L1', 'Irms L1');         // { 'Urms L1': 230.1, 'Irms L1': 0.5 }
 const baud = await meter.readParameter('baud_rate');
 await meter.writeChannel('K1', 1);
 await meter.setParameters({ baud_rate: 96, in1_mode: 2 });
-const settings = await meter.settings({ force: true });                // все параметры + fw, model
+const settings = await meter.settings({ force: true });                // { parameters: { baud_rate: 96, ... }, fw: '4.31.13', model: 'WBMSW4' }
 const both = await meter.read({ channels: ['Urms L1'], parameters: ['baud_rate'] });   // одним запросом
 
 // остановить опрос на время прямой работы с устройством (опрос возобновится даже при ошибке)
@@ -1918,7 +1918,7 @@ const ports = await MqttRpc.serial.ports();
 Сканирование и настройка адресов (Fast Modbus):
 
 ```javascript
-const found = await MqttRpc.serial.scan('/dev/ttyRS485-1');   // ScannedDevice[]; прерванное сканирование — исключение с полем devices
+const found = await MqttRpc.serial.scan('/dev/ttyRS485-1');   // [{ sn: '302072', device_signature: 'WBMSW4', cfg: { slave_id: 65, ... }, fw: { version: '4.31.13' } }]; прерванное сканирование — исключение с полем devices
 await MqttRpc.serial.setup('/dev/ttyRS485-1', [{ sn: 4265607, set: { slaveId: 12 } }]);
 ```
 
@@ -1931,7 +1931,7 @@ await MqttRpc.serial.setup('/dev/ttyRS485-1', [{ sn: 4265607, set: { slaveId: 12
 
 ```javascript
 const meter = MqttRpc.serial.device('wb-map12e_1');
-const info = await meter.firmwareInfo();
+const info = await meter.firmwareInfo(); // { fw: '4.31.13', available_fw: '4.38.0', fw_has_update: true, ... }
 if (info.fw_has_update) {
   await meter.updateFirmware({ onProgress: (e) => log('{}%', e.progress) });
 }
@@ -1949,12 +1949,13 @@ if (info.fw_has_update) {
 как `Date`.
 
 ```javascript
-const { values } = await MqttRpc.db.query('wb-adc/Vin', { last: 3600000 });
+const { values } = await MqttRpc.db.query('wb-adc/Vin', { last: 60 * 60 * 1000 }); // за последний час
+// values: [{ channel: 'wb-adc/Vin', device: 'wb-adc', control: 'Vin', time: Date(...), value: 24.3, retain: false, uid: 918232 }, ...]
 for (const r of values) log('{} {}', r.time.toISOString(), r.value);
 
 const last = await MqttRpc.db.lastValue('wb-adc/Vin');      // запись или undefined
-const avg = await MqttRpc.db.average('wb-adc/Vin', { last: 86400000 });   // среднее по ~100 интервалам, усреднённым базой
-const channels = await MqttRpc.db.channels();                 // [{ channel, items, lastTime }]
+const avg = await MqttRpc.db.average('wb-adc/Vin', { last: 24 * 60 * 60 * 1000 });   // за сутки, например 24.17;   // среднее по ~100 интервалам, усреднённым базой
+const channels = await MqttRpc.db.channels();                 // [{ channel: 'wb-adc/Vin', items: 21894, lastTime: Date(...) }, ...]
 ```
 
 #### Редакторы: `MqttRpc.rules`, `MqttRpc.confed`
@@ -1975,10 +1976,10 @@ await MqttRpc.confed.update('/etc/wb-mqtt-serial.conf', (cfg) => {
 #### Журнал, диагностика, сканер: `MqttRpc.logs`, `MqttRpc.diag`, `MqttRpc.deviceManager`
 
 ```javascript
-const errors = await MqttRpc.logs.read({ service: 'wb-mqtt-serial.service', levels: [0, 1, 2, 3], since: Date.now() - 3600000 });
-const tail = await MqttRpc.logs.tail('wb-rules.service', 20);      // [{ time: Date, level, msg, cursor }]
+const errors = await MqttRpc.logs.read({ service: 'wb-mqtt-serial.service', levels: [0, 1, 2, 3], since: Date.now() - 60 * 60 * 1000 }); // за час
+const tail = await MqttRpc.logs.tail('wb-rules.service', 20);      // [{ time: Date(...), level: 6, msg: 'reloading file: ...', cursor: 's=...' }, ...]
 
-const archive = await MqttRpc.diag.collect();                        // { basename, fullname }
+const archive = await MqttRpc.diag.collect();                        // { basename: 'diag_output_..zip', fullname: '/var/www/diag/diag_output_..zip' }
 
 const found = await MqttRpc.deviceManager.scan({ port: '/dev/ttyRS485-1', onProgress: (s) => log('{}%', s.progress) });
 ```

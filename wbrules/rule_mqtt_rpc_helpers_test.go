@@ -2,6 +2,7 @@ package wbrules
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -21,11 +22,14 @@ type MqttRpcHelpersSuite struct {
 	requests []fakeRpcRequest
 	// fake timers by duration, in creation order (the helpers' waits)
 	timers map[time.Duration][]TimerId
+	// the fake editor's file list: name -> enabled
+	files map[string]bool
 }
 
 func (s *MqttRpcHelpersSuite) SetupTest() {
 	s.requests = nil
 	s.timers = make(map[time.Duration][]TimerId)
+	s.files = map[string]bool{"a.js": true}
 	s.SetupSkippingDefs("testrules_mqtt_rpc_helpers.js")
 	// remember every fake timer by duration: a helper's wait is fired by
 	// what it waits for, not by an id that depends on message timing
@@ -186,12 +190,35 @@ func (s *MqttRpcHelpersSuite) fakeServer(msg wbgong.MQTTMessage) {
 			ok(`{"values":[{"i":8,"c":1,"t":1755999999.25,"v":"24.3","retain":false},{"i":9,"c":1,"t":1756000000,"v":"24.4","retain":true}],"has_more":true}`)
 		}
 	case "wbrules/Editor/List":
-		ok(`[{"virtualPath":"a.js","enabled":true,"rules":[],"devices":[],"timers":[]}]`)
+		s.mu.Lock()
+		list := ""
+		for name, enabled := range s.files {
+			if list != "" {
+				list += ","
+			}
+			list += fmt.Sprintf(`{"virtualPath":%q,"enabled":%v,"rules":[],"devices":[],"timers":[]}`, name, enabled)
+		}
+		s.mu.Unlock()
+		ok("[" + list + "]")
 	case "wbrules/Editor/Load":
 		ok(`{"content":"// a","enabled":true}`)
 	case "wbrules/Editor/Save":
 		ok(`{"path":"a.js"}`)
-	case "wbrules/Editor/Remove", "wbrules/Editor/Rename", "wbrules/Editor/ChangeState":
+	case "wbrules/Editor/Remove":
+		s.mu.Lock()
+		delete(s.files, p["path"].(string))
+		s.mu.Unlock()
+		ok(`true`)
+	case "wbrules/Editor/Rename":
+		s.mu.Lock()
+		s.files[p["new_path"].(string)] = s.files[p["path"].(string)]
+		delete(s.files, p["path"].(string))
+		s.mu.Unlock()
+		ok(`true`)
+	case "wbrules/Editor/ChangeState":
+		s.mu.Lock()
+		s.files[p["path"].(string)] = p["state"].(bool)
+		s.mu.Unlock()
 		ok(`true`)
 	case "wbrules/Editor/Check":
 		s.mu.Lock()
@@ -374,6 +401,7 @@ func (s *MqttRpcHelpersSuite) TestDeviceOperations() {
 	s.JSONEq(`{"device_id":"wb-map12e_1","channels":["Urms L1","Irms L1"]}`, string(loads[2].Params))
 	s.JSONEq(`{"device_id":"wb-map12e_1","parameters":["baud_rate"]}`, string(loads[3].Params))
 	sets := s.sent("wb-mqtt-serial", "device", "Set")
+	// booleans become 1/0 (the driver rejects JSON booleans as channel values)
 	s.JSONEq(`{"device_id":"wb-map12e_1","channels":{"K1":1}}`, string(sets[1].Params))
 	s.JSONEq(`{"device_id":"wb-map12e_1","channels":{"K1":0,"K2":1},"total_timeout":2000}`, string(sets[2].Params))
 	s.JSONEq(`{"device_id":"wb-map12e_1","parameters":{"in1_mode":2}}`, string(sets[3].Params))
@@ -423,8 +451,7 @@ func (s *MqttRpcHelpersSuite) TestEditors() {
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [rules: a.js] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [rule content: // a] (QoS 1)")
 	// the first verdict is pending: the helper sleeps 200 ms (fake timer) and asks again
-	s.SkipTill("new fake timer: 9, 200")
-	s.FireTimer(9, s.AdvanceTime(200*time.Millisecond))
+	s.fireNth(200*time.Millisecond, 1)
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [check: ready 1] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [types: 24] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [configs: /etc/x.conf] (QoS 1)")

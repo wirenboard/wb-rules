@@ -1630,10 +1630,21 @@ SerialDevice.prototype.read = function (what, options) {
   timeoutsOf(options, extra);
   return serialRpc.device.Load(this._deviceParams(extra), optionsOf(options));
 };
+// the driver reads channel and parameter values the way it reads its
+// config: numbers and strings, no JSON booleans - true/false go as 1/0
+function driverValues(values) {
+  var out = {};
+  Object.keys(values).forEach(function (k) {
+    var v = values[k];
+    out[k] = typeof v === 'boolean' ? (v ? 1 : 0) : v;
+  });
+  return out;
+}
+
 SerialDevice.prototype.write = function (what, options) {
   var extra = {};
-  if (what && what.channels) extra.channels = what.channels;
-  if (what && what.parameters) extra.parameters = what.parameters;
+  if (what && what.channels) extra.channels = driverValues(what.channels);
+  if (what && what.parameters) extra.parameters = driverValues(what.parameters);
   timeoutsOf(options, extra);
   return serialRpc.device.Set(this._deviceParams(extra), optionsOf(options)).then(function () {});
 };
@@ -1935,14 +1946,58 @@ rules.save = function (path, content, options) {
 rules.remove = function (path, options) {
   return rulesRpc.Editor.Remove({ path: path }, optionsOf(options)).then(function () {});
 };
+
+// The editor learns about a renamed/enabled/disabled file from the file
+// watcher a moment later; until then it still lists the old state and a
+// follow-up call on the same file would see it (an enable right after a
+// disable was silently a no-op). These helpers wait for the listing to
+// catch up (settleTimeout, 5000 ms; 0: do not wait).
+function untilListed(predicate, what, options) {
+  var timeout = options && options.settleTimeout !== undefined ? options.settleTimeout : 5000;
+  if (!(timeout > 0)) return Promise.resolve();
+  var deadline = Date.now() + timeout;
+  var poll = function () {
+    return rules.list(options).then(function (files) {
+      if (predicate(files)) return undefined;
+      if (Date.now() >= deadline) {
+        throw new TimeoutError(what + ' is not reflected by the editor after ' + timeout + ' ms', 'MqttTimeoutError');
+      }
+      return sleep(200).then(poll);
+    });
+  };
+  return poll();
+}
+function listedState(files, path) {
+  for (var i = 0; i < files.length; i++) if (files[i].virtualPath === path) return files[i].enabled;
+  return undefined;
+}
 rules.rename = function (path, newPath, options) {
-  return rulesRpc.Editor.Rename({ path: path, new_path: newPath }, optionsOf(options)).then(function () {});
+  return rulesRpc.Editor.Rename({ path: path, new_path: newPath }, optionsOf(options)).then(function () {
+    return untilListed(
+      function (files) {
+        return listedState(files, newPath) !== undefined && listedState(files, path) === undefined;
+      },
+      'renaming ' + path,
+      options
+    );
+  });
 };
+function changeState(path, state, options) {
+  return rulesRpc.Editor.ChangeState({ path: path, state: state }, optionsOf(options)).then(function () {
+    return untilListed(
+      function (files) {
+        return listedState(files, path) === state;
+      },
+      (state ? 'enabling ' : 'disabling ') + path,
+      options
+    );
+  });
+}
 rules.enable = function (path, options) {
-  return rulesRpc.Editor.ChangeState({ path: path, state: true }, optionsOf(options)).then(function () {});
+  return changeState(path, true, options);
 };
 rules.disable = function (path, options) {
-  return rulesRpc.Editor.ChangeState({ path: path, state: false }, optionsOf(options)).then(function () {});
+  return changeState(path, false, options);
 };
 // the type-check verdict, polled (every options.interval ms, 200) while
 // the check is still running

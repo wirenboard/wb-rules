@@ -27,8 +27,8 @@
 
 ```javascript
 // options везде передаётся последним аргументом
-const regs = await MqttRpc.serial.device('wb-map12e_1').readHolding(0x80, 2, { totalTimeout: 3000 });
-const files = await MqttRpc.rules.list({ timeout: 5000, waitForMethod: true });
+const regs = await MqttRpc.serial.device('wb-map12e_1').readHolding(0x80, 2, { totalTimeout: 3000 }); // 3 с на всё
+const files = await MqttRpc.rules.list({ timeout: 5000, waitForMethod: true });                         // ждать ответ 5 с
 ```
 
 ## 1. Общий клиент
@@ -43,8 +43,8 @@ const files = await MqttRpc.rules.list({ timeout: 5000, waitForMethod: true });
 const ports = await MqttRpc.call('wb-mqtt-serial', 'ports', 'Load');
 const reply = await MqttRpc.call('wb-mqtt-serial', 'port', 'Load', {
   device_id: 'wb-map12e_1', function: 3, address: 0x80, count: 2,
-}, { timeout: 15000 });
-log('{}', reply.response);
+}, { timeout: 15000 }); // 15 с
+log('{}', reply.response); // hex данных ответа, например '0001000a'
 ```
 
 Ошибки: `MqttRpc.RpcError` — сервис ответил ошибкой (поля `code`, `message`,
@@ -72,7 +72,7 @@ try {
 обновляется по подписке, поэтому повторные проверки выполняются мгновенно.
 
 ```javascript
-if (await MqttRpc.hasMethod('wb-mqtt-serial', 'port', 'Scan', 500)) {
+if (await MqttRpc.hasMethod('wb-mqtt-serial', 'port', 'Scan', 500)) { // ждать retained-топик не дольше 500 мс
   log('сканирование доступно');
 }
 ```
@@ -85,7 +85,7 @@ if (await MqttRpc.hasMethod('wb-mqtt-serial', 'port', 'Scan', 500)) {
 контроллера, когда правила могут загрузиться раньше сервисов.
 
 ```javascript
-await MqttRpc.waitForMethod('db_logger', 'history', 'get_values', 0); // ждать сколько угодно
+await MqttRpc.waitForMethod('db_logger', 'history', 'get_values', 0); // 0 — ждать сколько угодно
 const chans = await MqttRpc.db.channels();
 ```
 
@@ -100,6 +100,7 @@ const chans = await MqttRpc.db.channels();
 ```javascript
 const editor = MqttRpc.service('wbrules', 'Editor', ['List', 'Load']);
 const files = await editor.List();
+// [{ virtualPath: 'lighting.js', enabled: true, rules: [{ line: 3, name: 'hall' }], devices: [], timers: [] }, ...]
 const first = await editor.Load({ path: files[0].virtualPath });
 const removed = await editor.call('Remove', { path: 'old.js' });
 ```
@@ -128,7 +129,7 @@ const value = (await store.Get({ key: 'k' })).value; // number
 | `MqttRpc.DEFAULT_SERVICE_DRIVER` | `"wbrules-scripts"` |
 
 ```javascript
-MqttRpc.defaults.timeout = 10000; // для всех вызовов из этого файла
+MqttRpc.defaults.timeout = 10000; // 10 с для всех вызовов из этого файла
 log('этот файл обращается к RPC как {}', MqttRpc.clientId);
 try {
   await MqttRpc.serial.device('wb-map12e_1').readHolding(0xffff);
@@ -153,6 +154,7 @@ try {
 MqttRpc.defineService('Lights', {
   Set: (params, request) => {
     dev['lights/' + params.room] = !!params.on;
+    // request: { driver: 'wbrules-scripts', service: 'Lights', method: 'Set', clientId: 'cli', id: 1, topic: '/rpc/v1/wbrules-scripts/Lights/Set/cli' }
     log('{} попросил {}', request.clientId, params.room);
     return { room: params.room, on: !!params.on };
   },
@@ -229,7 +231,7 @@ MqttRpc.defineService('Heating', {
 const problems = MqttRpc.validate(
   { type: 'object', properties: { t: { type: 'number' } }, required: ['t'] },
   { t: 'hot' }
-);
+); // [{ path: '/t', message: 'must be number, got string' }]; для подходящего значения — []
 // [{ path: '/t', message: 'must be number, got string' }]
 if (problems.length) log.error('{}', problems.map((p) => p.path + ' ' + p.message).join('; '));
 ```
@@ -287,6 +289,7 @@ TCP-сокет вместо Modbus TCP).
 
 ```javascript
 const meter = MqttRpc.serial.device('wb-map12e_1');                    // из конфига
+// meter.id === 'wb-map12e_1'; meter.port и meter.slaveId — undefined (при необходимости берутся из конфига)
 const relay = MqttRpc.serial.device({ port: '/dev/ttyRS485-2', slaveId: 12, deviceType: 'WB-MR6C' });
 const remote = MqttRpc.serial.device({ port: '10.0.0.5:502', slaveId: 1 });                 // Modbus TCP
 const viaGateway = MqttRpc.serial.device({ port: '10.0.0.6:502', slaveId: 2, rtuOverTcp: true }); // RTU через TCP
@@ -303,7 +306,7 @@ const viaGateway = MqttRpc.serial.device({ port: '10.0.0.6:502', slaveId: 2, rtu
 Функция 3; до 125 регистров; значения — беззнаковые 16-битные числа.
 
 ```javascript
-const [hi, lo] = await meter.readHolding(0x1400, 2);
+const [hi, lo] = await meter.readHolding(0x1400, 2); // [0, 12345] — беззнаковые 16-битные числа
 const total = (hi << 16) | lo;
 ```
 
@@ -312,7 +315,7 @@ const total = (hi << 16) | lo;
 Функция 4.
 
 ```javascript
-const [raw] = await meter.readInput(0x10);
+const [raw] = await meter.readInput(0x10); // 2449 — например, температура ×0.01 у WB-MSW v.4
 ```
 
 ##### `device.readCoils(address[, count][, options]) → boolean[]`
@@ -320,7 +323,7 @@ const [raw] = await meter.readInput(0x10);
 Функция 1; до 2000 бит.
 
 ```javascript
-const relays = await relay.readCoils(0, 6);  // [true, false, ...]
+const relays = await relay.readCoils(0, 6);  // [true, false, false, false, true, false]
 ```
 
 ##### `device.readDiscrete(address[, count][, options]) → boolean[]`
@@ -356,7 +359,7 @@ await relay.writeCoils(0, [true, false, true, true]);  // функция 15
 hex; результат — данные ответа в hex (пустая строка для функций записи).
 
 ```javascript
-const hex = await meter.modbus(3, 0x80, { count: 2 });              // '12340001'
+const hex = await meter.modbus(3, 0x80, { count: 2 });              // '00010032' — только данные, без счётчика байт
 await meter.modbus(23, 0x10, { count: 2, writeAddress: 0x20, writeCount: 1, data: '1234' });
 ```
 
@@ -366,7 +369,7 @@ await meter.modbus(23, 0x10, { count: 2, writeAddress: 0x20, writeCount: 1, data
 на вход — hex-строка, результат — hex-строка ответа.
 
 ```javascript
-const answer = await relay.raw('0c03008000018499', 8);
+const answer = await relay.raw('0c03008000018499', 8); // '0c0302000178f1' — ответ целиком, с CRC
 ```
 
 ##### `device.settings([{ force, …options }]) → { parameters, fw?, model? }`
@@ -376,6 +379,7 @@ const answer = await relay.raw('0c03008000018499', 8);
 
 ```javascript
 const { parameters, fw, model } = await meter.settings({ force: true });
+// { parameters: { baud_rate: 96, rs485_response_delay_ms: 0, disable_indication: 0, ... }, fw: '4.31.13', model: 'WBMSW4' }
 log('{} {}: {}', model, fw, JSON.stringify(parameters));
 ```
 
@@ -385,9 +389,9 @@ log('{} {}: {}', model, fw, JSON.stringify(parameters));
 устройства).
 
 ```javascript
-const urms = await meter.readChannel('Urms L1');
-const { 'Urms L1': u, 'Irms L1': i } = await meter.readChannels('Urms L1', 'Irms L1');
-const some = await meter.readChannels(['Urms L1', 'Irms L1'], { totalTimeout: 5000 });
+const urms = await meter.readChannel('Urms L1'); // 230.12
+const { 'Urms L1': u, 'Irms L1': i } = await meter.readChannels('Urms L1', 'Irms L1'); // { 'Urms L1': 230.12, 'Irms L1': 0.53 }
+const some = await meter.readChannels(['Urms L1', 'Irms L1'], { totalTimeout: 5000 }); // 5 с
 ```
 
 ##### `device.readParameter(id[, options]) → any` / `device.readParameters(...ids | ids[][, options]) → { id: value }`
@@ -395,14 +399,14 @@ const some = await meter.readChannels(['Urms L1', 'Irms L1'], { totalTimeout: 50
 Значения параметров по их идентификаторам.
 
 ```javascript
-const baud = await meter.readParameter('baud_rate');
-const modes = await meter.readParameters('in1_mode', 'in2_mode');
+const baud = await meter.readParameter('baud_rate'); // 96 (в сотнях бод, как хранит устройство)
+const modes = await meter.readParameters('in1_mode', 'in2_mode'); // { in1_mode: 1, in2_mode: 0 }
 ```
 
 ##### `device.writeChannel(name, value[, options]) → void` / `device.writeChannels({ name: value }[, options]) → void`
 
 ```javascript
-await relay.writeChannel('K1', 1);
+await relay.writeChannel('K1', true);          // булевы значения уходят драйверу как 1/0
 await relay.writeChannels({ K1: 0, K2: 1 });
 ```
 
@@ -419,6 +423,7 @@ await meter.setParameters({ baud_rate: 96, in1_mode: 2 });
 
 ```javascript
 const both = await meter.read({ channels: ['Urms L1'], parameters: ['baud_rate'] });
+// { channels: { 'Urms L1': 230.12 }, parameters: { baud_rate: 96 }, readonly: ['Urms L1'] }
 log('{} {} readonly: {}', both.channels['Urms L1'], both.parameters.baud_rate, both.readonly.join(','));
 await relay.write({ channels: { K1: 1 }, parameters: { in1_mode: 1 } });
 ```
@@ -430,6 +435,8 @@ await relay.write({ channels: { K1: 1 }, parameters: { in1_mode: 1 } });
 
 ```javascript
 const who = await relay.probe();
+// { sn: '302072', device_signature: 'WBMSW4', fw_signature: 'msw4', configured_device_type: 'WB-MSW v.4',
+//   cfg: { slave_id: 65, baud_rate: 9600, parity: 'N', data_bits: 8, stop_bits: 2 }, fw: { version: '4.31.13' } }
 if (who) log('найдено {} sn={} fw={}', who.device_signature, who.sn, who.fw && who.fw.version);
 ```
 
@@ -467,6 +474,8 @@ const version = await meter.withPollingPaused(async (d) => {
 
 ```javascript
 const info = await meter.firmwareInfo();
+// { fw: '4.31.13', available_fw: '4.38.0', fw_has_update: true, can_update: true,
+//   bootloader: '1.3.0', available_bootloader: '1.3.0', bootloader_has_update: false, model: 'WBMSW4', components: {} }
 if (info.fw_has_update) {
   await meter.updateFirmware({ onProgress: (e) => log('{}%', e.progress) });
 }
@@ -479,6 +488,7 @@ if (info.fw_has_update) {
 
 ```javascript
 const where = await meter.resolve();
+// { port: { path: '/dev/ttyRS485-2', baud_rate: 9600, parity: 'N', data_bits: 8, stop_bits: 2 }, slaveId: 65, type: 'WB-MSW v.4' }
 log('{} на {}:{}', where.type, where.port.path || where.port.ip, where.slaveId);
 ```
 
@@ -494,7 +504,11 @@ enabled, port, config }`; `id` — MQTT-идентификатор (явно з�
 `<mqtt-id шаблона>_<slave_id>`), тот же, что используется в `dev[...]`.
 
 ```javascript
-for (const d of await MqttRpc.serial.devices()) {
+const devices = await MqttRpc.serial.devices();
+// [{ id: 'wb-msw-v4_65', type: 'WB-MSW v.4', name: undefined, slaveId: 65, enabled: true,
+//    port: { path: '/dev/ttyRS485-2', baud_rate: 9600, parity: 'N', data_bits: 8, stop_bits: 2 },
+//    config: { device_type: 'WB-MSW v.4', slave_id: '65', ... } }, ...]
+for (const d of devices) {
   log('{} ({} @ {}:{}) {}', d.id, d.type, d.port.path || d.port.ip, d.slaveId, d.enabled ? '' : 'выключено');
 }
 // из записи списка — сразу объект устройства
@@ -509,7 +523,9 @@ if (first.slaveId !== undefined) {
 Порты из конфига драйвера.
 
 ```javascript
-const ports = await MqttRpc.serial.ports(); // [{ path, baud_rate, ... }, { address, port }]
+const ports = await MqttRpc.serial.ports();
+// [{ path: '/dev/ttyRS485-1', baud_rate: 115200, parity: 'N', data_bits: 8, stop_bits: 2 },
+//  { path: '/dev/ttyRS485-2', baud_rate: 9600, parity: 'N', data_bits: 8, stop_bits: 2 }, { address: '10.0.0.5', port: 502 }]
 ```
 
 ##### `serial.config([{ lang, …options }]) → { config, schema, types }`
@@ -527,6 +543,7 @@ log('портов: {}', config.ports.length);
 
 ```javascript
 const types = await MqttRpc.serial.deviceTypes({ lang: 'ru' });
+// [{ group: 'Wiren Board', name: 'WB-MSW v.4', type: 'WB-MSW v.4', deprecated: false, protocol: 'modbus', 'mqtt-id': 'wb-msw-v4' }, ...]
 const wb = types.filter((t) => t.group === 'Wiren Board' && !t.deprecated).map((t) => t.type);
 ```
 
@@ -559,6 +576,8 @@ await MqttRpc.serial.deleteTemplate('MY-DEVICE');
 ```javascript
 try {
   const found = await MqttRpc.serial.scan('/dev/ttyRS485-1');
+  // [{ sn: '302072', device_signature: 'WBMSW4', fw_signature: 'msw4', configured_device_type: 'WB-MSW v.4',
+  //    cfg: { slave_id: 65, baud_rate: 9600, parity: 'N', data_bits: 8, stop_bits: 2 }, fw: { version: '4.31.13' } }]
   found.forEach((d) => log('{} sn={} addr={}', d.device_signature, d.sn, d.cfg && d.cfg.slave_id));
 } catch (e) {
   log.error('{}; до ошибки найдено {}', e.message, (e.devices || []).length);
@@ -595,6 +614,7 @@ await MqttRpc.serial.setup('/dev/ttyRS485-1', [
 
 ```javascript
 const info = await MqttRpc.serial.firmwareInfo('/dev/ttyRS485-1', 12);
+// { fw: '4.31.13', available_fw: '4.38.0', fw_has_update: true, can_update: true, model: 'WBMSW4', components: {}, ... }
 log('{}: {} -> {} ({})', info.model, info.fw, info.available_fw, info.fw_has_update ? 'есть обновление' : 'актуально');
 ```
 
@@ -624,7 +644,7 @@ await MqttRpc.serial.updateFirmware('/dev/ttyRS485-1', 13, { type: 'bootloader',
 Дождаться окончания уже идущего обновления.
 
 ```javascript
-await MqttRpc.serial.waitForFirmwareUpdate('/dev/ttyRS485-1', 13, { timeout: 300000 });
+await MqttRpc.serial.waitForFirmwareUpdate('/dev/ttyRS485-1', 13, { timeout: 5 * 60 * 1000 }); // не дольше 5 минут
 ```
 
 ##### `restoreFirmware(port, slaveId[, options]) → "Ok"` / `clearFirmwareError(port, slaveId[, { type, …options }]) → "Ok"`
@@ -641,6 +661,7 @@ progress, type, error }]`.
 
 ```javascript
 const state = await MqttRpc.serial.firmwareUpdateState();
+// { devices: [{ port: { path: '/dev/ttyRS485-1' }, slave_id: 12, progress: 35, type: 'firmware', error: null }] } — или { devices: [] }
 state.devices.forEach((d) => log('{}:{} {}% {}', d.port.path, d.slave_id, d.progress, d.error ? d.error.message : ''));
 ```
 
@@ -657,7 +678,9 @@ value (number | string), min, max, retain, uid }`. Границы окна пе�
 базе целыми секундами (`since` округляется вниз, `until` — вверх).
 
 ```javascript
-const { values, hasMore } = await MqttRpc.db.query('wb-adc/Vin', { last: 3600000, limit: 100 });
+const { values, hasMore } = await MqttRpc.db.query('wb-adc/Vin', { last: 60 * 60 * 1000, limit: 100 }); // последний час
+// values: [{ channel: 'wb-adc/Vin', device: 'wb-adc', control: 'Vin', time: Date(2026-08-25T13:07:56.000Z),
+//            value: 24.3, min: undefined, max: undefined, retain: false, uid: 918232 }, ...], hasMore: false
 for (const r of values) log('{} {}', r.time.toISOString(), r.value);
 
 // несколько каналов за окно, усреднение до 60 точек на канал
@@ -668,7 +691,7 @@ const day = await MqttRpc.db.query(['wb-adc/Vin', ['wb-adc', 'A1']], {
 });
 // продолжение выборки, если записей больше limit
 if (hasMore) {
-  const more = await MqttRpc.db.query('wb-adc/Vin', { last: 3600000, limit: 100, afterUid: values[values.length - 1].uid });
+  const more = await MqttRpc.db.query('wb-adc/Vin', { last: 60 * 60 * 1000, limit: 100, afterUid: values[values.length - 1].uid });
 }
 ```
 
@@ -678,6 +701,7 @@ if (hasMore) {
 
 ```javascript
 const last = await MqttRpc.db.lastValue('wb-adc/Vin');
+// { channel: 'wb-adc/Vin', device: 'wb-adc', control: 'Vin', time: Date(...), value: 24.2, retain: false, uid: 918240 }
 if (last) log('последнее значение {} в {}', last.value, last.time.toLocaleTimeString());
 ```
 
@@ -689,7 +713,7 @@ if (last) log('последнее значение {} в {}', last.value, last.t
 числовых записей нет.
 
 ```javascript
-const avgDay = await MqttRpc.db.average('wb-adc/Vin', { last: 86400000 });
+const avgDay = await MqttRpc.db.average('wb-adc/Vin', { last: 24 * 60 * 60 * 1000 }); // за последние сутки, например 24.17
 const avgNight = await MqttRpc.db.average('wb-adc/Vin', {
   since: new Date('2026-08-24T23:00:00'),
   until: new Date('2026-08-25T06:00:00'),
@@ -702,7 +726,9 @@ const avgNight = await MqttRpc.db.average('wb-adc/Vin', {
 Все каналы базы: `{ channel, device, control, items, lastTime: Date }`.
 
 ```javascript
-const stale = (await MqttRpc.db.channels()).filter((c) => Date.now() - c.lastTime.getTime() > 86400000);
+const channels = await MqttRpc.db.channels();
+// [{ channel: 'wb-adc/Vin', device: 'wb-adc', control: 'Vin', items: 21894, lastTime: Date(...) }, ...]
+const stale = channels.filter((c) => Date.now() - c.lastTime.getTime() > 24 * 60 * 60 * 1000); // без записей сутки
 log('давно не обновлялись: {}', stale.map((c) => c.channel).join(', '));
 ```
 
@@ -716,7 +742,10 @@ log('давно не обновлялись: {}', stale.map((c) => c.channel).jo
 Файлы правил: `{ virtualPath, enabled, error?, rules, devices, timers }`.
 
 ```javascript
-const broken = (await MqttRpc.rules.list()).filter((f) => f.error);
+const files = await MqttRpc.rules.list();
+// [{ virtualPath: 'lighting.js', enabled: true, rules: [{ line: 3, name: 'hall' }], devices: [{ line: 1, name: 'hall_light' }], timers: [] },
+//  { virtualPath: 'broken.js', enabled: true, error: { message: 'SyntaxError: ...', traceback: [{ line: 7, name: '' }] }, rules: [], devices: [], timers: [] }]
+const broken = files.filter((f) => f.error);
 broken.forEach((f) => log.error('{}: {}', f.virtualPath, f.error.message));
 ```
 
@@ -724,6 +753,7 @@ broken.forEach((f) => log.error('{}: {}', f.virtualPath, f.error.message));
 
 ```javascript
 const { content } = await MqttRpc.rules.load('lighting.js');
+// { content: "defineRule({ ... })", enabled: true }
 ```
 
 ##### `rules.save(path, content[, options]) → { path, error?, traceback? }`
@@ -752,6 +782,7 @@ await MqttRpc.rules.remove('scratch.js');
 
 ```javascript
 const verdict = await MqttRpc.rules.check('lighting.ts');
+// { status: 'ready', diags: [{ line: 12, column: 5, severity: 'error', message: "Type 'string' is not assignable to type 'number'.", code: 2322 }] }
 if (verdict.status === 'ready') {
   verdict.diags.forEach((d) => log('{}:{} {}', d.line, d.column, d.message));
 }
@@ -773,6 +804,8 @@ const dts = await MqttRpc.rules.types();
 
 ```javascript
 const entries = await MqttRpc.confed.list();
+// [{ title: 'Serial Device Driver Configuration', description: '...', configPath: '/etc/wb-mqtt-serial.conf',
+//    schemaPath: '/usr/share/wb-mqtt-confed/schemas/wb-mqtt-serial.schema.json', editor: 'serial' }, ...]
 log('{}', entries.map((c) => c.configPath).join('\n'));
 ```
 
@@ -780,6 +813,7 @@ log('{}', entries.map((c) => c.configPath).join('\n'));
 
 ```javascript
 const { content } = await MqttRpc.confed.load('/etc/wb-mqtt-serial.conf');
+// { configPath: '/etc/wb-mqtt-serial.conf', content: { debug: false, ports: [...] }, schema: {...}, editor: 'serial' }
 log('debug={}', content.debug);
 ```
 
@@ -822,9 +856,10 @@ const replaced = await MqttRpc.confed.update('/etc/wb-rules.conf', () => ({ debu
 const errors = await MqttRpc.logs.read({
   service: 'wb-mqtt-serial.service',
   levels: [0, 1, 2, 3],
-  since: Date.now() - 3600000,
+  since: Date.now() - 60 * 60 * 1000, // за последний час
   limit: 100,
 });
+// [{ time: Date(...), level: 3, msg: 'Port IO error: ...', service: 'wb-mqtt-serial.service', cursor: 's=...;i=...' }, ...]
 errors.forEach((e) => log('{} {}', e.time.toISOString(), e.msg));
 
 // листание назад от последней записи предыдущей страницы
@@ -845,8 +880,8 @@ const tail = await MqttRpc.logs.tail('wb-rules.service', 20);
 Список сервисов в журнале и список загрузок системы.
 
 ```javascript
-const services = await MqttRpc.logs.services();
-const [current] = await MqttRpc.logs.boots();
+const services = await MqttRpc.logs.services(); // ['wb-rules.service', 'wb-mqtt-serial.service', ...]
+const [current] = await MqttRpc.logs.boots();   // [{ hash: '9f0c...', start: Date(...), end: undefined }]
 log('загрузка {} с {}', current.hash, current.start.toISOString());
 ```
 
@@ -867,6 +902,7 @@ await MqttRpc.logs.cancel();
 
 ```javascript
 const archive = await MqttRpc.diag.collect();
+// { basename: 'diag_output_ALFLOJF3_2026-08-25-17.17.00.zip', fullname: '/var/www/diag/diag_output_ALFLOJF3_2026-08-25-17.17.00.zip' }
 log('архив: {}', archive.fullname);
 ```
 
@@ -894,6 +930,9 @@ const found = await MqttRpc.deviceManager.scan({
   type: 'standard',
   onProgress: (s) => log('{}%', s.progress),
 });
+// [{ uuid: 'beb53adc-...', port: { path: '/dev/ttyRS485-2' }, sn: '302072', device_signature: 'WBMSW4', fw_signature: 'msw4',
+//    configured_device_type: 'WB-MSW v.4', cfg: { slave_id: 65, baud_rate: 9600, parity: 'N', data_bits: 8, stop_bits: 2 },
+//    fw: { version: '4.31.13', ext_support: true, fast_modbus_command: 70 }, bootloader_mode: false, errors: [] }]
 found.forEach((d) => log('{} sn={} @{}:{}', d.device_signature, d.sn, d.port.path, d.cfg.slave_id));
 ```
 
@@ -901,6 +940,7 @@ found.forEach((d) => log('{} sn={} @{}:{}', d.device_signature, d.sn, d.port.pat
 
 ```javascript
 const state = await MqttRpc.deviceManager.state();
+// { scanning: true, progress: 23, scanning_ports: ['/dev/ttyRS485-2 1200 8N1'], is_ext_scan: false, error: null, devices: [...] }
 if (state && state.scanning) await MqttRpc.deviceManager.stopScan();
 ```
 
@@ -921,6 +961,7 @@ await MqttRpc.deviceManager.updateFirmware('10.0.0.5:502', 1, { onProgress: (e) 
 
 ```javascript
 const buses = await MqttRpc.dali.buses();
+// [{ id: 'bus-1', name: 'Bus 1', gateway: { id: 'gw-1', name: 'Gateway' }, devices: [{ id: 'dev-1', name: 'Lamp', groups: [0] }], commissioning: {...} }]
 buses.forEach((b) => log('{} ({}) устройств: {}', b.name, b.gateway.name, b.devices.length));
 ```
 
@@ -932,7 +973,7 @@ buses.forEach((b) => log('{} ({}) устройств: {}', b.name, b.gateway.nam
 
 ```javascript
 const [bus] = await MqttRpc.dali.buses();
-const [dim] = await MqttRpc.dali.send(bus.id, 'DAPC(A0, 0x80)');
+const [dim] = await MqttRpc.dali.send(bus.id, 'DAPC(A0, 0x80)'); // { status: 'ok', response: { raw: null, value: '' } }
 if (dim.status === 'error') log.error('{}', dim.error);
 const results = await MqttRpc.dali.send(bus.id, ['DAPC(A0, 0xFE)', 'DAPC(A1, 0x00)']);
 ```
@@ -942,7 +983,7 @@ const results = await MqttRpc.dali.send(bus.id, ['DAPC(A0, 0xFE)', 'DAPC(A1, 0x0
 Список поддерживаемых команд.
 
 ```javascript
-const known = await MqttRpc.dali.commands();
+const known = await MqttRpc.dali.commands(); // [{ name: 'DAPC', category: 'Gear', snippet: 'DAPC(${1:A0}, ${2:0xFE})' }, ...]
 log('{}', known.map((c) => c.name).join(', '));
 ```
 

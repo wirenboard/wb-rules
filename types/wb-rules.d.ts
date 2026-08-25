@@ -1932,9 +1932,12 @@ declare namespace MqttRpc {
     load(path: string, options?: HelperOptions): Promise<RulesEditor.LoadResult>;
     save(path: string, content: string, options?: HelperOptions): Promise<RulesEditor.SaveResult>;
     remove(path: string, options?: HelperOptions): Promise<void>;
-    rename(path: string, newPath: string, options?: HelperOptions): Promise<void>;
-    enable(path: string, options?: HelperOptions): Promise<void>;
-    disable(path: string, options?: HelperOptions): Promise<void>;
+    /** Renames a file; resolves once the editor lists it under the new name (`settleTimeout` 5000 ms, 0: do not wait). */
+    rename(path: string, newPath: string, options?: HelperOptions & { settleTimeout?: number }): Promise<void>;
+    /** Enables a disabled file; resolves once the editor lists it as enabled (`settleTimeout` 5000 ms, 0: do not wait). */
+    enable(path: string, options?: HelperOptions & { settleTimeout?: number }): Promise<void>;
+    /** Disables a file (it stops running, kept as `<path>.disabled`); resolves once the editor lists it as disabled. */
+    disable(path: string, options?: HelperOptions & { settleTimeout?: number }): Promise<void>;
     /** The type-check verdict, polled (every `interval` ms, 200) until it is no longer pending. */
     check(path: string, options?: HelperOptions & { interval?: number }): Promise<RulesEditor.CheckResult>;
     /** The API declarations (this file's text). */

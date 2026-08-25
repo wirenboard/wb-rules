@@ -161,8 +161,8 @@ defineRule('help_device_ops', {
       var many = await d.readChannels('Urms L1', 'Irms L1');
       var param = await d.readParameter('baud_rate');
       log('channel: {} channels: {} parameter: {}', one, JSON.stringify(many), param);
-      await d.writeChannel('K1', 1);
-      await d.writeChannels({ K1: 0, K2: 1 }, { totalTimeout: 2000 });
+      await d.writeChannel('K1', true); // booleans go out as 1/0: the driver takes no JSON booleans
+      await d.writeChannels({ K1: false, K2: 1 }, { totalTimeout: 2000 });
       await d.setParameter('in1_mode', 2);
       await d.setParameters({ in2_mode: 3 });
       var order = [];
