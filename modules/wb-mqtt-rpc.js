@@ -1946,58 +1946,20 @@ rules.save = function (path, content, options) {
 rules.remove = function (path, options) {
   return rulesRpc.Editor.Remove({ path: path }, optionsOf(options)).then(function () {});
 };
-
-// The editor learns about a renamed/enabled/disabled file from the file
-// watcher a moment later; until then it still lists the old state and a
-// follow-up call on the same file would see it (an enable right after a
-// disable was silently a no-op). These helpers wait for the listing to
-// catch up (settleTimeout, 5000 ms; 0: do not wait).
-function untilListed(predicate, what, options) {
-  var timeout = options && options.settleTimeout !== undefined ? options.settleTimeout : 5000;
-  if (!(timeout > 0)) return Promise.resolve();
-  var deadline = Date.now() + timeout;
-  var poll = function () {
-    return rules.list(options).then(function (files) {
-      if (predicate(files)) return undefined;
-      if (Date.now() >= deadline) {
-        throw new TimeoutError(what + ' is not reflected by the editor after ' + timeout + ' ms', 'MqttTimeoutError');
-      }
-      return sleep(200).then(poll);
-    });
-  };
-  return poll();
-}
-function listedState(files, path) {
-  for (var i = 0; i < files.length; i++) if (files[i].virtualPath === path) return files[i].enabled;
-  return undefined;
-}
 rules.rename = function (path, newPath, options) {
-  return rulesRpc.Editor.Rename({ path: path, new_path: newPath }, optionsOf(options)).then(function () {
-    return untilListed(
-      function (files) {
-        return listedState(files, newPath) !== undefined && listedState(files, path) === undefined;
-      },
-      'renaming ' + path,
-      options
-    );
-  });
+  return rulesRpc.Editor.Rename({ path: path, new_path: newPath }, optionsOf(options)).then(function () {});
 };
-function changeState(path, state, options) {
-  return rulesRpc.Editor.ChangeState({ path: path, state: state }, optionsOf(options)).then(function () {
-    return untilListed(
-      function (files) {
-        return listedState(files, path) === state;
-      },
-      (state ? 'enabling ' : 'disabling ') + path,
-      options
-    );
-  });
-}
+// The editor is idempotent: ChangeState renames the file to/from
+// <path>.disabled only when the state actually differs from what it has
+// loaded. It picks up the new state from its file watcher a moment later,
+// so an enable() issued right after a disable() of the same file may still
+// see it enabled and do nothing - leave the driver a beat (e.g. a save, or
+// a short sleep) between toggling one file the opposite way.
 rules.enable = function (path, options) {
-  return changeState(path, true, options);
+  return rulesRpc.Editor.ChangeState({ path: path, state: true }, optionsOf(options)).then(function () {});
 };
 rules.disable = function (path, options) {
-  return changeState(path, false, options);
+  return rulesRpc.Editor.ChangeState({ path: path, state: false }, optionsOf(options)).then(function () {});
 };
 // the type-check verdict, polled (every options.interval ms, 200) while
 // the check is still running
