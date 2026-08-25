@@ -284,6 +284,22 @@ defineRule('help_state', {
   then: async function () {
     try {
       var progress = [];
+      // the very first firmware call of this file, for a device whose failed
+      // earlier attempt is still on the retained state topic
+      var stages = [];
+      await MqttRpc.serial.device({ port: '/dev/ttyRS485-1', slaveId: 5 }).updateFirmware({
+        onProgress: function (e) {
+          stages.push((e.type === 'component' ? 'cmp' : 'fw') + e.progress);
+        },
+      });
+      log('fw stale-first done: {}', stages.join(','));
+      // a recorded error is what a standalone wait reports
+      try {
+        await MqttRpc.serial.waitForFirmwareUpdate('/dev/ttyRS485-1', 6);
+        log('wait recorded error: unexpectedly resolved');
+      } catch (e) {
+        log('wait recorded error: {}', e.message);
+      }
       var found = await MqttRpc.deviceManager.scan({
         port: '/dev/ttyRS485-1',
         type: 'standard',
@@ -298,16 +314,17 @@ defineRule('help_state', {
         onProgress: function (e) {
           progress.push('fw' + e.progress);
         },
+        stageTimeout: 0, // no components stage in this scenario
       });
       log('fw update done: {}', progress.join(','));
       try {
-        await MqttRpc.serial.device({ port: '/dev/ttyRS485-1', slaveId: 4 }).updateFirmware();
+        await MqttRpc.serial.device({ port: '/dev/ttyRS485-1', slaveId: 4 }).updateFirmware({ stageTimeout: 0 });
       } catch (e) {
         log('fw update failed: {} state={}', e.message, e.state && e.state.progress);
       }
       // the stale error of slave 4 stays on the topic: a new update of it must
       // not be mistaken for that failure
-      await MqttRpc.serial.updateFirmware('/dev/ttyRS485-1', 4, { type: 'bootloader' });
+      await MqttRpc.serial.updateFirmware('/dev/ttyRS485-1', 4, { type: 'bootloader', stageTimeout: 0 });
       log('fw retry done');
       await MqttRpc.deviceManager.clearFirmwareError('10.0.0.5:502', 1);
       await MqttRpc.deviceManager.firmwareInfo('10.0.0.5:502', 1);

@@ -491,36 +491,47 @@ function validateSchema(schema, v, path, problems) {
     if (schema.exclusiveMaximum !== undefined && v >= schema.exclusiveMaximum) {
       problems.push({ path: here, message: 'must be < ' + schema.exclusiveMaximum });
     }
-    if (schema.multipleOf !== undefined && Math.abs((v / schema.multipleOf) % 1) > 1e-9) {
-      problems.push({ path: here, message: 'must be a multiple of ' + schema.multipleOf });
+    if (schema.multipleOf !== undefined) {
+      var ratio = v / schema.multipleOf;
+      if (Math.abs(ratio - Math.round(ratio)) > 1e-9) {
+        problems.push({ path: here, message: 'must be a multiple of ' + schema.multipleOf });
+      }
     }
   }
   if (typeof v === 'string') {
     if (schema.minLength !== undefined && v.length < schema.minLength) problems.push({ path: here, message: 'must be at least ' + schema.minLength + ' characters' });
     if (schema.maxLength !== undefined && v.length > schema.maxLength) problems.push({ path: here, message: 'must be at most ' + schema.maxLength + ' characters' });
-    if (schema.pattern !== undefined && !new RegExp(schema.pattern).test(v)) problems.push({ path: here, message: 'must match ' + schema.pattern });
+    if (schema.pattern !== undefined) {
+      var re;
+      try {
+        re = new RegExp(schema.pattern);
+      } catch (e) {
+        throw new TypeError('MqttRpc: invalid pattern in schema at ' + here + ': ' + e.message);
+      }
+      if (!re.test(v)) problems.push({ path: here, message: 'must match ' + schema.pattern });
+    }
   }
   if (Array.isArray(v)) {
     if (schema.minItems !== undefined && v.length < schema.minItems) problems.push({ path: here, message: 'must have at least ' + schema.minItems + ' items' });
     if (schema.maxItems !== undefined && v.length > schema.maxItems) problems.push({ path: here, message: 'must have at most ' + schema.maxItems + ' items' });
     if (schema.items !== undefined) {
-      for (var a = 0; a < v.length; a++) validateSchema(schema.items, v[a], path + '/' + a, problems);
+      for (var a = 0; a < v.length; a++) validateSchema(schema.items, v[a], pointer(path, a), problems);
     }
   }
   if (isPlainObject(v)) {
     var props = schema.properties || {};
     if (schema.required) {
       for (var r = 0; r < schema.required.length; r++) {
-        if (!hasOwn(v, schema.required[r])) problems.push({ path: path + '/' + schema.required[r], message: 'is required' });
+        if (!hasOwn(v, schema.required[r])) problems.push({ path: pointer(path, schema.required[r]), message: 'is required' });
       }
     }
     Object.keys(v).forEach(function (k) {
       if (hasOwn(props, k)) {
-        validateSchema(props[k], v[k], path + '/' + k, problems);
+        validateSchema(props[k], v[k], pointer(path, k), problems);
       } else if (schema.additionalProperties === false) {
-        problems.push({ path: path + '/' + k, message: 'is not allowed' });
+        problems.push({ path: pointer(path, k), message: 'is not allowed' });
       } else if (isPlainObject(schema.additionalProperties)) {
-        validateSchema(schema.additionalProperties, v[k], path + '/' + k, problems);
+        validateSchema(schema.additionalProperties, v[k], pointer(path, k), problems);
       }
     });
   }
@@ -543,10 +554,28 @@ function validateSchema(schema, v, path, problems) {
   return problems;
 }
 
+// JSON equality: arrays element-wise, objects key by key (any order)
 function sameValue(a, b) {
   if (a === b) return true;
   if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
-  return tryStringify(a) === tryStringify(b);
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) {
+    if (a.length !== b.length) return false;
+    for (var i = 0; i < a.length; i++) if (!sameValue(a[i], b[i])) return false;
+    return true;
+  }
+  var ka = Object.keys(a);
+  var kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  for (var k = 0; k < ka.length; k++) {
+    if (!hasOwn(b, ka[k]) || !sameValue(a[ka[k]], b[ka[k]])) return false;
+  }
+  return true;
+}
+
+// a JSON pointer segment (RFC 6901)
+function pointer(path, key) {
+  return path + '/' + String(key).replace(/~/g, '~0').replace(/\//g, '~1');
 }
 
 // validate(schema, value) -> [] or [{path, message}]
@@ -658,7 +687,14 @@ function makeRequestHandler(entry) {
       return;
     }
     if (spec.params !== undefined) {
-      var problems = validate(spec.params, params);
+      var problems;
+      try {
+        problems = validate(spec.params, params);
+      } catch (e) {
+        log.error('MqttRpc: {}/{}/{}: {}', entry.driver, entry.service, method, e.message);
+        replyTo(msg.topic, errorReply(id, ErrorCode.INTERNAL_ERROR, 'params schema is invalid: ' + e.message));
+        return;
+      }
       if (problems.length) {
         var first = problems[0];
         replyTo(
@@ -921,11 +957,14 @@ function isTcpPort(p) {
   return p.ip !== undefined;
 }
 
-// "12" -> 12; anything else as is (undefined for none)
+// "12" -> 12, "0x0a" -> 10; anything else as is (undefined for none)
 function numericId(v) {
   if (v === undefined || v === null || v === '') return undefined;
   if (typeof v === 'number') return v;
-  return /^\d+$/.test(String(v)) ? Number(v) : v;
+  var text = String(v).trim();
+  if (/^\d+$/.test(text)) return Number(text);
+  if (/^0x[0-9a-f]+$/i.test(text)) return parseInt(text, 16);
+  return v;
 }
 
 function tcpProtocol(rtuOverTcp) {
@@ -1132,14 +1171,15 @@ function listSerialDevices(cfg) {
   var out = [];
   var ports = (cfg.config && cfg.config.ports) || [];
   ports.forEach(function (port) {
+    // a port without explicit line settings runs on the driver's defaults (9600 N 8 1)
     var portInfo =
       port.path !== undefined
         ? {
             path: port.path,
-            baud_rate: port.baud_rate,
-            parity: port.parity,
-            data_bits: port.data_bits,
-            stop_bits: port.stop_bits,
+            baud_rate: port.baud_rate !== undefined ? port.baud_rate : 9600,
+            parity: port.parity !== undefined ? port.parity : 'N',
+            data_bits: port.data_bits !== undefined ? port.data_bits : 8,
+            stop_bits: port.stop_bits !== undefined ? port.stop_bits : 1,
           }
         : { ip: port.address, port: port.port };
     (port.devices || []).forEach(function (d) {
@@ -1319,18 +1359,31 @@ function fwHelpers(rpc, stateTopic, allowTcp) {
   // stale: what the topic said before the update was requested - an old
   // entry (a past error stays listed until it is cleared) must not pass
   // for the new one. updateFirmware captures it before sending the request.
+  // Standalone, it waits for whatever the topic shows for the device now
+  // (an update in progress, or a recorded failure). Called by
+  // updateFirmware, it gets `stale` - the entry seen before the request
+  // was sent - and ignores it, so a failure left from an earlier attempt
+  // is not taken for this one.
   h.waitForFirmwareUpdate = function (port, slaveId, options, stale) {
     var timeout = options && options.timeout !== undefined ? options.timeout : 600000;
     var startTimeout = options && options.startTimeout !== undefined ? options.startTimeout : 10000;
+    var stageTimeout = options && options.stageTimeout !== undefined ? options.stageTimeout : 2000;
     var onProgress = options && options.onProgress;
     var what = 'firmware update of ' + portKey(port) + ':' + slaveId;
-    if (stale === undefined) stale = currentEntry(port, slaveId);
+    if (stale === undefined) stale = 'null';
     var last = null;
     var track = function (v) {
       var entry = entryOf(parseJsonOr(v, null), port, slaveId);
-      if (entry && onProgress && entry.progress !== (last && last.progress)) onProgress(entry);
-      last = entry;
-      return entry;
+      var fresh = entry !== null && tryStringify(entry) !== stale;
+      if (fresh && onProgress && entry.progress !== (last && last.progress)) {
+        try {
+          onProgress(entry);
+        } catch (e) {
+          log.error('MqttRpc: onProgress of {} failed: {}', what, e);
+        }
+      }
+      last = fresh ? entry : null;
+      return fresh ? entry : null;
     };
     var finished = function (entry) {
       return !entry || (entry.error !== undefined && entry.error !== null);
@@ -1349,6 +1402,22 @@ function fwHelpers(rpc, stateTopic, allowTcp) {
           err.state = last;
           throw err;
         }
+        // the services flash the components of a device under a fresh entry
+        // after the firmware one is gone: give the next stage a moment to show
+        // up (stageTimeout 0: do not wait for one)
+        if (!(stageTimeout > 0)) return undefined;
+        stale = 'null';
+        return waitTopic(
+          stateTopic,
+          function (v) {
+            return track(v) !== null;
+          },
+          stageTimeout,
+          what
+        ).then(untilDone, function (e) {
+          if (e instanceof TimeoutError) return undefined; // nothing followed: done
+          throw e;
+        });
       });
     };
     return waitTopic(
@@ -1367,15 +1436,15 @@ function fwHelpers(rpc, stateTopic, allowTcp) {
   h.updateFirmware = function (port, slaveId, options) {
     var t = withProtocol(fwTarget(port, slaveId, allowTcp), port, options);
     if (options && options.type) t.type = options.type;
-    // subscribe before the request, so no state is missed, and remember
-    // what the topic showed for this device before the update
-    watchTopic(stateTopic);
-    var stale = currentEntry(port, slaveId);
-    var started = rpc.Update(t, optionsOf(options));
-    // resolves when the update is over unless { wait: false } asks for "Ok" only
-    if (options && options.wait === false) return started;
-    return started.then(function () {
-      return h.waitForFirmwareUpdate(port, slaveId, options, stale);
+    if (options && options.wait === false) return rpc.Update(t, optionsOf(options));
+    // read the retained state first (a failure left from an earlier attempt
+    // stays listed until cleared), remember the device's entry, then send:
+    // whatever is listed for the device after that is this update's
+    return readTopic(stateTopic, 1000).then(function () {
+      var stale = currentEntry(port, slaveId);
+      return rpc.Update(t, optionsOf(options)).then(function () {
+        return h.waitForFirmwareUpdate(port, slaveId, options, stale);
+      });
     });
   };
   h.restoreFirmware = function (port, slaveId, options) {
@@ -1957,7 +2026,7 @@ logs.read = function (options) {
   if (o.cursor !== undefined) params.cursor = { id: o.cursor, direction: direction || 'backward' };
   else if (direction !== undefined) params.cursor = { direction: direction };
   return logsRpc.logs.Load(params, optionsOf(options)).then(function (entries) {
-    return (entries || []).map(function (e) {
+    var records = (entries || []).map(function (e) {
       return {
         time: new Date(e.time),
         level: e.level !== undefined ? e.level : 6,
@@ -1966,6 +2035,10 @@ logs.read = function (options) {
         cursor: e.cursor,
       };
     });
+    // the service hands out every page newest first; a forward read is
+    // meant to be read in order, so it is turned around here
+    if (direction === 'forward') records.reverse();
+    return records;
   });
 };
 logs.tail = function (serviceName, count, options) {

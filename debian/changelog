@@ -52,7 +52,8 @@ wb-rules (2.47.0~quickjs2.1) unstable; urgency=medium
     MqttRpc.validate(schema, value) exposes the same check.
   * Device handles read and write channels/parameters by name
     (readChannel(s)/readParameter(s)/writeChannel(s)/setParameter(s));
-    docs/mqtt-rpc-api.md is the full reference of the module's API.
+    docs/mqtt-rpc-api.md is the full reference of the module's API, with
+    an example for every method (all of them type-checked as rules).
 
  -- Evgeny Boger <boger@wirenboard.com>  Tue, 25 Aug 2026 01:00:00 +0400
 

@@ -1292,7 +1292,7 @@ declare namespace MqttRpc {
       slave_id?: number;
       /** Serial number (Fast Modbus): address the device by it instead of slave_id. */
       sn?: number;
-      /** Current line settings of the device; defaults: 9600 N 8 2. */
+      /** Current line settings of the device; the driver assumes 9600 N 8 1 when omitted. */
       baud_rate?: BaudRate;
       parity?: Parity;
       data_bits?: number;
@@ -1554,6 +1554,8 @@ declare namespace MqttRpc {
       timeout?: number;
       /** How long to wait for the device to show up on the state topic (default 10000). */
       startTimeout?: number;
+      /** How long to wait for a following stage (components) once an entry is gone (default 2000). */
+      stageTimeout?: number;
       /** Called on every progress change. */
       onProgress?: (entry: FirmwareUpdateEntry) => void;
     }
@@ -1607,7 +1609,7 @@ declare namespace MqttRpc {
       writeHolding(address: number, value: number | number[], options?: ModbusOptions): Promise<void>;
       /** One coil (function 5) or several (function 15). */
       writeCoil(address: number, value: boolean | boolean[], options?: ModbusOptions): Promise<void>;
-      /** Any Modbus function; resolves with the response data as hex (empty for writes). */
+      /** Any Modbus function; resolves with the response data as hex (empty for writes). Function 23 needs writeAddress/writeCount/data. */
       modbus(
         fn: 1 | 2 | 3 | 4 | 5 | 6 | 15 | 16 | 23,
         address: number,
@@ -1620,12 +1622,14 @@ declare namespace MqttRpc {
       /** Channels and parameters by name, together. */
       read(what?: { channels?: string[]; parameters?: string[] }, options?: ModbusOptions): Promise<DeviceLoadResult>;
       write(what: { channels?: Record<string, any>; parameters?: Record<string, any> }, options?: ModbusOptions): Promise<void>;
-      /** The current values of channels (as the driver reads them), by name. */
+      /** The current values of channels (as the driver reads them), by name; options may trail the names. */
       readChannels(...names: string[]): Promise<Record<string, any>>;
+      readChannels(...args: [...names: string[], options: ModbusOptions]): Promise<Record<string, any>>;
       readChannels(names: string[], options?: ModbusOptions): Promise<Record<string, any>>;
       readChannel(name: string, options?: ModbusOptions): Promise<any>;
-      /** The current values of parameters (settings), by id. */
+      /** The current values of parameters (settings), by id; options may trail the ids. */
       readParameters(...ids: string[]): Promise<Record<string, any>>;
+      readParameters(...args: [...ids: string[], options: ModbusOptions]): Promise<Record<string, any>>;
       readParameters(ids: string[], options?: ModbusOptions): Promise<Record<string, any>>;
       readParameter(id: string, options?: ModbusOptions): Promise<any>;
       writeChannels(values: Record<string, any>, options?: ModbusOptions): Promise<void>;
@@ -1965,7 +1969,8 @@ declare namespace MqttRpc {
       pattern?: string;
       regex?: boolean;
       "case-sensitive"?: boolean;
-      cursor?: { id: string; direction?: "backward" | "forward" };
+      /** Where to continue from (`id` may be omitted: then from `time` or the tail). */
+      cursor?: { id?: string; direction?: "backward" | "forward" };
       /** Records to return; default and maximum 100. */
       limit?: number;
     }
@@ -2024,8 +2029,8 @@ declare namespace MqttRpc {
     readonly driver: "wb_logs";
     /**
      * Journal entries: the newest first; with `since` (or direction "forward")
-     * the oldest first, from that moment on. At most 100 per call: page on
-     * with `cursor` from the last entry.
+     * the oldest first, from that moment on (the page is turned around for
+     * you). At most 100 per call: page on with `cursor` from the last entry.
      */
     read(options?: Logs.ReadOptions): Promise<Logs.LogRecord[]>;
     /** The last `count` (50) entries of a service. */

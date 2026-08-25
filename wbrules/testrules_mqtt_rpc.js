@@ -289,6 +289,9 @@ MqttRpc.defineService('Demo', {
       return typeof p;
     }
   ),
+  BadSchema: MqttRpc.method({ type: 'object', properties: { x: { type: 'string', pattern: '(' } } }, function () {
+    return 'never';
+  }),
 });
 
 defineRule('rpc_validate', {
@@ -318,6 +321,15 @@ defineRule('rpc_validate', {
     check({ allOf: [{ type: 'number' }, { maximum: 1 }] }, 2);
     check({ type: 'object', properties: { a: { type: 'string' } }, additionalProperties: { type: 'number' } }, { a: 'x', b: 'y' });
     check({ type: 'object', exclusiveMaximum: 1, unknownKeyword: true }, {});
+    check({ type: 'number', multipleOf: 0.1 }, 0.3);
+    check({ enum: [{ a: 1, b: [1, 2] }] }, { b: [1, 2], a: 1 });
+    check({ type: 'object', properties: { 'a/b': { type: 'number' } } }, { 'a/b': 'x' });
+    try {
+      MqttRpc.validate({ type: 'string', pattern: '(' }, 'x');
+      out.push('bad pattern: no error');
+    } catch (e) {
+      out.push('bad pattern: ' + e.name);
+    }
     log('validate: {}', out.join(' | '));
   },
 });

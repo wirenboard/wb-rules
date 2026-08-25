@@ -26,6 +26,10 @@ func (s *MqttRpcHelpersSuite) SetupTest() {
 	s.SetupSkippingDefs("testrules_mqtt_rpc_helpers.js")
 	s.client.Subscribe(s.fakeServer, "/rpc/v1/+/+/+/+")
 	s.Verify("Subscribe -- tst: /rpc/v1/+/+/+/+")
+	// the firmware state as a controller has it before any update: a failure
+	// left from an earlier attempt of slave 5, an old error of slave 6
+	s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[{"port":{"path":"/dev/ttyRS485-1"},"slave_id":5,"progress":30,"type":"firmware","error":{"message":"old failure"}},{"port":{"path":"/dev/ttyRS485-1"},"slave_id":6,"progress":0,"type":"firmware","error":{"message":"recorded error"}}]}`)
+	s.Verify(`tst -> /wb-mqtt-serial/firmware_update/state: [{"devices":[{"port":{"path":"/dev/ttyRS485-1"},"slave_id":5,"progress":30,"type":"firmware","error":{"message":"old failure"}},{"port":{"path":"/dev/ttyRS485-1"},"slave_id":6,"progress":0,"type":"firmware","error":{"message":"recorded error"}}]}] (QoS 1, retained)`)
 }
 
 func (s *MqttRpcHelpersSuite) reply(topic, body string) {
@@ -107,6 +111,21 @@ func (s *MqttRpcHelpersSuite) fakeServer(msg wbgong.MQTTMessage) {
 				s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[{"port":{"path":"/dev/ttyRS485-1"},"slave_id":4,"progress":0,"type":"bootloader","error":null}]}`)
 				time.Sleep(20 * time.Millisecond)
 				s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[]}`)
+			}()
+			return
+		}
+		if slave == 5 {
+			// the file's first firmware call, with a stale failure retained for
+			// this very device: a fresh entry, then the components stage under
+			// a new entry, then done
+			go func() {
+				s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[{"port":{"path":"/dev/ttyRS485-1"},"slave_id":5,"progress":0,"type":"firmware","error":null},{"port":{"path":"/dev/ttyRS485-1"},"slave_id":6,"progress":0,"type":"firmware","error":{"message":"recorded error"}}]}`)
+				time.Sleep(20 * time.Millisecond)
+				s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[{"port":{"path":"/dev/ttyRS485-1"},"slave_id":6,"progress":0,"type":"firmware","error":{"message":"recorded error"}}]}`)
+				time.Sleep(20 * time.Millisecond)
+				s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[{"port":{"path":"/dev/ttyRS485-1"},"slave_id":5,"progress":40,"type":"component","error":null},{"port":{"path":"/dev/ttyRS485-1"},"slave_id":6,"progress":0,"type":"firmware","error":{"message":"recorded error"}}]}`)
+				time.Sleep(20 * time.Millisecond)
+				s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[{"port":{"path":"/dev/ttyRS485-1"},"slave_id":6,"progress":0,"type":"firmware","error":{"message":"recorded error"}}]}`)
 			}()
 			return
 		}
@@ -405,6 +424,13 @@ func (s *MqttRpcHelpersSuite) TestLogs() {
 
 func (s *MqttRpcHelpersSuite) TestStateTopics() {
 	s.trigger("state")
+	// the first update (slave 5) ends its components stage with the wait for a
+	// further stage: fake timer 6 (retained read, Update, wait, stage, wait
+	// came before it) - fire it
+	s.SkipTill("new fake timer: 6, 2000")
+	s.FireTimer(6, s.AdvanceTime(2000*time.Millisecond))
+	s.logged("fw stale-first done: fw0,cmp40")
+	s.logged("wait recorded error: firmware update failed: recorded error")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [scan found: 11,22 progress: 10,60,100] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [scan state: scanning=false] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [fw update done: 10,60,100,fw0,fw50] (QoS 1)")
@@ -412,7 +438,9 @@ func (s *MqttRpcHelpersSuite) TestStateTopics() {
 	s.logged("fw retry done")
 	s.logged("diag: diag.zip")
 	s.JSONEq(`{"scan_type":"standard","port":{"path":"/dev/ttyRS485-1"}}`, string(s.sent("wb-device-manager", "bus-scan", "Start")[0].Params))
-	s.JSONEq(`{"slave_id":3,"port":{"path":"/dev/ttyRS485-1","baud_rate":9600,"parity":"N","data_bits":8,"stop_bits":2}}`, string(s.sent("wb-mqtt-serial", "fw-update", "Update")[0].Params))
+	updates := s.sent("wb-mqtt-serial", "fw-update", "Update")
+	s.JSONEq(`{"slave_id":5,"port":{"path":"/dev/ttyRS485-1","baud_rate":9600,"parity":"N","data_bits":8,"stop_bits":2}}`, string(updates[0].Params))
+	s.JSONEq(`{"slave_id":3,"port":{"path":"/dev/ttyRS485-1","baud_rate":9600,"parity":"N","data_bits":8,"stop_bits":2}}`, string(updates[1].Params))
 	// wb-device-manager over TCP: ClearError takes the port as "host:port", the info call an address block
 	s.JSONEq(`{"slave_id":1,"port":{"path":"10.0.0.5:502"}}`, string(s.sent("wb-device-manager", "fw-update", "ClearError")[0].Params))
 	s.JSONEq(`{"slave_id":1,"port":{"address":"10.0.0.5","port":502},"protocol":"modbus-tcp"}`, string(s.sent("wb-device-manager", "fw-update", "GetFirmwareInfo")[0].Params))

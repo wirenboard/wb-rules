@@ -258,11 +258,16 @@ func (s *MqttRpcSuite) TestSchemaValidatedMethods() {
 		`{"id":7,"error":{"code":-32602,"message":"invalid params: not an object"}}`)
 	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/Union/cli1", `{"id":8,"params":["x"]}`,
 		`{"id":8,"error":{"code":-32602,"message":"invalid params: / must match an alternative","data":[{"path":"/","message":"must match an alternative"}]}}`)
+	// a broken schema is the author's bug: the caller still gets an answer
+	sent := s.request("/rpc/v1/wbrules-scripts/Demo/BadSchema/cli1", `{"id":9,"params":{"x":"a"}}`)
+	s.Verify(sent,
+		regexp.MustCompile(`^wbrules-log -> /wbrules/log/error: \[MqttRpc: wbrules-scripts/Demo/BadSchema: MqttRpc: invalid pattern in schema at /x: `),
+		regexp.MustCompile(`^wbrules-log -> /rpc/v1/wbrules-scripts/Demo/BadSchema/cli1/reply: \[\{"id":9,"error":\{"code":-32603,"message":"params schema is invalid: `))
 }
 
 func (s *MqttRpcSuite) TestValidateFunction() {
 	s.publish("/devices/rpctest/controls/validate/on", "1", "rpctest/validate")
-	s.SkipTill(`wbrules-log -> /wbrules/log/info: [validate: ok | /:must be number, got string | ok | /:must be integer, got number | ok | /:must be one of [1,"a"] | /:must be at most 2 characters | /:must have at least 1 items | /1:must be boolean, got number | /:must match exactly one alternative | /:must not match the excluded schema | /:must be <= 1 | /b:must be number, got string | ok] (QoS 1)`)
+	s.SkipTill(`wbrules-log -> /wbrules/log/info: [validate: ok | /:must be number, got string | ok | /:must be integer, got number | ok | /:must be one of [1,"a"] | /:must be at most 2 characters | /:must have at least 1 items | /1:must be boolean, got number | /:must match exactly one alternative | /:must not match the excluded schema | /:must be <= 1 | /b:must be number, got string | ok | ok | ok | /a~1b:must be number, got string | bad pattern: TypeError] (QoS 1)`)
 }
 
 var servedPresenceTopics = []string{
@@ -277,6 +282,7 @@ var servedPresenceTopics = []string{
 	"/rpc/v1/wbrules-scripts/Demo/SetTarget",
 	"/rpc/v1/wbrules-scripts/Demo/Loose",
 	"/rpc/v1/wbrules-scripts/Demo/Union",
+	"/rpc/v1/wbrules-scripts/Demo/BadSchema",
 	"/rpc/v1/custom-driver/Other/Ping",
 }
 
