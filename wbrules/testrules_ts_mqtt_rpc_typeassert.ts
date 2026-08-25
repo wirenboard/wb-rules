@@ -269,8 +269,12 @@ async function __mqttRpcHelpers() {
   const one: number[] = await meter.readInput(0x10);
   const coils: boolean[] = await meter.readCoils(0, 8, { totalTimeout: 5000 });
   await meter.writeHolding(0x20, 4660);
-  await meter.writeHolding(0x21, [1, 2, 3]);
+  await meter.writeHoldings(0x21, [1, 2, 3]);
   await meter.writeCoil(5, true);
+  await meter.writeCoils(6, [true, false]);
+  // @ts-expect-error - several registers go through writeHoldings
+  await meter.writeHolding(0x21, [1, 2, 3]);
+  // @ts-expect-error - several coils go through writeCoils
   await meter.writeCoil(6, [true, false]);
   const hex: string = await meter.modbus(23, 0, { count: 2, data: "00010002" });
   const settings = await meter.settings({ force: true });

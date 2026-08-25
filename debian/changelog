@@ -36,8 +36,8 @@ wb-rules (2.47.0~quickjs2.1) unstable; urgency=medium
     cleanups may execute JavaScript. Everything else is JavaScript, per
     rule file.
   * The services come with helpers on top of the raw RPC methods (which
-    stay under MqttRpc.<service>.rpc): MqttRpc.serial.device(id).readHolding/
-    writeHolding/readCoils/settings/read/write/withPollingPaused/
+    stay under MqttRpc.<service>.rpc): MqttRpc.serial.device(id).readHolding/writeHolding(s)/
+    readCoils/writeCoil(s)/settings/read/write/withPollingPaused/
     updateFirmware (Modbus registers as numbers, devices by MQTT id or
     port+address, Modbus exceptions as ModbusError), serial.devices()/
     scan()/probe()/setup(), db.query()/lastValue()/average()/channels()

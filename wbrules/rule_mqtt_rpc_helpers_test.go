@@ -259,7 +259,7 @@ func (s *MqttRpcHelpersSuite) logged(line string) {
 func (s *MqttRpcHelpersSuite) TestModbusByDeviceId() {
 	s.trigger("modbus")
 	// what went on the wire: device_id + Modbus header, hex data, no port fields
-	s.logged("modbus checks: true,true,true")
+	s.logged("modbus checks: true,true,true,true,true")
 	loads := s.sent("wb-mqtt-serial", "port", "Load")
 	s.Require().Len(loads, 8)
 	s.JSONEq(`{"device_id":"wb-map12e_1","function":3,"address":128,"count":2,"format":"HEX"}`, string(loads[0].Params))
@@ -280,7 +280,7 @@ func (s *MqttRpcHelpersSuite) TestModbusResultsDecoded() {
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [coils: [true,false,true,false,false,false,false,false,false,true]] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [writes done] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [exception: ModbusError code=2 modbus=true] (QoS 1)")
-	s.logged("modbus checks: true,true,true")
+	s.logged("modbus checks: true,true,true,true,true")
 }
 
 func (s *MqttRpcHelpersSuite) TestModbusOnPorts() {

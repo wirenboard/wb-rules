@@ -34,9 +34,9 @@ defineRule('help_modbus', {
       var coils = await d.readCoils(0, 10);
       log('coils: {}', JSON.stringify(coils));
       await d.writeHolding(0x20, 4660);
-      await d.writeHolding(0x21, [1, 65535]);
+      await d.writeHoldings(0x21, [1, 65535]);
       await d.writeCoil(5, true);
-      await d.writeCoil(6, [true, false, false, true, true, false, false, false, true]);
+      await d.writeCoils(6, [true, false, false, true, true, false, false, false, true]);
       log('writes done');
       try {
         await d.readHolding(0x9999, 1);
@@ -52,6 +52,18 @@ defineRule('help_modbus', {
       }
       try {
         await d.writeHolding(0, 70000);
+      } catch (e) {
+        checks.push(e instanceof TypeError);
+      }
+      try {
+        // @ts-expect-error - several values go through writeHoldings (the runtime check is what is tested)
+        await d.writeHolding(0, [1, 2]);
+      } catch (e) {
+        checks.push(e instanceof TypeError);
+      }
+      try {
+        // @ts-expect-error - one coil goes through writeCoil (the runtime check is what is tested)
+        await d.writeCoils(0, true);
       } catch (e) {
         checks.push(e instanceof TypeError);
       }

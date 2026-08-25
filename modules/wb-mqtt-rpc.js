@@ -1556,28 +1556,34 @@ SerialDevice.prototype.readDiscrete = function (address, count, options) {
     return bitsFromHex(hex, n);
   });
 };
-// one value -> function 6, an array -> function 16
+// one register -> function 6 (an unsigned 16-bit value)
 SerialDevice.prototype.writeHolding = function (address, value, options) {
-  if (Array.isArray(value)) {
-    checkCount(value.length, 123);
-    return this.modbus(16, address, assign({ count: value.length, data: value.map(hexOfU16).join('') }, options)).then(
-      function () {}
-    );
-  }
+  if (Array.isArray(value)) throw new TypeError('MqttRpc: writeHolding takes one value; use writeHoldings for several');
   return this.modbus(6, address, assign({ data: hexOfU16(value) }, options)).then(function () {});
 };
-// one boolean -> function 5, an array -> function 15
+// several registers -> function 16
+SerialDevice.prototype.writeHoldings = function (address, values, options) {
+  if (!Array.isArray(values)) throw new TypeError('MqttRpc: writeHoldings takes an array of values');
+  checkCount(values.length, 123);
+  return this.modbus(16, address, assign({ count: values.length, data: values.map(hexOfU16).join('') }, options)).then(
+    function () {}
+  );
+};
+// one coil -> function 5
 SerialDevice.prototype.writeCoil = function (address, value, options) {
-  if (Array.isArray(value)) {
-    checkCount(value.length, 1968);
-    var bools = value.map(function (v) {
-      return !!v;
-    });
-    return this.modbus(15, address, assign({ count: bools.length, data: hexOfBits(bools) }, options)).then(
-      function () {}
-    );
-  }
+  if (Array.isArray(value)) throw new TypeError('MqttRpc: writeCoil takes one value; use writeCoils for several');
   return this.modbus(5, address, assign({ data: value ? 'ff00' : '0000' }, options)).then(function () {});
+};
+// several coils -> function 15
+SerialDevice.prototype.writeCoils = function (address, values, options) {
+  if (!Array.isArray(values)) throw new TypeError('MqttRpc: writeCoils takes an array of values');
+  checkCount(values.length, 1968);
+  var bools = values.map(function (v) {
+    return !!v;
+  });
+  return this.modbus(15, address, assign({ count: bools.length, data: hexOfBits(bools) }, options)).then(
+    function () {}
+  );
 };
 // arbitrary bytes through the port (explicit ports only); hex in, hex out
 SerialDevice.prototype.raw = function (hex, responseSize, options) {

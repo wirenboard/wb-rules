@@ -1872,8 +1872,9 @@ const [urmsHi, urmsLo] = await meter.readHolding(0x1400, 2);   // функция
 const inputs = await meter.readInput(0x10, 4);                   // функция 4
 const coils = await meter.readCoils(0, 8);                        // функция 1 -> boolean[]
 await meter.writeHolding(0x60, 1);                                // функция 6
-await meter.writeHolding(0x60, [1, 2, 3]);                        // функция 16
-await meter.writeCoil(5, true);                                   // функция 5 (массив -> 15)
+await meter.writeHoldings(0x60, [1, 2, 3]);                       // функция 16
+await meter.writeCoil(5, true);                                   // функция 5
+await meter.writeCoils(5, [true, false, true]);                   // функция 15
 
 // то же для устройства, которого нет в конфиге
 const relay = MqttRpc.serial.device({ port: '/dev/ttyRS485-2', slaveId: 12 });

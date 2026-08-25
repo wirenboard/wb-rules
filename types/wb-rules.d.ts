@@ -1605,10 +1605,14 @@ declare namespace MqttRpc {
       readCoils(address: number, count?: number, options?: ModbusOptions): Promise<boolean[]>;
       /** Discrete inputs (function 2). */
       readDiscrete(address: number, count?: number, options?: ModbusOptions): Promise<boolean[]>;
-      /** One register (function 6) or several (function 16), unsigned 16-bit. */
-      writeHolding(address: number, value: number | number[], options?: ModbusOptions): Promise<void>;
-      /** One coil (function 5) or several (function 15). */
-      writeCoil(address: number, value: boolean | boolean[], options?: ModbusOptions): Promise<void>;
+      /** One register (function 6), an unsigned 16-bit value. */
+      writeHolding(address: number, value: number, options?: ModbusOptions): Promise<void>;
+      /** Several registers (function 16), up to 123 unsigned 16-bit values. */
+      writeHoldings(address: number, values: number[], options?: ModbusOptions): Promise<void>;
+      /** One coil (function 5). */
+      writeCoil(address: number, value: boolean, options?: ModbusOptions): Promise<void>;
+      /** Several coils (function 15), up to 1968. */
+      writeCoils(address: number, values: boolean[], options?: ModbusOptions): Promise<void>;
       /** Any Modbus function; resolves with the response data as hex (empty for writes). Function 23 needs writeAddress/writeCount/data. */
       modbus(
         fn: 1 | 2 | 3 | 4 | 5 | 6 | 15 | 16 | 23,

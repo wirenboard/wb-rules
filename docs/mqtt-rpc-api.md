@@ -331,22 +331,23 @@ const relays = await relay.readCoils(0, 6);  // [true, false, ...]
 const inputs = await relay.readDiscrete(0, 8);
 ```
 
-##### `device.writeHolding(address, value | values[][, options]) → void`
+##### `device.writeHolding(address, value[, options]) → void` / `device.writeHoldings(address, values[][, options]) → void`
 
-Одно значение — функция 6, массив — функция 16 (до 123 регистров).
+Один регистр — функция 6; несколько (массив, до 123 регистров) — функция 16.
+Массив в `writeHolding` — `TypeError`.
 
 ```javascript
-await relay.writeHolding(0x60, 1);             // функция 6
-await meter.writeHolding(0x1000, [0, 0, 500]); // функция 16
+await relay.writeHolding(0x60, 1);              // функция 6
+await meter.writeHoldings(0x1000, [0, 0, 500]); // функция 16
 ```
 
-##### `device.writeCoil(address, bool | bools[][, options]) → void`
+##### `device.writeCoil(address, bool[, options]) → void` / `device.writeCoils(address, bools[][, options]) → void`
 
-Одно значение — функция 5, массив — функция 15 (до 1968 бит).
+Один выход — функция 5; несколько (массив, до 1968 бит) — функция 15.
 
 ```javascript
-await relay.writeCoil(0, true);                       // функция 5
-await relay.writeCoil(0, [true, false, true, true]);  // функция 15
+await relay.writeCoil(0, true);                        // функция 5
+await relay.writeCoils(0, [true, false, true, true]);  // функция 15
 ```
 
 ##### `device.modbus(fn, address[, { count, data, writeAddress, writeCount, …options }]) → string`
