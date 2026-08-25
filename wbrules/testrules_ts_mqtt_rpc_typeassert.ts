@@ -278,13 +278,23 @@ async function __mqttRpcHelpers() {
   const data = await meter.read({ channels: ["Urms L1"] });
   const urms: any = data.channels["Urms L1"];
   await meter.write({ parameters: { baud_rate: 96 } });
+  const oneChannel: any = await meter.readChannel("Urms L1");
+  const some: Record<string, any> = await meter.readChannels("Urms L1", "Irms L1");
+  const listed: Record<string, any> = await meter.readChannels(["Urms L1"], { totalTimeout: 3000 });
+  const baud: any = await meter.readParameter("baud_rate");
+  await meter.writeChannel("K1", 1);
+  await meter.writeChannels({ K1: 0, K2: 1 });
+  await meter.setParameter("in1_mode", 2);
+  await meter.setParameters({ in2_mode: 3 });
+  const rw: string = await meter.modbus(23, 0x10, { count: 2, writeAddress: 0x20, writeCount: 1, data: "1234" });
   await meter.pausePolling();
   await meter.resumePolling();
   const n: number = await meter.withPollingPaused(async (d) => (await d.readHolding(0))[0]);
   const fw = await meter.firmwareInfo();
   const hasUpdate: boolean = fw.fw_has_update;
-  await meter.updateFirmware({ type: "bootloader", onProgress: (e) => log("{}%", e.progress) });
-  const ok: "Ok" | void = await meter.updateFirmware({ wait: false });
+  await meter.updateFirmware({ type: "bootloader", onProgress: (e) => log("{}% on {}", e.progress, e.port.path) });
+  const ok: "Ok" = await meter.updateFirmware({ wait: false });
+  const done: void = await meter.updateFirmware();
   const where = await meter.resolve();
   const onPort = MqttRpc.serial.device({ port: "/dev/ttyRS485-1", slaveId: 12, deviceType: "WB-MR6C" });
   const raw: string = await onPort.raw("0a03008000018499", 8);
@@ -308,6 +318,10 @@ async function __mqttRpcHelpers() {
   const devices = await MqttRpc.serial.devices();
   const idOfFirst: string | undefined = devices[0].id;
   const enabled: boolean = devices[0].enabled;
+  // a listed device feeds back into a handle
+  if (devices[0].slaveId !== undefined) {
+    await MqttRpc.serial.device({ port: devices[0].port, slaveId: devices[0].slaveId }).readHolding(0);
+  }
   const ports = await MqttRpc.serial.ports();
   const types = await MqttRpc.serial.deviceTypes({ lang: "ru" });
   const group: string = types[0].group;
@@ -315,8 +329,7 @@ async function __mqttRpcHelpers() {
   await MqttRpc.serial.uploadTemplate("my.json", { device: {} }, { force: true });
   await MqttRpc.serial.deleteTemplate("MY-TYPE");
   // scanning and setup
-  const scan = await MqttRpc.serial.scan("/dev/ttyRS485-1", { mode: "all" });
-  const found: MqttRpc.Serial.ScannedDevice[] = scan.devices;
+  const found: MqttRpc.Serial.ScannedDevice[] = await MqttRpc.serial.scan("/dev/ttyRS485-1", { mode: "all" });
   const probed = await MqttRpc.serial.probe({ path: "/dev/ttyRS485-1", baudRate: 115200 }, 7);
   await MqttRpc.serial.setup("/dev/ttyRS485-1", [{ sn: 4265607, set: { slaveId: 12, parity: "E" } }]);
   await MqttRpc.serial.updateFirmware("/dev/ttyRS485-1", 12, { onProgress: (e) => log("{}", e.progress) });

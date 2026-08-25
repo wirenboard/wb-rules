@@ -1884,13 +1884,17 @@ const hex = await relay.raw('0c03008000018499', 8);   // произвольны�
 Произвольная функция: `device.modbus(fn, address, { count, data })` —
 hex-строка данных ответа.
 
-Через драйвер, по именам из шаблона:
+Через драйвер, по именам каналов и параметров из шаблона:
 
 ```javascript
 const meter = MqttRpc.serial.device('wb-map12e_1');
-const settings = await meter.settings({ force: true });   // parameters, fw, model
-const data = await meter.read({ channels: ['Urms L1', 'Irms L1'] });
-await meter.write({ parameters: { baud_rate: 96 } });
+const urms = await meter.readChannel('Urms L1');                       // одно значение
+const values = await meter.readChannels('Urms L1', 'Irms L1');         // { 'Urms L1': 230.1, 'Irms L1': 0.5 }
+const baud = await meter.readParameter('baud_rate');
+await meter.writeChannel('K1', 1);
+await meter.setParameters({ baud_rate: 96, in1_mode: 2 });
+const settings = await meter.settings({ force: true });                // все параметры + fw, model
+const both = await meter.read({ channels: ['Urms L1'], parameters: ['baud_rate'] });   // одним запросом
 
 // остановить опрос на время прямой работы с устройством (опрос вернётся даже при ошибке)
 await meter.withPollingPaused(async () => {
@@ -1911,7 +1915,7 @@ const ports = await MqttRpc.serial.ports();
 Сканирование и настройка адресов (Fast Modbus):
 
 ```javascript
-const { devices } = await MqttRpc.serial.scan('/dev/ttyRS485-1');
+const found = await MqttRpc.serial.scan('/dev/ttyRS485-1');   // ScannedDevice[]; прерванное сканирование — исключение с полем devices
 await MqttRpc.serial.setup('/dev/ttyRS485-1', [{ sn: 4265607, set: { slaveId: 12 } }]);
 ```
 
@@ -1944,7 +1948,7 @@ const { values } = await MqttRpc.db.query('wb-adc/Vin', { last: 3600000 });
 for (const r of values) log('{} {}', r.time.toISOString(), r.value);
 
 const last = await MqttRpc.db.lastValue('wb-adc/Vin');      // запись или undefined
-const avg = await MqttRpc.db.average('wb-adc/Vin', { last: 86400000 });
+const avg = await MqttRpc.db.average('wb-adc/Vin', { last: 86400000 });   // среднее по ~100 интервалам, усреднённым базой
 const channels = await MqttRpc.db.channels();                 // [{ channel, items, lastTime }]
 ```
 
@@ -1974,10 +1978,13 @@ const archive = await MqttRpc.diag.collect();                        // { basena
 const found = await MqttRpc.deviceManager.scan({ port: '/dev/ttyRS485-1', onProgress: (s) => log('{}%', s.progress) });
 ```
 
-`logs.read` возвращает не больше 100 записей, новые первыми (`cursor`
-первой/последней записи и `direction` — для листания); `diag.collect` ждёт
-появления архива; `deviceManager.scan` — окончания сканирования (состояние
-доступно как `deviceManager.state()`).
+`logs.read` возвращает не больше 100 записей: без `since` — новые первыми
+(с конца журнала), с `since` — старые первыми, начиная с этого момента;
+`cursor` первой/последней записи и `direction` — для листания.
+`diag.collect` ждёт появления архива; `deviceManager.scan` — окончания
+сканирования (состояние доступно как `deviceManager.state()`).
+
+Полное формальное описание всех методов — в [docs/mqtt-rpc-api.md](docs/mqtt-rpc-api.md).
 
 ### Свои методы
 

@@ -96,22 +96,38 @@ func (s *MqttRpcHelpersSuite) fakeServer(msg wbgong.MQTTMessage) {
 		ok(`"Ok"`)
 		port, _ := p["port"].(map[string]any)
 		slave := p["slave_id"].(float64)
+		// the state topic lists devices as {"port": {"path": ...}, ...}
+		if slave == 4 && p["type"] == nil {
+			go s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[{"port":{"path":"/dev/ttyRS485-1"},"slave_id":4,"progress":10,"type":"firmware","error":{"message":"device not responding"}}]}`)
+			return
+		}
 		if slave == 4 {
-			go s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[{"port":"/dev/ttyRS485-1","slave_id":4,"progress":10,"type":"firmware","error":{"message":"device not responding"}}]}`)
+			// a retry while the old error is still listed: a fresh entry, then success
+			go func() {
+				s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[{"port":{"path":"/dev/ttyRS485-1"},"slave_id":4,"progress":0,"type":"bootloader","error":null}]}`)
+				time.Sleep(20 * time.Millisecond)
+				s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[]}`)
+			}()
 			return
 		}
 		// progress 0 -> 50 -> done (entry gone), in order
 		go func() {
-			s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[{"port":"`+port["path"].(string)+`","slave_id":3,"progress":0,"type":"firmware","error":null}]}`)
+			s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[{"port":{"path":"`+port["path"].(string)+`"},"slave_id":3,"progress":0,"type":"firmware","error":null}]}`)
 			time.Sleep(20 * time.Millisecond)
-			s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[{"port":"/dev/ttyRS485-1","slave_id":3,"progress":50,"type":"firmware","error":null}]}`)
+			s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[{"port":{"path":"/dev/ttyRS485-1"},"slave_id":3,"progress":50,"type":"firmware","error":null}]}`)
 			time.Sleep(20 * time.Millisecond)
 			s.retained("/wb-mqtt-serial/firmware_update/state", `{"devices":[]}`)
 		}()
+	case "wb-device-manager/fw-update/ClearError", "wb-device-manager/fw-update/GetFirmwareInfo":
+		ok(`"Ok"`)
 	case "wb-mqtt-serial/device/LoadConfig":
 		ok(`{"parameters":{"baud_rate":96,"in1_mode":1},"fw":"1.2.3","model":"WB-MAP12E"}`)
 	case "wb-mqtt-serial/device/Load":
-		ok(`{"channels":{"Urms L1":230.1},"parameters":{},"readonly":["Urms L1"]}`)
+		if p["parameters"] != nil {
+			ok(`{"channels":{},"parameters":{"baud_rate":96},"readonly":[]}`)
+		} else {
+			ok(`{"channels":{"Urms L1":230.1,"Irms L1":0.5},"parameters":{},"readonly":["Urms L1"]}`)
+		}
 	case "wb-mqtt-serial/device/Set", "wb-mqtt-serial/device/SetPoll", "wb-mqtt-serial/port/Setup":
 		ok(`{}`)
 	case "wb-mqtt-serial/device/Probe":
@@ -121,7 +137,11 @@ func (s *MqttRpcHelpersSuite) fakeServer(msg wbgong.MQTTMessage) {
 			ok(`{"sn":"4265607","device_signature":"WB-MR6C","cfg":{"slave_id":7,"data_bits":8,"baud_rate":115200}}`)
 		}
 	case "wb-mqtt-serial/port/Scan":
-		ok(`{"devices":[{"sn":"1"},{"sn":"2"}]}`)
+		if p["path"] == "/dev/ttyRS485-3" {
+			ok(`{"devices":[{"sn":"9"}],"error":"port busy"}`)
+		} else {
+			ok(`{"devices":[{"sn":"1"},{"sn":"2"}]}`)
+		}
 	case "db_logger/history/get_channels":
 		ok(`{"channels":{"wb-adc/Vin":{"items":100,"last_ts":1756000000},"wb-adc/A1":{"items":3,"last_ts":1755990000}}}`)
 	case "db_logger/history/get_values":
@@ -130,7 +150,8 @@ func (s *MqttRpcHelpersSuite) fakeServer(msg wbgong.MQTTMessage) {
 		if pair[1] == "A1" {
 			ok(`{"values":[{"i":7,"c":2,"t":1755990000.5,"v":"1.5","retain":false}]}`)
 		} else if p["max_records"] != nil {
-			ok(`{"values":[{"i":9,"c":1,"t":1756000000,"v":"24.25","min":"24.1","max":"24.4","retain":false}]}`)
+			// the database averages per epoch-aligned bucket: a window usually spans two
+			ok(`{"values":[{"i":8,"c":1,"t":1755999990,"v":"24.0","min":"23.9","max":"24.1","retain":false},{"i":9,"c":1,"t":1756000000,"v":"24.5","min":"24.4","max":"24.6","retain":false}]}`)
 		} else {
 			ok(`{"values":[{"i":8,"c":1,"t":1755999999.25,"v":"24.3","retain":false},{"i":9,"c":1,"t":1756000000,"v":"24.4","retain":true}],"has_more":true}`)
 		}
@@ -248,16 +269,22 @@ func (s *MqttRpcHelpersSuite) TestModbusOnPorts() {
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [port holding: [4660,1]] (QoS 1)")
 	s.logged("setup done")
 	loads := s.sent("wb-mqtt-serial", "port", "Load")
-	s.Require().Len(loads, 4)
+	s.Require().Len(loads, 5)
 	// a bare path gets the 9600 N 8 2 defaults; the budget flows into total_timeout
 	s.JSONEq(`{"path":"/dev/ttyRS485-2","baud_rate":9600,"parity":"N","data_bits":8,"stop_bits":2,"protocol":"modbus","slave_id":7,"function":3,"address":128,"count":2,"format":"HEX","total_timeout":3000}`, string(loads[0].Params))
 	// "host:port" is Modbus TCP; rtuOverTcp keeps RTU frames over the socket
 	s.JSONEq(`{"ip":"10.0.0.5","port":502,"protocol":"modbus-tcp","slave_id":1,"function":4,"address":1,"count":1,"format":"HEX"}`, string(loads[1].Params))
 	s.JSONEq(`{"ip":"10.0.0.6","port":502,"protocol":"modbus","slave_id":2,"function":4,"address":1,"count":1,"format":"HEX"}`, string(loads[2].Params))
 	s.JSONEq(`{"path":"/dev/ttyRS485-2","baud_rate":9600,"parity":"N","data_bits":8,"stop_bits":2,"protocol":"raw","msg":"0a03008000018499","response_size":8,"format":"HEX"}`, string(loads[3].Params))
+	// function 23 carries the write side
+	s.JSONEq(`{"path":"/dev/ttyRS485-2","baud_rate":9600,"parity":"N","data_bits":8,"stop_bits":2,"protocol":"modbus","slave_id":7,"function":23,"address":16,"count":2,"write_address":32,"write_count":1,"msg":"1234","format":"HEX"}`, string(loads[4].Params))
+	// a Modbus TCP device: settings say modbus_mode TCP, the probe modbus-tcp; RTU over TCP stays modbus
+	s.JSONEq(`{"ip":"10.0.0.5","port":502,"slave_id":1,"device_type":"WB-MR6C","modbus_mode":"TCP"}`, string(s.sent("wb-mqtt-serial", "device", "LoadConfig")[0].Params))
 	probes := s.sent("wb-mqtt-serial", "device", "Probe")
-	s.Require().Len(probes, 2)
-	s.JSONEq(`{"path":"/dev/ttyRS485-2","baud_rate":115200,"parity":"N","data_bits":8,"stop_bits":2,"slave_id":7}`, string(probes[0].Params))
+	s.Require().Len(probes, 4)
+	s.JSONEq(`{"ip":"10.0.0.5","port":502,"slave_id":1,"protocol":"modbus-tcp"}`, string(probes[0].Params))
+	s.JSONEq(`{"ip":"10.0.0.6","port":502,"slave_id":2,"protocol":"modbus"}`, string(probes[1].Params))
+	s.JSONEq(`{"path":"/dev/ttyRS485-2","baud_rate":115200,"parity":"N","data_bits":8,"stop_bits":2,"slave_id":7}`, string(probes[2].Params))
 	s.JSONEq(`{"path":"/dev/ttyRS485-2","baud_rate":9600,"parity":"N","data_bits":8,"stop_bits":2,"mode":"all"}`, string(s.sent("wb-mqtt-serial", "port", "Scan")[0].Params))
 	// setup items: sn addressing, the new parity as the driver's number code
 	s.JSONEq(`{"path":"/dev/ttyRS485-2","items":[{"sn":4265607,"cfg":{"slave_id":12,"parity":2}}]}`, string(s.sent("wb-mqtt-serial", "port", "Setup")[0].Params))
@@ -269,26 +296,39 @@ func (s *MqttRpcHelpersSuite) TestPortResultsDecoded() {
 	s.SkipTill(`wbrules-log -> /wbrules/log/info: [probe: {"sn":"4265607","device_signature":"WB-MR6C","cfg":{"slave_id":7,"data_bits":8,"baud_rate":115200}}] (QoS 1)`)
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [probe empty: null] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [scan: 2 devices] (QoS 1)")
+	s.logged("scan error: scan of /dev/ttyRS485-3 failed: port busy partial=1")
 	s.logged("setup done")
 }
 
 func (s *MqttRpcHelpersSuite) TestDeviceList() {
 	s.trigger("devices")
 	// ids: explicit "id" wins, else "<mqtt-id>_<slave_id>"; disabled follows the device
-	s.SkipTill("wbrules-log -> /wbrules/log/info: [devices: wb-map12e_1:WB-MAP12E:1:/dev/ttyRS485-1:true relays:WB-MR6C:12:/dev/ttyRS485-1:false wb-mr6c_3:WB-MR6C:3:10.0.0.5:true] (QoS 1)")
+	s.SkipTill("wbrules-log -> /wbrules/log/info: [devices: wb-map12e_1:WB-MAP12E:1:number:/dev/ttyRS485-1:true relays:WB-MR6C:12:number:/dev/ttyRS485-1:false wb-mr6c_3:WB-MR6C:3:number:10.0.0.5:true] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [types: WB-MAP12E@Wiren Board WB-MR6C@Wiren Board] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [ports: 2] (QoS 1)")
-	// a device id resolves to its port + slave id for the firmware service
+	// a device id resolves to its port + numeric slave id for the firmware service
 	s.logged("fw: 1.2.3 update=true")
-	s.JSONEq(`{"slave_id":"1","port":{"path":"/dev/ttyRS485-1","baud_rate":9600,"parity":"N","data_bits":8,"stop_bits":2}}`, string(s.sent("wb-mqtt-serial", "fw-update", "GetFirmwareInfo")[0].Params))
+	s.JSONEq(`{"slave_id":1,"port":{"path":"/dev/ttyRS485-1","baud_rate":9600,"parity":"N","data_bits":8,"stop_bits":2}}`, string(s.sent("wb-mqtt-serial", "fw-update", "GetFirmwareInfo")[0].Params))
+	// the listed device fed back into a handle: its port block and numeric address
+	s.JSONEq(`{"path":"/dev/ttyRS485-1","baud_rate":9600,"parity":"N","data_bits":8,"stop_bits":2,"protocol":"modbus","slave_id":1,"function":3,"address":0,"count":1,"format":"HEX"}`, string(s.sent("wb-mqtt-serial", "port", "Load")[0].Params))
 }
 
 func (s *MqttRpcHelpersSuite) TestDeviceOperations() {
 	s.trigger("deviceOps")
 	s.SkipTill(`wbrules-log -> /wbrules/log/info: [settings: {"baud_rate":96,"in1_mode":1}] (QoS 1)`)
-	s.SkipTill(`wbrules-log -> /wbrules/log/info: [read: {"Urms L1":230.1}] (QoS 1)`)
+	s.SkipTill(`wbrules-log -> /wbrules/log/info: [read: {"Urms L1":230.1,"Irms L1":0.5}] (QoS 1)`)
+	s.logged(`channel: 230.1 channels: {"Urms L1":230.1,"Irms L1":0.5} parameter: 96`)
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [paused result: 42 order: inside] (QoS 1)")
 	s.logged("paused rethrow: boom")
+	loads := s.sent("wb-mqtt-serial", "device", "Load")
+	s.JSONEq(`{"device_id":"wb-map12e_1","channels":["Urms L1"]}`, string(loads[1].Params))
+	s.JSONEq(`{"device_id":"wb-map12e_1","channels":["Urms L1","Irms L1"]}`, string(loads[2].Params))
+	s.JSONEq(`{"device_id":"wb-map12e_1","parameters":["baud_rate"]}`, string(loads[3].Params))
+	sets := s.sent("wb-mqtt-serial", "device", "Set")
+	s.JSONEq(`{"device_id":"wb-map12e_1","channels":{"K1":1}}`, string(sets[1].Params))
+	s.JSONEq(`{"device_id":"wb-map12e_1","channels":{"K1":0,"K2":1},"total_timeout":2000}`, string(sets[2].Params))
+	s.JSONEq(`{"device_id":"wb-map12e_1","parameters":{"in1_mode":2}}`, string(sets[3].Params))
+	s.JSONEq(`{"device_id":"wb-map12e_1","parameters":{"in2_mode":3}}`, string(sets[4].Params))
 	s.JSONEq(`{"device_id":"wb-map12e_1","force":true}`, string(s.sent("wb-mqtt-serial", "device", "LoadConfig")[0].Params))
 	s.JSONEq(`{"device_id":"wb-map12e_1","channels":["Urms L1"]}`, string(s.sent("wb-mqtt-serial", "device", "Load")[0].Params))
 	s.JSONEq(`{"device_id":"wb-map12e_1","parameters":{"baud_rate":96}}`, string(s.sent("wb-mqtt-serial", "device", "Set")[0].Params))
@@ -309,6 +349,7 @@ func (s *MqttRpcHelpersSuite) TestHistory() {
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [last: 24.4 2025-08-24T01:46:40.000Z] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [last none: undefined] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [avg: 24.25] (QoS 1)")
+	s.SkipTill("wbrules-log -> /wbrules/log/info: [last+since: true] (QoS 1)")
 	// the wire: ver 1 with milliseconds, seconds from Date/ms, one channel per request
 	s.logged("bad channel: true")
 	q := s.params("db_logger", "history", "get_values", 0)
@@ -322,8 +363,9 @@ func (s *MqttRpcHelpersSuite) TestHistory() {
 	s.Equal(float64(1756080000), q["timestamp"].(map[string]any)["lt"])
 	s.Equal([]any{[]any{"wb-adc", "Vin"}}, q["channels"])
 	s.Equal([]any{[]any{"wb-adc", "A1"}}, s.params("db_logger", "history", "get_values", 2)["channels"])
+	// average: up to 100 server-side buckets, averaged again here
 	avg := s.params("db_logger", "history", "get_values", 4)
-	s.Equal(float64(1), avg["max_records"])
+	s.Equal(float64(100), avg["max_records"])
 	s.Nil(avg["limit"])
 }
 
@@ -356,6 +398,9 @@ func (s *MqttRpcHelpersSuite) TestLogs() {
 	s.logged("services: wb-rules.service,wb-mqtt-serial.service boots: b1 2025-08-12T12:00:00.000Z")
 	s.JSONEq(`{"service":"wb-rules.service","limit":2}`, string(s.sent("wb_logs", "logs", "Load")[0].Params))
 	s.JSONEq(`{"time":1787565600,"levels":[3],"pattern":"x","case-sensitive":false,"cursor":{"id":"c1","direction":"forward"},"limit":5}`, string(s.sent("wb_logs", "logs", "Load")[1].Params))
+	// since alone walks forward from that moment (the service's default is backward)
+	s.JSONEq(`{"time":1787565600,"cursor":{"direction":"forward"},"limit":3}`, string(s.sent("wb_logs", "logs", "Load")[2].Params))
+	s.JSONEq(`{"cursor":{"id":"c2","direction":"backward"},"limit":3}`, string(s.sent("wb_logs", "logs", "Load")[3].Params))
 }
 
 func (s *MqttRpcHelpersSuite) TestStateTopics() {
@@ -364,9 +409,13 @@ func (s *MqttRpcHelpersSuite) TestStateTopics() {
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [scan state: scanning=false] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [fw update done: 10,60,100,fw0,fw50] (QoS 1)")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [fw update failed: firmware update failed: device not responding state=10] (QoS 1)")
+	s.logged("fw retry done")
 	s.logged("diag: diag.zip")
 	s.JSONEq(`{"scan_type":"standard","port":{"path":"/dev/ttyRS485-1"}}`, string(s.sent("wb-device-manager", "bus-scan", "Start")[0].Params))
 	s.JSONEq(`{"slave_id":3,"port":{"path":"/dev/ttyRS485-1","baud_rate":9600,"parity":"N","data_bits":8,"stop_bits":2}}`, string(s.sent("wb-mqtt-serial", "fw-update", "Update")[0].Params))
+	// wb-device-manager over TCP: ClearError takes the port as "host:port", the info call an address block
+	s.JSONEq(`{"slave_id":1,"port":{"path":"10.0.0.5:502"}}`, string(s.sent("wb-device-manager", "fw-update", "ClearError")[0].Params))
+	s.JSONEq(`{"slave_id":1,"port":{"address":"10.0.0.5","port":502},"protocol":"modbus-tcp"}`, string(s.sent("wb-device-manager", "fw-update", "GetFirmwareInfo")[0].Params))
 }
 
 func (s *MqttRpcHelpersSuite) TestAvailability() {

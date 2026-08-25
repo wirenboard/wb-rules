@@ -50,6 +50,9 @@ wb-rules (2.47.0~quickjs2.1) unstable; urgency=medium
     handler runs (-32602 with the problems in data), and TypeScript types
     the handler's params from the schema in .ts and .js files alike;
     MqttRpc.validate(schema, value) exposes the same check.
+  * Device handles read and write channels/parameters by name
+    (readChannel(s)/readParameter(s)/writeChannel(s)/setParameter(s));
+    docs/mqtt-rpc-api.md is the full reference of the module's API.
 
  -- Evgeny Boger <boger@wirenboard.com>  Tue, 25 Aug 2026 01:00:00 +0400
 

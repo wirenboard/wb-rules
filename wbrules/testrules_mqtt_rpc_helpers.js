@@ -81,12 +81,24 @@ defineRule('help_modbus_port', {
       await rtu.readInput(1);
       var raw = await d.raw('0a03008000018499', 8);
       log('raw: {}', raw);
+      // function 23: read and write in one request
+      await d.modbus(23, 0x10, { count: 2, writeAddress: 0x20, writeCount: 1, data: '1234' });
+      // a Modbus TCP device: settings go with modbus_mode TCP, the probe with modbus-tcp
+      var tcpDev = MqttRpc.serial.device({ port: '10.0.0.5:502', slaveId: 1, deviceType: 'WB-MR6C' });
+      await tcpDev.settings();
+      await tcpDev.probe();
+      await rtu.probe();
       var found = await MqttRpc.serial.probe({ path: '/dev/ttyRS485-2', baudRate: 115200 }, 7);
       log('probe: {}', JSON.stringify(found));
       var nothing = await MqttRpc.serial.probe('/dev/ttyRS485-2', 8);
       log('probe empty: {}', nothing);
       var scan = await MqttRpc.serial.scan('/dev/ttyRS485-2', { mode: 'all' });
-      log('scan: {} devices', scan.devices.length);
+      log('scan: {} devices', scan.length);
+      try {
+        await MqttRpc.serial.scan('/dev/ttyRS485-3');
+      } catch (e) {
+        log('scan error: {} partial={}', e.message, e.devices.length);
+      }
       await MqttRpc.serial.setup('/dev/ttyRS485-2', [{ sn: 4265607, set: { slaveId: 12, parity: 'E' } }]);
       log('setup done');
     } catch (e) {
@@ -105,10 +117,12 @@ defineRule('help_devices', {
         devices
           .map(function (d) {
             var where = 'path' in d.port ? d.port.path : d.port.ip;
-            return d.id + ':' + d.type + ':' + d.slaveId + ':' + where + ':' + d.enabled;
+            return d.id + ':' + d.type + ':' + d.slaveId + ':' + typeof d.slaveId + ':' + where + ':' + d.enabled;
           })
           .join(' ')
       );
+      // the listed device feeds back into a handle
+      await MqttRpc.serial.device({ port: devices[0].port, slaveId: devices[0].slaveId }).readHolding(0);
       var types = await MqttRpc.serial.deviceTypes();
       log('types: {}', types.map(function (t) { return t.type + '@' + t.group; }).join(' '));
       var ports = await MqttRpc.serial.ports();
@@ -131,6 +145,14 @@ defineRule('help_device_ops', {
       var data = await d.read({ channels: ['Urms L1'] });
       log('read: {}', JSON.stringify(data.channels));
       await d.write({ parameters: { baud_rate: 96 } });
+      var one = await d.readChannel('Urms L1');
+      var many = await d.readChannels('Urms L1', 'Irms L1');
+      var param = await d.readParameter('baud_rate');
+      log('channel: {} channels: {} parameter: {}', one, JSON.stringify(many), param);
+      await d.writeChannel('K1', 1);
+      await d.writeChannels({ K1: 0, K2: 1 }, { totalTimeout: 2000 });
+      await d.setParameter('in1_mode', 2);
+      await d.setParameters({ in2_mode: 3 });
       var order = [];
       var result = await d.withPollingPaused(async function () {
         order.push('inside');
@@ -183,6 +205,11 @@ defineRule('help_history', {
       log('last none: {}', none);
       var avg = await MqttRpc.db.average('wb-adc/Vin', { last: 60000 });
       log('avg: {}', avg);
+      try {
+        await MqttRpc.db.query('wb-adc/Vin', { last: 1000, since: 0 });
+      } catch (e) {
+        log('last+since: {}', e instanceof TypeError);
+      }
       try {
         await MqttRpc.db.query('bad');
       } catch (e) {
@@ -241,6 +268,8 @@ defineRule('help_logs', {
           .join(' | ')
       );
       await MqttRpc.logs.read({ since: new Date('2026-08-24T10:00:00Z'), levels: [3], pattern: 'x', caseSensitive: false, cursor: 'c1', direction: 'forward', limit: 5 });
+      await MqttRpc.logs.read({ since: new Date('2026-08-24T10:00:00Z'), limit: 3 });
+      await MqttRpc.logs.read({ cursor: 'c2', limit: 3 });
       var services = await MqttRpc.logs.services();
       var boots = await MqttRpc.logs.boots();
       log('services: {} boots: {} {}', services.join(','), boots[0].hash, boots[0].start.toISOString());
@@ -276,6 +305,12 @@ defineRule('help_state', {
       } catch (e) {
         log('fw update failed: {} state={}', e.message, e.state && e.state.progress);
       }
+      // the stale error of slave 4 stays on the topic: a new update of it must
+      // not be mistaken for that failure
+      await MqttRpc.serial.updateFirmware('/dev/ttyRS485-1', 4, { type: 'bootloader' });
+      log('fw retry done');
+      await MqttRpc.deviceManager.clearFirmwareError('10.0.0.5:502', 1);
+      await MqttRpc.deviceManager.firmwareInfo('10.0.0.5:502', 1);
       var artifact = await MqttRpc.diag.collect({ timeout: 5000 });
       log('diag: {}', artifact.basename);
     } catch (e) {

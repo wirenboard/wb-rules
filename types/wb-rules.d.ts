@@ -1508,13 +1508,13 @@ declare namespace MqttRpc {
 
     /** A device of the wb-mqtt-serial config, as `serial.devices()` lists it. */
     interface ConfiguredDeviceInfo {
-      /** The MQTT id (the /devices/<id> part): the explicit "id", else "<template mqtt-id>_<slave_id>". */
+      /** The MQTT id (the /devices/<id> part): the explicit "id", else "<template mqtt-id>_<slave_id>" (undefined when neither is known). */
       id: string | undefined;
       /** The device type (template). */
       type: string;
       name?: string;
-      /** The Modbus address, as configured (a string; may be empty). */
-      slaveId: string;
+      /** The address: a number for Modbus, a string for protocols with other ids, undefined when none. */
+      slaveId: number | string | undefined;
       /** false when the device or its port is disabled. */
       enabled: boolean;
       port: AnyPort;
@@ -1526,8 +1526,8 @@ declare namespace MqttRpc {
     type DeviceTarget =
       | string
       | {
-          port: PortSpec;
-          slaveId: number;
+          port: PortSpec | AnyPort;
+          slaveId: number | string;
           /** The device type (template): needed by settings()/read()/write(). */
           deviceType?: string;
           /** Modbus RTU frames over the TCP socket (a transparent gateway) instead of Modbus TCP. */
@@ -1538,11 +1538,12 @@ declare namespace MqttRpc {
 
     /** What a firmware update of one device looks like on the state topic. */
     interface FirmwareUpdateEntry {
-      port: string;
+      /** The port as a path ("host:port" for TCP under wb-device-manager). */
+      port: { path: string };
       slave_id: number | string;
       progress: number;
       type: string;
-      error: { message: string } | null;
+      error: { message: string; [extra: string]: any } | null;
       [extra: string]: any;
     }
     interface FirmwareUpdateState {
@@ -1556,21 +1557,26 @@ declare namespace MqttRpc {
       /** Called on every progress change. */
       onProgress?: (entry: FirmwareUpdateEntry) => void;
     }
-    interface FirmwareUpdateOptions extends FirmwareWaitOptions {
-      type?: SoftwareType;
+    /** Protocol choice for a TCP port: Modbus TCP by default, RTU frames over the socket with rtuOverTcp. */
+    interface ProtocolOptions {
       protocol?: "modbus" | "modbus-tcp";
+      rtuOverTcp?: boolean;
+    }
+    interface FirmwareUpdateOptions extends FirmwareWaitOptions, ProtocolOptions {
+      type?: SoftwareType;
       /** false: resolve with the service's "Ok" instead of waiting for the update to finish. */
       wait?: boolean;
     }
 
     /** The firmware helpers (wb-mqtt-serial: serial ports; wb-device-manager: TCP too). */
     interface FirmwareHelpers {
-      firmwareInfo(port: PortSpec, slaveId: number | string, options?: HelperOptions & { protocol?: "modbus" | "modbus-tcp" }): Promise<FirmwareInfo>;
+      firmwareInfo(port: PortSpec, slaveId: number | string, options?: HelperOptions & ProtocolOptions): Promise<FirmwareInfo>;
       /** Flashes the device; resolves when the update is over (rejects with the recorded error). */
-      updateFirmware(port: PortSpec, slaveId: number | string, options?: FirmwareUpdateOptions): Promise<void | "Ok">;
+      updateFirmware(port: PortSpec, slaveId: number | string, options: FirmwareUpdateOptions & { wait: false }): Promise<"Ok">;
+      updateFirmware(port: PortSpec, slaveId: number | string, options?: FirmwareUpdateOptions): Promise<void>;
       /** Waits for a running update of the device to finish. */
       waitForFirmwareUpdate(port: PortSpec, slaveId: number | string, options?: FirmwareWaitOptions): Promise<void>;
-      restoreFirmware(port: PortSpec, slaveId: number | string, options?: HelperOptions & { protocol?: "modbus" | "modbus-tcp" }): Promise<"Ok">;
+      restoreFirmware(port: PortSpec, slaveId: number | string, options?: HelperOptions & ProtocolOptions): Promise<"Ok">;
       clearFirmwareError(port: PortSpec, slaveId: number | string, options?: HelperOptions & { type?: "firmware" | "bootloader" }): Promise<"Ok">;
       /** The retained state of running updates. */
       firmwareUpdateState(options?: { timeout?: number }): Promise<FirmwareUpdateState>;
@@ -1585,10 +1591,10 @@ declare namespace MqttRpc {
       readonly id: string | undefined;
       /** … or the explicit port and address. */
       readonly port: AnyPort | undefined;
-      readonly slaveId: number | undefined;
+      readonly slaveId: number | string | undefined;
       readonly deviceType: string | undefined;
-      /** The port, address and type of a configured device, from the driver's config. */
-      resolve(): Promise<{ port: AnyPort; slaveId: number | string; type?: string }>;
+      /** The port, address and type of a configured device, read from the driver's config. */
+      resolve(): Promise<{ port: AnyPort; slaveId: number | string | undefined; type?: string }>;
       /** Holding registers (function 3), as unsigned 16-bit numbers. */
       readHolding(address: number, count?: number, options?: ModbusOptions): Promise<number[]>;
       /** Input registers (function 4). */
@@ -1605,15 +1611,27 @@ declare namespace MqttRpc {
       modbus(
         fn: 1 | 2 | 3 | 4 | 5 | 6 | 15 | 16 | 23,
         address: number,
-        options?: ModbusOptions & { count?: number; data?: string }
+        options?: ModbusOptions & { count?: number; data?: string; writeAddress?: number; writeCount?: number }
       ): Promise<string>;
       /** Arbitrary bytes through the port (explicit ports only): hex in, hex out. */
       raw(hex: string, responseSize: number, options?: ModbusOptions): Promise<string>;
       /** The device's settings (its template "parameters"), plus fw and model. */
       settings(options?: ModbusOptions & { force?: boolean }): Promise<DeviceLoadConfigResult>;
-      /** Channels and parameters by name. */
+      /** Channels and parameters by name, together. */
       read(what?: { channels?: string[]; parameters?: string[] }, options?: ModbusOptions): Promise<DeviceLoadResult>;
       write(what: { channels?: Record<string, any>; parameters?: Record<string, any> }, options?: ModbusOptions): Promise<void>;
+      /** The current values of channels (as the driver reads them), by name. */
+      readChannels(...names: string[]): Promise<Record<string, any>>;
+      readChannels(names: string[], options?: ModbusOptions): Promise<Record<string, any>>;
+      readChannel(name: string, options?: ModbusOptions): Promise<any>;
+      /** The current values of parameters (settings), by id. */
+      readParameters(...ids: string[]): Promise<Record<string, any>>;
+      readParameters(ids: string[], options?: ModbusOptions): Promise<Record<string, any>>;
+      readParameter(id: string, options?: ModbusOptions): Promise<any>;
+      writeChannels(values: Record<string, any>, options?: ModbusOptions): Promise<void>;
+      writeChannel(name: string, value: any, options?: ModbusOptions): Promise<void>;
+      setParameters(values: Record<string, any>, options?: ModbusOptions): Promise<void>;
+      setParameter(id: string, value: any, options?: ModbusOptions): Promise<void>;
       /** Who answers at this address (explicit ports only); null when nobody does. */
       probe(options?: HelperOptions & { protocol?: "modbus" | "modbus-tcp" }): Promise<ScannedDevice | null>;
       setPolling(enabled: boolean, options?: HelperOptions): Promise<void>;
@@ -1621,14 +1639,19 @@ declare namespace MqttRpc {
       resumePolling(options?: HelperOptions): Promise<void>;
       /** Pauses polling around fn (resumed even when fn throws); resolves with fn's result. */
       withPollingPaused<T>(fn: (device: Device) => T | Promise<T>, options?: HelperOptions): Promise<T>;
-      firmwareInfo(options?: HelperOptions): Promise<FirmwareInfo>;
-      updateFirmware(options?: FirmwareUpdateOptions): Promise<void | "Ok">;
+      firmwareInfo(options?: HelperOptions & ProtocolOptions): Promise<FirmwareInfo>;
+      updateFirmware(options: FirmwareUpdateOptions & { wait: false }): Promise<"Ok">;
+      updateFirmware(options?: FirmwareUpdateOptions): Promise<void>;
       waitForFirmwareUpdate(options?: FirmwareWaitOptions): Promise<void>;
-      restoreFirmware(options?: HelperOptions): Promise<"Ok">;
+      restoreFirmware(options?: HelperOptions & ProtocolOptions): Promise<"Ok">;
       clearFirmwareError(options?: HelperOptions & { type?: "firmware" | "bootloader" }): Promise<"Ok">;
     }
 
-    /** One device for `serial.setup()`: which device (slaveId or sn) and what to change (`set`). */
+    /**
+     * One device for `serial.setup()`: which device (slaveId or sn, with its
+     * current line settings; the driver assumes 9600 N 8 1) and what to
+     * change (`set`).
+     */
     interface SetupItem {
       slaveId?: number;
       sn?: number;
@@ -1664,8 +1687,8 @@ declare namespace MqttRpc {
       deviceSchema(type: string, options?: HelperOptions): Promise<any>;
       uploadTemplate(filename: string, content: string | object, options?: HelperOptions & { force?: boolean; lang?: string }): Promise<Serial.TemplatesResult>;
       deleteTemplate(type: string, options?: HelperOptions & { force?: boolean; lang?: string }): Promise<Serial.TemplatesResult>;
-      /** Fast Modbus scan of a port. */
-      scan(port: PortSpec, options?: HelperOptions & { command?: 70 | 96; mode?: "all" | "start" | "next"; totalTimeout?: number }): Promise<Serial.PortScanResult>;
+      /** Fast Modbus scan of a port; a scan that stopped early rejects with an Error carrying `devices` found so far. */
+      scan(port: PortSpec, options?: HelperOptions & { command?: 70 | 96; mode?: "all" | "start" | "next"; totalTimeout?: number }): Promise<Serial.ScannedDevice[]>;
       /** Who answers at an address; null when nobody does. */
       probe(port: PortSpec, slaveId: number, options?: HelperOptions & { protocol?: "modbus" | "modbus-tcp" }): Promise<Serial.ScannedDevice | null>;
       /** Changes addresses/line settings of devices on a port. */
@@ -1752,7 +1775,7 @@ declare namespace MqttRpc {
       until?: Time;
       /** The last N milliseconds (instead of `since`). */
       last?: number;
-      /** Records to return per channel. */
+      /** Records to return per channel (paging: afterUid = the last uid, per channel). */
       limit?: number;
       /** Averaging interval, ms. */
       minInterval?: number;
@@ -1798,8 +1821,13 @@ declare namespace MqttRpc {
     query(channels: Db.ChannelSpec | Db.ChannelSpec[], options?: Db.QueryOptions): Promise<Db.QueryResult>;
     /** The latest record of a channel; undefined when it was never logged. */
     lastValue(channel: Db.ChannelSpec, options?: HelperOptions): Promise<Db.HistoryRecord | undefined>;
-    /** The average over a period ({ last } or { since, until }); undefined when nothing was logged. */
-    average(channel: Db.ChannelSpec, options?: Db.QueryOptions): Promise<number | undefined>;
+    /**
+     * The average over a period ({ last } or { since, until }): the mean of up to
+     * `buckets` (100) server-side averaged intervals (aligned to the epoch by the
+     * database, so the window ends weigh slightly differently); undefined when
+     * nothing numeric was logged.
+     */
+    average(channel: Db.ChannelSpec, options?: Db.QueryOptions & { buckets?: number }): Promise<number | undefined>;
     /** Every channel the database knows. */
     channels(options?: HelperOptions): Promise<Db.ChannelInfo[]>;
   };
@@ -1994,7 +2022,11 @@ declare namespace MqttRpc {
   /** wb-mqtt-logs: journal access. */
   const logs: ServiceGroup<Logs.Rpc> & {
     readonly driver: "wb_logs";
-    /** Journal entries, newest first unless direction is "forward"; at most 100 per call. */
+    /**
+     * Journal entries: the newest first; with `since` (or direction "forward")
+     * the oldest first, from that moment on. At most 100 per call: page on
+     * with `cursor` from the last entry.
+     */
     read(options?: Logs.ReadOptions): Promise<Logs.LogRecord[]>;
     /** The last `count` (50) entries of a service. */
     tail(service: string, count?: number, options?: Logs.ReadOptions): Promise<Logs.LogRecord[]>;
@@ -2069,13 +2101,12 @@ declare namespace MqttRpc {
       progress: number;
       scanning_ports: string[];
       is_ext_scan: boolean;
-      error: { message?: string; [extra: string]: any } | null;
+      error: { id?: string; message?: string; [extra: string]: any } | null;
       devices: ScannedDevice[];
     }
-    interface ScanOptions extends HelperOptions {
+    interface ScanOptions extends HelperOptions, Serial.ProtocolOptions {
       /** A serial port (path) or "IP:PORT"; default: every port. */
       port?: PortSpec;
-      protocol?: "modbus" | "modbus-tcp";
       type?: "extended" | "standard" | "bootloader";
       preserveOldResults?: boolean;
       outOfOrderSlaveIds?: number[];

@@ -921,6 +921,17 @@ function isTcpPort(p) {
   return p.ip !== undefined;
 }
 
+// "12" -> 12; anything else as is (undefined for none)
+function numericId(v) {
+  if (v === undefined || v === null || v === '') return undefined;
+  if (typeof v === 'number') return v;
+  return /^\d+$/.test(String(v)) ? Number(v) : v;
+}
+
+function tcpProtocol(rtuOverTcp) {
+  return rtuOverTcp ? 'modbus' : 'modbus-tcp';
+}
+
 function assign(target) {
   for (var i = 1; i < arguments.length; i++) {
     var src = arguments[i];
@@ -1075,10 +1086,13 @@ function checkAddress(address) {
   return address;
 }
 
-function checkCount(count) {
+function checkCount(count, max) {
   if (count === undefined) return 1;
   if (typeof count !== 'number' || count < 1 || count % 1 !== 0) {
     throw new TypeError('MqttRpc: count must be a positive integer, got ' + count);
+  }
+  if (max !== undefined && count > max) {
+    throw new TypeError('MqttRpc: at most ' + max + ' items per Modbus request, got ' + count);
   }
   return count;
 }
@@ -1129,16 +1143,18 @@ function listSerialDevices(cfg) {
           }
         : { ip: port.address, port: port.port };
     (port.devices || []).forEach(function (d) {
-      var slaveId = d.slave_id !== undefined ? String(d.slave_id) : '';
+      var slaveText = d.slave_id !== undefined && d.slave_id !== null ? String(d.slave_id) : '';
       var id = d.id;
       if (!id && mqttIdOf[d.device_type]) {
-        id = mqttIdOf[d.device_type] + (slaveId !== '' ? '_' + slaveId : '');
+        id = mqttIdOf[d.device_type] + (slaveText !== '' ? '_' + slaveText : '');
       }
       out.push({
         id: id,
         type: d.device_type,
         name: d.name,
-        slaveId: slaveId,
+        // Modbus addresses as numbers (the firmware services insist on
+        // integers); other protocols may use non-numeric ids
+        slaveId: numericId(d.slave_id),
         enabled: d.enabled !== false && port.enabled !== false,
         port: portInfo,
         config: d,
@@ -1187,12 +1203,22 @@ serial.deleteTemplate = function (type, options) {
   if (options && options.lang) params.lang = options.lang;
   return serialRpc.templates.Delete(params, optionsOf(options));
 };
+// serial.scan(port[, options]) -> ScannedDevice[]; a scan that stopped
+// early rejects with an Error carrying the devices found so far
 serial.scan = function (port, options) {
   var params = normalizePort(port);
   if (options && options.command !== undefined) params.command = options.command;
   if (options && options.mode !== undefined) params.mode = options.mode;
   if (options && options.totalTimeout !== undefined) params.total_timeout = options.totalTimeout;
-  return serialRpc.port.Scan(params, optionsOf(options));
+  return serialRpc.port.Scan(params, optionsOf(options)).then(function (r) {
+    var devices = (r && r.devices) || [];
+    if (r && r.error) {
+      var err = new Error('scan of ' + (params.path || params.ip + ':' + params.port) + ' failed: ' + r.error);
+      err.devices = devices;
+      throw err;
+    }
+    return devices;
+  });
 };
 serial.probe = function (port, slaveId, options) {
   return serial.device({ port: port, slaveId: slaveId }).probe(options);
@@ -1220,7 +1246,9 @@ serial.setup = function (port, items, options) {
       if (cfg.baud_rate !== undefined) out.cfg.baud_rate = cfg.baud_rate;
       if (cfg.parity !== undefined) {
         // the driver takes the new parity as a number: 0 N, 1 O, 2 E
-        out.cfg.parity = typeof cfg.parity === 'number' ? cfg.parity : { N: 0, O: 1, E: 2 }[cfg.parity];
+        var code = typeof cfg.parity === 'number' ? cfg.parity : { N: 0, O: 1, E: 2 }[cfg.parity];
+        if (code === undefined) throw new TypeError('MqttRpc.serial.setup: parity is N, O or E');
+        out.cfg.parity = code;
       }
       if (cfg.stopBits !== undefined) out.cfg.stop_bits = cfg.stopBits;
       if (cfg.stop_bits !== undefined) out.cfg.stop_bits = cfg.stop_bits;
@@ -1238,10 +1266,10 @@ function fwTarget(port, slaveId, allowTcp) {
   var p = normalizePort(port);
   if (isTcpPort(p)) {
     if (!allowTcp) throw new TypeError('MqttRpc: wb-mqtt-serial flashes over serial ports only');
-    return { slave_id: slaveId, port: { address: p.ip, port: p.port } };
+    return { slave_id: numericId(slaveId), port: { address: p.ip, port: p.port } };
   }
   return {
-    slave_id: slaveId,
+    slave_id: numericId(slaveId),
     port: { path: p.path, baud_rate: p.baud_rate, parity: p.parity, data_bits: p.data_bits, stop_bits: p.stop_bits },
   };
 }
@@ -1251,17 +1279,25 @@ function fwHelpers(rpc, stateTopic, allowTcp) {
     var p = normalizePort(port);
     return isTcpPort(p) ? p.ip + ':' + p.port : p.path;
   };
+  // the state lists devices as { port: { path }, slave_id, progress, error }
   var entryOf = function (state, port, slaveId) {
     var list = (state && state.devices) || [];
+    var key = portKey(port);
     for (var i = 0; i < list.length; i++) {
-      if (list[i].port === portKey(port) && String(list[i].slave_id) === String(slaveId)) return list[i];
+      var p = list[i].port;
+      var path = isPlainObject(p) ? p.path : p;
+      if (path === key && String(list[i].slave_id) === String(slaveId)) return list[i];
     }
     return null;
   };
+  var withProtocol = function (t, port, options) {
+    if (options && options.protocol) t.protocol = options.protocol;
+    else if (isTcpPort(normalizePort(port))) t.protocol = tcpProtocol(options && options.rtuOverTcp);
+    return t;
+  };
   var h = {};
   h.firmwareInfo = function (port, slaveId, options) {
-    var t = fwTarget(port, slaveId, allowTcp);
-    if (options && options.protocol) t.protocol = options.protocol;
+    var t = withProtocol(fwTarget(port, slaveId, allowTcp), port, options);
     return rpc.GetFirmwareInfo(t, optionsOf(options));
   };
   h.firmwareUpdateState = function (options) {
@@ -1275,11 +1311,20 @@ function fwHelpers(rpc, stateTopic, allowTcp) {
   // topic may still show the previous picture right after Update returns,
   // so the device is first awaited to appear (startTimeout, default 10 s -
   // none: nothing to wait for), then to disappear.
-  h.waitForFirmwareUpdate = function (port, slaveId, options) {
+  // the device's entry as the topic shows it now, as text (or 'null')
+  var currentEntry = function (port, slaveId) {
+    var entry = watchTopic(stateTopic);
+    return entry.known ? tryStringify(entryOf(parseJsonOr(entry.value, null), port, slaveId)) : 'null';
+  };
+  // stale: what the topic said before the update was requested - an old
+  // entry (a past error stays listed until it is cleared) must not pass
+  // for the new one. updateFirmware captures it before sending the request.
+  h.waitForFirmwareUpdate = function (port, slaveId, options, stale) {
     var timeout = options && options.timeout !== undefined ? options.timeout : 600000;
     var startTimeout = options && options.startTimeout !== undefined ? options.startTimeout : 10000;
     var onProgress = options && options.onProgress;
     var what = 'firmware update of ' + portKey(port) + ':' + slaveId;
+    if (stale === undefined) stale = currentEntry(port, slaveId);
     var last = null;
     var track = function (v) {
       var entry = entryOf(parseJsonOr(v, null), port, slaveId);
@@ -1309,7 +1354,8 @@ function fwHelpers(rpc, stateTopic, allowTcp) {
     return waitTopic(
       stateTopic,
       function (v) {
-        return track(v) !== null;
+        var entry = track(v);
+        return entry !== null && tryStringify(entry) !== stale;
       },
       startTimeout,
       what
@@ -1319,26 +1365,28 @@ function fwHelpers(rpc, stateTopic, allowTcp) {
     });
   };
   h.updateFirmware = function (port, slaveId, options) {
-    var t = fwTarget(port, slaveId, allowTcp);
+    var t = withProtocol(fwTarget(port, slaveId, allowTcp), port, options);
     if (options && options.type) t.type = options.type;
-    if (options && options.protocol) t.protocol = options.protocol;
+    // subscribe before the request, so no state is missed, and remember
+    // what the topic showed for this device before the update
+    watchTopic(stateTopic);
+    var stale = currentEntry(port, slaveId);
     var started = rpc.Update(t, optionsOf(options));
     // resolves when the update is over unless { wait: false } asks for "Ok" only
     if (options && options.wait === false) return started;
-    // subscribe before the update is accepted, so no state is missed
-    watchTopic(stateTopic);
     return started.then(function () {
-      return h.waitForFirmwareUpdate(port, slaveId, options);
+      return h.waitForFirmwareUpdate(port, slaveId, options, stale);
     });
   };
   h.restoreFirmware = function (port, slaveId, options) {
-    var t = fwTarget(port, slaveId, allowTcp);
-    if (options && options.protocol) t.protocol = options.protocol;
+    var t = withProtocol(fwTarget(port, slaveId, allowTcp), port, options);
     return rpc.Restore(t, optionsOf(options));
   };
   h.clearFirmwareError = function (port, slaveId, options) {
     var p = normalizePort(port);
-    var t = { slave_id: slaveId, port: { path: p.path } };
+    if (isTcpPort(p) && !allowTcp) throw new TypeError('MqttRpc: wb-mqtt-serial flashes over serial ports only');
+    // ClearError takes the port as a path; a TCP port is "host:port" here
+    var t = { slave_id: numericId(slaveId), port: { path: isTcpPort(p) ? p.ip + ':' + p.port : p.path } };
     if (options && options.type) t.type = options.type;
     return rpc.ClearError(t, optionsOf(options));
   };
@@ -1363,28 +1411,26 @@ function SerialDevice(target) {
     if (target.slaveId === undefined || target.slaveId === null) {
       throw new TypeError('MqttRpc.serial.device: slaveId is required with a port');
     }
-    this.slaveId = target.slaveId;
+    this.slaveId = numericId(target.slaveId);
     this.deviceType = target.deviceType;
     // Modbus RTU frames over a TCP socket (a transparent RTU-over-TCP gateway)
     this.rtuOverTcp = !!target.rtuOverTcp;
   } else {
     throw new TypeError('MqttRpc.serial.device: a device id or { port, slaveId }');
   }
-  this._resolved = null;
 }
 
-// the config entry of a configured device (port, address, type)
+// the config entry of a configured device (port, address, type), read
+// from the driver's config every time (it may have been edited)
 SerialDevice.prototype.resolve = function () {
   var self = this;
   if (this.port) {
     return Promise.resolve({ port: this.port, slaveId: this.slaveId, type: this.deviceType });
   }
-  if (this._resolved) return Promise.resolve(this._resolved);
   return serial.devices().then(function (devices) {
     for (var i = 0; i < devices.length; i++) {
       if (devices[i].id === self.id) {
-        self._resolved = { port: devices[i].port, slaveId: devices[i].slaveId, type: devices[i].type };
-        return self._resolved;
+        return { port: devices[i].port, slaveId: devices[i].slaveId, type: devices[i].type };
       }
     }
     throw new Error('MqttRpc.serial: device ' + self.id + ' is not in the wb-mqtt-serial config');
@@ -1393,7 +1439,7 @@ SerialDevice.prototype.resolve = function () {
 
 SerialDevice.prototype._portParams = function () {
   var p = assign({}, this.port);
-  p.protocol = isTcpPort(p) && !this.rtuOverTcp ? 'modbus-tcp' : 'modbus';
+  p.protocol = isTcpPort(p) ? tcpProtocol(this.rtuOverTcp) : 'modbus';
   p.slave_id = this.slaveId;
   return p;
 };
@@ -1405,6 +1451,9 @@ SerialDevice.prototype.modbus = function (fn, address, options) {
   params.function = fn;
   params.address = checkAddress(address);
   if (options && options.count !== undefined) params.count = checkCount(options.count);
+  // function 23 (read/write): the write side
+  if (options && options.writeAddress !== undefined) params.write_address = checkAddress(options.writeAddress);
+  if (options && options.writeCount !== undefined) params.write_count = checkCount(options.writeCount);
   if (options && options.data !== undefined) {
     params.msg = options.data;
     params.format = 'HEX';
@@ -1418,20 +1467,22 @@ SerialDevice.prototype.modbus = function (fn, address, options) {
   });
 };
 
+// Modbus limits one request to 125 registers or 2000 bits read, 123
+// registers or 1968 bits written
 SerialDevice.prototype.readHolding = function (address, count, options) {
-  return this.modbus(3, address, assign({ count: checkCount(count) }, options)).then(u16ArrayFromHex);
+  return this.modbus(3, address, assign({ count: checkCount(count, 125) }, options)).then(u16ArrayFromHex);
 };
 SerialDevice.prototype.readInput = function (address, count, options) {
-  return this.modbus(4, address, assign({ count: checkCount(count) }, options)).then(u16ArrayFromHex);
+  return this.modbus(4, address, assign({ count: checkCount(count, 125) }, options)).then(u16ArrayFromHex);
 };
 SerialDevice.prototype.readCoils = function (address, count, options) {
-  var n = checkCount(count);
+  var n = checkCount(count, 2000);
   return this.modbus(1, address, assign({ count: n }, options)).then(function (hex) {
     return bitsFromHex(hex, n);
   });
 };
 SerialDevice.prototype.readDiscrete = function (address, count, options) {
-  var n = checkCount(count);
+  var n = checkCount(count, 2000);
   return this.modbus(2, address, assign({ count: n }, options)).then(function (hex) {
     return bitsFromHex(hex, n);
   });
@@ -1439,7 +1490,7 @@ SerialDevice.prototype.readDiscrete = function (address, count, options) {
 // one value -> function 6, an array -> function 16
 SerialDevice.prototype.writeHolding = function (address, value, options) {
   if (Array.isArray(value)) {
-    if (value.length === 0) throw new TypeError('MqttRpc: nothing to write');
+    checkCount(value.length, 123);
     return this.modbus(16, address, assign({ count: value.length, data: value.map(hexOfU16).join('') }, options)).then(
       function () {}
     );
@@ -1449,7 +1500,7 @@ SerialDevice.prototype.writeHolding = function (address, value, options) {
 // one boolean -> function 5, an array -> function 15
 SerialDevice.prototype.writeCoil = function (address, value, options) {
   if (Array.isArray(value)) {
-    if (value.length === 0) throw new TypeError('MqttRpc: nothing to write');
+    checkCount(value.length, 1968);
     var bools = value.map(function (v) {
       return !!v;
     });
@@ -1484,7 +1535,8 @@ SerialDevice.prototype._deviceParams = function (extra) {
     params = assign({}, this.port);
     params.slave_id = this.slaveId;
     params.device_type = this.deviceType;
-    if (isTcpPort(params) && this.rtuOverTcp) params.modbus_mode = 'RTU';
+    // the driver's default over TCP is RTU frames: say so explicitly either way
+    if (isTcpPort(params)) params.modbus_mode = this.rtuOverTcp ? 'RTU' : 'TCP';
   }
   return assign(params, extra);
 };
@@ -1510,12 +1562,70 @@ SerialDevice.prototype.write = function (what, options) {
   timeoutsOf(options, extra);
   return serialRpc.device.Set(this._deviceParams(extra), optionsOf(options)).then(function () {});
 };
+
+// names as arguments or one array; a trailing options object is allowed
+function namesAndOptions(args) {
+  var list = Array.prototype.slice.call(args);
+  while (list.length && list[list.length - 1] === undefined) list.pop(); // an omitted options argument
+  var options;
+  if (list.length && isPlainObject(list[list.length - 1])) options = list.pop();
+  if (list.length === 1 && Array.isArray(list[0])) list = list[0];
+  list.forEach(function (n) {
+    if (typeof n !== 'string' || n === '') throw new TypeError('MqttRpc: a channel or parameter name is a non-empty string');
+  });
+  return { names: list, options: options };
+}
+
+// readChannels('Urms L1', 'Irms L1') -> { 'Urms L1': 230.1, 'Irms L1': 0.5 }
+SerialDevice.prototype.readChannels = function () {
+  var a = namesAndOptions(arguments);
+  return this.read({ channels: a.names }, a.options).then(function (r) {
+    return r.channels || {};
+  });
+};
+// readChannel('Urms L1') -> 230.1
+SerialDevice.prototype.readChannel = function (name, options) {
+  return this.readChannels([name], options).then(function (values) {
+    return values[name];
+  });
+};
+SerialDevice.prototype.readParameters = function () {
+  var a = namesAndOptions(arguments);
+  return this.read({ parameters: a.names }, a.options).then(function (r) {
+    return r.parameters || {};
+  });
+};
+SerialDevice.prototype.readParameter = function (id, options) {
+  return this.readParameters([id], options).then(function (values) {
+    return values[id];
+  });
+};
+// writeChannels({ K1: 1, K2: 0 }), writeChannel('K1', 1)
+SerialDevice.prototype.writeChannels = function (values, options) {
+  if (!isPlainObject(values)) throw new TypeError('MqttRpc: channel values are an object { name: value }');
+  return this.write({ channels: values }, options);
+};
+SerialDevice.prototype.writeChannel = function (name, value, options) {
+  var values = {};
+  values[name] = value;
+  return this.writeChannels(values, options);
+};
+SerialDevice.prototype.setParameters = function (values, options) {
+  if (!isPlainObject(values)) throw new TypeError('MqttRpc: parameter values are an object { id: value }');
+  return this.write({ parameters: values }, options);
+};
+SerialDevice.prototype.setParameter = function (id, value, options) {
+  var values = {};
+  values[id] = value;
+  return this.setParameters(values, options);
+};
 // who is at this address: a ScannedDevice, or null when nothing answers
 SerialDevice.prototype.probe = function (options) {
   if (!this.port) throw new TypeError('MqttRpc: probe needs a port and a slaveId, not a device id');
   var params = assign({}, this.port);
   params.slave_id = this.slaveId;
   if (options && options.protocol) params.protocol = options.protocol;
+  else if (isTcpPort(params)) params.protocol = tcpProtocol(this.rtuOverTcp); // the driver's default is RTU over TCP
   return serialRpc.device.Probe(params, optionsOf(options)).then(function (r) {
     return r && Object.keys(r).length > 0 ? r : null;
   });
@@ -1550,9 +1660,14 @@ SerialDevice.prototype.withPollingPaused = function (fn, options) {
         });
       },
       function (err) {
-        return self.resumePolling(options).then(function () {
-          throw err;
-        });
+        return self.resumePolling(options).then(
+          function () {
+            throw err;
+          },
+          function () {
+            throw err; // fn's error is the one to report
+          }
+        );
       }
     );
   });
@@ -1607,10 +1722,13 @@ function historyParams(pair, options) {
       if (typeof options.last !== 'number' || !(options.last > 0)) {
         throw new TypeError('MqttRpc: last must be a positive number of milliseconds');
       }
+      if (options.since !== undefined) throw new TypeError('MqttRpc: last and since exclude each other');
       ts.gt = Date.now() / 1000 - options.last / 1000;
     }
+    // the database compares whole seconds: widen the window to the second
     if (options.since !== undefined) ts.gt = toSeconds(options.since, 'since');
-    if (options.until !== undefined) ts.lt = toSeconds(options.until, 'until');
+    if (options.until !== undefined) ts.lt = Math.ceil(toSeconds(options.until, 'until'));
+    if (ts.gt !== undefined) ts.gt = Math.floor(ts.gt);
     if (options.limit !== undefined) params.limit = options.limit;
     if (options.minInterval !== undefined) params.min_interval = options.minInterval;
     if (options.maxRecords !== undefined) params.max_records = options.maxRecords;
@@ -1701,13 +1819,26 @@ db.lastValue = function (channel, options) {
   });
 };
 
-// the average over a period ({ last } or { since, until }): the database
-// averages numeric channels server-side; undefined when nothing was logged
+// the average over a period ({ last } or { since, until }): the mean of
+// up to options.buckets (100) server-side averaged intervals (the database
+// aligns them to the epoch, so the ends of the window weigh a little
+// differently); undefined when nothing numeric was logged
 db.average = function (channel, options) {
-  return db.query(channel, assign({}, options, { maxRecords: 1, limit: undefined })).then(function (res) {
-    if (!res.values.length) return undefined;
-    var v = res.values[0].value;
-    return typeof v === 'number' ? v : undefined;
+  var o = assign({}, options);
+  var buckets = o.buckets !== undefined ? o.buckets : 100;
+  delete o.buckets;
+  delete o.limit;
+  o.maxRecords = buckets;
+  return db.query(channel, o).then(function (res) {
+    var sum = 0;
+    var n = 0;
+    res.values.forEach(function (r) {
+      if (typeof r.value === 'number') {
+        sum += r.value;
+        n++;
+      }
+    });
+    return n ? sum / n : undefined;
   });
 };
 
@@ -1806,8 +1937,9 @@ logs.boots = function (options) {
   });
 };
 // logs.read({ service, since, levels, pattern, regex, caseSensitive, limit, boot, cursor, direction })
-//   -> [{ time: Date, level, msg, service, cursor }] (newest first unless
-//      direction is "forward"; at most 100 per call)
+//   -> [{ time: Date, level, msg, service, cursor }]: the newest entries
+//      first; with `since` (or direction "forward") the oldest first, from
+//      that moment on; at most 100 per call
 logs.read = function (options) {
   var params = {};
   var o = options || {};
@@ -1819,7 +1951,11 @@ logs.read = function (options) {
   if (o.regex !== undefined) params.regex = o.regex;
   if (o.caseSensitive !== undefined) params['case-sensitive'] = o.caseSensitive;
   if (o.limit !== undefined) params.limit = o.limit;
-  if (o.cursor !== undefined) params.cursor = { id: o.cursor, direction: o.direction || 'backward' };
+  // the journal is walked backward from the cursor (or from the tail)
+  // unless told otherwise; `since` alone means "from since onwards"
+  var direction = o.direction || (o.since !== undefined ? 'forward' : undefined);
+  if (o.cursor !== undefined) params.cursor = { id: o.cursor, direction: direction || 'backward' };
+  else if (direction !== undefined) params.cursor = { direction: direction };
   return logsRpc.logs.Load(params, optionsOf(options)).then(function (entries) {
     return (entries || []).map(function (e) {
       return {
@@ -1895,6 +2031,7 @@ deviceManager.scan = function (options) {
     var p = normalizePort(o.port);
     params.port = { path: isTcpPort(p) ? p.ip + ':' + p.port : p.path };
     if (o.protocol) params.port.protocol = o.protocol;
+    else if (isTcpPort(p)) params.port.protocol = tcpProtocol(o.rtuOverTcp); // the scanner's default is RTU over TCP
   }
   if (o.outOfOrderSlaveIds !== undefined) params.out_of_order_slave_ids = o.outOfOrderSlaveIds;
   var timeout = o.timeout !== undefined ? o.timeout : 600000;
