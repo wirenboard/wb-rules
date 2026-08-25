@@ -282,6 +282,36 @@
             },
             "required": ["type", "url"]
         },
+        "appriseRecipient": {
+            "title": "Apprise",
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "title": "Type",
+                    "enum": ["apprise"],
+                    "default": "apprise",
+                    "options": {
+                        "hidden": true
+                    },
+                    "propertyOrder": 1
+                },
+                "url": {
+                    "type": "string",
+                    "title": "Service URL or tag",
+                    "description": "Apprise service URL like ntfy://ntfy.sh/topic or tgram://bottoken/chatid (full list at appriseit.com/services), or a tag from the apprise config (/etc/apprise)",
+                    "minLength": 1,
+                    "propertyOrder": 2
+                },
+                "title": {
+                    "type": "string",
+                    "title": "Message title",
+                    "description": "Optional message title. {} will be replaced with alarm message text",
+                    "propertyOrder": 3
+                }
+            },
+            "required": ["type", "url"]
+        },
         "alarmBase": {
             "type": "object",
             "properties": {
@@ -495,7 +525,8 @@
                 { "$ref": "#/definitions/maxRecipient" },
                 { "$ref": "#/definitions/matrixRecipient" },
                 { "$ref": "#/definitions/wechatRecipient" },
-                { "$ref": "#/definitions/webhookRecipient" }
+                { "$ref": "#/definitions/webhookRecipient" },
+                { "$ref": "#/definitions/appriseRecipient" }
             ]
         },
         "alarm": {
@@ -612,6 +643,10 @@
             "Extra HTTP headers as name/value pairs": "Дополнительные HTTP-заголовки в виде пар имя/значение",
             "Body template": "Шаблон тела запроса",
             "Request body. {} will be replaced with alarm message text": "Тело запроса. {} будет заменено на текст сообщения",
+            "Service URL or tag": "URL сервиса или тег",
+            "Apprise service URL like ntfy://ntfy.sh/topic or tgram://bottoken/chatid (full list at appriseit.com/services), or a tag from the apprise config (/etc/apprise)": "URL сервиса в синтаксисе Apprise, например ntfy://ntfy.sh/topic или tgram://токен_бота/id_чата (полный список — appriseit.com/services), либо тег из конфига apprise (/etc/apprise)",
+            "Message title": "Заголовок сообщения",
+            "Optional message title. {} will be replaced with alarm message text": "Необязательный заголовок. {} будет заменено на текст сообщения",
             "Command": "Команда",
             "Alarm name": "Название уведомления",
             "Cell": "Отслеживаемый параметр",

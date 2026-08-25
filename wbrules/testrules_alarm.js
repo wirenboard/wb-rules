@@ -29,3 +29,7 @@ Notify.sendWebhook = function (opts) {
   log('WEBHOOK URL: {} METHOD: {} CONTENT-TYPE: {} HEADERS: {} BODY: {}',
     url, method, contentType, headers, body);
 };
+
+Notify.sendApprise = function (target, title, text) {
+  log('APPRISE TARGET: {} TITLE: {} TEXT: {}', target, title, text);
+};

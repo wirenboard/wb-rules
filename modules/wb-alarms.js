@@ -110,6 +110,14 @@ var recipientTypes = {
       });
     };
   },
+
+  apprise: function getAppriseSendFunc(src) {
+    if (!Object.prototype.hasOwnProperty.call(src,'url')) throw new Error("apprise recipient without 'url'");
+    var title = Object.prototype.hasOwnProperty.call(src,'title') ? '' + src.title : '';
+    return function sendAppriseWrapper(text) {
+      Notify.sendApprise(src.url, maybeFormat(title, text), text);
+    };
+  },
 };
 
 function maybeFormat(text, arg) {

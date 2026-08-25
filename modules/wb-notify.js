@@ -383,3 +383,54 @@ exports.sendTelegramMessage = function (token, chatId, text, options, callback) 
     }
   );
 };
+
+var _APPRISE_NOT_INSTALLED_HINT =
+  "the 'apprise' package is not installed; run 'apt-get install apprise' (available since Debian 13)";
+
+exports.sendApprise = function (target, title, text, callback) {
+  target = target == null ? '' : String(target);
+  if (!target) {
+    _notifyDone(
+      callback,
+      new Error("error sending apprise notification: 'target' (service URL or tag) is required")
+    );
+    return;
+  }
+  // The body goes through stdin and the title through a command substitution,
+  // both base64-encoded: this keeps user text off the shell command line
+  // (no injection) and survives Duktape's CESU-8 encoding of non-BMP
+  // characters — the same approach as in sendSMS/sendEmail.
+  var cmd = 'base64 -d | apprise';
+  if (title != null && String(title) !== '') {
+    cmd += ' -t "$(printf %s ' + _shellQuote(_utf8ToBase64(title)) + ' | base64 -d)"';
+  }
+  if (target.indexOf('://') >= 0) {
+    // A service URL like ntfy://ntfy.sh/topic; '--' stops option parsing
+    cmd += ' -- ' + _shellQuote(target);
+  } else {
+    // A tag referring to URLs listed in the apprise config (/etc/apprise*)
+    cmd += ' -g ' + _shellQuote(target);
+  }
+  log('sending apprise notification: {}', text);
+  runShellCommand(cmd, {
+    captureErrorOutput: true,
+    captureOutput: true,
+    input: _utf8ToBase64(text == null ? '' : String(text)),
+    exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
+      var err = null;
+      if (exitCode === 127) {
+        err = new Error('error sending apprise notification: ' + _APPRISE_NOT_INSTALLED_HINT);
+      } else if (exitCode !== 0) {
+        err = new Error(
+          'error sending apprise notification (exit code ' +
+            exitCode +
+            '):\n' +
+            capturedOutput +
+            '\n' +
+            capturedErrorOutput
+        );
+      }
+      _notifyDone(callback, err);
+    },
+  });
+};

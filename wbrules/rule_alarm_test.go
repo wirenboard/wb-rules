@@ -236,10 +236,10 @@ func (s *AlarmSuite) TestMaxAlarm() {
 }
 
 // verifyWebhookNotificationMsgs asserts the log/meta updates plus the five
-// WEBHOOK log lines produced by alarms_new_recipients.conf for a single
-// notification of the given text. encodedText must be encodeURIComponent(text)
-// — it appears in the VK body — and is passed explicitly to keep the test
-// readable.
+// WEBHOOK log lines and the APPRISE log line produced by
+// alarms_new_recipients.conf for a single notification of the given text.
+// encodedText must be encodeURIComponent(text) — it appears in the VK body —
+// and is passed explicitly to keep the test readable.
 func (s *AlarmSuite) verifyWebhookNotificationMsgs(alarm, text, encodedText string) {
 	s.Verify(
 		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta: [{\"order\":1,\"readonly\":true,\"title\":{\"en\":\"%s\"},\"type\":\"alarm\"}] (QoS 1, retained)", alarm, text),
@@ -249,6 +249,7 @@ func (s *AlarmSuite) verifyWebhookNotificationMsgs(alarm, text, encodedText stri
 		fmt.Sprintf("[info] WEBHOOK URL: https://matrix.example.com/_matrix/client/v3/rooms/!abc%%3Amatrix.example.com/send/m.room.message/[txnId] METHOD: PUT CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"Bearer syt_test\"} BODY: {\"msgtype\":\"m.text\",\"body\":\"%s\"}", text),
 		fmt.Sprintf("[info] WEBHOOK URL: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key-12345 METHOD: POST CONTENT-TYPE: application/json HEADERS: (none) BODY: {\"msgtype\":\"text\",\"text\":{\"content\":\"%s\"}}", text),
 		fmt.Sprintf("[info] WEBHOOK URL: https://example.com/hook METHOD: POST CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"Bearer xyz\"} BODY: {\"event\": \"alarm\", \"text\": \"%s\"}", text),
+		fmt.Sprintf("[info] APPRISE TARGET: ntfy://ntfy.example/alerts TITLE: WB alarm TEXT: %s", text),
 	)
 }
 
