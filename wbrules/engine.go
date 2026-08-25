@@ -1785,6 +1785,96 @@ func (engine *RuleEngine) GetDevice(devId string) error {
 	return nil
 }
 
+// RemoveVirtualDevice removes a virtual device created by a script
+// and unpublishes its MQTT topics. External devices are rejected.
+func (engine *RuleEngine) RemoveVirtualDevice(devId string) error {
+	if devId == RULE_ENGINE_SETTINGS_DEV_NAME {
+		return fmt.Errorf("cannot remove device %s: it is the rule engine settings device", devId)
+	}
+
+	errAccess := engine.driver.Access(func(tx wbgong.DriverTx) (err error) {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		localDevice, isLocal := dev.(wbgong.LocalDevice)
+		if !isLocal {
+			return wbgong.ExternalDeviceError
+		}
+
+		err = tx.RemoveDevice(localDevice)()
+
+		return
+	})
+
+	if errAccess != nil {
+		return fmt.Errorf("cannot remove device %s: %w", devId, errAccess)
+	}
+
+	// invalidate device/control proxies
+	atomic.AddUint32(&engine.rev, 1)
+	return nil
+}
+
+// WipeDevice erases all retained MQTT topics of an external device known
+// to the driver; the driver forgets the device on its own when the empty
+// retained messages arrive back over its subscription. Virtual devices are
+// rejected: remove them with RemoveVirtualDevice(). Intended for dead
+// devices and leftovers of a previous wb-rules run: a running driver may
+// not republish its device metadata until restarted.
+func (engine *RuleEngine) WipeDevice(devId string) error {
+	var topics []string
+	errAccess := engine.driver.Access(func(tx wbgong.DriverTx) (err error) {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		if _, isLocal := dev.(wbgong.LocalDevice); isLocal {
+			return wbgong.LocalDeviceError
+		}
+
+		// external device: collect every topic the driver knows about
+		base := "/devices/" + devId
+		deviceMeta := map[string]bool{
+			// conventional subtopics not covered by GetMeta()
+			// (an empty retained publish to a missing topic is harmless)
+			wbgong.CONV_META_SUBTOPIC_TITLE:    true,
+			wbgong.CONV_META_SUBTOPIC_TITLE_V2: true,
+			wbgong.CONV_META_SUBTOPIC_DRIVER:   true,
+			wbgong.CONV_META_SUBTOPIC_ERROR:    true,
+		}
+		for key := range dev.GetMeta() {
+			deviceMeta[key] = true
+		}
+		for key := range deviceMeta {
+			topics = append(topics, base+"/meta/"+key)
+		}
+		topics = append(topics, base+"/meta")
+		for _, ctrl := range dev.ControlsList() {
+			ctrlBase := base + "/controls/" + ctrl.GetId()
+			for key := range ctrl.GetMeta() {
+				topics = append(topics, ctrlBase+"/meta/"+key)
+			}
+			topics = append(topics, ctrlBase+"/meta", ctrlBase)
+		}
+
+		return
+	})
+
+	if errAccess != nil {
+		return fmt.Errorf("cannot wipe device %s: %w", devId, errAccess)
+	}
+
+	sort.Strings(topics)
+	for _, topic := range topics {
+		engine.Publish(topic, "", 1, true)
+	}
+
+	// invalidate device/control proxies
+	atomic.AddUint32(&engine.rev, 1)
+	return nil
+}
+
 func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error {
 	// if device description has no controls (cells), skip this
 	if !obj.Has(VDEV_DESCR_PROP_CELLS) && !obj.Has(VDEV_DESCR_PROP_CONTROLS) {
@@ -1909,6 +1999,10 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	// defer cleanup
 	engine.cleanup.AddCleanup(func() {
 		err := engine.driver.Access(func(tx wbgong.DriverTx) error {
+			// already removed via RemoveVirtualDevice()
+			if dev.IsDeleted() {
+				return nil
+			}
 			return tx.RemoveDevice(dev)()
 		})
 		if err != nil {

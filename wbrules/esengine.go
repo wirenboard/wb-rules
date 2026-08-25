@@ -205,6 +205,8 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		"enableRule":           engine.esWbEnableRule,
 		"runRule":              engine.esWbRunRule,
 		"defineVirtualDevice":  engine.esDefineVirtualDevice,
+		"removeVirtualDevice":  engine.esRemoveVirtualDevice,
+		"wipeDevice":           engine.esWipeDevice,
 		"getDevice":            engine.esGetDevice,
 		"getControl":           engine.esGetControl,
 		"_wbPersistentName":    engine.esPersistentName,
@@ -320,6 +322,8 @@ func (engine *ESEngine) initVdevPrototype(ctx *ESContext) {
 		"getControl":      engine.esVdevGetControl,
 		"isControlExists": engine.esVdevControlExists,
 		"removeControl":   engine.esVdevRemoveControl,
+		"remove":          engine.esVdevRemove,
+		"wipe":            engine.esVdevWipe,
 		"controlsList":    engine.esVdevControlsList,
 		"isVirtual":       engine.esVdevIsVirtual,
 		"setError":        engine.esVdevSetError,
@@ -1150,6 +1154,43 @@ func (engine *ESEngine) esDefineVirtualDevice(ctx *ESContext) int {
 	return 1
 }
 
+// removeVirtualDevice removes virtual device created by a script
+// and unpublishes its MQTT topics
+func (engine *ESEngine) esRemoveVirtualDevice(ctx *ESContext) int {
+	if ctx.GetTop() != 1 || !ctx.IsString(0) {
+		return duktape.DUK_RET_ERROR
+	}
+	return engine.removeVdevOrThrow(ctx, ctx.GetString(0))
+}
+
+// removeVdevOrThrow removes the device or throws a JS error, like defineVirtualDevice
+func (engine *ESEngine) removeVdevOrThrow(ctx *ESContext, devId string) int {
+	if err := engine.RemoveVirtualDevice(devId); err != nil {
+		wbgong.Error.Printf("device removal error: %v", err)
+		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
+		return duktape.DUK_RET_INSTACK_ERROR
+	}
+	return 0
+}
+
+// wipeDevice(id) erases the retained topics of an external device
+func (engine *ESEngine) esWipeDevice(ctx *ESContext) int {
+	if ctx.GetTop() != 1 || !ctx.IsString(0) {
+		return duktape.DUK_RET_ERROR
+	}
+	return engine.wipeDeviceOrThrow(ctx, ctx.GetString(0))
+}
+
+// wipeDeviceOrThrow wipes the device or throws a JS error, like defineVirtualDevice
+func (engine *ESEngine) wipeDeviceOrThrow(ctx *ESContext, devId string) int {
+	if err := engine.WipeDevice(devId); err != nil {
+		wbgong.Error.Printf("device wipe error: %v", err)
+		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
+		return duktape.DUK_RET_INSTACK_ERROR
+	}
+	return 0
+}
+
 func (engine *ESEngine) esVdevIsVirtual(ctx *ESContext) int {
 	// push this
 	ctx.PushThis()
@@ -1331,6 +1372,40 @@ func (engine *ESEngine) esVdevRemoveControl(ctx *ESContext) int {
 		wbgong.Error.Printf("Error in removing control %s on device %s: %v", ctrlId, devId, errControl)
 	}
 	return 1
+}
+
+// remove() method of the virtual device object
+func (engine *ESEngine) esVdevRemove(ctx *ESContext) int {
+	// push this
+	ctx.PushThis()
+	// [ this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	ctx.Pop()
+	// []
+	if err != nil {
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	return engine.removeVdevOrThrow(ctx, devId)
+}
+
+// wipe() method of the device object, same as wipeDevice(id)
+func (engine *ESEngine) esVdevWipe(ctx *ESContext) int {
+	// push this
+	ctx.PushThis()
+	// [ this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	ctx.Pop()
+	// []
+	if err != nil {
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	return engine.wipeDeviceOrThrow(ctx, devId)
 }
 
 func (engine *ESEngine) esVdevControlExists(ctx *ESContext) int {
