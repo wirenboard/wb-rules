@@ -19,6 +19,7 @@ defineVirtualDevice('rpctest', {
     waitcall: { type: 'switch', value: false },
     forever: { type: 'switch', value: false },
     redefine: { type: 'switch', value: false },
+    validate: { type: 'switch', value: false },
   },
 });
 
@@ -263,6 +264,61 @@ MqttRpc.defineService('Demo', {
     var o = {};
     o.self = o;
     throw new MqttRpc.RpcError(4321, 'with unserializable data', o);
+  },
+  // params validated against a JSON Schema before the handler runs
+  SetTarget: MqttRpc.method(
+    {
+      type: 'object',
+      properties: {
+        room: { type: 'string', minLength: 1 },
+        t: { type: 'number', minimum: 5, maximum: 35 },
+        mode: { enum: ['eco', 'comfort'] },
+        zones: { type: 'array', items: { type: 'integer' }, maxItems: 3 },
+      },
+      required: ['room', 't'],
+      additionalProperties: false,
+    },
+    function (params) {
+      return { room: params.room, t: params.t, mode: params.mode || 'default' };
+    }
+  ),
+  Loose: { params: { type: 'object' }, handler: function (p) { return Object.keys(p).length; } },
+  Union: MqttRpc.method(
+    { anyOf: [{ type: 'string', pattern: '^[a-z]+$' }, { type: 'integer', multipleOf: 5 }] },
+    function (p) {
+      return typeof p;
+    }
+  ),
+});
+
+defineRule('rpc_validate', {
+  whenChanged: 'rpctest/validate',
+  then: function () {
+    var out = [];
+    var check = function (schema, value) {
+      out.push(
+        MqttRpc.validate(schema, value)
+          .map(function (p) {
+            return p.path + ':' + p.message;
+          })
+          .join(';') || 'ok'
+      );
+    };
+    check({ type: 'number' }, 1);
+    check({ type: 'number' }, 'x');
+    check({ type: ['number', 'null'] }, null);
+    check({ type: 'integer' }, 1.5);
+    check({ const: 3 }, 3);
+    check({ enum: [1, 'a'] }, 'b');
+    check({ type: 'string', maxLength: 2 }, 'abc');
+    check({ type: 'array', items: { type: 'boolean' }, minItems: 1 }, []);
+    check({ type: 'array', items: { type: 'boolean' } }, [true, 1]);
+    check({ oneOf: [{ type: 'number' }, { type: 'integer' }] }, 2);
+    check({ not: { type: 'string' } }, 'x');
+    check({ allOf: [{ type: 'number' }, { maximum: 1 }] }, 2);
+    check({ type: 'object', properties: { a: { type: 'string' } }, additionalProperties: { type: 'number' } }, { a: 'x', b: 'y' });
+    check({ type: 'object', exclusiveMaximum: 1, unknownKeyword: true }, {});
+    log('validate: {}', out.join(' | '));
   },
 });
 

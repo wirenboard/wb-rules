@@ -67,6 +67,44 @@ function __mqttRpcServer() {
   MqttRpc.defineService("my-driver", "Other", { Ping: () => "pong" });
   // @ts-expect-error - a handler must be a function
   MqttRpc.defineService("Demo", { X: 1 });
+
+  // params validated against a JSON Schema: the handler's params are typed from it
+  MqttRpc.defineService("Heating", {
+    SetTarget: MqttRpc.method(
+      {
+        type: "object",
+        properties: {
+          room: { type: "string" },
+          t: { type: "number", minimum: 5, maximum: 35 },
+          mode: { enum: ["eco", "comfort"] },
+          zones: { type: "array", items: { type: "integer" } },
+          flags: { type: ["boolean", "null"] },
+        },
+        required: ["room", "t"],
+        additionalProperties: false,
+      },
+      (params, request) => {
+        const room: string = params.room;
+        const t: number = params.t;
+        const mode: "eco" | "comfort" | undefined = params.mode;
+        const zones: number[] | undefined = params.zones;
+        const flags: boolean | null | undefined = params.flags;
+        const client: string = request.clientId;
+        // @ts-expect-error - t is a number
+        const bad: string = params.t;
+        // @ts-expect-error - no other properties
+        const nope: any = params.other;
+        return { ok: true };
+      }
+    ),
+    Loose: { params: { type: "object" }, handler: (p) => p },
+    Described: { handler: () => "x", description: "no schema" },
+  });
+  const problems: MqttRpc.ValidationProblem[] = MqttRpc.validate({ type: "number" }, "x");
+  type Target = MqttRpc.FromSchema<{ type: "object"; properties: { a: { type: "string" } }; required: ["a"] }>;
+  const target: Target = { a: "x" };
+  // @ts-expect-error - a is required
+  const missing: Target = {};
 }
 
 // ---- the raw RPC layer, exactly as the services document it ----

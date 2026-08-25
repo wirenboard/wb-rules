@@ -238,6 +238,33 @@ func (s *MqttRpcSuite) TestServedErrors() {
 	s.VerifyEmpty()
 }
 
+func (s *MqttRpcSuite) TestSchemaValidatedMethods() {
+	// a valid request reaches the handler with the params as sent
+	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/SetTarget/cli1", `{"id":1,"params":{"room":"hall","t":22}}`,
+		`{"id":1,"result":{"room":"hall","t":22,"mode":"default"}}`)
+	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/SetTarget/cli1", `{"id":2,"params":{"room":"hall","t":22,"mode":"eco","zones":[1,2]}}`,
+		`{"id":2,"result":{"room":"hall","t":22,"mode":"eco"}}`)
+	// a bad one is -32602 with every problem in data, the first in the message
+	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/SetTarget/cli1", `{"id":3,"params":{"room":"","t":40,"mode":"x","zones":[1.5,2,3,4],"extra":1}}`,
+		`{"id":3,"error":{"code":-32602,"message":"invalid params: /room must be at least 1 characters","data":[{"path":"/room","message":"must be at least 1 characters"},{"path":"/t","message":"must be <= 35"},{"path":"/mode","message":"must be one of [\"eco\",\"comfort\"]"},{"path":"/zones","message":"must have at most 3 items"},{"path":"/zones/0","message":"must be integer, got number"},{"path":"/extra","message":"is not allowed"}]}}`)
+	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/SetTarget/cli1", `{"id":4,"params":{"t":"hot"}}`,
+		`{"id":4,"error":{"code":-32602,"message":"invalid params: /room is required","data":[{"path":"/room","message":"is required"},{"path":"/t","message":"must be number, got string"}]}}`)
+	// the {params, handler} object form validates too; a scalar fails the object schema
+	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/Loose/cli1", `{"id":5,"params":{"a":1,"b":2}}`, `{"id":5,"result":2}`)
+	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/Loose/cli1", `{"id":6,"params":[1]}`,
+		`{"id":6,"error":{"code":-32602,"message":"invalid params: / must be object, got array","data":[{"path":"/","message":"must be object, got array"}]}}`)
+	// a non-object schema at the root: by-position params
+	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/Union/cli1", `{"id":7,"params":10}`,
+		`{"id":7,"error":{"code":-32602,"message":"invalid params: not an object"}}`)
+	s.roundTrip("/rpc/v1/wbrules-scripts/Demo/Union/cli1", `{"id":8,"params":["x"]}`,
+		`{"id":8,"error":{"code":-32602,"message":"invalid params: / must match an alternative","data":[{"path":"/","message":"must match an alternative"}]}}`)
+}
+
+func (s *MqttRpcSuite) TestValidateFunction() {
+	s.publish("/devices/rpctest/controls/validate/on", "1", "rpctest/validate")
+	s.SkipTill(`wbrules-log -> /wbrules/log/info: [validate: ok | /:must be number, got string | ok | /:must be integer, got number | ok | /:must be one of [1,"a"] | /:must be at most 2 characters | /:must have at least 1 items | /1:must be boolean, got number | /:must match exactly one alternative | /:must not match the excluded schema | /:must be <= 1 | /b:must be number, got string | ok] (QoS 1)`)
+}
+
 var servedPresenceTopics = []string{
 	"/rpc/v1/wbrules-scripts/Demo/Echo",
 	"/rpc/v1/wbrules-scripts/Demo/Fail",
@@ -247,6 +274,9 @@ var servedPresenceTopics = []string{
 	"/rpc/v1/wbrules-scripts/Demo/Circular",
 	"/rpc/v1/wbrules-scripts/Demo/Func",
 	"/rpc/v1/wbrules-scripts/Demo/BadData",
+	"/rpc/v1/wbrules-scripts/Demo/SetTarget",
+	"/rpc/v1/wbrules-scripts/Demo/Loose",
+	"/rpc/v1/wbrules-scripts/Demo/Union",
 	"/rpc/v1/custom-driver/Other/Ping",
 }
 

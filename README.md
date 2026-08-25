@@ -2002,19 +2002,45 @@ Promise), уйдёт в `result`. Чтобы ответить конкретно
 флагом `-cleanup`, как и виртуальные устройства; после перезапуска файл
 объявит их заново).
 
+Параметры метода можно описать JSON-схемой (так же описывают свои RPC
+wb-mqtt-serial и confed) через `MqttRpc.method(schema, handler)`: запрос
+проверяется до вызова обработчика, не прошедший — получает −32602 с
+описанием проблем в `data`, а TypeScript выводит тип `params` обработчика
+из той же схемы — и в `.ts`, и в `.js` файлах (типы из схемы получаются
+без ручных проверок, обратное — получить проверку из типов — невозможно:
+типы стираются при компиляции). Поддерживается обычное подмножество схемы:
+`type`, `enum`, `const`, `properties`/`required`/`additionalProperties`,
+`items`, границы чисел и строк, `anyOf`/`oneOf`/`allOf`/`not`; та же
+проверка доступна как `MqttRpc.validate(schema, value)`.
+
 ```javascript
 MqttRpc.defineService('Heating', {
   // mosquitto_pub -t /rpc/v1/wbrules-scripts/Heating/SetTarget/cli -m '{"id":1,"params":{"room":"hall","t":22}}'
-  SetTarget: (params) => {
-    if (typeof params.t !== 'number') {
-      throw new MqttRpc.RpcError(MqttRpc.ErrorCode.INVALID_PARAMS, 't must be a number');
+  SetTarget: MqttRpc.method(
+    {
+      type: 'object',
+      properties: {
+        room: { type: 'string', minLength: 1 },
+        t: { type: 'number', minimum: 5, maximum: 35 },
+      },
+      required: ['room', 't'],
+      additionalProperties: false,
+    },
+    (params) => {
+      // здесь params.room — string, params.t — number: и по типам, и на самом деле
+      dev['heating/' + params.room + '_target'] = params.t;
+      return { room: params.room, t: params.t };
     }
-    dev['heating/' + params.room + '_target'] = params.t;
-    return { room: params.room, t: params.t };
-  },
+  ),
+  // без схемы — просто функция
   Status: async () => {
     return { last: await MqttRpc.db.lastValue('heating/hall') };
   },
+});
+
+// под другим драйвером: /rpc/v1/my-integration/Heating/...
+MqttRpc.defineService('my-integration', 'Heating', {
+  Ping: () => 'pong',
 });
 ```
 

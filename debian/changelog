@@ -45,6 +45,11 @@ wb-rules (2.47.0~quickjs2.1) unstable; urgency=medium
     confed.update(), logs.read()/tail(), diag.collect(),
     deviceManager.scan() (waits for the scan), isAvailable()/
     waitUntilAvailable() per service.
+  * Served methods can carry a JSON Schema of their params
+    (MqttRpc.method(schema, handler)): requests are validated before the
+    handler runs (-32602 with the problems in data), and TypeScript types
+    the handler's params from the schema in .ts and .js files alike;
+    MqttRpc.validate(schema, value) exposes the same check.
 
  -- Evgeny Boger <boger@wirenboard.com>  Tue, 25 Aug 2026 01:00:00 +0400
 

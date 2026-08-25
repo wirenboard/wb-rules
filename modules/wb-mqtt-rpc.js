@@ -434,6 +434,139 @@ function service(driver, svc, methods) {
 }
 
 // ---------------------------------------------------------------------------
+// JSON Schema validation of served params
+// ---------------------------------------------------------------------------
+//
+// A served method may describe its params with a JSON Schema (the same
+// convention wb-mqtt-serial and confed use for their RPC requests); the
+// request is checked before the handler runs and a bad one is answered
+// -32602 with the problems listed in data. The supported subset: type
+// (incl. arrays of types), enum, const, properties/required/
+// additionalProperties, items/minItems/maxItems, minLength/maxLength/
+// pattern, minimum/maximum/exclusiveMinimum/exclusiveMaximum/multipleOf,
+// anyOf/oneOf/allOf/not. Other keywords are ignored.
+
+function jsonTypeOf(v) {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return 'array';
+  return typeof v;
+}
+
+function typeMatches(want, v) {
+  var actual = jsonTypeOf(v);
+  if (want === 'integer') return actual === 'number' && v % 1 === 0;
+  return want === actual;
+}
+
+function validateSchema(schema, v, path, problems) {
+  if (schema === true || schema === undefined || schema === null) return problems;
+  if (schema === false) {
+    problems.push({ path: path, message: 'not allowed' });
+    return problems;
+  }
+  var here = path || '/';
+  if (schema.type !== undefined) {
+    var types = Array.isArray(schema.type) ? schema.type : [schema.type];
+    var okType = false;
+    for (var i = 0; i < types.length; i++) if (typeMatches(types[i], v)) okType = true;
+    if (!okType) {
+      problems.push({ path: here, message: 'must be ' + types.join(' or ') + ', got ' + jsonTypeOf(v) });
+      return problems; // the other keywords assume the type
+    }
+  }
+  if (schema.enum !== undefined) {
+    var found = false;
+    for (var e = 0; e < schema.enum.length; e++) if (sameValue(schema.enum[e], v)) found = true;
+    if (!found) problems.push({ path: here, message: 'must be one of ' + tryStringify(schema.enum) });
+  }
+  if (schema.const !== undefined && !sameValue(schema.const, v)) {
+    problems.push({ path: here, message: 'must be ' + tryStringify(schema.const) });
+  }
+  if (typeof v === 'number') {
+    if (schema.minimum !== undefined && v < schema.minimum) problems.push({ path: here, message: 'must be >= ' + schema.minimum });
+    if (schema.maximum !== undefined && v > schema.maximum) problems.push({ path: here, message: 'must be <= ' + schema.maximum });
+    if (schema.exclusiveMinimum !== undefined && v <= schema.exclusiveMinimum) {
+      problems.push({ path: here, message: 'must be > ' + schema.exclusiveMinimum });
+    }
+    if (schema.exclusiveMaximum !== undefined && v >= schema.exclusiveMaximum) {
+      problems.push({ path: here, message: 'must be < ' + schema.exclusiveMaximum });
+    }
+    if (schema.multipleOf !== undefined && Math.abs((v / schema.multipleOf) % 1) > 1e-9) {
+      problems.push({ path: here, message: 'must be a multiple of ' + schema.multipleOf });
+    }
+  }
+  if (typeof v === 'string') {
+    if (schema.minLength !== undefined && v.length < schema.minLength) problems.push({ path: here, message: 'must be at least ' + schema.minLength + ' characters' });
+    if (schema.maxLength !== undefined && v.length > schema.maxLength) problems.push({ path: here, message: 'must be at most ' + schema.maxLength + ' characters' });
+    if (schema.pattern !== undefined && !new RegExp(schema.pattern).test(v)) problems.push({ path: here, message: 'must match ' + schema.pattern });
+  }
+  if (Array.isArray(v)) {
+    if (schema.minItems !== undefined && v.length < schema.minItems) problems.push({ path: here, message: 'must have at least ' + schema.minItems + ' items' });
+    if (schema.maxItems !== undefined && v.length > schema.maxItems) problems.push({ path: here, message: 'must have at most ' + schema.maxItems + ' items' });
+    if (schema.items !== undefined) {
+      for (var a = 0; a < v.length; a++) validateSchema(schema.items, v[a], path + '/' + a, problems);
+    }
+  }
+  if (isPlainObject(v)) {
+    var props = schema.properties || {};
+    if (schema.required) {
+      for (var r = 0; r < schema.required.length; r++) {
+        if (!hasOwn(v, schema.required[r])) problems.push({ path: path + '/' + schema.required[r], message: 'is required' });
+      }
+    }
+    Object.keys(v).forEach(function (k) {
+      if (hasOwn(props, k)) {
+        validateSchema(props[k], v[k], path + '/' + k, problems);
+      } else if (schema.additionalProperties === false) {
+        problems.push({ path: path + '/' + k, message: 'is not allowed' });
+      } else if (isPlainObject(schema.additionalProperties)) {
+        validateSchema(schema.additionalProperties, v[k], path + '/' + k, problems);
+      }
+    });
+  }
+  if (schema.allOf) {
+    for (var al = 0; al < schema.allOf.length; al++) validateSchema(schema.allOf[al], v, path, problems);
+  }
+  if (schema.anyOf || schema.oneOf) {
+    var alternatives = schema.anyOf || schema.oneOf;
+    var matches = 0;
+    for (var o = 0; o < alternatives.length; o++) {
+      if (validateSchema(alternatives[o], v, path, []).length === 0) matches++;
+    }
+    if (matches === 0 || (schema.oneOf && matches !== 1)) {
+      problems.push({ path: here, message: schema.oneOf ? 'must match exactly one alternative' : 'must match an alternative' });
+    }
+  }
+  if (schema.not !== undefined && validateSchema(schema.not, v, path, []).length === 0) {
+    problems.push({ path: here, message: 'must not match the excluded schema' });
+  }
+  return problems;
+}
+
+function sameValue(a, b) {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  return tryStringify(a) === tryStringify(b);
+}
+
+// validate(schema, value) -> [] or [{path, message}]
+function validate(schema, value) {
+  return validateSchema(schema, value, '', []);
+}
+
+// method(paramsSchema, handler) -> a served method with validated params;
+// TypeScript types the handler's params from the schema
+function method(params, handler) {
+  if (!isPlainObject(params) && typeof params !== 'boolean') {
+    throw new TypeError('MqttRpc.method: the params schema must be a JSON Schema object');
+  }
+  if (typeof handler !== 'function') {
+    throw new TypeError('MqttRpc.method: the handler must be a function');
+  }
+  return { params: params, handler: handler };
+}
+
+// ---------------------------------------------------------------------------
 // server
 // ---------------------------------------------------------------------------
 
@@ -512,16 +645,28 @@ function makeRequestHandler(entry) {
       replyTo(msg.topic, errorReply(null, ErrorCode.INVALID_REQUEST, 'invalid request: bad id'));
       return;
     }
-    var handler = hasOwn(entry.methods, method) ? entry.methods[method] : null;
-    if (!handler) {
+    var spec = hasOwn(entry.methods, method) ? entry.methods[method] : null;
+    if (!spec) {
       replyTo(msg.topic, errorReply(id, ErrorCode.METHOD_NOT_FOUND, 'unknown method: ' + method));
       return;
     }
+    var handler = spec.handler;
     var params = req.params === undefined || req.params === null ? {} : req.params;
     if (typeof params !== 'object') {
       // JSON-RPC params are by-name (object) or by-position (array)
       replyTo(msg.topic, errorReply(id, ErrorCode.INVALID_PARAMS, 'invalid params: not an object'));
       return;
+    }
+    if (spec.params !== undefined) {
+      var problems = validate(spec.params, params);
+      if (problems.length) {
+        var first = problems[0];
+        replyTo(
+          msg.topic,
+          errorReply(id, ErrorCode.INVALID_PARAMS, 'invalid params: ' + first.path + ' ' + first.message, problems)
+        );
+        return;
+      }
     }
     var request = {
       driver: entry.driver,
@@ -594,10 +739,21 @@ function defineService(driver, svc, methods) {
   if (!isPlainObject(methods) || Object.keys(methods).length === 0) {
     throw new TypeError('MqttRpc.defineService: methods must be a non-empty object of functions');
   }
+  var specs = {};
   Object.keys(methods).forEach(function (name) {
     checkTopicPart('method', name);
-    if (typeof methods[name] !== 'function') {
-      throw new TypeError('MqttRpc.defineService: method ' + name + ' is not a function');
+    var m = methods[name];
+    if (typeof m === 'function') {
+      specs[name] = { handler: m };
+    } else if (isPlainObject(m) && typeof m.handler === 'function') {
+      if (m.params !== undefined && !isPlainObject(m.params) && typeof m.params !== 'boolean') {
+        throw new TypeError('MqttRpc.defineService: params of ' + name + ' must be a JSON Schema object');
+      }
+      specs[name] = { handler: m.handler, params: m.params };
+    } else {
+      throw new TypeError(
+        'MqttRpc.defineService: method ' + name + ' must be a function or { params, handler }'
+      );
     }
   });
   if (!cleanupRegistered) {
@@ -620,11 +776,11 @@ function defineService(driver, svc, methods) {
     // otherwise pin its last request for the file's lifetime
     trackMqtt(RPC_PREFIX + driver + '/' + svc + '/+/+', makeRequestHandler(entry), { cache: false });
   }
-  Object.keys(methods).forEach(function (name) {
+  Object.keys(specs).forEach(function (name) {
     if (hasOwn(entry.methods, name)) {
       log.warning('MqttRpc: {}/{}/{} redefined', driver, svc, name);
     }
-    entry.methods[name] = methods[name];
+    entry.methods[name] = specs[name];
     publish(methodTopic(driver, svc, name), '1', 1, true);
   });
   return { driver: driver, service: svc, methods: Object.keys(entry.methods) };
@@ -1859,6 +2015,8 @@ var api = {
   RpcError: RpcError,
   TimeoutError: TimeoutError,
   ModbusError: ModbusError,
+  validate: validate,
+  method: method,
   ErrorCode: ErrorCode,
   defaults: defaults,
   clientId: clientId,

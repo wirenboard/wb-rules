@@ -1034,6 +1034,115 @@ declare namespace MqttRpc {
    */
   type Handler<P = any, R = any> = (params: P, request: Request) => R | Promise<R>;
 
+  /**
+   * The JSON Schema subset the server validates params with: type (or an
+   * array of types), enum, const, properties/required/additionalProperties,
+   * items/minItems/maxItems, minLength/maxLength/pattern, minimum/maximum/
+   * exclusiveMinimum/exclusiveMaximum/multipleOf, anyOf/oneOf/allOf/not.
+   */
+  interface JsonSchema {
+    type?: JsonSchemaType | readonly JsonSchemaType[];
+    enum?: readonly any[];
+    const?: any;
+    properties?: { readonly [name: string]: JsonSchema };
+    required?: readonly string[];
+    additionalProperties?: boolean | JsonSchema;
+    items?: JsonSchema;
+    minItems?: number;
+    maxItems?: number;
+    minLength?: number;
+    maxLength?: number;
+    pattern?: string;
+    minimum?: number;
+    maximum?: number;
+    exclusiveMinimum?: number;
+    exclusiveMaximum?: number;
+    multipleOf?: number;
+    anyOf?: readonly JsonSchema[];
+    oneOf?: readonly JsonSchema[];
+    allOf?: readonly JsonSchema[];
+    not?: JsonSchema;
+    /** Documentation only. */
+    title?: string;
+    description?: string;
+    default?: any;
+    [keyword: string]: any;
+  }
+  type JsonSchemaType = "string" | "number" | "integer" | "boolean" | "object" | "array" | "null";
+
+  /** The TypeScript type a JSON Schema (of the supported subset) describes. */
+  type FromSchema<S> = S extends { enum: readonly (infer E)[] }
+    ? E
+    : S extends { const: infer C }
+      ? C
+      : S extends { type: readonly (infer T extends JsonSchemaType)[] }
+        ? FromSchemaType<T, S>
+        : S extends { type: infer T extends JsonSchemaType }
+          ? FromSchemaType<T, S>
+          : S extends { anyOf: readonly (infer A)[] }
+            ? FromSchema<A>
+            : S extends { oneOf: readonly (infer O)[] }
+              ? FromSchema<O>
+              : S extends { properties: any }
+                ? ObjectFromSchema<S>
+                : any;
+  type FromSchemaType<T extends JsonSchemaType, S> = T extends "string"
+    ? string
+    : T extends "number" | "integer"
+      ? number
+      : T extends "boolean"
+        ? boolean
+        : T extends "null"
+          ? null
+          : T extends "array"
+            ? S extends { items: infer I }
+              ? FromSchema<I>[]
+              : any[]
+            : T extends "object"
+              ? ObjectFromSchema<S>
+              : any;
+  type RequiredKeys<S> = S extends { required: readonly (infer R extends string)[] } ? R : never;
+  type ObjectFromSchema<S> = S extends { properties: infer P }
+    ? {
+        [K in keyof P as K extends RequiredKeys<S> ? K : never]: FromSchema<P[K]>;
+      } & {
+        [K in keyof P as K extends RequiredKeys<S> ? never : K]?: FromSchema<P[K]>;
+      } & (S extends { additionalProperties: false } ? {} : { [extra: string]: any })
+    : { [extra: string]: any };
+
+  /** A problem found by validate(): where (a JSON pointer, "/" for the root) and what. */
+  interface ValidationProblem {
+    path: string;
+    message: string;
+  }
+  /** Validates a value against a JSON Schema (the supported subset); [] when valid. */
+  function validate(schema: JsonSchema | boolean, value: any): ValidationProblem[];
+
+  /**
+   * A served method with the JSON Schema of its params: the request is
+   * validated before the handler runs (a bad one is answered -32602 with
+   * the problems in data). Build it with `MqttRpc.method(schema, handler)`
+   * to have TypeScript type the handler's params from the schema.
+   */
+  interface MethodSpec<S extends JsonSchema | boolean = JsonSchema, R = any> {
+    params?: S;
+    handler: (params: FromSchema<S>, request: Request) => R | Promise<R>;
+    /** Documentation only. */
+    description?: string;
+  }
+  type MethodDef = Handler | MethodSpec<any, any>;
+
+  /**
+   * A served method whose params are validated against `schema`; the
+   * handler's `params` is typed from it (`FromSchema`), in .ts and .js alike:
+   *   Set: MqttRpc.method({ type: "object", properties: { t: { type: "number" } }, required: ["t"] },
+   *                       (params) => params.t) // params.t is a number
+   */
+  function method<const S extends JsonSchema | boolean, R>(
+    schema: S,
+    handler: (params: FromSchema<S>, request: Request) => R | Promise<R>
+  ): MethodSpec<S, R>;
+
   interface ServiceDefinition {
     driver: string;
     service: string;
@@ -1046,13 +1155,14 @@ declare namespace MqttRpc {
    * on its retained presence topic and answered until the file unloads
    * (reload, removal, engine stop), which clears the presence. The default
    * driver is "wbrules-scripts" - "wbrules" is the engine's own Editor
-   * server, which answers -32601 for services it does not know.
+   * server, which answers -32601 for services it does not know; pass the
+   * driver as the first argument to serve under another one.
    */
-  function defineService(service: string, methods: Record<string, Handler>): ServiceDefinition;
+  function defineService(service: string, methods: Record<string, MethodDef>): ServiceDefinition;
   function defineService(
     driver: string,
     service: string,
-    methods: Record<string, Handler>
+    methods: Record<string, MethodDef>
   ): ServiceDefinition;
 
   // ---- the controller's services ----
