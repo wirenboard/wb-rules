@@ -1776,7 +1776,7 @@ defineRule({
 
 ```javascript
 try {
-  await MqttRpc.rules.Editor.Load({ path: 'nope.js' });
+  await MqttRpc.rules.load('nope.js');
 } catch (e) {
   if (e instanceof MqttRpc.TimeoutError) log.error('wb-rules не отвечает');
   else if (e instanceof MqttRpc.RpcError) log.error('ошибка {}: {}', e.code, e.message);
@@ -1817,44 +1817,167 @@ const files = await editor.List();
 
 ### Встроенные сервисы
 
-Для сервисов Wiren Board в модуле есть готовые обёртки — по объекту на
-сервис с методами, названными точно как в топиках, и с типами параметров и
-результатов (см. `wb-rules.d.ts`; редактор подсказывает поля):
+Для сервисов Wiren Board в модуле есть готовые объекты — по одному на
+сервис. У каждого два слоя:
 
-| Объект | Драйвер | Сервисы и методы |
+* `MqttRpc.<сервис>.rpc.<service>.<Method>(params)` — методы RPC ровно так,
+  как их описывает документация сервиса (параметры и результаты типизированы,
+  см. `wb-rules.d.ts`);
+* хелперы на самом объекте — то, что обычно нужно в правиле: обычные
+  аргументы вместо JSON-объектов, разобранные результаты (`Date` вместо
+  UNIX-секунд, числа вместо строк, регистры Modbus вместо hex-строк),
+  ожидание завершения длинных операций.
+
+У каждого объекта есть `isAvailable([timeoutMs])` и
+`waitUntilAvailable([timeoutMs])` — доступность сервиса по retained-топику
+одного из его методов. Все хелперы принимают последним аргументом `options`
+с `timeout`/`waitForMethod`, как `call`; у операций wb-mqtt-serial туда же
+можно положить `totalTimeout`, `responseTimeout`, `frameTimeout` (мс).
+
+| Объект | Сервис | Хелперы |
 |---|---|---|
-| `MqttRpc.serial` | `wb-mqtt-serial` | `config.Load/GetSchema`, `templates.Upload/Delete`, `ports.Load`, `port.Load/Setup/Scan`, `device.LoadConfig/Load/Set/Probe/SetPoll`, `fwUpdate.GetFirmwareInfo/Update/ClearError/Restore` |
-| `MqttRpc.db` | `db_logger` (wb-mqtt-db) | `history.get_values/get_channels` |
-| `MqttRpc.rules` | `wbrules` | `Editor.List/Load/Save/Remove/Rename/ChangeState/Check/GetTypes` |
-| `MqttRpc.confed` | `confed` (wb-mqtt-confed) | `Editor.List/Load/Save` |
-| `MqttRpc.logs` | `wb_logs` (wb-mqtt-logs) | `logs.List/Load/CancelLoad` |
-| `MqttRpc.diag` | `diag` (wb-diag-collect) | `main.diag/status` |
-| `MqttRpc.deviceManager` | `wb-device-manager` | `busScan.Start/Stop`, `fwUpdate.*` |
-| `MqttRpc.dali` | `wb-mqtt-dali` | `Editor.*`, `Bus.SendCommand/ListCommands` |
+| `MqttRpc.serial` | wb-mqtt-serial | `device()`, `devices()`, `ports()`, `config()`, `deviceTypes()`, `deviceSchema()`, `scan()`, `probe()`, `setup()`, `uploadTemplate()`, `deleteTemplate()`, `firmwareInfo()`, `updateFirmware()`, `waitForFirmwareUpdate()`, `restoreFirmware()`, `clearFirmwareError()`, `firmwareUpdateState()` |
+| `MqttRpc.db` | wb-mqtt-db | `query()`, `lastValue()`, `average()`, `channels()` |
+| `MqttRpc.rules` | wb-rules | `list()`, `load()`, `save()`, `remove()`, `rename()`, `enable()`, `disable()`, `check()`, `types()` |
+| `MqttRpc.confed` | wb-mqtt-confed | `list()`, `load()`, `save()`, `update()` |
+| `MqttRpc.logs` | wb-mqtt-logs | `read()`, `tail()`, `services()`, `boots()`, `cancel()` |
+| `MqttRpc.diag` | wb-diag-collect | `collect()`, `isAlive()` |
+| `MqttRpc.deviceManager` | wb-device-manager | `scan()`, `stopScan()`, `state()`, `firmwareInfo()`, `updateFirmware()`, … |
+| `MqttRpc.dali` | wb-mqtt-dali | `buses()`, `send()`, `commands()` |
 
-Каждый метод принимает `(params[, options])`, как `call`. Для операций с
-собственным бюджетом времени на стороне сервера (`total_timeout` у
-`port.*`/`device.*` в миллисекундах, `request_timeout` у
-`history.get_values` в секундах) таймаут ожидания ответа, если он не задан
-явно, берётся не меньше этого бюджета с запасом. Сервисы на C++ не отвечают
-на методы, которых у них нет (см. выше), а параметры проверяют по
-JSON-схеме — ошибка схемы приходит как `RpcError` −32000 с текстом в `data`.
+Сервисы на C++ не отвечают на методы, которых у них нет (см. выше), а
+параметры проверяют по JSON-схеме — ошибка схемы приходит как `RpcError`
+−32000 с текстом в `data`. У операций с собственным бюджетом времени на
+стороне сервера (`total_timeout` у порта/устройства, `request_timeout` у
+истории) таймаут ожидания ответа, если не задан явно, берётся не меньше этого
+бюджета с запасом.
+
+#### Устройства на шине: `MqttRpc.serial`
+
+`MqttRpc.serial.device(target)` даёт объект устройства. `target` — либо
+MQTT-идентификатор устройства из конфига wb-mqtt-serial (`'wb-map12e_1'`:
+порт, протокол и адрес возьмутся из конфига), либо порт и адрес:
+`{ port, slaveId[, deviceType][, rtuOverTcp] }`. Порт — путь
+(`'/dev/ttyRS485-1'`, по умолчанию 9600 N 8 2), объект
+`{ path, baudRate, parity, dataBits, stopBits }` или Modbus TCP
+(`'10.0.0.5:502'`, `{ ip, port }`).
 
 ```javascript
-// среднее напряжение питания за последний час из wb-mqtt-db
-const now = Math.floor(Date.now() / 1000);
-const hist = await MqttRpc.db.history.get_values({
-  channels: [['wb-adc', 'Vin']],
-  timestamp: { gt: now - 3600 },
-  ver: 1,
-  max_records: 1,
-});
-log('Vin avg: {}', hist.values.length ? hist.values[0].v : 'нет данных');
+const meter = MqttRpc.serial.device('wb-map12e_1');
 
-// перечитать настройки устройства и выключить его опрос на время
-const cfg = await MqttRpc.serial.device.LoadConfig({ device_id: 'wb-mr6c_1', force: true });
-await MqttRpc.serial.device.SetPoll({ device_id: 'wb-mr6c_1', poll: false });
+// регистры Modbus: числа, а не hex-строки
+const [urmsHi, urmsLo] = await meter.readHolding(0x1400, 2);   // функция 3
+const inputs = await meter.readInput(0x10, 4);                   // функция 4
+const coils = await meter.readCoils(0, 8);                        // функция 1 -> boolean[]
+await meter.writeHolding(0x60, 1);                                // функция 6
+await meter.writeHolding(0x60, [1, 2, 3]);                        // функция 16
+await meter.writeCoil(5, true);                                   // функция 5 (массив -> 15)
+
+// то же для устройства, которого нет в конфиге
+const relay = MqttRpc.serial.device({ port: '/dev/ttyRS485-2', slaveId: 12 });
+const who = await relay.probe();            // ScannedDevice или null
+const hex = await relay.raw('0c03008000018499', 8);   // произвольные байты (hex)
 ```
+
+Исключение Modbus от устройства приходит как `MqttRpc.ModbusError` с полем
+`code` (2 — illegal data address и т.д.), ошибки порта — как `RpcError`.
+Произвольная функция: `device.modbus(fn, address, { count, data })` —
+hex-строка данных ответа.
+
+Через драйвер, по именам из шаблона:
+
+```javascript
+const meter = MqttRpc.serial.device('wb-map12e_1');
+const settings = await meter.settings({ force: true });   // parameters, fw, model
+const data = await meter.read({ channels: ['Urms L1', 'Irms L1'] });
+await meter.write({ parameters: { baud_rate: 96 } });
+
+// остановить опрос на время прямой работы с устройством (опрос вернётся даже при ошибке)
+await meter.withPollingPaused(async () => {
+  await meter.writeHolding(0x80, 1);
+});
+```
+
+Список устройств и портов из конфига (`id` — MQTT-идентификатор, тот же,
+что в `dev[...]`):
+
+```javascript
+for (const d of await MqttRpc.serial.devices()) {
+  log('{} ({} @ {}:{}) {}', d.id, d.type, d.port.path || d.port.ip, d.slaveId, d.enabled ? '' : 'выключено');
+}
+const ports = await MqttRpc.serial.ports();
+```
+
+Сканирование и настройка адресов (Fast Modbus):
+
+```javascript
+const { devices } = await MqttRpc.serial.scan('/dev/ttyRS485-1');
+await MqttRpc.serial.setup('/dev/ttyRS485-1', [{ sn: 4265607, set: { slaveId: 12 } }]);
+```
+
+Прошивки — `firmwareInfo`, `updateFirmware`, `restoreFirmware`,
+`clearFirmwareError` принимают `(port, slaveId[, options])` или вызываются у
+объекта устройства. `updateFirmware` по умолчанию ждёт окончания обновления
+(`onProgress` получает записи с `progress`; ошибка обновления — исключение с
+полем `state`); `{ wait: false }` возвращает ответ сервиса сразу.
+
+```javascript
+const meter = MqttRpc.serial.device('wb-map12e_1');
+const info = await meter.firmwareInfo();
+if (info.fw_has_update) {
+  await meter.updateFirmware({ onProgress: (e) => log('{}%', e.progress) });
+}
+```
+
+#### История: `MqttRpc.db`
+
+`query(channel, options)` — записи одного канала (`'wb-adc/Vin'` или
+`['wb-adc', 'Vin']`) или нескольких (массив каналов, записи сливаются по
+времени). Границы `since`/`until` — `Date` или миллисекунды (`Date.now()`),
+`last` — последние N миллисекунд; `limit` (на канал), `minInterval` и
+`maxRecords` — усреднение на стороне базы; `afterUid` — продолжение с записи
+(`hasMore` говорит, что записи ещё есть). Значения приходят числами (или
+строками для нечисловых каналов), время — `Date`.
+
+```javascript
+const { values } = await MqttRpc.db.query('wb-adc/Vin', { last: 3600000 });
+for (const r of values) log('{} {}', r.time.toISOString(), r.value);
+
+const last = await MqttRpc.db.lastValue('wb-adc/Vin');      // запись или undefined
+const avg = await MqttRpc.db.average('wb-adc/Vin', { last: 86400000 });
+const channels = await MqttRpc.db.channels();                 // [{ channel, items, lastTime }]
+```
+
+#### Редакторы: `MqttRpc.rules`, `MqttRpc.confed`
+
+```javascript
+const files = await MqttRpc.rules.list();
+const { content } = await MqttRpc.rules.load('lighting.js');
+await MqttRpc.rules.save('lighting.js', content.replace('22', '23'));
+await MqttRpc.rules.disable('legacy.js');
+const verdict = await MqttRpc.rules.check('lighting.ts');    // ждёт, пока проверка не завершится
+
+// конфиг: загрузить, поменять, сохранить (зависимые сервисы перезапустятся)
+await MqttRpc.confed.update('/etc/wb-mqtt-serial.conf', (cfg) => {
+  cfg.debug = false;
+});
+```
+
+#### Журнал, диагностика, сканер: `MqttRpc.logs`, `MqttRpc.diag`, `MqttRpc.deviceManager`
+
+```javascript
+const errors = await MqttRpc.logs.read({ service: 'wb-mqtt-serial.service', levels: [0, 1, 2, 3], since: Date.now() - 3600000 });
+const tail = await MqttRpc.logs.tail('wb-rules.service', 20);      // [{ time: Date, level, msg, cursor }]
+
+const archive = await MqttRpc.diag.collect();                        // { basename, fullname }
+
+const found = await MqttRpc.deviceManager.scan({ port: '/dev/ttyRS485-1', onProgress: (s) => log('{}%', s.progress) });
+```
+
+`logs.read` возвращает не больше 100 записей, новые первыми (`cursor`
+первой/последней записи и `direction` — для листания); `diag.collect` ждёт
+появления архива; `deviceManager.scan` — окончания сканирования (состояние
+доступно как `deviceManager.state()`).
 
 ### Свои методы
 
@@ -1890,8 +2013,7 @@ MqttRpc.defineService('Heating', {
     return { room: params.room, t: params.t };
   },
   Status: async () => {
-    const hist = await MqttRpc.db.history.get_values({ channels: [['heating', 'hall']], limit: 1 });
-    return { last: hist.values[0] };
+    return { last: await MqttRpc.db.lastValue('heating/hall') };
   },
 });
 ```

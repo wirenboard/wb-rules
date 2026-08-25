@@ -168,10 +168,10 @@ defineRule('rpc_proxy', {
 defineRule('rpc_typed', {
   whenChanged: 'rpctest/typed',
   then: async function () {
-    var v = await MqttRpc.db.history.get_values({ channels: [['wb-adc', 'Vin']], limit: 1 });
+    var v = await MqttRpc.db.rpc.history.get_values({ channels: [['wb-adc', 'Vin']], limit: 1 });
     log('typed result: {}', JSON.stringify(v));
     // the serial port budget stretches the client timeout beyond the default
-    MqttRpc.serial.port
+    MqttRpc.serial.rpc.port
       .Load({
         path: '/dev/ttyRS485-1',
         baud_rate: 9600,

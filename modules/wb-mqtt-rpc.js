@@ -19,7 +19,7 @@
 // owns its client id, reply subscription, presence watchers and served
 // methods - all attributed to the file and released when it reloads.
 
-/* global trackMqtt, publish, setTimeout, clearTimeout, _wbAddCleanup, log, module, __filename */
+/* global trackMqtt, publish, setTimeout, clearTimeout, _wbAddCleanup, log, module, __filename, nextMqtt, sleep */
 /* eslint-disable security/detect-object-injection */
 
 var RPC_PREFIX = '/rpc/v1/';
@@ -633,6 +633,13 @@ function defineService(driver, svc, methods) {
 // ---------------------------------------------------------------------------
 // the controller's own services
 // ---------------------------------------------------------------------------
+//
+// Every service group (MqttRpc.serial, .db, .rules, ...) has two layers:
+//   group.rpc.<service>.<Method>(params)  - the RPC methods exactly as the
+//                                           service documents them
+//   group.<helper>(...)                    - what a rule usually wants:
+//                                           plain arguments, parsed results
+// plus isAvailable()/waitUntilAvailable() on the group itself.
 
 // A method whose params carry the server-side time budget (wb-mqtt-serial
 // port/device operations take total_timeout in ms, wb-mqtt-db get_values
@@ -661,104 +668,1183 @@ function budgetedMethod(driver, svc, method, budgetField, unitMs, marginMs) {
 
 var FW_UPDATE_METHODS = ['GetFirmwareInfo', 'Update', 'ClearError', 'Restore'];
 
-var services = {
-  // wb-mqtt-serial: the Modbus/serial device driver
-  serial: {
-    driver: 'wb-mqtt-serial',
-    config: service('wb-mqtt-serial', 'config', ['Load', 'GetSchema']),
-    templates: service('wb-mqtt-serial', 'templates', ['Upload', 'Delete']),
-    ports: service('wb-mqtt-serial', 'ports', ['Load']),
-    port: service('wb-mqtt-serial', 'port', ['Load', 'Setup', 'Scan']),
-    device: service('wb-mqtt-serial', 'device', ['LoadConfig', 'Load', 'Set', 'Probe', 'SetPoll']),
-    fwUpdate: service('wb-mqtt-serial', 'fw-update', FW_UPDATE_METHODS),
-  },
-  // wb-mqtt-db: the history database
-  db: {
-    driver: 'db_logger',
-    history: service('db_logger', 'history', ['get_values', 'get_channels']),
-  },
-  // wb-rules: the rule editor (this very engine)
-  rules: {
-    driver: 'wbrules',
-    Editor: service('wbrules', 'Editor', [
-      'List',
-      'Load',
-      'Save',
-      'Remove',
-      'Rename',
-      'ChangeState',
-      'Check',
-      'GetTypes',
-    ]),
-  },
-  // wb-mqtt-confed: the configuration editor
-  confed: {
-    driver: 'confed',
-    Editor: service('confed', 'Editor', ['List', 'Load', 'Save']),
-  },
-  // wb-mqtt-logs: journal access
-  logs: {
-    driver: 'wb_logs',
-    logs: service('wb_logs', 'logs', ['List', 'Load', 'CancelLoad']),
-  },
-  // wb-diag-collect: the diagnostics archive
-  diag: {
-    driver: 'diag',
-    main: service('diag', 'main', ['diag', 'status']),
-  },
-  // wb-device-manager: the serial bus scanner (and its firmware updater)
-  deviceManager: {
-    driver: 'wb-device-manager',
-    busScan: service('wb-device-manager', 'bus-scan', ['Start', 'Stop']),
-    fwUpdate: service('wb-device-manager', 'fw-update', FW_UPDATE_METHODS),
-  },
-  // wb-mqtt-dali: the DALI gateway
-  dali: {
-    driver: 'wb-mqtt-dali',
-    Editor: service('wb-mqtt-dali', 'Editor', [
-      'GetList',
-      'GetGateway',
-      'SetGateway',
-      'GetBus',
-      'SetBus',
-      'ScanBus',
-      'StopScanBus',
-      'GetDevice',
-      'SetDevice',
-      'GetGroup',
-      'SetGroup',
-      'IdentifyDevice',
-      'ResetDeviceSettings',
-      'ResetDevice',
-    ]),
-    Bus: service('wb-mqtt-dali', 'Bus', ['SendCommand', 'ListCommands']),
-  },
+// ---- small helpers shared by the friendly layer ----
+
+function isDate(v) {
+  return v instanceof Date || Object.prototype.toString.call(v) === '[object Date]';
+}
+
+// Date or milliseconds since the epoch (Date.now() style) -> UNIX seconds
+function toSeconds(t, name) {
+  if (isDate(t)) return t.getTime() / 1000;
+  if (typeof t === 'number' && isFinite(t)) return t / 1000;
+  throw new TypeError('MqttRpc: ' + name + ' must be a Date or milliseconds since the epoch');
+}
+
+function fromSeconds(s) {
+  return new Date(Math.round(s * 1000));
+}
+
+// the value of a history record: numbers as numbers, the rest as strings
+function parseValue(v) {
+  if (typeof v === 'number') return v;
+  if (typeof v !== 'string' || v.trim() === '') return v;
+  var n = Number(v);
+  return isFinite(n) ? n : v;
+}
+
+// a "device/control" string or a [device, control] pair -> the pair
+function channelPair(ch) {
+  if (typeof ch === 'string') {
+    var i = ch.indexOf('/');
+    if (i <= 0 || i === ch.length - 1) {
+      throw new TypeError('MqttRpc: a channel is "device/control", got ' + ch);
+    }
+    return [ch.slice(0, i), ch.slice(i + 1)];
+  }
+  if (Array.isArray(ch) && ch.length === 2) return [String(ch[0]), String(ch[1])];
+  throw new TypeError('MqttRpc: a channel is "device/control" or [device, control]');
+}
+
+function optionsOf(options, names) {
+  // the subset of options that are call options (timeout, waitForMethod)
+  var o = {};
+  var any = false;
+  (names || ['timeout', 'waitForMethod']).forEach(function (k) {
+    if (options && options[k] !== undefined) {
+      o[k] = options[k];
+      any = true;
+    }
+  });
+  return any ? o : undefined;
+}
+
+// copies the request-time budget fields a caller may pass in camelCase
+function timeoutsOf(options, into) {
+  if (!options) return into;
+  if (options.totalTimeout !== undefined) into.total_timeout = options.totalTimeout;
+  if (options.responseTimeout !== undefined) into.response_timeout = options.responseTimeout;
+  if (options.frameTimeout !== undefined) into.frame_timeout = options.frameTimeout;
+  return into;
+}
+
+// A port as a rule author writes it -> the port block wb-mqtt-serial expects:
+//   "/dev/ttyRS485-1"                               serial, 9600 N 8 2
+//   { path, baudRate?, parity?, dataBits?, stopBits? }  (snake_case accepted too)
+//   "192.168.1.50:502" | { ip, port }               Modbus TCP
+function normalizePort(port) {
+  if (typeof port === 'string') {
+    var m = /^([^/\s:]+):(\d+)$/.exec(port);
+    if (m) return { ip: m[1], port: Number(m[2]) };
+    return { path: port, baud_rate: 9600, parity: 'N', data_bits: 8, stop_bits: 2 };
+  }
+  if (!isPlainObject(port)) {
+    throw new TypeError('MqttRpc: a port is a path, "host:port" or an object with path or ip/port');
+  }
+  if (port.ip !== undefined || port.address !== undefined) {
+    return { ip: String(port.ip !== undefined ? port.ip : port.address), port: Number(port.port) };
+  }
+  if (typeof port.path !== 'string' || port.path === '') {
+    throw new TypeError('MqttRpc: a serial port needs its path');
+  }
+  var v = function (camel, snake, dflt) {
+    if (port[camel] !== undefined) return port[camel];
+    if (port[snake] !== undefined) return port[snake];
+    return dflt;
+  };
+  return {
+    path: port.path,
+    baud_rate: v('baudRate', 'baud_rate', 9600),
+    parity: v('parity', 'parity', 'N'),
+    data_bits: v('dataBits', 'data_bits', 8),
+    stop_bits: v('stopBits', 'stop_bits', 2),
+  };
+}
+
+function isTcpPort(p) {
+  return p.ip !== undefined;
+}
+
+function assign(target) {
+  for (var i = 1; i < arguments.length; i++) {
+    var src = arguments[i];
+    if (!src) continue;
+    Object.keys(src).forEach(function (k) {
+      if (src[k] !== undefined) target[k] = src[k];
+    });
+  }
+  return target;
+}
+
+// ---- retained state topics (scan progress, firmware updates) ----
+
+var topicWatch = {}; // topic -> { known, value, waiters: [fn] }
+
+function watchTopic(topic) {
+  var entry = topicWatch[topic];
+  if (entry) return entry;
+  entry = topicWatch[topic] = { known: false, value: undefined, waiters: [] };
+  trackMqtt(topic, function (msg) {
+    entry.known = true;
+    entry.value = msg.value;
+    var ws = entry.waiters;
+    entry.waiters = [];
+    for (var i = 0; i < ws.length; i++) ws[i](msg.value);
+  });
+  return entry;
+}
+
+// the current (retained) value of a topic, or undefined when nothing is
+// there within timeoutMs; later reads are instant and follow updates
+function readTopic(topic, timeoutMs) {
+  var entry = watchTopic(topic);
+  if (entry.known) return Promise.resolve(entry.value);
+  return new Promise(function (resolve) {
+    var timer = null;
+    var settle = function (v) {
+      if (timer !== null) clearTimeout(timer);
+      resolve(v);
+    };
+    if (timeoutMs > 0) {
+      timer = setTimeout(function () {
+        var idx = entry.waiters.indexOf(settle);
+        if (idx >= 0) entry.waiters.splice(idx, 1);
+        resolve(undefined);
+      }, timeoutMs);
+    }
+    entry.waiters.push(settle);
+  });
+}
+
+// resolves with the first value (current or later) accepted by the predicate
+function waitTopic(topic, predicate, timeoutMs, what) {
+  var entry = watchTopic(topic);
+  if (entry.known && predicate(entry.value)) return Promise.resolve(entry.value);
+  return new Promise(function (resolve, reject) {
+    var timer = null;
+    var check = function (v) {
+      if (!predicate(v)) {
+        entry.waiters.push(check);
+        return;
+      }
+      if (timer !== null) clearTimeout(timer);
+      resolve(v);
+    };
+    if (timeoutMs > 0) {
+      timer = setTimeout(function () {
+        var idx = entry.waiters.indexOf(check);
+        if (idx >= 0) entry.waiters.splice(idx, 1);
+        reject(new TimeoutError(what + ' did not finish in ' + timeoutMs + ' ms', 'MqttTimeoutError'));
+      }, timeoutMs);
+    }
+    entry.waiters.push(check);
+  });
+}
+
+function parseJsonOr(text, fallback) {
+  if (typeof text !== 'string' || text === '') return fallback;
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function serviceGroup(driver, rpc, probeService, probeMethod) {
+  return {
+    driver: driver,
+    rpc: rpc,
+    // whether the service is up (its presence topic for a representative method)
+    isAvailable: function (timeout) {
+      return hasMethod(driver, probeService, probeMethod, timeout);
+    },
+    waitUntilAvailable: function (timeout) {
+      return waitForMethod(driver, probeService, probeMethod, timeout);
+    },
+  };
+}
+
+// ---- Modbus encoding ----
+
+// a Modbus exception returned by the device (function 1-6, 15, 16, 23)
+function ModbusError(code, message) {
+  var e = new Error(message);
+  this.name = 'ModbusError';
+  this.message = message;
+  this.stack = e.stack;
+  this.code = code;
+}
+ModbusError.prototype = Object.create(Error.prototype);
+ModbusError.prototype.constructor = ModbusError;
+
+function hexOfU16(n) {
+  if (typeof n !== 'number' || !isFinite(n) || n < 0 || n > 0xffff || n % 1 !== 0) {
+    throw new TypeError('MqttRpc: a register value must be an integer 0..65535, got ' + n);
+  }
+  return ('000' + n.toString(16)).slice(-4);
+}
+
+function u16ArrayFromHex(hex) {
+  var out = [];
+  for (var i = 0; i + 4 <= hex.length; i += 4) out.push(parseInt(hex.slice(i, i + 4), 16));
+  return out;
+}
+
+function bitsFromHex(hex, count) {
+  var out = [];
+  for (var i = 0; i < count; i++) {
+    var byte = parseInt(hex.slice((i >> 3) * 2, (i >> 3) * 2 + 2), 16);
+    out.push(((byte >> (i & 7)) & 1) === 1);
+  }
+  return out;
+}
+
+function hexOfBits(bools) {
+  var bytes = [];
+  for (var i = 0; i < bools.length; i++) {
+    if (i % 8 === 0) bytes.push(0);
+    if (bools[i]) bytes[bytes.length - 1] |= 1 << i % 8;
+  }
+  return bytes
+    .map(function (b) {
+      return ('0' + b.toString(16)).slice(-2);
+    })
+    .join('');
+}
+
+function checkAddress(address) {
+  if (typeof address !== 'number' || address < 0 || address > 0xffff || address % 1 !== 0) {
+    throw new TypeError('MqttRpc: a register address must be an integer 0..65535, got ' + address);
+  }
+  return address;
+}
+
+function checkCount(count) {
+  if (count === undefined) return 1;
+  if (typeof count !== 'number' || count < 1 || count % 1 !== 0) {
+    throw new TypeError('MqttRpc: count must be a positive integer, got ' + count);
+  }
+  return count;
+}
+
+// ---- wb-mqtt-serial ----
+
+var serialRpc = {
+  config: service('wb-mqtt-serial', 'config', ['Load', 'GetSchema']),
+  templates: service('wb-mqtt-serial', 'templates', ['Upload', 'Delete']),
+  ports: service('wb-mqtt-serial', 'ports', ['Load']),
+  port: service('wb-mqtt-serial', 'port', ['Load', 'Setup', 'Scan']),
+  device: service('wb-mqtt-serial', 'device', ['LoadConfig', 'Load', 'Set', 'Probe', 'SetPoll']),
+  fwUpdate: service('wb-mqtt-serial', 'fw-update', FW_UPDATE_METHODS),
+};
+// serial port/device operations carry their own time budget (total_timeout, ms);
+// Probe runs on a fixed server-side budget: nothing to stretch
+['Load', 'Setup', 'Scan'].forEach(function (method) {
+  serialRpc.port[method] = budgetedMethod('wb-mqtt-serial', 'port', method, 'total_timeout', 1, 10000);
+});
+['LoadConfig', 'Load', 'Set'].forEach(function (method) {
+  serialRpc.device[method] = budgetedMethod('wb-mqtt-serial', 'device', method, 'total_timeout', 1, 10000);
+});
+
+var SERIAL_FW_STATE_TOPIC = '/wb-mqtt-serial/firmware_update/state';
+var DEVICE_MANAGER_FW_STATE_TOPIC = '/wb-device-manager/firmware_update/state';
+var DEVICE_MANAGER_STATE_TOPIC = '/wb-device-manager/state';
+
+// The device list as the config editor shows it: every device of every
+// port with its MQTT id (the explicit "id", else "<template mqtt-id>_<slave_id>")
+function listSerialDevices(cfg) {
+  var mqttIdOf = {};
+  (cfg.types || []).forEach(function (group) {
+    (group.types || []).forEach(function (t) {
+      mqttIdOf[t.type] = t['mqtt-id'];
+    });
+  });
+  var out = [];
+  var ports = (cfg.config && cfg.config.ports) || [];
+  ports.forEach(function (port) {
+    var portInfo =
+      port.path !== undefined
+        ? {
+            path: port.path,
+            baud_rate: port.baud_rate,
+            parity: port.parity,
+            data_bits: port.data_bits,
+            stop_bits: port.stop_bits,
+          }
+        : { ip: port.address, port: port.port };
+    (port.devices || []).forEach(function (d) {
+      var slaveId = d.slave_id !== undefined ? String(d.slave_id) : '';
+      var id = d.id;
+      if (!id && mqttIdOf[d.device_type]) {
+        id = mqttIdOf[d.device_type] + (slaveId !== '' ? '_' + slaveId : '');
+      }
+      out.push({
+        id: id,
+        type: d.device_type,
+        name: d.name,
+        slaveId: slaveId,
+        enabled: d.enabled !== false && port.enabled !== false,
+        port: portInfo,
+        config: d,
+      });
+    });
+  });
+  return out;
+}
+
+var serial = serviceGroup('wb-mqtt-serial', serialRpc, 'config', 'Load');
+
+serial.ports = function (options) {
+  return serialRpc.ports.Load({}, optionsOf(options));
+};
+serial.config = function (options) {
+  var params = {};
+  if (options && options.lang) params.lang = options.lang;
+  return serialRpc.config.Load(params, optionsOf(options));
+};
+serial.deviceTypes = function (options) {
+  return serial.config(options).then(function (cfg) {
+    var out = [];
+    (cfg.types || []).forEach(function (group) {
+      (group.types || []).forEach(function (t) {
+        out.push(assign({ group: group.name }, t));
+      });
+    });
+    return out;
+  });
+};
+serial.deviceSchema = function (type, options) {
+  return serialRpc.config.GetSchema({ type: type }, optionsOf(options));
+};
+serial.devices = function (options) {
+  return serial.config(options).then(listSerialDevices);
+};
+serial.uploadTemplate = function (filename, content, options) {
+  var params = { filename: filename, content: typeof content === 'string' ? content : JSON.stringify(content) };
+  if (options && options.force) params.force = true;
+  if (options && options.lang) params.lang = options.lang;
+  return serialRpc.templates.Upload(params, optionsOf(options));
+};
+serial.deleteTemplate = function (type, options) {
+  var params = { type: type };
+  if (options && options.force) params.force = true;
+  if (options && options.lang) params.lang = options.lang;
+  return serialRpc.templates.Delete(params, optionsOf(options));
+};
+serial.scan = function (port, options) {
+  var params = normalizePort(port);
+  if (options && options.command !== undefined) params.command = options.command;
+  if (options && options.mode !== undefined) params.mode = options.mode;
+  if (options && options.totalTimeout !== undefined) params.total_timeout = options.totalTimeout;
+  return serialRpc.port.Scan(params, optionsOf(options));
+};
+serial.probe = function (port, slaveId, options) {
+  return serial.device({ port: port, slaveId: slaveId }).probe(options);
+};
+serial.setup = function (port, items, options) {
+  var p = normalizePort(port);
+  var params = isTcpPort(p) ? { ip: p.ip, port: p.port } : { path: p.path };
+  params.items = (items || []).map(function (item) {
+    var out = {};
+    if (item.slaveId !== undefined) out.slave_id = item.slaveId;
+    if (item.slave_id !== undefined) out.slave_id = item.slave_id;
+    if (item.sn !== undefined) out.sn = item.sn;
+    var v = function (camel, snake) {
+      if (item[camel] !== undefined) return item[camel];
+      return item[snake];
+    };
+    if (v('baudRate', 'baud_rate') !== undefined) out.baud_rate = v('baudRate', 'baud_rate');
+    if (item.parity !== undefined) out.parity = item.parity;
+    if (v('dataBits', 'data_bits') !== undefined) out.data_bits = v('dataBits', 'data_bits');
+    if (v('stopBits', 'stop_bits') !== undefined) out.stop_bits = v('stopBits', 'stop_bits');
+    var cfg = item.set || item.cfg;
+    if (cfg) {
+      out.cfg = {};
+      if (cfg.baudRate !== undefined) out.cfg.baud_rate = cfg.baudRate;
+      if (cfg.baud_rate !== undefined) out.cfg.baud_rate = cfg.baud_rate;
+      if (cfg.parity !== undefined) {
+        // the driver takes the new parity as a number: 0 N, 1 O, 2 E
+        out.cfg.parity = typeof cfg.parity === 'number' ? cfg.parity : { N: 0, O: 1, E: 2 }[cfg.parity];
+      }
+      if (cfg.stopBits !== undefined) out.cfg.stop_bits = cfg.stopBits;
+      if (cfg.stop_bits !== undefined) out.cfg.stop_bits = cfg.stop_bits;
+      if (cfg.slaveId !== undefined) out.cfg.slave_id = cfg.slaveId;
+      if (cfg.slave_id !== undefined) out.cfg.slave_id = cfg.slave_id;
+    }
+    return out;
+  });
+  if (options && options.totalTimeout !== undefined) params.total_timeout = options.totalTimeout;
+  return serialRpc.port.Setup(params, optionsOf(options));
 };
 
-// serial port/device operations carry their own time budget (total_timeout, ms)
-['Load', 'Setup', 'Scan'].forEach(function (method) {
-  services.serial.port[method] = budgetedMethod('wb-mqtt-serial', 'port', method, 'total_timeout', 1, 10000);
-});
-// (Probe runs on a fixed server-side budget: nothing to stretch)
-['LoadConfig', 'Load', 'Set'].forEach(function (method) {
-  services.serial.device[method] = budgetedMethod(
-    'wb-mqtt-serial',
-    'device',
-    method,
-    'total_timeout',
-    1,
-    10000
-  );
-});
-// so does a history query (request_timeout, s)
-services.db.history.get_values = budgetedMethod(
-  'db_logger',
-  'history',
-  'get_values',
-  'request_timeout',
-  1000,
-  10000
+// firmware helpers shared by wb-mqtt-serial and wb-device-manager
+function fwTarget(port, slaveId, allowTcp) {
+  var p = normalizePort(port);
+  if (isTcpPort(p)) {
+    if (!allowTcp) throw new TypeError('MqttRpc: wb-mqtt-serial flashes over serial ports only');
+    return { slave_id: slaveId, port: { address: p.ip, port: p.port } };
+  }
+  return {
+    slave_id: slaveId,
+    port: { path: p.path, baud_rate: p.baud_rate, parity: p.parity, data_bits: p.data_bits, stop_bits: p.stop_bits },
+  };
+}
+
+function fwHelpers(rpc, stateTopic, allowTcp) {
+  var portKey = function (port) {
+    var p = normalizePort(port);
+    return isTcpPort(p) ? p.ip + ':' + p.port : p.path;
+  };
+  var entryOf = function (state, port, slaveId) {
+    var list = (state && state.devices) || [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].port === portKey(port) && String(list[i].slave_id) === String(slaveId)) return list[i];
+    }
+    return null;
+  };
+  var h = {};
+  h.firmwareInfo = function (port, slaveId, options) {
+    var t = fwTarget(port, slaveId, allowTcp);
+    if (options && options.protocol) t.protocol = options.protocol;
+    return rpc.GetFirmwareInfo(t, optionsOf(options));
+  };
+  h.firmwareUpdateState = function (options) {
+    var timeout = options && options.timeout !== undefined ? options.timeout : defaults.hasMethodTimeout;
+    return readTopic(stateTopic, timeout).then(function (v) {
+      return parseJsonOr(v, { devices: [] });
+    });
+  };
+  // resolves when the device is no longer being flashed; rejects with the
+  // error recorded for it (clear it with clearFirmwareError). The state
+  // topic may still show the previous picture right after Update returns,
+  // so the device is first awaited to appear (startTimeout, default 10 s -
+  // none: nothing to wait for), then to disappear.
+  h.waitForFirmwareUpdate = function (port, slaveId, options) {
+    var timeout = options && options.timeout !== undefined ? options.timeout : 600000;
+    var startTimeout = options && options.startTimeout !== undefined ? options.startTimeout : 10000;
+    var onProgress = options && options.onProgress;
+    var what = 'firmware update of ' + portKey(port) + ':' + slaveId;
+    var last = null;
+    var track = function (v) {
+      var entry = entryOf(parseJsonOr(v, null), port, slaveId);
+      if (entry && onProgress && entry.progress !== (last && last.progress)) onProgress(entry);
+      last = entry;
+      return entry;
+    };
+    var finished = function (entry) {
+      return !entry || (entry.error !== undefined && entry.error !== null);
+    };
+    var untilDone = function () {
+      return waitTopic(
+        stateTopic,
+        function (v) {
+          return finished(track(v));
+        },
+        timeout,
+        what
+      ).then(function () {
+        if (last && last.error) {
+          var err = new Error('firmware update failed: ' + (last.error.message || JSON.stringify(last.error)));
+          err.state = last;
+          throw err;
+        }
+      });
+    };
+    return waitTopic(
+      stateTopic,
+      function (v) {
+        return track(v) !== null;
+      },
+      startTimeout,
+      what
+    ).then(untilDone, function (e) {
+      if (e instanceof TimeoutError) return undefined; // never listed: nothing in progress
+      throw e;
+    });
+  };
+  h.updateFirmware = function (port, slaveId, options) {
+    var t = fwTarget(port, slaveId, allowTcp);
+    if (options && options.type) t.type = options.type;
+    if (options && options.protocol) t.protocol = options.protocol;
+    var started = rpc.Update(t, optionsOf(options));
+    // resolves when the update is over unless { wait: false } asks for "Ok" only
+    if (options && options.wait === false) return started;
+    // subscribe before the update is accepted, so no state is missed
+    watchTopic(stateTopic);
+    return started.then(function () {
+      return h.waitForFirmwareUpdate(port, slaveId, options);
+    });
+  };
+  h.restoreFirmware = function (port, slaveId, options) {
+    var t = fwTarget(port, slaveId, allowTcp);
+    if (options && options.protocol) t.protocol = options.protocol;
+    return rpc.Restore(t, optionsOf(options));
+  };
+  h.clearFirmwareError = function (port, slaveId, options) {
+    var p = normalizePort(port);
+    var t = { slave_id: slaveId, port: { path: p.path } };
+    if (options && options.type) t.type = options.type;
+    return rpc.ClearError(t, optionsOf(options));
+  };
+  return h;
+}
+
+assign(serial, fwHelpers(serialRpc.fwUpdate, SERIAL_FW_STATE_TOPIC, false));
+
+// A device handle: a configured device by its MQTT id, or an address on a port.
+//   MqttRpc.serial.device('wb-mr6c_12')
+//   MqttRpc.serial.device({ port: '/dev/ttyRS485-1', slaveId: 12 })
+//   MqttRpc.serial.device({ port: { ip: '10.0.0.5', port: 502 }, slaveId: 1, deviceType: 'WB-MR6C' })
+function SerialDevice(target) {
+  if (typeof target === 'string') {
+    checkTopicPart('device id', target);
+    this.id = target;
+    this.port = undefined;
+    this.slaveId = undefined;
+  } else if (isPlainObject(target) && target.port !== undefined) {
+    this.id = undefined;
+    this.port = normalizePort(target.port);
+    if (target.slaveId === undefined || target.slaveId === null) {
+      throw new TypeError('MqttRpc.serial.device: slaveId is required with a port');
+    }
+    this.slaveId = target.slaveId;
+    this.deviceType = target.deviceType;
+    // Modbus RTU frames over a TCP socket (a transparent RTU-over-TCP gateway)
+    this.rtuOverTcp = !!target.rtuOverTcp;
+  } else {
+    throw new TypeError('MqttRpc.serial.device: a device id or { port, slaveId }');
+  }
+  this._resolved = null;
+}
+
+// the config entry of a configured device (port, address, type)
+SerialDevice.prototype.resolve = function () {
+  var self = this;
+  if (this.port) {
+    return Promise.resolve({ port: this.port, slaveId: this.slaveId, type: this.deviceType });
+  }
+  if (this._resolved) return Promise.resolve(this._resolved);
+  return serial.devices().then(function (devices) {
+    for (var i = 0; i < devices.length; i++) {
+      if (devices[i].id === self.id) {
+        self._resolved = { port: devices[i].port, slaveId: devices[i].slaveId, type: devices[i].type };
+        return self._resolved;
+      }
+    }
+    throw new Error('MqttRpc.serial: device ' + self.id + ' is not in the wb-mqtt-serial config');
+  });
+};
+
+SerialDevice.prototype._portParams = function () {
+  var p = assign({}, this.port);
+  p.protocol = isTcpPort(p) && !this.rtuOverTcp ? 'modbus-tcp' : 'modbus';
+  p.slave_id = this.slaveId;
+  return p;
+};
+
+// a Modbus request; resolves with the response data as a hex string
+// (empty for writes), rejects with ModbusError on a device exception
+SerialDevice.prototype.modbus = function (fn, address, options) {
+  var params = this.id ? { device_id: this.id } : this._portParams();
+  params.function = fn;
+  params.address = checkAddress(address);
+  if (options && options.count !== undefined) params.count = checkCount(options.count);
+  if (options && options.data !== undefined) {
+    params.msg = options.data;
+    params.format = 'HEX';
+  } else {
+    params.format = 'HEX';
+  }
+  timeoutsOf(options, params);
+  return serialRpc.port.Load(params, optionsOf(options)).then(function (r) {
+    if (r && r.exception) throw new ModbusError(r.exception.code, r.exception.msg);
+    return (r && r.response) || '';
+  });
+};
+
+SerialDevice.prototype.readHolding = function (address, count, options) {
+  return this.modbus(3, address, assign({ count: checkCount(count) }, options)).then(u16ArrayFromHex);
+};
+SerialDevice.prototype.readInput = function (address, count, options) {
+  return this.modbus(4, address, assign({ count: checkCount(count) }, options)).then(u16ArrayFromHex);
+};
+SerialDevice.prototype.readCoils = function (address, count, options) {
+  var n = checkCount(count);
+  return this.modbus(1, address, assign({ count: n }, options)).then(function (hex) {
+    return bitsFromHex(hex, n);
+  });
+};
+SerialDevice.prototype.readDiscrete = function (address, count, options) {
+  var n = checkCount(count);
+  return this.modbus(2, address, assign({ count: n }, options)).then(function (hex) {
+    return bitsFromHex(hex, n);
+  });
+};
+// one value -> function 6, an array -> function 16
+SerialDevice.prototype.writeHolding = function (address, value, options) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) throw new TypeError('MqttRpc: nothing to write');
+    return this.modbus(16, address, assign({ count: value.length, data: value.map(hexOfU16).join('') }, options)).then(
+      function () {}
+    );
+  }
+  return this.modbus(6, address, assign({ data: hexOfU16(value) }, options)).then(function () {});
+};
+// one boolean -> function 5, an array -> function 15
+SerialDevice.prototype.writeCoil = function (address, value, options) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) throw new TypeError('MqttRpc: nothing to write');
+    var bools = value.map(function (v) {
+      return !!v;
+    });
+    return this.modbus(15, address, assign({ count: bools.length, data: hexOfBits(bools) }, options)).then(
+      function () {}
+    );
+  }
+  return this.modbus(5, address, assign({ data: value ? 'ff00' : '0000' }, options)).then(function () {});
+};
+// arbitrary bytes through the port (explicit ports only); hex in, hex out
+SerialDevice.prototype.raw = function (hex, responseSize, options) {
+  if (!this.port) throw new TypeError('MqttRpc: raw requests need an explicit port, not a device id');
+  var params = assign({}, this.port);
+  params.protocol = 'raw';
+  params.msg = hex;
+  params.response_size = responseSize;
+  params.format = 'HEX';
+  timeoutsOf(options, params);
+  return serialRpc.port.Load(params, optionsOf(options)).then(function (r) {
+    return (r && r.response) || '';
+  });
+};
+
+SerialDevice.prototype._deviceParams = function (extra) {
+  var params;
+  if (this.id) {
+    params = { device_id: this.id };
+  } else {
+    if (!this.deviceType) {
+      throw new TypeError('MqttRpc: settings/read/write of a device on a port need its deviceType');
+    }
+    params = assign({}, this.port);
+    params.slave_id = this.slaveId;
+    params.device_type = this.deviceType;
+    if (isTcpPort(params) && this.rtuOverTcp) params.modbus_mode = 'RTU';
+  }
+  return assign(params, extra);
+};
+// the device's settings (its "parameters" in the template), plus fw/model
+SerialDevice.prototype.settings = function (options) {
+  var extra = {};
+  if (options && options.force) extra.force = true;
+  timeoutsOf(options, extra);
+  return serialRpc.device.LoadConfig(this._deviceParams(extra), optionsOf(options));
+};
+// channels and parameters by name: { channels: [...], parameters: [...] }
+SerialDevice.prototype.read = function (what, options) {
+  var extra = {};
+  if (what && what.channels) extra.channels = what.channels;
+  if (what && what.parameters) extra.parameters = what.parameters;
+  timeoutsOf(options, extra);
+  return serialRpc.device.Load(this._deviceParams(extra), optionsOf(options));
+};
+SerialDevice.prototype.write = function (what, options) {
+  var extra = {};
+  if (what && what.channels) extra.channels = what.channels;
+  if (what && what.parameters) extra.parameters = what.parameters;
+  timeoutsOf(options, extra);
+  return serialRpc.device.Set(this._deviceParams(extra), optionsOf(options)).then(function () {});
+};
+// who is at this address: a ScannedDevice, or null when nothing answers
+SerialDevice.prototype.probe = function (options) {
+  if (!this.port) throw new TypeError('MqttRpc: probe needs a port and a slaveId, not a device id');
+  var params = assign({}, this.port);
+  params.slave_id = this.slaveId;
+  if (options && options.protocol) params.protocol = options.protocol;
+  return serialRpc.device.Probe(params, optionsOf(options)).then(function (r) {
+    return r && Object.keys(r).length > 0 ? r : null;
+  });
+};
+SerialDevice.prototype.setPolling = function (enabled, options) {
+  var params;
+  if (this.id) {
+    params = { device_id: this.id };
+  } else {
+    params = isTcpPort(this.port) ? { ip: this.port.ip, port: this.port.port } : { path: this.port.path };
+    params.slave_id = this.slaveId;
+  }
+  params.poll = !!enabled;
+  return serialRpc.device.SetPoll(params, optionsOf(options)).then(function () {});
+};
+SerialDevice.prototype.pausePolling = function (options) {
+  return this.setPolling(false, options);
+};
+SerialDevice.prototype.resumePolling = function (options) {
+  return this.setPolling(true, options);
+};
+// pauses polling around fn() (resumed even when fn throws)
+SerialDevice.prototype.withPollingPaused = function (fn, options) {
+  var self = this;
+  return this.pausePolling(options).then(function () {
+    return new Promise(function (resolve) {
+      resolve(fn(self));
+    }).then(
+      function (result) {
+        return self.resumePolling(options).then(function () {
+          return result;
+        });
+      },
+      function (err) {
+        return self.resumePolling(options).then(function () {
+          throw err;
+        });
+      }
+    );
+  });
+};
+// firmware: resolved through the config for a device id
+['firmwareInfo', 'updateFirmware', 'waitForFirmwareUpdate', 'restoreFirmware', 'clearFirmwareError'].forEach(
+  function (name) {
+    SerialDevice.prototype[name] = function (options) {
+      return this.resolve().then(function (r) {
+        return serial[name](r.port, r.slaveId, options);
+      });
+    };
+  }
 );
+
+serial.device = function (target) {
+  return new SerialDevice(target);
+};
+
+// ---- wb-mqtt-db ----
+
+var dbRpc = {
+  history: service('db_logger', 'history', ['get_values', 'get_channels']),
+};
+// a history query carries its own budget (request_timeout, s)
+dbRpc.history.get_values = budgetedMethod('db_logger', 'history', 'get_values', 'request_timeout', 1000, 10000);
+
+var db = serviceGroup('db_logger', dbRpc, 'history', 'get_values');
+
+// every channel the database knows: "device/control", record count, last time
+db.channels = function (options) {
+  return dbRpc.history.get_channels({}, optionsOf(options)).then(function (r) {
+    var chans = (r && r.channels) || {};
+    return Object.keys(chans).map(function (key) {
+      var pair = channelPair(key);
+      return {
+        channel: key,
+        device: pair[0],
+        control: pair[1],
+        items: chans[key].items,
+        lastTime: fromSeconds(chans[key].last_ts),
+      };
+    });
+  });
+};
+
+function historyParams(pair, options) {
+  var params = { channels: [pair], ver: 1, with_milliseconds: true };
+  var ts = {};
+  if (options) {
+    if (options.last !== undefined) {
+      if (typeof options.last !== 'number' || !(options.last > 0)) {
+        throw new TypeError('MqttRpc: last must be a positive number of milliseconds');
+      }
+      ts.gt = Date.now() / 1000 - options.last / 1000;
+    }
+    if (options.since !== undefined) ts.gt = toSeconds(options.since, 'since');
+    if (options.until !== undefined) ts.lt = toSeconds(options.until, 'until');
+    if (options.limit !== undefined) params.limit = options.limit;
+    if (options.minInterval !== undefined) params.min_interval = options.minInterval;
+    if (options.maxRecords !== undefined) params.max_records = options.maxRecords;
+    if (options.requestTimeout !== undefined) params.request_timeout = options.requestTimeout;
+    if (options.afterUid !== undefined) params.uid = { gt: options.afterUid };
+  }
+  if (Object.keys(ts).length) params.timestamp = ts;
+  return params;
+}
+
+function historyRecord(pair, row) {
+  return {
+    channel: pair[0] + '/' + pair[1],
+    device: pair[0],
+    control: pair[1],
+    time: fromSeconds(row.t),
+    value: parseValue(row.v),
+    min: row.min !== undefined ? parseValue(row.min) : undefined,
+    max: row.max !== undefined ? parseValue(row.max) : undefined,
+    retain: !!row.retain,
+    uid: row.i,
+  };
+}
+
+// db.query("wb-adc/Vin", { last: 3600000 }) -> { values: [record...], hasMore }
+//   channel: "device/control", [device, control], or an array of those
+//   options: since/until (Date or ms), last (ms), limit, minInterval (ms),
+//   maxRecords (averaging), requestTimeout (s), afterUid
+//   records: { channel, device, control, time: Date, value, min, max, retain, uid }
+db.query = function (channels, options) {
+  var pairs;
+  if (typeof channels === 'string') {
+    pairs = [channelPair(channels)];
+  } else if (
+    Array.isArray(channels) &&
+    channels.length === 2 &&
+    typeof channels[0] === 'string' &&
+    typeof channels[1] === 'string' &&
+    channels[0].indexOf('/') < 0 &&
+    channels[1].indexOf('/') < 0
+  ) {
+    pairs = [channelPair(channels)]; // one [device, control] pair
+  } else if (Array.isArray(channels) && channels.length) {
+    pairs = channels.map(channelPair);
+  } else {
+    throw new TypeError('MqttRpc.db.query: channels are "device/control" strings or [device, control] pairs');
+  }
+  // one request per channel: the compact (ver 1) layout keys records by an
+  // internal channel id, so a joint request could not be told apart
+  return Promise.all(
+    pairs.map(function (pair) {
+      return dbRpc.history.get_values(historyParams(pair, options), optionsOf(options)).then(function (r) {
+        return {
+          values: ((r && r.values) || []).map(function (row) {
+            return historyRecord(pair, row);
+          }),
+          hasMore: !!(r && r.has_more),
+        };
+      });
+    })
+  ).then(function (parts) {
+    var values = [];
+    var hasMore = false;
+    parts.forEach(function (p) {
+      values = values.concat(p.values);
+      hasMore = hasMore || p.hasMore;
+    });
+    if (pairs.length > 1) {
+      values.sort(function (a, b) {
+        return a.time - b.time;
+      });
+    }
+    return { values: values, hasMore: hasMore };
+  });
+};
+
+// the latest record of a channel, or undefined when it was never logged
+db.lastValue = function (channel, options) {
+  var pair = channelPair(channel);
+  return dbRpc.history.get_channels({}, optionsOf(options)).then(function (r) {
+    var info = r && r.channels && r.channels[pair[0] + '/' + pair[1]];
+    if (!info || !info.items) return undefined;
+    return db
+      .query(pair, assign({ since: (info.last_ts - 1) * 1000, until: (info.last_ts + 1) * 1000 }, options))
+      .then(function (res) {
+        return res.values.length ? res.values[res.values.length - 1] : undefined;
+      });
+  });
+};
+
+// the average over a period ({ last } or { since, until }): the database
+// averages numeric channels server-side; undefined when nothing was logged
+db.average = function (channel, options) {
+  return db.query(channel, assign({}, options, { maxRecords: 1, limit: undefined })).then(function (res) {
+    if (!res.values.length) return undefined;
+    var v = res.values[0].value;
+    return typeof v === 'number' ? v : undefined;
+  });
+};
+
+// ---- wb-rules editor ----
+
+var rulesRpc = {
+  Editor: service('wbrules', 'Editor', ['List', 'Load', 'Save', 'Remove', 'Rename', 'ChangeState', 'Check', 'GetTypes']),
+};
+var rules = serviceGroup('wbrules', rulesRpc, 'Editor', 'List');
+rules.list = function (options) {
+  return rulesRpc.Editor.List({}, optionsOf(options));
+};
+rules.load = function (path, options) {
+  return rulesRpc.Editor.Load({ path: path }, optionsOf(options));
+};
+rules.save = function (path, content, options) {
+  return rulesRpc.Editor.Save({ path: path, content: content }, optionsOf(options));
+};
+rules.remove = function (path, options) {
+  return rulesRpc.Editor.Remove({ path: path }, optionsOf(options)).then(function () {});
+};
+rules.rename = function (path, newPath, options) {
+  return rulesRpc.Editor.Rename({ path: path, new_path: newPath }, optionsOf(options)).then(function () {});
+};
+rules.enable = function (path, options) {
+  return rulesRpc.Editor.ChangeState({ path: path, state: true }, optionsOf(options)).then(function () {});
+};
+rules.disable = function (path, options) {
+  return rulesRpc.Editor.ChangeState({ path: path, state: false }, optionsOf(options)).then(function () {});
+};
+// the type-check verdict, polled (every options.interval ms, 200) while
+// the check is still running
+rules.check = function (path, options) {
+  var deadline = Date.now() + (options && options.timeout !== undefined ? options.timeout : 30000);
+  var interval = options && options.interval !== undefined ? options.interval : 200;
+  var poll = function () {
+    return rulesRpc.Editor.Check({ path: path }, optionsOf(options)).then(function (r) {
+      if (r.status !== 'pending') return r;
+      if (Date.now() >= deadline) throw new TimeoutError('type check of ' + path + ' still pending', 'MqttTimeoutError');
+      return sleep(interval).then(poll);
+    });
+  };
+  return poll();
+};
+rules.types = function (options) {
+  return rulesRpc.Editor.GetTypes({}, optionsOf(options)).then(function (r) {
+    return r.content;
+  });
+};
+
+// ---- wb-mqtt-confed ----
+
+var confedRpc = {
+  Editor: service('confed', 'Editor', ['List', 'Load', 'Save']),
+};
+var confed = serviceGroup('confed', confedRpc, 'Editor', 'List');
+confed.list = function (options) {
+  return confedRpc.Editor.List({}, optionsOf(options));
+};
+confed.load = function (path, options) {
+  return confedRpc.Editor.Load({ path: path }, optionsOf(options));
+};
+confed.save = function (path, content, options) {
+  return confedRpc.Editor.Save({ path: path, content: content }, optionsOf(options)).then(function () {});
+};
+// load, let fn change the content (in place or by returning a new one), save
+confed.update = function (path, fn, options) {
+  return confed.load(path, options).then(function (loaded) {
+    return new Promise(function (resolve) {
+      resolve(fn(loaded.content, loaded));
+    }).then(function (next) {
+      var content = next === undefined ? loaded.content : next;
+      return confed.save(path, content, options).then(function () {
+        return content;
+      });
+    });
+  });
+};
+
+// ---- wb-mqtt-logs ----
+
+var logsRpc = {
+  logs: service('wb_logs', 'logs', ['List', 'Load', 'CancelLoad']),
+};
+var logs = serviceGroup('wb_logs', logsRpc, 'logs', 'Load');
+logs.services = function (options) {
+  return logsRpc.logs.List({}, optionsOf(options)).then(function (r) {
+    return (r && r.services) || [];
+  });
+};
+logs.boots = function (options) {
+  return logsRpc.logs.List({}, optionsOf(options)).then(function (r) {
+    return ((r && r.boots) || []).map(function (b) {
+      return { hash: b.hash, start: fromSeconds(b.start), end: b.end !== undefined ? fromSeconds(b.end) : undefined };
+    });
+  });
+};
+// logs.read({ service, since, levels, pattern, regex, caseSensitive, limit, boot, cursor, direction })
+//   -> [{ time: Date, level, msg, service, cursor }] (newest first unless
+//      direction is "forward"; at most 100 per call)
+logs.read = function (options) {
+  var params = {};
+  var o = options || {};
+  if (o.service !== undefined) params.service = o.service;
+  if (o.boot !== undefined) params.boot = o.boot;
+  if (o.since !== undefined) params.time = Math.floor(toSeconds(o.since, 'since'));
+  if (o.levels !== undefined) params.levels = o.levels;
+  if (o.pattern !== undefined) params.pattern = o.pattern;
+  if (o.regex !== undefined) params.regex = o.regex;
+  if (o.caseSensitive !== undefined) params['case-sensitive'] = o.caseSensitive;
+  if (o.limit !== undefined) params.limit = o.limit;
+  if (o.cursor !== undefined) params.cursor = { id: o.cursor, direction: o.direction || 'backward' };
+  return logsRpc.logs.Load(params, optionsOf(options)).then(function (entries) {
+    return (entries || []).map(function (e) {
+      return {
+        time: new Date(e.time),
+        level: e.level !== undefined ? e.level : 6,
+        msg: e.msg,
+        service: e.service,
+        cursor: e.cursor,
+      };
+    });
+  });
+};
+logs.tail = function (serviceName, count, options) {
+  return logs.read(assign({ service: serviceName, limit: count || 50 }, options));
+};
+logs.cancel = function (options) {
+  return logsRpc.logs.CancelLoad({}, optionsOf(options)).then(function () {});
+};
+
+// ---- wb-diag-collect ----
+
+var diagRpc = {
+  main: service('diag', 'main', ['diag', 'status']),
+};
+var diag = serviceGroup('diag', diagRpc, 'main', 'diag');
+// collects a diagnostics archive; resolves with { basename, fullname }
+diag.collect = function (options) {
+  var timeout = options && options.timeout !== undefined ? options.timeout : 300000;
+  // armed before the request: the artifact message is not retained
+  var artifact = nextMqtt('/wb-diag-collect/artifact', timeout > 0 ? timeout : undefined);
+  artifact.catch(function () {}); // reported through the chain below
+  return diagRpc.main.diag({}, optionsOf(options)).then(function () {
+    return artifact.then(function (msg) {
+      var info = parseJsonOr(msg.value, null);
+      if (!info || !info.fullname) throw new Error('diagnostics collection failed');
+      return info;
+    });
+  });
+};
+diag.isAlive = function (options) {
+  return diagRpc.main.status({}, optionsOf(options)).then(
+    function (r) {
+      return r === '1' || r === 1;
+    },
+    function () {
+      return false;
+    }
+  );
+};
+
+// ---- wb-device-manager ----
+
+var deviceManagerRpc = {
+  busScan: service('wb-device-manager', 'bus-scan', ['Start', 'Stop']),
+  fwUpdate: service('wb-device-manager', 'fw-update', FW_UPDATE_METHODS),
+};
+var deviceManager = serviceGroup('wb-device-manager', deviceManagerRpc, 'bus-scan', 'Start');
+// the retained scan state: { scanning, progress, scanning_ports, devices, error }
+deviceManager.state = function (options) {
+  var timeout = options && options.timeout !== undefined ? options.timeout : defaults.hasMethodTimeout;
+  return readTopic(DEVICE_MANAGER_STATE_TOPIC, timeout).then(function (v) {
+    return parseJsonOr(v, null);
+  });
+};
+// deviceManager.scan({ port, type, preserveOldResults, timeout, onProgress })
+//   starts a scan and resolves with the devices found once it completes
+deviceManager.scan = function (options) {
+  var o = options || {};
+  var params = {};
+  if (o.type !== undefined) params.scan_type = o.type;
+  if (o.preserveOldResults !== undefined) params.preserve_old_results = o.preserveOldResults;
+  if (o.port !== undefined) {
+    var p = normalizePort(o.port);
+    params.port = { path: isTcpPort(p) ? p.ip + ':' + p.port : p.path };
+    if (o.protocol) params.port.protocol = o.protocol;
+  }
+  if (o.outOfOrderSlaveIds !== undefined) params.out_of_order_slave_ids = o.outOfOrderSlaveIds;
+  var timeout = o.timeout !== undefined ? o.timeout : 600000;
+  var startTimeout = o.startTimeout !== undefined ? o.startTimeout : 10000;
+  watchTopic(DEVICE_MANAGER_STATE_TOPIC);
+  var lastProgress = -1;
+  var track = function (v) {
+    var s = parseJsonOr(v, null);
+    if (s && o.onProgress && s.progress !== lastProgress) {
+      lastProgress = s.progress;
+      o.onProgress(s);
+    }
+    return s;
+  };
+  return deviceManagerRpc.busScan.Start(params, optionsOf(options)).then(function () {
+    // the retained state may still describe the previous scan: wait for
+    // this one to start (or give up after startTimeout), then to finish
+    return waitTopic(
+      DEVICE_MANAGER_STATE_TOPIC,
+      function (v) {
+        var s = track(v);
+        return !!s && s.scanning === true;
+      },
+      startTimeout,
+      'bus scan'
+    ).catch(function (e) {
+      if (!(e instanceof TimeoutError)) throw e;
+    }).then(function () {
+      return waitTopic(
+        DEVICE_MANAGER_STATE_TOPIC,
+        function (v) {
+          var s = track(v);
+          return !!s && s.scanning === false;
+        },
+        timeout,
+        'bus scan'
+      );
+    }).then(function (v) {
+      var s = parseJsonOr(v, {});
+      if (s.error) {
+        var err = new Error('bus scan failed: ' + (s.error.message || JSON.stringify(s.error)));
+        err.state = s;
+        throw err;
+      }
+      return s.devices || [];
+    });
+  });
+};
+deviceManager.stopScan = function (options) {
+  return deviceManagerRpc.busScan.Stop({}, optionsOf(options)).then(function () {});
+};
+assign(deviceManager, fwHelpers(deviceManagerRpc.fwUpdate, DEVICE_MANAGER_FW_STATE_TOPIC, true));
+
+// ---- wb-mqtt-dali ----
+
+var daliRpc = {
+  Editor: service('wb-mqtt-dali', 'Editor', [
+    'GetList',
+    'GetGateway',
+    'SetGateway',
+    'GetBus',
+    'SetBus',
+    'ScanBus',
+    'StopScanBus',
+    'GetDevice',
+    'SetDevice',
+    'GetGroup',
+    'SetGroup',
+    'IdentifyDevice',
+    'ResetDeviceSettings',
+    'ResetDevice',
+  ]),
+  Bus: service('wb-mqtt-dali', 'Bus', ['SendCommand', 'ListCommands']),
+};
+var dali = serviceGroup('wb-mqtt-dali', daliRpc, 'Bus', 'SendCommand');
+// every bus of every gateway, flat: { id, name, gateway: { id, name }, devices, ... }
+dali.buses = function (options) {
+  return daliRpc.Editor.GetList({}, optionsOf(options)).then(function (gateways) {
+    var out = [];
+    (gateways || []).forEach(function (g) {
+      (g.buses || []).forEach(function (b) {
+        out.push(assign({ gateway: { id: g.id, name: g.name } }, b));
+      });
+    });
+    return out;
+  });
+};
+// runs DALI commands on a bus ("DAPC(A0, 0xFE)"); one result per command
+dali.send = function (busId, commands, options) {
+  var list = typeof commands === 'string' ? [commands] : commands;
+  return daliRpc.Bus.SendCommand({ busId: busId, commands: list }, optionsOf(options));
+};
+dali.commands = function (options) {
+  return daliRpc.Bus.ListCommands({}, optionsOf(options));
+};
+
+var services = {
+  serial: serial,
+  db: db,
+  rules: rules,
+  confed: confed,
+  logs: logs,
+  diag: diag,
+  deviceManager: deviceManager,
+  dali: dali,
+};
 
 // ---------------------------------------------------------------------------
 // exports
@@ -772,6 +1858,7 @@ var api = {
   defineService: defineService,
   RpcError: RpcError,
   TimeoutError: TimeoutError,
+  ModbusError: ModbusError,
   ErrorCode: ErrorCode,
   defaults: defaults,
   clientId: clientId,

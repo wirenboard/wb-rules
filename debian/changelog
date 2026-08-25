@@ -35,8 +35,18 @@ wb-rules (2.47.0~quickjs2.1) unstable; urgency=medium
     streams; cleanup-on-stop (-cleanup) now runs on the engine loop, as
     cleanups may execute JavaScript. Everything else is JavaScript, per
     rule file.
+  * The services come with helpers on top of the raw RPC methods (which
+    stay under MqttRpc.<service>.rpc): MqttRpc.serial.device(id).readHolding/
+    writeHolding/readCoils/settings/read/write/withPollingPaused/
+    updateFirmware (Modbus registers as numbers, devices by MQTT id or
+    port+address, Modbus exceptions as ModbusError), serial.devices()/
+    scan()/probe()/setup(), db.query()/lastValue()/average()/channels()
+    (Date/ms windows, numeric values), rules.list()/load()/save()/check(),
+    confed.update(), logs.read()/tail(), diag.collect(),
+    deviceManager.scan() (waits for the scan), isAvailable()/
+    waitUntilAvailable() per service.
 
- -- Evgeny Boger <boger@wirenboard.com>  Mon, 24 Aug 2026 23:00:00 +0400
+ -- Evgeny Boger <boger@wirenboard.com>  Tue, 25 Aug 2026 01:00:00 +0400
 
 wb-rules (2.47.0~quickjs1) unstable; urgency=medium
 

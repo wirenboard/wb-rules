@@ -1055,6 +1055,53 @@ declare namespace MqttRpc {
     methods: Record<string, Handler>
   ): ServiceDefinition;
 
+  // ---- the controller's services ----
+  //
+  // Every service group has two layers: `group.rpc.<service>.<Method>` are
+  // the RPC methods exactly as the service documents them; the other
+  // members are helpers with plain arguments and parsed results.
+
+  /** Availability of a service group, from the presence of one of its methods. */
+  interface ServiceGroup<Rpc> {
+    readonly driver: string;
+    /** The RPC methods, as documented by the service. */
+    readonly rpc: Rpc;
+    /** Whether the service is up (retained presence of a representative method). */
+    isAvailable(timeout?: number | PresenceOptions): Promise<boolean>;
+    /** Resolves once the service is up; rejects with TimeoutError after the wait. */
+    waitUntilAvailable(timeout?: number | PresenceOptions): Promise<void>;
+  }
+
+  /** Options every helper accepts besides its own. */
+  interface HelperOptions {
+    /** Reply timeout, ms (see CallOptions). */
+    timeout?: number;
+    /** Wait for the method's presence before sending (see CallOptions). */
+    waitForMethod?: boolean | number;
+  }
+
+  /** The server-side time budget of a serial request, ms. */
+  interface SerialTimeouts {
+    /** Per-response wait; default 500. */
+    responseTimeout?: number;
+    /** Inter-frame gap; default 20. */
+    frameTimeout?: number;
+    /** Queueing plus execution; default 10000 (the reply timeout stretches to cover it). */
+    totalTimeout?: number;
+  }
+
+  /**
+   * A port as a helper takes it: a device path (9600 N 8 2), an object
+   * with the line settings, or a Modbus TCP endpoint ("host:port" or
+   * {ip, port}). snake_case keys from the services are accepted too.
+   */
+  type PortSpec =
+    | string
+    | { path: string; baudRate?: Serial.BaudRate; parity?: Serial.Parity; dataBits?: number; stopBits?: number }
+    | { path: string; baud_rate?: Serial.BaudRate; parity?: Serial.Parity; data_bits?: number; stop_bits?: number }
+    | { ip: string; port: number }
+    | { address: string; port: number };
+
   // ---- wb-mqtt-serial ----
 
   namespace Serial {
@@ -1257,7 +1304,7 @@ declare namespace MqttRpc {
     }
     /** A device to flash: wb-mqtt-serial takes serial ports only; wb-device-manager also `{address, port}`. */
     interface FwUpdateTarget<Port = FwUpdatePort> {
-      slave_id: number;
+      slave_id: number | string;
       port: Port;
       protocol?: "modbus" | "modbus-tcp";
     }
@@ -1278,11 +1325,10 @@ declare namespace MqttRpc {
       model: string;
       components: Record<string, FirmwareComponent>;
     }
-    type FwUpdateParams<Port = FwUpdatePort> = FwUpdateTarget<Port> & {
-      type?: "firmware" | "bootloader" | "component";
-    };
+    type SoftwareType = "firmware" | "bootloader" | "component";
+    type FwUpdateParams<Port = FwUpdatePort> = FwUpdateTarget<Port> & { type?: SoftwareType };
     interface FwClearErrorParams {
-      slave_id: number;
+      slave_id: number | string;
       port: { path: string };
       type?: "firmware" | "bootloader";
     }
@@ -1294,52 +1340,227 @@ declare namespace MqttRpc {
       ClearError: Method<FwClearErrorParams, "Ok">;
       Restore: Method<FwUpdateTarget<Port>, "Ok">;
     }
+
+    /** The raw RPC methods of wb-mqtt-serial. */
+    interface Rpc {
+      config: ServiceProxy & {
+        /** The driver config with its schema and the known device types. */
+        Load: Method<ConfigLoadParams, ConfigLoadResult>;
+        /** The JSON schema of one device type. */
+        GetSchema: Method<ConfigGetSchemaParams, any>;
+      };
+      templates: ServiceProxy & {
+        /** Installs a user device template. */
+        Upload: Method<TemplatesUploadParams, TemplatesResult>;
+        Delete: Method<TemplatesDeleteParams, TemplatesResult>;
+      };
+      ports: ServiceProxy & {
+        /** The configured ports. */
+        Load: Method<{}, ConfiguredPort[]>;
+      };
+      port: ServiceProxy & {
+        /**
+         * Sends one raw or Modbus request through a port (queued after the
+         * current poll cycle). Without an explicit timeout the call waits at
+         * least `total_timeout` plus a margin.
+         */
+        Load: Method<PortLoadParams, PortLoadResult>;
+        /** Changes line settings/addresses of devices on a port. */
+        Setup: Method<PortSetupParams, {}>;
+        /** Fast Modbus scan of a port. */
+        Scan: Method<PortScanParams, PortScanResult>;
+      };
+      device: ServiceProxy & {
+        /** Reads a device's settings (cached per configured device unless `force`). */
+        LoadConfig: Method<DeviceLoadConfigParams, DeviceLoadConfigResult>;
+        /** Reads channels and parameters of a device. */
+        Load: Method<DeviceLoadParams, DeviceLoadResult>;
+        /** Writes channels and parameters of a device. */
+        Set: Method<DeviceSetParams, {}>;
+        /** Identifies the device at an address (fixed 10 s budget on the server). */
+        Probe: Method<DeviceProbeParams, DeviceProbeResult>;
+        /** Pauses/resumes polling of a configured device. */
+        SetPoll: Method<DeviceSetPollParams, {}>;
+      };
+      fwUpdate: FwUpdateService;
+    }
+
+    /** A port as the helpers report it: a serial port (path + line settings) or a TCP endpoint (ip + port). */
+    interface AnyPort {
+      path?: string;
+      baud_rate?: number;
+      parity?: string;
+      data_bits?: number;
+      stop_bits?: number;
+      ip?: string;
+      port?: number;
+    }
+
+    /** A device of the wb-mqtt-serial config, as `serial.devices()` lists it. */
+    interface ConfiguredDeviceInfo {
+      /** The MQTT id (the /devices/<id> part): the explicit "id", else "<template mqtt-id>_<slave_id>". */
+      id: string | undefined;
+      /** The device type (template). */
+      type: string;
+      name?: string;
+      /** The Modbus address, as configured (a string; may be empty). */
+      slaveId: string;
+      /** false when the device or its port is disabled. */
+      enabled: boolean;
+      port: AnyPort;
+      /** The device's config entry, verbatim. */
+      config: Record<string, any>;
+    }
+
+    /** How to address a device for `serial.device()`: its MQTT id, or a port and a Modbus address. */
+    type DeviceTarget =
+      | string
+      | {
+          port: PortSpec;
+          slaveId: number;
+          /** The device type (template): needed by settings()/read()/write(). */
+          deviceType?: string;
+          /** Modbus RTU frames over the TCP socket (a transparent gateway) instead of Modbus TCP. */
+          rtuOverTcp?: boolean;
+        };
+
+    type ModbusOptions = HelperOptions & SerialTimeouts;
+
+    /** What a firmware update of one device looks like on the state topic. */
+    interface FirmwareUpdateEntry {
+      port: string;
+      slave_id: number | string;
+      progress: number;
+      type: string;
+      error: { message: string } | null;
+      [extra: string]: any;
+    }
+    interface FirmwareUpdateState {
+      devices: FirmwareUpdateEntry[];
+    }
+    interface FirmwareWaitOptions extends HelperOptions {
+      /** Give up after this many ms (default 600000). */
+      timeout?: number;
+      /** How long to wait for the device to show up on the state topic (default 10000). */
+      startTimeout?: number;
+      /** Called on every progress change. */
+      onProgress?: (entry: FirmwareUpdateEntry) => void;
+    }
+    interface FirmwareUpdateOptions extends FirmwareWaitOptions {
+      type?: SoftwareType;
+      protocol?: "modbus" | "modbus-tcp";
+      /** false: resolve with the service's "Ok" instead of waiting for the update to finish. */
+      wait?: boolean;
+    }
+
+    /** The firmware helpers (wb-mqtt-serial: serial ports; wb-device-manager: TCP too). */
+    interface FirmwareHelpers {
+      firmwareInfo(port: PortSpec, slaveId: number | string, options?: HelperOptions & { protocol?: "modbus" | "modbus-tcp" }): Promise<FirmwareInfo>;
+      /** Flashes the device; resolves when the update is over (rejects with the recorded error). */
+      updateFirmware(port: PortSpec, slaveId: number | string, options?: FirmwareUpdateOptions): Promise<void | "Ok">;
+      /** Waits for a running update of the device to finish. */
+      waitForFirmwareUpdate(port: PortSpec, slaveId: number | string, options?: FirmwareWaitOptions): Promise<void>;
+      restoreFirmware(port: PortSpec, slaveId: number | string, options?: HelperOptions & { protocol?: "modbus" | "modbus-tcp" }): Promise<"Ok">;
+      clearFirmwareError(port: PortSpec, slaveId: number | string, options?: HelperOptions & { type?: "firmware" | "bootloader" }): Promise<"Ok">;
+      /** The retained state of running updates. */
+      firmwareUpdateState(options?: { timeout?: number }): Promise<FirmwareUpdateState>;
+    }
+
+    /**
+     * A device handle from `serial.device()`: Modbus register access,
+     * settings/channels through the driver, polling control, firmware.
+     */
+    interface Device {
+      /** The MQTT id (a configured device) … */
+      readonly id: string | undefined;
+      /** … or the explicit port and address. */
+      readonly port: AnyPort | undefined;
+      readonly slaveId: number | undefined;
+      readonly deviceType: string | undefined;
+      /** The port, address and type of a configured device, from the driver's config. */
+      resolve(): Promise<{ port: AnyPort; slaveId: number | string; type?: string }>;
+      /** Holding registers (function 3), as unsigned 16-bit numbers. */
+      readHolding(address: number, count?: number, options?: ModbusOptions): Promise<number[]>;
+      /** Input registers (function 4). */
+      readInput(address: number, count?: number, options?: ModbusOptions): Promise<number[]>;
+      /** Coils (function 1). */
+      readCoils(address: number, count?: number, options?: ModbusOptions): Promise<boolean[]>;
+      /** Discrete inputs (function 2). */
+      readDiscrete(address: number, count?: number, options?: ModbusOptions): Promise<boolean[]>;
+      /** One register (function 6) or several (function 16), unsigned 16-bit. */
+      writeHolding(address: number, value: number | number[], options?: ModbusOptions): Promise<void>;
+      /** One coil (function 5) or several (function 15). */
+      writeCoil(address: number, value: boolean | boolean[], options?: ModbusOptions): Promise<void>;
+      /** Any Modbus function; resolves with the response data as hex (empty for writes). */
+      modbus(
+        fn: 1 | 2 | 3 | 4 | 5 | 6 | 15 | 16 | 23,
+        address: number,
+        options?: ModbusOptions & { count?: number; data?: string }
+      ): Promise<string>;
+      /** Arbitrary bytes through the port (explicit ports only): hex in, hex out. */
+      raw(hex: string, responseSize: number, options?: ModbusOptions): Promise<string>;
+      /** The device's settings (its template "parameters"), plus fw and model. */
+      settings(options?: ModbusOptions & { force?: boolean }): Promise<DeviceLoadConfigResult>;
+      /** Channels and parameters by name. */
+      read(what?: { channels?: string[]; parameters?: string[] }, options?: ModbusOptions): Promise<DeviceLoadResult>;
+      write(what: { channels?: Record<string, any>; parameters?: Record<string, any> }, options?: ModbusOptions): Promise<void>;
+      /** Who answers at this address (explicit ports only); null when nobody does. */
+      probe(options?: HelperOptions & { protocol?: "modbus" | "modbus-tcp" }): Promise<ScannedDevice | null>;
+      setPolling(enabled: boolean, options?: HelperOptions): Promise<void>;
+      pausePolling(options?: HelperOptions): Promise<void>;
+      resumePolling(options?: HelperOptions): Promise<void>;
+      /** Pauses polling around fn (resumed even when fn throws); resolves with fn's result. */
+      withPollingPaused<T>(fn: (device: Device) => T | Promise<T>, options?: HelperOptions): Promise<T>;
+      firmwareInfo(options?: HelperOptions): Promise<FirmwareInfo>;
+      updateFirmware(options?: FirmwareUpdateOptions): Promise<void | "Ok">;
+      waitForFirmwareUpdate(options?: FirmwareWaitOptions): Promise<void>;
+      restoreFirmware(options?: HelperOptions): Promise<"Ok">;
+      clearFirmwareError(options?: HelperOptions & { type?: "firmware" | "bootloader" }): Promise<"Ok">;
+    }
+
+    /** One device for `serial.setup()`: which device (slaveId or sn) and what to change (`set`). */
+    interface SetupItem {
+      slaveId?: number;
+      sn?: number;
+      baudRate?: BaudRate;
+      parity?: Parity;
+      dataBits?: number;
+      stopBits?: number;
+      set?: { slaveId?: number; baudRate?: number; parity?: Parity | 0 | 1 | 2; stopBits?: number };
+    }
+  }
+
+  /** A Modbus exception returned by a device (code 1: illegal function, 2: illegal address, …). */
+  class ModbusError extends Error {
+    constructor(code: number, message: string);
+    code: number;
   }
 
   /** wb-mqtt-serial: the Modbus/serial device driver. */
-  const serial: {
-    readonly driver: "wb-mqtt-serial";
-    config: ServiceProxy & {
-      /** The driver config with its schema and the known device types. */
-      Load: Method<Serial.ConfigLoadParams, Serial.ConfigLoadResult>;
-      /** The JSON schema of one device type. */
-      GetSchema: Method<Serial.ConfigGetSchemaParams, any>;
-    };
-    templates: ServiceProxy & {
-      /** Installs a user device template. */
-      Upload: Method<Serial.TemplatesUploadParams, Serial.TemplatesResult>;
-      Delete: Method<Serial.TemplatesDeleteParams, Serial.TemplatesResult>;
-    };
-    ports: ServiceProxy & {
+  const serial: ServiceGroup<Serial.Rpc> &
+    Serial.FirmwareHelpers & {
+      readonly driver: "wb-mqtt-serial";
+      /** A device handle: by MQTT id, or by port and Modbus address. */
+      device(target: Serial.DeviceTarget): Serial.Device;
+      /** Every device of the driver's config, with its MQTT id. */
+      devices(options?: HelperOptions & { lang?: string }): Promise<Serial.ConfiguredDeviceInfo[]>;
       /** The configured ports. */
-      Load: Method<{}, Serial.ConfiguredPort[]>;
-    };
-    port: ServiceProxy & {
-      /**
-       * Sends one raw or Modbus request through a port (queued after the
-       * current poll cycle). Without an explicit timeout the call waits at
-       * least `total_timeout` plus a margin.
-       */
-      Load: Method<Serial.PortLoadParams, Serial.PortLoadResult>;
-      /** Changes line settings/addresses of devices on a port. */
-      Setup: Method<Serial.PortSetupParams, {}>;
+      ports(options?: HelperOptions): Promise<Serial.ConfiguredPort[]>;
+      /** The driver config with its schema and device types. */
+      config(options?: HelperOptions & { lang?: string }): Promise<Serial.ConfigLoadResult>;
+      /** Every known device type, flat, with its group name. */
+      deviceTypes(options?: HelperOptions & { lang?: string }): Promise<(Serial.DeviceType & { group: string })[]>;
+      /** The JSON schema of a device type. */
+      deviceSchema(type: string, options?: HelperOptions): Promise<any>;
+      uploadTemplate(filename: string, content: string | object, options?: HelperOptions & { force?: boolean; lang?: string }): Promise<Serial.TemplatesResult>;
+      deleteTemplate(type: string, options?: HelperOptions & { force?: boolean; lang?: string }): Promise<Serial.TemplatesResult>;
       /** Fast Modbus scan of a port. */
-      Scan: Method<Serial.PortScanParams, Serial.PortScanResult>;
+      scan(port: PortSpec, options?: HelperOptions & { command?: 70 | 96; mode?: "all" | "start" | "next"; totalTimeout?: number }): Promise<Serial.PortScanResult>;
+      /** Who answers at an address; null when nobody does. */
+      probe(port: PortSpec, slaveId: number, options?: HelperOptions & { protocol?: "modbus" | "modbus-tcp" }): Promise<Serial.ScannedDevice | null>;
+      /** Changes addresses/line settings of devices on a port. */
+      setup(port: PortSpec, items: Serial.SetupItem[], options?: HelperOptions & { totalTimeout?: number }): Promise<{}>;
     };
-    device: ServiceProxy & {
-      /** Reads a device's settings (cached per configured device unless `force`). */
-      LoadConfig: Method<Serial.DeviceLoadConfigParams, Serial.DeviceLoadConfigResult>;
-      /** Reads channels and parameters of a device. */
-      Load: Method<Serial.DeviceLoadParams, Serial.DeviceLoadResult>;
-      /** Writes channels and parameters of a device. */
-      Set: Method<Serial.DeviceSetParams, {}>;
-      /** Identifies the device at an address (fixed 10 s budget on the server). */
-      Probe: Method<Serial.DeviceProbeParams, Serial.DeviceProbeResult>;
-      /** Pauses/resumes polling of a configured device. */
-      SetPoll: Method<Serial.DeviceSetPollParams, {}>;
-    };
-    fwUpdate: Serial.FwUpdateService;
-  };
 
   // ---- wb-mqtt-db ----
 
@@ -1380,7 +1601,7 @@ declare namespace MqttRpc {
     /** ver 1 record. */
     interface CompactValue {
       i: number;
-      /** Channel index in the request's `channels`. */
+      /** The database's channel id (not the request index). */
       c: number;
       /** UNIX seconds. */
       t: number;
@@ -1398,24 +1619,79 @@ declare namespace MqttRpc {
       /** "device/control" -> record count and last timestamp (UNIX seconds). */
       channels: Record<string, { items: number; last_ts: number }>;
     }
+    interface Rpc {
+      history: ServiceProxy & {
+        /** History records; the layout follows `ver` (0: Value, 1: CompactValue). */
+        get_values: {
+          (params: GetValuesParams & { ver: 1 }, options?: CallOptions): Promise<GetValuesResult<CompactValue>>;
+          (params: GetValuesParams & { ver?: 0 }, options?: CallOptions): Promise<GetValuesResult<Value>>;
+          (params: GetValuesParams, options?: CallOptions): Promise<GetValuesResult>;
+        };
+        get_channels: Method<{}, GetChannelsResult>;
+      };
+    }
+
+    /** "device/control" or [device, control]. */
+    type ChannelSpec = string | Channel;
+    /** A moment: a Date, or milliseconds since the epoch (Date.now() style). */
+    type Time = Date | number;
+    interface QueryOptions extends HelperOptions {
+      /** Window start. */
+      since?: Time;
+      /** Window end (default: now). */
+      until?: Time;
+      /** The last N milliseconds (instead of `since`). */
+      last?: number;
+      /** Records to return per channel. */
+      limit?: number;
+      /** Averaging interval, ms. */
+      minInterval?: number;
+      /** Averaging target: at most this many records (overrides minInterval). */
+      maxRecords?: number;
+      /** Server-side budget, seconds (default 9). */
+      requestTimeout?: number;
+      /** Start after this record id (paging). */
+      afterUid?: number;
+    }
+    /** A history record. */
+    interface HistoryRecord {
+      channel: string;
+      device: string;
+      control: string;
+      time: Date;
+      /** Numbers as numbers, the rest as strings. */
+      value: number | string;
+      min?: number | string;
+      max?: number | string;
+      retain: boolean;
+      uid: number;
+    }
+    interface QueryResult {
+      values: HistoryRecord[];
+      /** More records exist beyond `limit` (page on with afterUid = last uid). */
+      hasMore: boolean;
+    }
+    interface ChannelInfo {
+      channel: string;
+      device: string;
+      control: string;
+      /** Records stored. */
+      items: number;
+      lastTime: Date;
+    }
   }
 
   /** wb-mqtt-db: the history database. */
-  const db: {
+  const db: ServiceGroup<Db.Rpc> & {
     readonly driver: "db_logger";
-    history: ServiceProxy & {
-      /** History records; the layout follows `ver` (0: Value, 1: CompactValue). */
-      get_values: {
-        (params: Db.GetValuesParams & { ver: 1 }, options?: CallOptions): Promise<
-          Db.GetValuesResult<Db.CompactValue>
-        >;
-        (params: Db.GetValuesParams & { ver?: 0 }, options?: CallOptions): Promise<
-          Db.GetValuesResult<Db.Value>
-        >;
-        (params: Db.GetValuesParams, options?: CallOptions): Promise<Db.GetValuesResult>;
-      };
-      get_channels: Method<{}, Db.GetChannelsResult>;
-    };
+    /** Records of one channel or several (one request per channel, merged by time). */
+    query(channels: Db.ChannelSpec | Db.ChannelSpec[], options?: Db.QueryOptions): Promise<Db.QueryResult>;
+    /** The latest record of a channel; undefined when it was never logged. */
+    lastValue(channel: Db.ChannelSpec, options?: HelperOptions): Promise<Db.HistoryRecord | undefined>;
+    /** The average over a period ({ last } or { since, until }); undefined when nothing was logged. */
+    average(channel: Db.ChannelSpec, options?: Db.QueryOptions): Promise<number | undefined>;
+    /** Every channel the database knows. */
+    channels(options?: HelperOptions): Promise<Db.ChannelInfo[]>;
   };
 
   // ---- wb-rules (the editor of this very engine) ----
@@ -1460,23 +1736,36 @@ declare namespace MqttRpc {
       status: "ready" | "pending" | "not-ts" | "unsupported";
       diags: Diag[];
     }
+    interface Rpc {
+      Editor: ServiceProxy & {
+        List: Method<{}, FileEntry[]>;
+        Load: Method<{ path: string }, LoadResult>;
+        Save: Method<{ path: string; content: string }, SaveResult>;
+        Remove: Method<{ path: string }, boolean>;
+        Rename: Method<{ path: string; new_path: string }, boolean>;
+        ChangeState: Method<{ path: string; state: boolean }, boolean>;
+        /** The background type-check verdict of a file (poll while "pending"). */
+        Check: Method<{ path: string }, CheckResult>;
+        /** The API declarations (this file). */
+        GetTypes: Method<{}, { content: string }>;
+      };
+    }
   }
 
-  /** wb-rules: the rule editor RPC. Error codes 1000-1009 with data "EditorError". */
-  const rules: {
+  /** wb-rules: the rule editor. Error codes 1000-1009 with data "EditorError". */
+  const rules: ServiceGroup<RulesEditor.Rpc> & {
     readonly driver: "wbrules";
-    Editor: ServiceProxy & {
-      List: Method<{}, RulesEditor.FileEntry[]>;
-      Load: Method<{ path: string }, RulesEditor.LoadResult>;
-      Save: Method<{ path: string; content: string }, RulesEditor.SaveResult>;
-      Remove: Method<{ path: string }, boolean>;
-      Rename: Method<{ path: string; new_path: string }, boolean>;
-      ChangeState: Method<{ path: string; state: boolean }, boolean>;
-      /** The background type-check verdict of a file (poll while "pending"). */
-      Check: Method<{ path: string }, RulesEditor.CheckResult>;
-      /** The API declarations (this file). */
-      GetTypes: Method<{}, { content: string }>;
-    };
+    list(options?: HelperOptions): Promise<RulesEditor.FileEntry[]>;
+    load(path: string, options?: HelperOptions): Promise<RulesEditor.LoadResult>;
+    save(path: string, content: string, options?: HelperOptions): Promise<RulesEditor.SaveResult>;
+    remove(path: string, options?: HelperOptions): Promise<void>;
+    rename(path: string, newPath: string, options?: HelperOptions): Promise<void>;
+    enable(path: string, options?: HelperOptions): Promise<void>;
+    disable(path: string, options?: HelperOptions): Promise<void>;
+    /** The type-check verdict, polled (every `interval` ms, 200) until it is no longer pending. */
+    check(path: string, options?: HelperOptions & { interval?: number }): Promise<RulesEditor.CheckResult>;
+    /** The API declarations (this file's text). */
+    types(options?: HelperOptions): Promise<string>;
   };
 
   // ---- wb-mqtt-confed ----
@@ -1498,18 +1787,26 @@ declare namespace MqttRpc {
       schema: any;
       editor: string;
     }
+    interface Rpc {
+      Editor: ServiceProxy & {
+        List: Method<{}, ConfigEntry[]>;
+        /** `path` is a configPath from List. */
+        Load: Method<{ path: string }, LoadResult>;
+        /** Writes the config and restarts the services that depend on it. */
+        Save: Method<{ path: string; content: any }, { path: string }>;
+      };
+    }
   }
 
   /** wb-mqtt-confed: the configuration editor. Error codes 1002/1003/1006 with data "EditorError". */
-  const confed: {
+  const confed: ServiceGroup<Confed.Rpc> & {
     readonly driver: "confed";
-    Editor: ServiceProxy & {
-      List: Method<{}, Confed.ConfigEntry[]>;
-      /** `path` is a configPath from List. */
-      Load: Method<{ path: string }, Confed.LoadResult>;
-      /** Writes the config and restarts the services that depend on it. */
-      Save: Method<{ path: string; content: any }, { path: string }>;
-    };
+    list(options?: HelperOptions): Promise<Confed.ConfigEntry[]>;
+    load(path: string, options?: HelperOptions): Promise<Confed.LoadResult>;
+    /** Writes the config (the services depending on it restart). */
+    save(path: string, content: any, options?: HelperOptions): Promise<void>;
+    /** Loads, lets fn change the content (in place, or by returning a new one), saves; resolves with what was saved. */
+    update<T = any>(path: string, fn: (content: T, loaded: Confed.LoadResult) => T | void | Promise<T | void>, options?: HelperOptions): Promise<T>;
   };
 
   // ---- wb-mqtt-logs ----
@@ -1544,30 +1841,83 @@ declare namespace MqttRpc {
       /** Present on the first and last entries: pass it back to page. */
       cursor?: string;
     }
+    interface Rpc {
+      logs: ServiceProxy & {
+        List: Method<{}, ListResult>;
+        Load: Method<LoadParams, Entry[]>;
+        /** Aborts a running Load. */
+        CancelLoad: Method<{}, null>;
+      };
+    }
+    interface ReadOptions extends HelperOptions {
+      service?: string;
+      /** A boot hash from boots(); default: all boots. */
+      boot?: string;
+      /** Start time (Date or ms). */
+      since?: Date | number;
+      /** syslog levels 0..7. */
+      levels?: number[];
+      pattern?: string;
+      regex?: boolean;
+      caseSensitive?: boolean;
+      /** Page on from an entry's cursor. */
+      cursor?: string;
+      direction?: "backward" | "forward";
+      /** At most 100. */
+      limit?: number;
+    }
+    interface LogRecord {
+      time: Date;
+      /** syslog level (6 = info). */
+      level: number;
+      msg: string;
+      service?: string;
+      cursor?: string;
+    }
+    interface Boot {
+      hash: string;
+      start: Date;
+      end?: Date;
+    }
   }
 
   /** wb-mqtt-logs: journal access. */
-  const logs: {
+  const logs: ServiceGroup<Logs.Rpc> & {
     readonly driver: "wb_logs";
-    logs: ServiceProxy & {
-      List: Method<{}, Logs.ListResult>;
-      Load: Method<Logs.LoadParams, Logs.Entry[]>;
-      /** Aborts a running Load. */
-      CancelLoad: Method<{}, null>;
-    };
+    /** Journal entries, newest first unless direction is "forward"; at most 100 per call. */
+    read(options?: Logs.ReadOptions): Promise<Logs.LogRecord[]>;
+    /** The last `count` (50) entries of a service. */
+    tail(service: string, count?: number, options?: Logs.ReadOptions): Promise<Logs.LogRecord[]>;
+    services(options?: HelperOptions): Promise<string[]>;
+    boots(options?: HelperOptions): Promise<Logs.Boot[]>;
+    /** Aborts a running read. */
+    cancel(options?: HelperOptions): Promise<void>;
   };
 
   // ---- wb-diag-collect ----
 
+  namespace Diag {
+    interface Rpc {
+      main: ServiceProxy & {
+        /** Starts collecting; the archive is announced on /wb-diag-collect/artifact. */
+        diag: Method<{}, "Ok">;
+        /** Liveness probe: "1". */
+        status: Method<{}, "1">;
+      };
+    }
+    interface Artifact {
+      basename: string;
+      fullname: string;
+    }
+  }
+
   /** wb-diag-collect: the diagnostics archive. */
-  const diag: {
+  const diag: ServiceGroup<Diag.Rpc> & {
     readonly driver: "diag";
-    main: ServiceProxy & {
-      /** Starts collecting; the archive is announced on /wb-diag-collect/artifact. */
-      diag: Method<{}, "Ok">;
-      /** Liveness probe: "1". */
-      status: Method<{}, "1">;
-    };
+    /** Collects a diagnostics archive; resolves with its file names (default wait 300000 ms). */
+    collect(options?: HelperOptions & { timeout?: number }): Promise<Diag.Artifact>;
+    /** Whether the service answers its status probe. */
+    isAlive(options?: HelperOptions): Promise<boolean>;
   };
 
   // ---- wb-device-manager ----
@@ -1580,18 +1930,63 @@ declare namespace MqttRpc {
       port?: { path: string; protocol?: "modbus" | "modbus-tcp" };
       out_of_order_slave_ids?: number[];
     }
+    interface Rpc {
+      busScan: ServiceProxy & {
+        /** Returns "Ok" at once; progress and results are on the retained /wb-device-manager/state topic. */
+        Start: Method<BusScanStartParams, "Ok">;
+        Stop: Method<{}, "Ok">;
+      };
+      fwUpdate: Serial.FwUpdateService<Serial.FwUpdatePort | { address: string; port: number }>;
+    }
+    /** A device on the retained scan state. */
+    interface ScannedDevice {
+      uuid: string;
+      port: { path: string };
+      cfg: { slave_id: number; baud_rate: number; parity: string; data_bits: number; stop_bits: number };
+      title?: string;
+      sn?: string;
+      device_signature?: string;
+      fw_signature?: string;
+      configured_device_type?: string;
+      last_seen?: number;
+      bootloader_mode: boolean;
+      errors: any[];
+      fw: { version?: string; ext_support: boolean; fast_modbus_command?: number };
+      [extra: string]: any;
+    }
+    interface ScanState {
+      scanning: boolean;
+      progress: number;
+      scanning_ports: string[];
+      is_ext_scan: boolean;
+      error: { message?: string; [extra: string]: any } | null;
+      devices: ScannedDevice[];
+    }
+    interface ScanOptions extends HelperOptions {
+      /** A serial port (path) or "IP:PORT"; default: every port. */
+      port?: PortSpec;
+      protocol?: "modbus" | "modbus-tcp";
+      type?: "extended" | "standard" | "bootloader";
+      preserveOldResults?: boolean;
+      outOfOrderSlaveIds?: number[];
+      /** Give up after this many ms (default 600000). */
+      timeout?: number;
+      /** How long to wait for the scan to report itself running (default 10000). */
+      startTimeout?: number;
+      onProgress?: (state: ScanState) => void;
+    }
   }
 
-  /** wb-device-manager: the serial bus scanner. Busy answers -33100. */
-  const deviceManager: {
-    readonly driver: "wb-device-manager";
-    busScan: ServiceProxy & {
-      /** Returns "Ok" at once; progress and results are on the retained /wb-device-manager/state topic. */
-      Start: Method<DeviceManager.BusScanStartParams, "Ok">;
-      Stop: Method<{}, "Ok">;
+  /** wb-device-manager: the serial bus scanner (and its firmware updater). Busy answers -33100. */
+  const deviceManager: ServiceGroup<DeviceManager.Rpc> &
+    Serial.FirmwareHelpers & {
+      readonly driver: "wb-device-manager";
+      /** Scans the bus and resolves with the devices found once the scan completes. */
+      scan(options?: DeviceManager.ScanOptions): Promise<DeviceManager.ScannedDevice[]>;
+      stopScan(options?: HelperOptions): Promise<void>;
+      /** The retained scan state; null when there is none. */
+      state(options?: { timeout?: number }): Promise<DeviceManager.ScanState | null>;
     };
-    fwUpdate: Serial.FwUpdateService<Serial.FwUpdatePort | { address: string; port: number }>;
-  };
 
   // ---- wb-mqtt-dali ----
 
@@ -1606,44 +2001,52 @@ declare namespace MqttRpc {
       category: string;
       snippet: string;
     }
+    interface Bus {
+      id: string;
+      name: string;
+      devices: { id: string; name: string; groups: number[] }[];
+      commissioning: Record<string, any>;
+      bus_monitor_enabled?: boolean;
+      bus_monitor_syslog_enabled?: boolean;
+    }
     interface GatewayEntry {
       id: string;
       name: string;
-      buses: {
-        id: string;
-        name: string;
-        devices: { id: string; name: string; groups: number[] }[];
-        commissioning: Record<string, any>;
-        bus_monitor_enabled?: boolean;
-        bus_monitor_syslog_enabled?: boolean;
-      }[];
+      buses: Bus[];
+    }
+    interface Rpc {
+      Editor: ServiceProxy & {
+        GetList: Method<{}, GatewayEntry[]>;
+        GetGateway: Method<{ gatewayId: string }, { config: Record<string, any>; schema: any }>;
+        SetGateway: Method<{ gatewayId: string; config: Record<string, any> }, any>;
+        GetBus: Method<{ busId: string }, { config: Record<string, any>; schema: any }>;
+        SetBus: Method<{ busId: string; config: Record<string, any> }, any>;
+        ScanBus: Method<{ busId: string }, { status: "started" | "already_running"; progressTopic: string }>;
+        StopScanBus: Method<{ busId: string }, { status: "stopped" | "not_running" }>;
+        GetDevice: Method<{ deviceId: string; forceReload?: boolean }, { config: Record<string, any>; schema: any }>;
+        SetDevice: Method<{ deviceId: string; config: Record<string, any> }, any>;
+        GetGroup: Method<{ groupId: string }, Record<string, any>>;
+        SetGroup: Method<{ groupId: string; config: Record<string, any> }, {}>;
+        IdentifyDevice: Method<{ deviceId: string }, {}>;
+        ResetDeviceSettings: Method<{ deviceId: string }, {}>;
+        ResetDevice: Method<{ deviceId: string }, {}>;
+      };
+      Bus: ServiceProxy & {
+        /** Runs DALI commands ("DAPC(A0, 0xFE)") atomically on a bus; one result per command. */
+        SendCommand: Method<{ busId: string; commands: string[] }, CommandResult[]>;
+        ListCommands: Method<{}, CommandInfo[]>;
+      };
     }
   }
 
   /** wb-mqtt-dali: the DALI gateway (Editor methods follow its own docs and may change). */
-  const dali: {
+  const dali: ServiceGroup<Dali.Rpc> & {
     readonly driver: "wb-mqtt-dali";
-    Editor: ServiceProxy & {
-      GetList: Method<{}, Dali.GatewayEntry[]>;
-      GetGateway: Method<{ gatewayId: string }, { config: Record<string, any>; schema: any }>;
-      SetGateway: Method<{ gatewayId: string; config: Record<string, any> }, any>;
-      GetBus: Method<{ busId: string }, { config: Record<string, any>; schema: any }>;
-      SetBus: Method<{ busId: string; config: Record<string, any> }, any>;
-      ScanBus: Method<{ busId: string }, { status: "started" | "already_running"; progressTopic: string }>;
-      StopScanBus: Method<{ busId: string }, { status: "stopped" | "not_running" }>;
-      GetDevice: Method<{ deviceId: string; forceReload?: boolean }, { config: Record<string, any>; schema: any }>;
-      SetDevice: Method<{ deviceId: string; config: Record<string, any> }, any>;
-      GetGroup: Method<{ groupId: string }, Record<string, any>>;
-      SetGroup: Method<{ groupId: string; config: Record<string, any> }, {}>;
-      IdentifyDevice: Method<{ deviceId: string }, {}>;
-      ResetDeviceSettings: Method<{ deviceId: string }, {}>;
-      ResetDevice: Method<{ deviceId: string }, {}>;
-    };
-    Bus: ServiceProxy & {
-      /** Runs DALI commands ("DAPC(A0, 0xFE)") atomically on a bus; one result per command. */
-      SendCommand: Method<{ busId: string; commands: string[] }, Dali.CommandResult[]>;
-      ListCommands: Method<{}, Dali.CommandInfo[]>;
-    };
+    /** Every bus of every gateway, flat, each with its gateway's id and name. */
+    buses(options?: HelperOptions): Promise<(Dali.Bus & { gateway: { id: string; name: string } })[]>;
+    /** Runs one command or several on a bus; one result per command. */
+    send(busId: string, commands: string | string[], options?: HelperOptions): Promise<Dali.CommandResult[]>;
+    commands(options?: HelperOptions): Promise<Dali.CommandInfo[]>;
   };
 }
 
