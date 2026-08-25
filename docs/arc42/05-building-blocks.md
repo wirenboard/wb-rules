@@ -59,7 +59,7 @@ graph TD
         QJSW["qjs_*.c — однострочные #35;include исходников сабмодуля"]
     end
     QJS["third_party/quickjs<br/>bellard/quickjs 2026-06-04, submodule"]
-    LIBJS["scripts/lib.js + modules/wb-notify.js, wb-alarms.js<br/>__wbGlobalPrototype, __wbBindRealmAPI"]
+    LIBJS["scripts/lib.js + modules/wb-notify.js, wb-alarms.js, wb-mqtt-rpc.js<br/>__wbGlobalPrototype, __wbBindRealmAPI"]
     DTS["types/wb-rules.d.ts"]
     MAIN --> ESE
     MAIN --> ED
@@ -98,7 +98,7 @@ graph TD
 |---|---|---|---|
 | **internal/quickjsduk** | Реализация используемого wb-rules стек-API go-duktape (~90 методов) поверх QuickJS (`replace github.com/wirenboard/go-duktape => ./internal/quickjsduk`, ADR-003) | `duktape.go`, `shim.c/.h`, `qjs_*.c`, тесты `duktape_test.go`, `memlimit_test.go`, `exectimeout_test.go`, `leak_test.go` | cgo; CFLAGS `-I${SRCDIR}/../../third_party/quickjs` |
 | **third_party/quickjs** | Сабмодуль bellard/quickjs @ `3d5e064` (релиз 2026-06-04), без патчей (ADR-002) | ADR-002, ADR-003 | исходники включаются через `qjs_*.c` |
-| **scripts/lib.js** | JS-библиотека рантайма: загружается один раз в `globalCtx`, глобал становится `__wbGlobalPrototype`; `_WbRules{defineRule, startTimer, makePersistentStorage, …}`, `dev`-Proxy, `defineAlias`, `cron`, `Notify`, `Alarms`; `__wbBindRealmAPI(g)` компилируется в каждом realm'е (`defineRule`, таймеры, `spawn`, `runShellCommand`, `sleep`, `changed`, `nextMqtt`, `PersistentStorage`, ADR-007) | `scripts/lib.js`, `modules/wb-notify.js`, `modules/wb-alarms.js`, `rules/load_alarms.js` | Go-builtins `_wb*`; `require()` |
+| **scripts/lib.js** | JS-библиотека рантайма: загружается один раз в `globalCtx`, глобал становится `__wbGlobalPrototype`; `_WbRules{defineRule, startTimer, makePersistentStorage, …}`, `dev`-Proxy, `defineAlias`, `cron`, `Notify`, `Alarms`; `__wbBindRealmAPI(g)` компилируется в каждом realm'е (`defineRule`, таймеры, `spawn`, `runShellCommand`, `sleep`, `changed`, `nextMqtt`, `PersistentStorage`, ленивый per-realm `MqttRpc`, ADR-007) | `scripts/lib.js`, `modules/wb-notify.js`, `modules/wb-alarms.js`, `modules/wb-mqtt-rpc.js`, `rules/load_alarms.js` | Go-builtins `_wb*` (в т.ч. `_wbAddCleanup` — JS-хук выгрузки файла); `require()` |
 | **types/wb-rules.d.ts** | Единое описание API для проверки на контроллере и в редакторе (ADR-013): `TypeMappings`, `ControlOptions`, `VirtualDevice<T>`, пустой `interface WbControls {}` (точка declaration merging для реестра), типизированный `dev`, `defineRule`, `RuleId`, промис-API, `Notify`, `Alarms` | `types/wb-rules.d.ts`, копия в homeui `autocomplete/wb-rules.d.ts` | `tsgo` (аргумент), `Editor.GetTypes` |
 
 ## 5.3 Уровень 3: шим `internal/quickjsduk`

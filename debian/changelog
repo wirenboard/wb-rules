@@ -23,7 +23,42 @@ wb-rules (2.47.0~quickjs2.1) unstable; urgency=medium
     Without the binary, .ts files fail to load with an explicit error
     naming the looked-up path.
 
- -- Evgeny Boger <boger@wirenboard.com>  Wed, 19 Aug 2026 21:00:00 +0400
+  * MQTT-RPC from rules: the wb-mqtt-rpc module (also the MqttRpc global)
+    calls any /rpc/v1 method with a promise (call, hasMethod, waitForMethod,
+    service proxies, RpcError/TimeoutError), ships typed wrappers for the
+    controller's services (wb-mqtt-serial, wb-mqtt-db, wb-rules Editor,
+    wb-mqtt-confed, wb-mqtt-logs, wb-diag-collect, wb-device-manager,
+    wb-mqtt-dali) and serves methods defined in a rule file
+    (MqttRpc.defineService) with presence topics cleared on unload. Engine
+    additions: _wbAddCleanup (a JS unload hook), trackMqtt(topic, cb,
+    {cache: false}) to skip the last-value replay cache for one-off
+    streams; cleanup-on-stop (-cleanup) now runs on the engine loop, as
+    cleanups may execute JavaScript. Everything else is JavaScript, per
+    rule file.
+  * The services come with helpers on top of the raw RPC methods (which
+    stay under MqttRpc.<service>.rpc): MqttRpc.serial.device(id).readHolding/writeHolding(s)/
+    readCoils/writeCoil(s)/settings/read/write/withPollingPaused/
+    updateFirmware (Modbus registers as numbers, devices by MQTT id or
+    port+address, Modbus exceptions as ModbusError), serial.devices()/
+    scan()/probe()/setup(), db.query()/lastValue()/average()/channels()
+    (Date/ms windows, numeric values), rules.list()/load()/save()/check(),
+    confed.update(), logs.read()/tail(), diag.collect(),
+    deviceManager.scan() (waits for the scan), isAvailable()/
+    waitUntilAvailable() per service.
+  * Served methods can carry a JSON Schema of their params
+    (MqttRpc.method(schema, handler)): requests are validated before the
+    handler runs (-32602 with the problems in data), and TypeScript types
+    the handler's params from the schema in .ts and .js files alike;
+    MqttRpc.validate(schema, value) exposes the same check.
+  * Device handles read and write channels/parameters by name
+    (readChannel(s)/readParameter(s)/writeChannel(s)/setParameter(s));
+    docs/mqtt-rpc-api.md is the full reference of the module's API, with
+    an example and a sample result for every method (all of them
+    type-checked as rules). Checked against a real WB-MSW v.4: booleans
+    go to the driver as 1/0 (device/Set takes no JSON booleans);
+    rules.enable/disable/rename wait for the editor to list the change.
+
+ -- Evgeny Boger <boger@wirenboard.com>  Tue, 25 Aug 2026 01:00:00 +0400
 
 wb-rules (2.47.0~quickjs1) unstable; urgency=medium
 

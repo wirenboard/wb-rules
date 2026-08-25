@@ -6,7 +6,7 @@
    _wbStartTimer, _wbStopTimer, _wbCheckCurrentTimer, _wbSpawn,
    _wbPersistentName, _wbPersistentGet, _wbPersistentSet,
    __wbGlobalPrototype, __wbModulePrototype, __wbVdevPrototype,
-   __wbVdevCellPrototype, log, trackMqtt */
+   __wbVdevCellPrototype, log, trackMqtt, require */
 // the runtime is built around dictionary tables (timers, aliases, waiters);
 // dynamic keys are the design, not an injection surface
 /* eslint-disable security/detect-object-injection */
@@ -791,4 +791,21 @@ global.__wbBindRealmAPI = function (g) {
     // under the function's creation realm, not the shared one)
     return _WbRules.makePersistentStorage(_wbPersistentName(name, options));
   };
+  // MQTT-RPC (modules/wb-mqtt-rpc.js) as a global, like Notify/Alarms -
+  // but resolved lazily and PER REALM: the module instance owns this
+  // file's reply subscription, client id and served methods, all of which
+  // are attributed to the file and cleaned up when it reloads (require()
+  // caches per realm, so the getter and require('wb-mqtt-rpc') agree).
+  // Files that never touch MqttRpc pay nothing.
+  Object.defineProperty(g, 'MqttRpc', {
+    configurable: true,
+    enumerable: false,
+    get: function () {
+      var m = require('wb-mqtt-rpc');
+      // resolved once: from now on a plain property (require would still
+      // return the cached instance, but not for free)
+      Object.defineProperty(g, 'MqttRpc', { configurable: true, enumerable: false, value: m });
+      return m;
+    },
+  });
 };

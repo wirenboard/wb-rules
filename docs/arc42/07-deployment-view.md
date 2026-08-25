@@ -49,7 +49,7 @@ graph TB
 
 | Пакет | Содержимое | Примечания |
 |---|---|---|
-| `wb-rules` (`2.47.0~quickjs2`) | `/usr/bin/wb-rules`, `/usr/lib/wb-rules/wbgo.so`, `lib.js`, модули `wb-notify.js`/`wb-alarms.js`, `wb-rules.d.ts`, `load_alarms.js`, `alarms.conf` + `alarms.schema.json`, `/etc/wb-rules/rules.js`, `/etc/wb-configs.d/13wb-rules`, два systemd-юнита | `Depends: ${shlibs:Depends}, wb-tsgo` (ADR-011); `Breaks` старых `wb-mqtt-confed`, `wb-rules-system`, `wb-mqtt-dac`; `Build-Depends: golang-1.26-go:native`; dh-сборка, `dh_builddeb -Zgzip` |
+| `wb-rules` (`2.47.0~quickjs2`) | `/usr/bin/wb-rules`, `/usr/lib/wb-rules/wbgo.so`, `lib.js`, модули `wb-notify.js`/`wb-alarms.js`/`wb-mqtt-rpc.js`, `wb-rules.d.ts`, `load_alarms.js`, `alarms.conf` + `alarms.schema.json`, `/etc/wb-rules/rules.js`, `/etc/wb-configs.d/13wb-rules`, два systemd-юнита | `Depends: ${shlibs:Depends}, wb-tsgo` (ADR-011); `Breaks` старых `wb-mqtt-confed`, `wb-rules-system`, `wb-mqtt-dac`; `Build-Depends: golang-1.26-go:native`; dh-сборка, `dh_builddeb -Zgzip` |
 | `wb-tsgo` | `/usr/bin/tsgo` — немодифицированный typescript-go (pure Go, `CGO_ENABLED=0`, `GOARM=6` для armhf) | отдельный репозиторий wirenboard/wb-tsgo; порядок configure гарантирует наличие до старта wb-rules |
 | `wb-rules-system` | системные правила `/usr/share/wb-rules-system/rules/*.js` (должны оставаться ES5 — совместимость со stable 2.46.x) | загружаются первыми по порядку аргументов юнита |
 | `wb-mqtt-homeui` | SPA; `Recommends: wb-rules (>= 2.47.0~quickjs2~~)` — на старом движке деградирует (GetTypes fallback, Check → `unsupported`) | — |

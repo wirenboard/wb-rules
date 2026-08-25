@@ -166,6 +166,41 @@ func (s *RuleTypeScriptSuite) TestTypeAssertionsFixture() {
 	s.Empty(check.Diags, "type assertion fixture must produce no diagnostics")
 }
 
+// The MQTT-RPC declarations (the MqttRpc global and the "wb-mqtt-rpc"
+// module) have their own assertion fixture with the same contract.
+func (s *RuleTypeScriptSuite) TestMqttRpcTypeAssertionsFixture() {
+	s.loadScripts([]string{"testrules_ts_mqtt_rpc_typeassert.ts"})
+	s.SkipTill("wbrules-log -> /wbrules/updates/changed: [testrules_ts_mqtt_rpc_typeassert.ts] (QoS 1)")
+	editor := NewEditor(s.engine)
+	check := s.waitCheck(editor, "testrules_ts_mqtt_rpc_typeassert.ts")
+	s.Equal(TS_CHECK_READY, check.Status)
+	s.Empty(check.Diags, "MqttRpc type assertion fixture must produce no diagnostics")
+}
+
+// In a .js file require('wb-mqtt-rpc') is a CommonJS import of the exact
+// ambient module, so the module's calls are checked like the global's.
+func (s *RuleTypeScriptSuite) TestJsMqttRpcModuleTyped() {
+	s.loadScripts([]string{"testrules_js_mqtt_rpc.js"})
+	s.SkipTill("wbrules-log -> /wbrules/updates/changed: [testrules_js_mqtt_rpc.js] (QoS 1)")
+	editor := NewEditor(s.engine)
+	check := s.waitCheck(editor, "testrules_js_mqtt_rpc.js")
+	s.Equal(TS_CHECK_READY, check.Status)
+
+	lines := map[int]string{}
+	for _, d := range check.Diags {
+		lines[d.Line] = d.Message
+	}
+	s.NotContains(lines, 5, "require('wb-mqtt-rpc') must resolve")
+	s.NotContains(lines, 6, "a typed call through the module must be accepted")
+	s.NotContains(lines, 7, "a typed call through the global must be accepted")
+	s.Contains(lines, 8, "wrong-typed params through the module must be flagged")
+	s.Contains(lines, 9, "wrong-typed params through the global must be flagged")
+	s.Len(check.Diags, 2, "exactly the two intended diagnostics: %v", check.Diags)
+
+	s.Verify(regexp.MustCompile(`TS check: .*testrules_js_mqtt_rpc\.js:8:.*`))
+	s.Verify(regexp.MustCompile(`TS check: .*testrules_js_mqtt_rpc\.js:9:.*`))
+}
+
 // The on-controller check generates a WbControls registry from the live
 // device table, so the stringly-referenced APIs are typed against the
 // controls that actually exist - here tsdev/count (numeric) and
@@ -547,7 +582,8 @@ func TestTypeAssertionsFixtureStrict(t *testing.T) {
 	cmd := exec.Command(tsgo, "--noEmit", "--target", "esnext", "--lib", "esnext",
 		"--strict", "true", "--module", "esnext", "--moduleDetection", "force",
 		filepath.Join(root, "types", "wb-rules.d.ts"),
-		filepath.Join(root, "wbrules", "testrules_ts_typeassert.ts"))
+		filepath.Join(root, "wbrules", "testrules_ts_typeassert.ts"),
+		filepath.Join(root, "wbrules", "testrules_ts_mqtt_rpc_typeassert.ts"))
 	out, err := cmd.CombinedOutput()
 	if err != nil || len(strings.TrimSpace(string(out))) != 0 {
 		t.Fatalf("type assertion fixture is not clean under --strict true: %v\n%s", err, out)
