@@ -19,11 +19,22 @@ type MqttRpcHelpersSuite struct {
 	RuleSuiteBase
 	mu       sync.Mutex
 	requests []fakeRpcRequest
+	// fake timers by duration, in creation order (the helpers' waits)
+	timers map[time.Duration][]TimerId
 }
 
 func (s *MqttRpcHelpersSuite) SetupTest() {
 	s.requests = nil
+	s.timers = make(map[time.Duration][]TimerId)
 	s.SetupSkippingDefs("testrules_mqtt_rpc_helpers.js")
+	// remember every fake timer by duration: a helper's wait is fired by
+	// what it waits for, not by an id that depends on message timing
+	s.engine.SetTimerFunc(func(id TimerId, d time.Duration, periodic bool) wbgong.Timer {
+		s.mu.Lock()
+		s.timers[d] = append(s.timers[d], id)
+		s.mu.Unlock()
+		return s.newFakeTimer(id, d, periodic)
+	})
 	s.client.Subscribe(s.fakeServer, "/rpc/v1/+/+/+/+")
 	s.Verify("Subscribe -- tst: /rpc/v1/+/+/+/+")
 	// the firmware state as a controller has it before any update: a failure
@@ -228,6 +239,25 @@ func (s *MqttRpcHelpersSuite) fakeServer(msg wbgong.MQTTMessage) {
 	}
 }
 
+// fireNth fires the n-th (1-based) fake timer of the given duration once it
+// exists; the helpers' waits are the only timers of these durations
+func (s *MqttRpcHelpersSuite) fireNth(d time.Duration, n int) {
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		s.mu.Lock()
+		ids := s.timers[d]
+		s.mu.Unlock()
+		if len(ids) >= n {
+			s.FireTimer(uint64(ids[n-1]), s.AdvanceTime(d))
+			return
+		}
+		if time.Now().After(deadline) {
+			s.FailNowf("timer", "no %d-th fake timer of %s", n, d)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func (s *MqttRpcHelpersSuite) sent(driver, service, method string) []fakeRpcRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -425,10 +455,9 @@ func (s *MqttRpcHelpersSuite) TestLogs() {
 func (s *MqttRpcHelpersSuite) TestStateTopics() {
 	s.trigger("state")
 	// the first update (slave 5) ends its components stage with the wait for a
-	// further stage: fake timer 6 (retained read, Update, wait, stage, wait
-	// came before it) - fire it
-	s.SkipTill("new fake timer: 6, 2000")
-	s.FireTimer(6, s.AdvanceTime(2000*time.Millisecond))
+	// further stage (the second 2 s wait: the first was cut short by the
+	// components entry) - let it run out
+	s.fireNth(2000*time.Millisecond, 2)
 	s.logged("fw stale-first done: fw0,cmp40")
 	s.logged("wait recorded error: firmware update failed: recorded error")
 	s.SkipTill("wbrules-log -> /wbrules/log/info: [scan found: 11,22 progress: 10,60,100] (QoS 1)")

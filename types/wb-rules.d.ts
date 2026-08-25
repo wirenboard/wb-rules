@@ -1572,13 +1572,16 @@ declare namespace MqttRpc {
 
     /** The firmware helpers (wb-mqtt-serial: serial ports; wb-device-manager: TCP too). */
     interface FirmwareHelpers {
+      /** The firmware, bootloader and component versions of a device and whether updates are available. */
       firmwareInfo(port: PortSpec, slaveId: number | string, options?: HelperOptions & ProtocolOptions): Promise<FirmwareInfo>;
       /** Flashes the device; resolves when the update is over (rejects with the recorded error). */
       updateFirmware(port: PortSpec, slaveId: number | string, options: FirmwareUpdateOptions & { wait: false }): Promise<"Ok">;
       updateFirmware(port: PortSpec, slaveId: number | string, options?: FirmwareUpdateOptions): Promise<void>;
       /** Waits for a running update of the device to finish. */
       waitForFirmwareUpdate(port: PortSpec, slaveId: number | string, options?: FirmwareWaitOptions): Promise<void>;
+      /** Restores the firmware of a device stuck in the bootloader. */
       restoreFirmware(port: PortSpec, slaveId: number | string, options?: HelperOptions & ProtocolOptions): Promise<"Ok">;
+      /** Clears the update error recorded for a device. */
       clearFirmwareError(port: PortSpec, slaveId: number | string, options?: HelperOptions & { type?: "firmware" | "bootloader" }): Promise<"Ok">;
       /** The retained state of running updates. */
       firmwareUpdateState(options?: { timeout?: number }): Promise<FirmwareUpdateState>;
@@ -1623,35 +1626,57 @@ declare namespace MqttRpc {
       raw(hex: string, responseSize: number, options?: ModbusOptions): Promise<string>;
       /** The device's settings (its template "parameters"), plus fw and model. */
       settings(options?: ModbusOptions & { force?: boolean }): Promise<DeviceLoadConfigResult>;
-      /** Channels and parameters by name, together. */
+      /** Reads channels and parameters by name in one request: `read({ channels: ["Urms L1"], parameters: ["baud_rate"] })`. */
       read(what?: { channels?: string[]; parameters?: string[] }, options?: ModbusOptions): Promise<DeviceLoadResult>;
+      /** Writes channels and parameters by name in one request: `write({ channels: { K1: 1 }, parameters: { in1_mode: 2 } })`. */
       write(what: { channels?: Record<string, any>; parameters?: Record<string, any> }, options?: ModbusOptions): Promise<void>;
-      /** The current values of channels (as the driver reads them), by name; options may trail the names. */
+      /**
+       * The current values of several channels, read from the device by the
+       * driver, keyed by channel name (the names from the device template).
+       * `readChannels("Urms L1", "Irms L1")`; options may trail the names.
+       */
       readChannels(...names: string[]): Promise<Record<string, any>>;
       readChannels(...args: [...names: string[], options: ModbusOptions]): Promise<Record<string, any>>;
       readChannels(names: string[], options?: ModbusOptions): Promise<Record<string, any>>;
+      /** The current value of one channel, read from the device by the driver: `readChannel("Urms L1")`. */
       readChannel(name: string, options?: ModbusOptions): Promise<any>;
-      /** The current values of parameters (settings), by id; options may trail the ids. */
+      /**
+       * The current values of several parameters (settings), keyed by
+       * parameter id (the ids from the device template); options may trail the ids.
+       */
       readParameters(...ids: string[]): Promise<Record<string, any>>;
       readParameters(...args: [...ids: string[], options: ModbusOptions]): Promise<Record<string, any>>;
       readParameters(ids: string[], options?: ModbusOptions): Promise<Record<string, any>>;
+      /** The current value of one parameter (setting): `readParameter("baud_rate")`. */
       readParameter(id: string, options?: ModbusOptions): Promise<any>;
+      /** Writes several channels through the driver: `writeChannels({ K1: 1, K2: 0 })` (channel names from the template). */
       writeChannels(values: Record<string, any>, options?: ModbusOptions): Promise<void>;
+      /** Writes one channel through the driver: `writeChannel("K1", 1)` (the channel name from the template, without the device id). */
       writeChannel(name: string, value: any, options?: ModbusOptions): Promise<void>;
+      /** Writes several parameters (settings): `setParameters({ baud_rate: 96, in1_mode: 2 })`. */
       setParameters(values: Record<string, any>, options?: ModbusOptions): Promise<void>;
+      /** Writes one parameter (setting): `setParameter("in1_mode", 2)`. */
       setParameter(id: string, value: any, options?: ModbusOptions): Promise<void>;
       /** Who answers at this address (explicit ports only); null when nobody does. */
       probe(options?: HelperOptions & { protocol?: "modbus" | "modbus-tcp" }): Promise<ScannedDevice | null>;
+      /** Turns the driver's polling of the device on or off (a pause ends by itself after 10 min). */
       setPolling(enabled: boolean, options?: HelperOptions): Promise<void>;
+      /** Stops the driver's polling of the device (resumes by itself after 10 min). */
       pausePolling(options?: HelperOptions): Promise<void>;
+      /** Resumes the driver's polling of the device. */
       resumePolling(options?: HelperOptions): Promise<void>;
       /** Pauses polling around fn (resumed even when fn throws); resolves with fn's result. */
       withPollingPaused<T>(fn: (device: Device) => T | Promise<T>, options?: HelperOptions): Promise<T>;
+      /** The firmware, bootloader and component versions of the device and whether updates are available. */
       firmwareInfo(options?: HelperOptions & ProtocolOptions): Promise<FirmwareInfo>;
+      /** Flashes the device; resolves when the update is over (rejects with the recorded error); `wait: false` returns the service's "Ok" at once. */
       updateFirmware(options: FirmwareUpdateOptions & { wait: false }): Promise<"Ok">;
       updateFirmware(options?: FirmwareUpdateOptions): Promise<void>;
+      /** Waits for a running update of the device to finish (rejects with its recorded error). */
       waitForFirmwareUpdate(options?: FirmwareWaitOptions): Promise<void>;
+      /** Restores the firmware of a device stuck in the bootloader. */
       restoreFirmware(options?: HelperOptions & ProtocolOptions): Promise<"Ok">;
+      /** Clears the update error recorded for the device. */
       clearFirmwareError(options?: HelperOptions & { type?: "firmware" | "bootloader" }): Promise<"Ok">;
     }
 
@@ -1693,7 +1718,9 @@ declare namespace MqttRpc {
       deviceTypes(options?: HelperOptions & { lang?: string }): Promise<(Serial.DeviceType & { group: string })[]>;
       /** The JSON schema of a device type. */
       deviceSchema(type: string, options?: HelperOptions): Promise<any>;
+      /** Installs a user device template (the file's JSON as text or object); `force` replaces one that configured devices use. */
       uploadTemplate(filename: string, content: string | object, options?: HelperOptions & { force?: boolean; lang?: string }): Promise<Serial.TemplatesResult>;
+      /** Removes a user device template by type; `force` even when configured devices use it. */
       deleteTemplate(type: string, options?: HelperOptions & { force?: boolean; lang?: string }): Promise<Serial.TemplatesResult>;
       /** Fast Modbus scan of a port; a scan that stopped early rejects with an Error carrying `devices` found so far. */
       scan(port: PortSpec, options?: HelperOptions & { command?: 70 | 96; mode?: "all" | "start" | "next"; totalTimeout?: number }): Promise<Serial.ScannedDevice[]>;
@@ -2133,6 +2160,7 @@ declare namespace MqttRpc {
       readonly driver: "wb-device-manager";
       /** Scans the bus and resolves with the devices found once the scan completes. */
       scan(options?: DeviceManager.ScanOptions): Promise<DeviceManager.ScannedDevice[]>;
+      /** Stops a running bus scan. */
       stopScan(options?: HelperOptions): Promise<void>;
       /** The retained scan state; null when there is none. */
       state(options?: { timeout?: number }): Promise<DeviceManager.ScanState | null>;
