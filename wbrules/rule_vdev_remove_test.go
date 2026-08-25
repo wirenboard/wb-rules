@@ -121,17 +121,13 @@ func (s *RuleVdevRemoveSuite) TestRemoveScriptAfterRedefine() {
 // produces a noisy stream of somedev control/meta change events that
 // the strict s.publish() helper is not meant to describe
 func (s *RuleVdevRemoveSuite) TestWipeExternal() {
-	// the wipe floods the test's unbuffered control-change subscription
-	// with somedev value/meta events; drain it so the engine is not blocked
-	done := make(chan struct{})
-	defer close(done)
+	// The wipe floods the unbuffered control-change subscription of the
+	// test with somedev value/meta events, including stragglers arriving
+	// during teardown, so drain the channel for the rest of the engine
+	// lifetime. The engine stop does not close it; afterwards the goroutine
+	// parks on the dead channel, which is harmless in the test binary.
 	go func() {
-		for {
-			select {
-			case <-s.controlChange:
-			case <-done:
-				return
-			}
+		for range s.controlChange {
 		}
 	}()
 
