@@ -25,7 +25,7 @@ GO_FLAGS := -buildvcs=false
 ifneq ($(filter arm64 armhf,$(DEB_TARGET_ARCH)),)
 LDFLAGS += -extldflags=-fuse-ld=bfd
 endif
-GO_TEST_FLAGS := -v -cover
+GO_TEST_FLAGS := -v -cover -race
 
 ifeq ($(DEBUG),)
 	LDFLAGS += -s -w
