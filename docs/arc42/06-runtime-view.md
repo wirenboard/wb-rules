@@ -45,11 +45,11 @@ sequenceDiagram
     E->>E: checkSourcePath · tracker.Track(md5) — не изменился ⇒ выход · runCleanups(path): правила, vdev RemoveDevice, mqtt-трекеры, таймеры, localCtx.invalidate()
     E->>E: новый LocFileEntry · disabled ⇒ выход
     E->>LG: quarantined(path)? ⇒ лог «[loadguard] skipping quarantined file», выход
-    E->>Q: prepareNewContext: PushThreadNewGlobalenv (realm), proto ← __wbGlobalPrototype, __esInitEnv, builtins, eval(__wbBindRealmAPI)(this), exportModSearch
+    E->>Q: prepareNewContext: PushThreadNewGlobalenv (realm), proto ← __wbGlobalPrototype, __esInitEnv, builtins, eval(__wbBindRealmAPI)(this)
     E->>LG: beginLoad(path) — маркер на диск
     E->>C: LoadScenario(path)
-    C->>Q: preprocessor(no-op для .js) → обёртка «async function F(module, exports){…}» → PcompileStringFilename (синтаксис)
-    C->>Q: LoadFunctionFromString → push module/exports → PcallNoPump(2)
+    C->>Q: preprocessor(no-op для .js) → CompileScriptOrModule: обёртка «async function F(module, exports){…}» или, при import/export в исходнике, ES-модуль (импорты загружаются здесь через ModuleHost)
+    C->>Q: сценарий: push module/exports → PcallNoPump(2) · модуль: EvalModuleNoPump
     Q-->>E: defineRule → _wbDefineRule → buildRule → RuleEngine.DefineRule (AddRule, cleanup, registerSourceItem)
     Q-->>D: defineVirtualDevice → tx CreateDevice/CreateControl
     D-->>B: /devices/<vdev>/controls/<c>, /meta/*

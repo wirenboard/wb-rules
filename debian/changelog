@@ -22,6 +22,30 @@ wb-rules (3.0.0~quickjs2.1) unstable; urgency=medium
     the installed declarations /usr/share/wb-rules/types/wb-rules.d.ts.
     Without the binary, .ts files fail to load with an explicit error
     naming the looked-up path.
+  * ES modules: a rule or module file with import/export declarations (or
+    import.meta) runs as a real ES module - live bindings, import.meta,
+    native top-level await - in .js and .ts alike; a file without them is
+    the classic script it always was. import resolves relative specifiers
+    next to the importing file, absolute ones as is and bare ones in the
+    module directories; .js and .ts are probed and a .ts module transpiles
+    on import. Instances stay per rule file; within a file require("x"),
+    import "x" and import "/abs/x.js" share one instance. CommonJS modules
+    import with module.exports as default plus their enumerable properties;
+    require() of an ES module returns its namespace (ERR_REQUIRE_ASYNC_MODULE
+    for one that awaits at the top level); import() works everywhere.
+    import.meta carries url, filename, dirname and static (module.static's
+    counterpart). A missing or throwing import is a load error with the
+    module's traceback, reported once.
+  * The TypeScript transpile runs with module "preserve" (import/export
+    emitted as written, CommonJS forms untouched); the background check
+    runs from a generated tsconfig with module "preserve",
+    allowImportingTsExtensions and "paths" mapping bare specifiers onto the
+    module directories, so imports from module files and sibling files are
+    typed for real.
+  * Editor.ResolveModule mqtt-rpc method: resolves an import specifier the
+    way the engine does for the file it is written in and returns the module
+    file's source, so editors can type imports against this controller's
+    modules (documented in asyncapi).
 
  -- Evgeny Boger <boger@wirenboard.com>  Wed, 19 Aug 2026 21:00:00 +0400
 

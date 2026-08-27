@@ -31,8 +31,9 @@
      **фьюзится в один C-вызов** (`qjd_eval`, `qjd_call`, ...). Иначе проверка глубины стека
      QuickJS даёт вероятностный `stack overflow` при сотнях realm'ов в одном процессе.
   3. CommonJS Duktape 1.x: кэш модулей per-realm (модуль инициализируется в каждом файле),
-     относительные id, pre-registration циклов, `Duktape.modSearch`, полифил `Duktape.enc/dec`
-     (`version` 10002 — уровень Duktape 1.0.2).
+     относительные id, pre-registration циклов, полифил `Duktape.enc/dec`
+     (`version` 10002 — уровень Duktape 1.0.2). Протокол `Duktape.modSearch` позже заменён
+     интерфейсом `ModuleHost`, общим с загрузчиком ES-модулей (ADR-017).
   4. Объекты custom-классов получают `Object.prototype` (в QuickJS по умолчанию `null`).
   5. Точные строки ошибок Duktape (`Error: error error (rc -100)`) — их ассертят тесты.
 - Две адаптации формата движка в `wbrules/escontext.go`: `fileRx` разбирает строки стека QuickJS
