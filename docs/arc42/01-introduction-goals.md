@@ -45,7 +45,7 @@ WB8 на arm64). Это один Go-процесс (`/usr/bin/wb-rules`, systemd
 | **Техподдержка WB** | support.wirenboard.com, книга жалоб | меньше «перезапустите wb-rules» как лекарства; диагностика через `journalctl` и консоль правил (`TS check:`, `write ignored`, `[loadguard]`, `execution timed out`) |
 | **Разработчики WB (wb-rules, homeui, wbgo-private, wb-tsgo)** | команда ПО Wiren Board | понятные границы: шим «заморожен», новые API — в `lib.js`; где лежат ADR; как собрать и протестировать (`wbgo.so` тем же toolchain, корпус локально); стратегия stacked PR |
 | **wb-scenarios / wb-rules-system** | системные скрипты, поставляемые пакетами | обязаны оставаться ES5 до снятия stable 2.46.x с Duktape; их предупреждения `checkJs` исправлены в PR wb-rules-system #65 и wb-scenarios #98; `Breaks:` в `debian/control` на старые версии |
-| **homeui** | фронтенд контроллера | стабильный RPC `Editor.Check/GetTypes`, `/wbrules/log/+`, `/wbrules/updates/+`; деградация на старом движке (`Recommends: wb-rules (>= 2.47.0~quickjs2~~)`) |
+| **homeui** | фронтенд контроллера | стабильный RPC `Editor.Check/GetTypes`, `/wbrules/log/+`, `/wbrules/updates/+`; деградация на старом движке (`Recommends: wb-rules (>= 3.0.0~~)`) |
 | **Эксплуатация / безопасность** | администраторы контроллеров | лимиты памяти (`JS_SetMemoryLimit`, systemd `MemoryMax`), права `0640` на persistent DB, отсутствие секретов в логах; Prometheus `/metrics` за `-http` |
 
 Обратная связь от пользователей (чат сообщества, книга жалоб, портал техподдержки, трекер

@@ -38,7 +38,7 @@
 | **Языки документации** | README, changelog, arc42 — русский; `types/wb-rules.d.ts` (JSDoc, hover в редакторе), комментарии в коде — английский; документация wb-mirta не заимствуется (только техники типизации) |
 | **Сообщения лога как контракт** | префиксы `TS check:`, `async rule error:`, `control X/Y: write ignored (...) at file:line`, `[loadguard]`, `execution timed out: exceeded the 10s js-timeout` — разбираются homeui и людьми; менять только с обновлением редактора |
 | **Лицензии** | wb-rules — MIT-WB (`LICENSE`, Contactless Devices LLC); QuickJS — MIT (`third_party/quickjs/LICENSE`, Bellard/Gordon); typescript-go (`wb-tsgo`) — Apache-2.0 (по upstream; уточнить наличие файла лицензии в пакете `wb-tsgo`); wb-mirta — Unlicense (заимствованы только техники типизации, не код); `debian/copyright` wb-rules — уточнить, отражает ли он QuickJS и tsgo |
-| **Версионирование** | `debian/changelog` `2.47.0~quickjs<N>`; `CONFIG_VERSION` в `internal/quickjsduk/qjs_build.c` обновляется вместе с submodule; пин typescript-go — в `go.mod` wb-tsgo |
+| **Версионирование** | `debian/changelog` `3.0.0~quickjs<N>`; `CONFIG_VERSION` в `internal/quickjsduk/qjs_build.c` обновляется вместе с submodule; пин typescript-go — в `go.mod` wb-tsgo |
 | **Тестирование** | новые баги закрепляются минимальными синтетическими тестами в репо (`rule_corpus_regress_test.go` и др.), а не ссылками на корпус; leak-канарейки (`MemoryUsed()` после 2×`RunGC()`); сьюты на fake broker `wbgong/testutils` |
 | **Публичные интерфейсы** | MQTT-RPC описывается в `asyncapi.mqtt-rpc.yml`; retained-топики для служебных данных не вводятся — служебные данные (например, вердикты проверки типов) отдаются через RPC (`Editor.Check`) |
 

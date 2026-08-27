@@ -51,7 +51,7 @@
 - Устаревшие вердикты после правки — gate по `checkedContent`; CM6 `forceLinting()` — no-op без
   очереди ⇒ отдельный lint-refresh effect; фиксированные `setTimeout(1500|2000)` после
   Rename/ChangeState (нет сигнала «reload finished»).
-- homeui `Recommends: wb-rules (>= 2.47.0~quickjs2~~)`: на старом движке `GetTypes` → fallback,
+- homeui `Recommends: wb-rules (>= 3.0.0~~)`: на старом движке `GetTypes` → fallback,
   `Check` → `unsupported`.
 
 ### Риски и технический долг

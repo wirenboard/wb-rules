@@ -67,6 +67,6 @@ Wiren Board (Go-процесс со встроенным QuickJS через ши
   модули, PersistentStorage, установка). arc42 не дублирует описание API — ссылается.
 - [`asyncapi.mqtt-rpc.yml`](../../asyncapi.mqtt-rpc.yml) — спецификация MQTT-RPC
   `wbrules/Editor` (источник для §3).
-- `debian/changelog` — история версий (`2.47.0~quickjs1`).
+- `debian/changelog` — история версий (`3.0.0~quickjs1`).
 - Внешние: `wb-rules-roadmap-proposal.md` (план развития после этого этапа, раздел
   «Hygiene» — источник части рисков в ADR), анализ обратной связи пользователей (источник §1).

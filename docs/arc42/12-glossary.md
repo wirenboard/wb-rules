@@ -8,7 +8,7 @@
 
 | Термин | Значение |
 |---|---|
-| **Duktape** | Встраиваемый ES5-движок (версия 1.0.2, 2014 г.), использовавшийся wb-rules до 2.47 через модуль `github.com/wirenboard/go-duktape`. Его стек-API остался контрактом для кода `wbrules/` (см. шим). |
+| **Duktape** | Встраиваемый ES5-движок (версия 1.0.2, 2014 г.), использовавшийся wb-rules до 3.0 через модуль `github.com/wirenboard/go-duktape`. Его стек-API остался контрактом для кода `wbrules/` (см. шим). |
 | **go-duktape API** | Стек-ориентированный Go-интерфейс к движку (`PushString`, `Pcall`, `GetPropString`, `PushThreadNewGlobalenv`, …), используемое wb-rules подмножество которого (~90 методов) реализует шим. |
 | **Heap / runtime** | Единственный `JSRuntime` процесса: общая куча всех файлов, heap stash (`_esThreads`, `_esModules`, колбэки), `JS_SetMemoryLimit`, interrupt handler. Аналог Duktape-heap. |
 | **Pump (microtask pump, job pump)** | Дренаж очереди promise-job'ов `JS_ExecutePendingJob` при каждом возврате в Go с внешнего JS-входа (глубина 0), до 100 000 job'ов за ход; даёт event-loop-семантику промисов внутри синхронного Go-процесса. `PcallNoPump`/`PumpJobs` — явный split для инспекции TLA. |
@@ -66,7 +66,7 @@
 |---|---|
 | **`wbgo.so` / wbgong** | Go-plugin драйвера MQTT-устройств из закрытого `wbgo-private` (`/usr/lib/wb-rules/wbgo.so`) и публичный модуль интерфейсов `wbgong` (Driver, DirWatcher, ContentTracker, MQTTRPCServer, testutils). ABI требует одинакового toolchain и флагов сборки. |
 | **Fake broker** | `wbgong/testutils` `FakeMQTTFixture`/`Suite`: in-memory брокер для Go-сьютов (`RuleSuiteBase`), ассерты по логу брокера (`Verify`, `SkipTill`), `fakeCron`. |
-| **Testing set** | aptly-набор репозитория WB для ранних сборок (`experimental.quickjs-typescript`, версии `*~exp~quickjs+ts~*`): контроллеры подписываются на него, чтобы получить `wb-rules 2.47.0~quickjsN` и `wb-tsgo` через apt. Не путать с `SetTesting`/`-debug-queues` (режим движка без очередей для детерминированных тестов). |
+| **Testing set** | aptly-набор репозитория WB для ранних сборок (`experimental.quickjs-typescript`, версии `*~exp~quickjs+ts~*`): контроллеры подписываются на него, чтобы получить `wb-rules 3.0.0~quickjsN` и `wb-tsgo` через apt. Не путать с `SetTesting`/`-debug-queues` (режим движка без очередей для детерминированных тестов). |
 | **Корпус** | Внутренний набор скриптов правил для регрессионной проверки совместимости (приватный submodule `wbrules/testdata/corpus`, `update = none`) и snapshot вердиктов `corpus-verdicts.txt` (ключ — sha256 содержимого); `TestCorpus` локально, `TestCorpusExample` (6 синтетических файлов) всегда. |
 | **Stacked PR** | Цепочка PR, каждый поверх предыдущего: #223 (`quickjs-core`→`master`) → #224 (`quickjs-ts`→`quickjs-core`) → homeui #1202. |
 | **Jenkins `buildDebGolangWbgo`** | Общая pipeline WB для Go-пакетов с плагином wbgo: Go 1.26, armhf+arm64, lintian; единственный CI (GitHub Actions отключены). |

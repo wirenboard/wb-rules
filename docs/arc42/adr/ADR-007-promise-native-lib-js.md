@@ -69,4 +69,4 @@
   `wbrules/esengine.go` (`esWbSpawn`), `wbrules/spawn.go`, `wbrules/rule_async_api_test.go`,
   `wbrules/rule_async_leak_test.go`.
 - README (раздел «Асинхронные функции и промисы»), `sample-async.js`.
-- PR wirenboard/wb-rules#223 (changelog `2.47.0~quickjs1`; итоговую версию `2.47.0~quickjs2` даёт PR #224).
+- PR wirenboard/wb-rules#223 (changelog `3.0.0~quickjs1`; итоговую версию `3.0.0~quickjs2` даёт PR #224).

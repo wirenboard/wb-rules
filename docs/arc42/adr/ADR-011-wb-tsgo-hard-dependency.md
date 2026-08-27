@@ -48,7 +48,7 @@ wb-rules раньше wb-tsgo, сервис стартует и пробует �
 Минусы и риски:
 - +1 пакет (~28 MB статически слинкованного бинаря) на всех контроллерах, даже без `.ts`.
 - На armhf (WB6/7) tsgo не проверялся по скорости.
-- homeui зависит от wb-rules через `Recommends: wb-rules (>= 2.47.0~quickjs2~~)` (не Depends):
+- homeui зависит от wb-rules через `Recommends: wb-rules (>= 3.0.0~~)` (не Depends):
   новый UI на старом движке деградирует — `GetTypes` fallback, `Check` → `unsupported` ([ADR-015](ADR-015-homeui-editor-ts-language-service-plus-controller-verdict.md)).
 - Тесты `rule_no_tsgo_test.go` (NoTsgo/LateTsgo) фиксируют поведение при отсутствии/позднем
   появлении бинаря.
