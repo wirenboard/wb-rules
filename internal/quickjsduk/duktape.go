@@ -28,6 +28,7 @@ import "C"
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -111,6 +112,7 @@ type runtimeState struct {
 	execLimit  atomic.Int64 // ns; 0 = no limit
 	execStart  atomic.Int64 // unix ns of the outermost JS entry (0 = idle)
 	aborted    int32        // the interrupt handler fired and has not been reported yet
+	abortLoc   string       // "file:line:col" the watchdog interrupted at (regMu); see goInterrupt
 	stash      C.JSValue
 	modules    map[moduleKey]C.JSValue // require() cache per realm (Duktape: per global env)
 	deadVals   []C.JSValue             // values owned by dead realms; freed at reap
@@ -326,6 +328,20 @@ func goInterrupt(rt *C.JSRuntime) C.int {
 	limit := rts.execLimit.Load()
 	start := rts.execStart.Load()
 	if limit > 0 && start > 0 && time.Now().UnixNano()-start > limit {
+		// Record where the script is NOW. The backtrace QuickJS attaches to
+		// the abort is built later, on the interpreter's exception path,
+		// from a pc it has already moved to the jump target of the loop's
+		// back-edge - which maps to the statement before the loop, not
+		// the loop. relabelInterrupt/RelocateAbortStack put this position
+		// into the reported stack instead.
+		var buf [1024]C.char
+		loc := ""
+		if C.qjd_top_bytecode_location(rt, &buf[0], C.int(len(buf))) != 0 {
+			loc = C.GoString(&buf[0])
+		}
+		regMu.Lock()
+		rts.abortLoc = loc
+		regMu.Unlock()
 		atomic.StoreInt32(&rts.aborted, 1)
 		return 1
 	}
@@ -350,15 +366,62 @@ func (rts *runtimeState) relabelInterrupt(msg string) (string, bool) {
 	if !atomic.CompareAndSwapInt32(&rts.aborted, 1, 0) {
 		return msg, false
 	}
-	return execTimeoutMessage(rts.execLimit.Load()) + msg[len(interruptedPrefix):], true
+	regMu.Lock()
+	loc := rts.abortLoc
+	regMu.Unlock()
+	return execTimeoutMessage(rts.execLimit.Load()) + relocateAbortStack(msg[len(interruptedPrefix):], loc), true
 }
 
 // ExecTimeoutAbort reports whether msg - the text of the error just caught -
 // is the watchdog aborting a runaway script, and if so returns the clear
 // message explaining it in place of QuickJS's opaque "InternalError:
-// interrupted".
+// interrupted". A stack following the message has its first frame
+// relocated (see RelocateAbortStack).
 func (d *Context) ExecTimeoutAbort(msg string) (string, bool) {
 	return d.st().rts.relabelInterrupt(msg)
+}
+
+// RelocateAbortStack returns stack (the .stack of the error ExecTimeoutAbort
+// just recognised) with its first frame's location replaced by the position
+// the watchdog actually interrupted at - the last call site inside the
+// runaway loop rather than the statement before it (see goInterrupt). Other
+// stacks pass through unchanged.
+func (d *Context) RelocateAbortStack(stack string) string {
+	rts := d.st().rts
+	regMu.Lock()
+	loc := rts.abortLoc
+	regMu.Unlock()
+	return relocateAbortStack(stack, loc)
+}
+
+// abortFrameRx matches a stack's first frame line, capturing the location
+// ("file:line:col", parenthesised or bare) so it can be swapped.
+var abortFrameRx = regexp.MustCompile(`^(\s*at\s+(?:[^(\n]*\()?)([^()\n]*:\d+:\d+)(\)?)`)
+
+// relocateAbortStack replaces the location of the first frame of stack with
+// loc when both name the same file; loc == "" or a different file (a frame
+// the interpreter reports differently) leaves the stack alone.
+func relocateAbortStack(stack, loc string) string {
+	if loc == "" {
+		return stack
+	}
+	file := loc
+	for i := 0; i < 2; i++ {
+		if k := strings.LastIndex(file, ":"); k > 0 {
+			file = file[:k]
+		}
+	}
+	// the first frame line: after an optional leading newline
+	head := ""
+	body := stack
+	if strings.HasPrefix(body, "\n") {
+		head, body = "\n", body[1:]
+	}
+	m := abortFrameRx.FindStringSubmatchIndex(body)
+	if m == nil || !strings.HasPrefix(body[m[4]:m[5]], file+":") {
+		return stack
+	}
+	return head + body[:m[4]] + loc + body[m[5]:]
 }
 
 // execTimeoutMessage is the human-readable reason the watchdog aborted a

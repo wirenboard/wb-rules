@@ -64,10 +64,10 @@
 Минусы, риски, долги:
 - Поверхность шима «заморожена»: новые фичи идут в `lib.js` ([ADR-007](ADR-007-promise-native-lib-js.md)), а не в новые C entry points.
 - Ограничения cgo: без variadic-функций, фильтрация флагов компилятора ([ADR-002](ADR-002-bellard-quickjs-submodule.md)).
-- `-race` требует race-сборки `wbgo.so`; TSAN падает на сьютах с churn'ом heap'ов.
+- `-race` требует race-сборки `wbgo.so` (для amd64 она есть в ветке `feature/amd64-build-race` wbgo-private, только для тестов); TSAN падает на сьютах с churn'ом heap'ов.
 - Лишний проход по стеку значений даёт +0.6 мс к медиане MQTT-реакции ([ADR-001](ADR-001-quickjs-instead-of-duktape.md)).
 - Документированные отличия поведения: строка многострочного `defineRule` — первая (24 → 17),
-  поля `StorableObject` неперечислимы (spec-correct `for-in`), эмодзи в логе — UTF-8 вместо CESU-8.
+  перечисление `StorableObject` идёт через трап `ownKeys` (трап `enumerate` из черновиков ES6 QuickJS не вызывает; набор полей тот же), эмодзи в логе — UTF-8 вместо CESU-8.
 
 ### Риски и технический долг
 

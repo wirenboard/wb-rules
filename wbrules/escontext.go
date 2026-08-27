@@ -686,14 +686,21 @@ func (ctx *ESContext) GetESError() (r ESError) {
 	// the execution watchdog surfaces only as "InternalError: interrupted";
 	// replace it with a message that says why (the traceback is still appended
 	// below, so the offending location is kept)
-	if msg, aborted := ctx.ExecTimeoutAbort(r.Message); aborted {
+	aborted := false
+	if msg, ok := ctx.ExecTimeoutAbort(r.Message); ok {
 		r.Message = msg
+		aborted = true
 	}
 	if !ctx.GetPropString(-1, "stack") {
 		ctx.Pop()
 		return
 	}
 	stackStr := ctx.SafeToString(-1)
+	if aborted {
+		// the interpreter's own frame position is the statement before the
+		// interrupted loop; the shim recorded the real one
+		stackStr = ctx.RelocateAbortStack(stackStr)
+	}
 	stackLines := strings.Split(stackStr, "\n")
 	r.Traceback = make(ESTraceback, 0, len(stackLines))
 	for _, line := range stackLines {
