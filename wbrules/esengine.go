@@ -280,6 +280,7 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		// configures the wb-tsgo dependency first, but manual installs
 		// and older-package upgrades may not)
 		engine.tsc = NewTSCompiler(options.TsgoPath, options.TsTypesPath)
+		engine.tsc.SetModuleDirs(options.ModulesDirs)
 		engine.ctxFactory.preprocessor = engine.preprocessRuleSource
 		engine.ctxFactory.lineTranslator = engine.tsc.TranslateLine
 		// transpiled TypeScript runs strict (tsc's own semantics):
@@ -336,8 +337,8 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 
 	engine.globalCtx.SetCallbackErrorHandler(engine.CallbackErrorHandler)
 
-	// init modSearch for global
-	engine.exportModSearch(engine.globalCtx)
+	// module loading (require() and import) is served by the engine
+	engine.globalCtx.SetModuleHost(engine)
 
 	// init __wbModulePrototype
 	engine.initModulePrototype(engine.globalCtx)
@@ -677,15 +678,6 @@ func (engine *ESEngine) sweepOrphanedCallbacks() {
 		// no-op when the context was invalidated meanwhile (reload swept it)
 		o.ctx.RemoveCallback(o.key)
 	}
-}
-
-func (engine *ESEngine) exportModSearch(ctx *ESContext) {
-	ctx.GetGlobalString("Duktape")
-	ctx.PushGoFunc(func(c *duktape.Context) int {
-		return engine.ModSearch(c)
-	})
-	ctx.PutPropString(-2, "modSearch")
-	ctx.Pop()
 }
 
 func (engine *ESEngine) initHeapStashObject(name string, ctx *ESContext) {
@@ -1230,9 +1222,6 @@ func (engine *ESEngine) prepareNewContext(path string) (newLocalCtx *ESContext) 
 		wbgong.Error.Println("failed to bind realm API for " + path)
 	}
 	newLocalCtx.Pop()
-
-	// export modSearch
-	engine.exportModSearch(newLocalCtx)
 
 	return
 }
@@ -3558,74 +3547,6 @@ func (engine *ESEngine) esPersistentGet(ctx *ESContext) int {
 	}
 
 	return 1
-}
-
-// native modSearch implementation
-func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
-	// arguments:
-	// 0: id
-	// 1: require
-	// 2: exports
-	// 3: module
-
-	// get module name (id)
-	id := ctx.GetString(0)
-	wbgong.Debug.Printf("[modsearch] required module %s", id)
-
-	// try to find this module in directory
-	for _, dir := range engine.modulesDirs {
-		path := dir + "/" + id + ".js"
-		wbgong.Debug.Printf("[modsearch] trying to read file %s", path)
-
-		// TBD: something external to load scripts properly
-		// now just try to read file
-		src, err := os.ReadFile(path)
-
-		if err == nil {
-			wbgong.Debug.Printf("[modsearch] file found!")
-
-			// set module properties
-			// put module.filename
-			ctx.PushString(path)
-			// [ args | path ]
-			ctx.PutPropString(3, MODULE_FILENAME_PROP)
-			// [ args | ]
-
-			// put module.storage
-			ctx.PushHeapStash()
-			// [ args | heapStash ]
-			ctx.GetPropString(-1, MODULES_USER_STORAGE_OBJ_NAME)
-			// [ args | heapStash _esModules ]
-
-			// check if storage for this module is allocated
-			if !ctx.HasPropString(-1, path) {
-				// create storage
-				ctx.PushObject()
-				// [ args | heapStash _esModules newStorage ]
-				ctx.PutPropString(-2, path)
-				// [ args | heapStash _esModules ]
-			}
-			// add this storage to module
-			ctx.GetPropString(-1, path)
-			// [ args | heapStash _esModules storage ]
-			ctx.PutPropString(3, MODULE_STATIC_PROP)
-			// [ args | heapStash _esModules ]
-			ctx.Pop2()
-			// [ args | ]
-
-			// return module sources
-			ctx.PushString(string(src))
-
-			return 1
-		}
-	}
-
-	wbgong.Error.Printf("error requiring module %s, not found", id)
-
-	// throw a descriptive Error instead of a bare rc code so script errors
-	// read "cannot find module 'X'" in the UI and logs
-	ctx.PushErrorObject(duktape.DUK_ERR_ERROR, fmt.Sprintf("cannot find module %q", id))
-	return duktape.DUK_RET_INSTACK_ERROR
 }
 
 // CheckTsFile serves the Editor.Check RPC from the background-check

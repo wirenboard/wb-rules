@@ -157,20 +157,17 @@ func TestDumpLeaksHeapExercise(t *testing.T) {
 	}
 	ctx.Pop2()
 
-	// --- require / modSearch (hit + miss) ---
-	ctx.GetGlobalString("Duktape")
-	ctx.PushGoFunc(func(d *Context) int {
-		if d.GetString(0) != "mod" {
-			d.PushErrorObject(DUK_ERR_ERROR, "module not found")
-			return DUK_RET_INSTACK_ERROR
-		}
-		d.PushString("exports.n = 6 * 7;")
-		return 1
-	})
-	ctx.PutPropString(-2, "modSearch")
-	ctx.Pop()
-	if r := ctx.PevalString("require('mod').n + (function () { try { require('nope') } catch (e) { return 0 } })()"); r != 0 {
+	// --- require / import through the module host (hits + a miss) ---
+	ctx.SetModuleHost(&testModuleHost{files: map[string]string{
+		"/mods/mod.js": "exports.n = 6 * 7;",
+		"/mods/esm.js": "import { n } from 'mod'; export const m = n + 1; export default import.meta.filename;",
+	}})
+	if r := ctx.PevalString("require('mod').n + require('esm').m + (function () { try { require('nope') } catch (e) { return 0 } })()"); r != 0 {
 		t.Fatalf("require: %s", ctx.SafeToString(-1))
+	}
+	ctx.Pop()
+	if r := ctx.PevalString("(async () => { globalThis.dyn = (await import('esm')).default })()"); r != 0 {
+		t.Fatalf("import(): %s", ctx.SafeToString(-1))
 	}
 	ctx.Pop()
 

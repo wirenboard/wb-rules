@@ -67,4 +67,25 @@ int qjd_top_bytecode_location(JSRuntime *rt, char *out, int out_size);
 void *qjd_get_opaque(JSValue v, JSClassID cid);
 JSValue qjd_new_obj_with_opaque(JSContext *ctx, JSClassID cid, void *p);
 
+/* ES modules. The runtime-wide loader delegates to Go (goModuleNormalize /
+ * goModuleLoad in duktape.go), which asks the engine's ModuleHost. */
+void qjd_install_module_loader(JSRuntime *rt);
+char *qjd_js_strdup(JSContext *ctx, const char *s);
+/* Compile (but do not run) module source; the returned value has tag
+ * JS_TAG_MODULE. Resolving the module's static imports happens here, so the
+ * loader is invoked for every dependency during this call. */
+JSValue qjd_compile_module(JSContext *ctx, const char *input, size_t len, const char *filename, int anchor);
+/* Link and evaluate a compiled module; returns its evaluation promise. Safe
+ * to call again on an already evaluated module (returns the same promise). */
+JSValue qjd_eval_module(JSContext *ctx, JSValue modval, int anchor);
+int qjd_is_module(JSValue v);
+JSValue qjd_module_namespace(JSContext *ctx, JSValue modval);
+JSValue qjd_import_meta(JSContext *ctx, JSValue modval);
+JSModuleDef *qjd_module_def(JSValue modval);
+JSValue qjd_module_value(JSContext *ctx, JSModuleDef *m);
+/* A synthetic module wrapping an evaluated CommonJS module: `default` is
+ * module.exports, every own enumerable string-keyed property of it is a named
+ * export (a snapshot taken when the importer links, like Node.js). */
+JSModuleDef *qjd_new_cjs_module(JSContext *ctx, const char *name, JSValue exports);
+
 #endif

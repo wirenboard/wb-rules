@@ -115,6 +115,8 @@ type runtimeState struct {
 	abortLoc   string       // "file:line:col" the watchdog interrupted at (regMu); see goInterrupt
 	stash      C.JSValue
 	modules    map[moduleKey]C.JSValue // require() cache per realm (Duktape: per global env)
+	esModules  map[moduleKey]C.JSValue // compiled ES modules per realm, by module name (path)
+	moduleHost ModuleHost              // resolution/sources/metadata provider (SetModuleHost)
 	deadVals   []C.JSValue             // values owned by dead realms; freed at reap
 	deadCtxs   []*C.JSContext          // realms whose handles were GC'd; freed at safe points
 	activeCtxs []*C.JSContext          // realms currently executing JS (Duktape thread semantics)
@@ -123,7 +125,7 @@ type runtimeState struct {
 	// rejected promises with no handler yet, keyed by promise pointer;
 	// reported after the job queue drains (a handler attached in the same
 	// turn retracts the entry first, mirroring event-loop hosts)
-	pendingRejections map[uintptr]string
+	pendingRejections map[uintptr]pendingRejection
 	// convErr records (stringified - the error may outlive its realm) the
 	// first getter/Proxy-trap exception hit while Enum/Next fetched property
 	// values, so whole-object conversion can propagate it (TakeConversionError)
@@ -199,9 +201,12 @@ func NewContext() *Context {
 	rt := C.JS_NewRuntime()
 	C.qjd_register_classes(rt)
 	ctx := C.qjd_new_context(rt, 1)
-	rts := &runtimeState{rt: rt, primary: ctx, modules: map[moduleKey]C.JSValue{}}
+	rts := &runtimeState{rt: rt, primary: ctx,
+		modules:   map[moduleKey]C.JSValue{},
+		esModules: map[moduleKey]C.JSValue{}}
 	rts.stash = C.JS_NewObject(ctx)
 	C.qjd_install_require(ctx)
+	C.qjd_install_module_loader(rt)
 	C.qjd_install_rejection_tracker(rt)
 	regMu.Lock()
 	ctxReg[ctx] = &ctxState{ctx: ctx, rts: rts}
@@ -244,6 +249,9 @@ func (d *Context) DestroyHeap() {
 		C.JS_FreeValue(rts.primary, v)
 	}
 	for _, m := range rts.modules {
+		C.JS_FreeValue(rts.primary, m)
+	}
+	for _, m := range rts.esModules {
 		C.JS_FreeValue(rts.primary, m)
 	}
 	C.JS_FreeValue(rts.primary, rts.stash)
@@ -495,8 +503,16 @@ func (rts *runtimeState) reportJobError(msg string) {
 	JobErrorHandler(msg)
 }
 
+// pendingRejection is an unhandled rejection awaiting report: its text and
+// the identity of its reason (0 for a non-object reason), see
+// retractRejection.
+type pendingRejection struct {
+	msg    string
+	reason uintptr
+}
+
 //export goPromiseRejection
-func goPromiseRejection(rt *C.JSRuntime, promise unsafe.Pointer, msg *C.char, stack *C.char, isHandled C.int) {
+func goPromiseRejection(rt *C.JSRuntime, promise unsafe.Pointer, reason unsafe.Pointer, msg *C.char, stack *C.char, isHandled C.int) {
 	regMu.Lock()
 	defer regMu.Unlock()
 	rts := rtReg[rt]
@@ -523,9 +539,44 @@ func goPromiseRejection(rt *C.JSRuntime, promise unsafe.Pointer, msg *C.char, st
 		}
 	}
 	if rts.pendingRejections == nil {
-		rts.pendingRejections = map[uintptr]string{}
+		rts.pendingRejections = map[uintptr]pendingRejection{}
 	}
-	rts.pendingRejections[uintptr(promise)] = m
+	rts.pendingRejections[uintptr(promise)] = pendingRejection{msg: m, reason: uintptr(reason)}
+}
+
+// retractRejection drops the pending record of promise `ptr` and, when the
+// rejection reason is an object (`reason` != 0), every other record carrying
+// that same reason - a host that surfaces the error itself must not see it
+// reported again as an unhandled rejection, whichever internal promises
+// QuickJS rejected with it along the way (a module body's async-function
+// promise, for one).
+func (rts *runtimeState) retractRejection(ptr, reason uintptr) {
+	regMu.Lock()
+	defer regMu.Unlock()
+	delete(rts.pendingRejections, ptr)
+	if reason == 0 {
+		return
+	}
+	for k, v := range rts.pendingRejections {
+		if v.reason == reason {
+			delete(rts.pendingRejections, k)
+		}
+	}
+}
+
+// rejectionReasonPtr returns the identity of a rejected promise's reason
+// (0 unless the promise is rejected with an object).
+func rejectionReasonPtr(ctx *C.JSContext, p C.JSValue) uintptr {
+	if C.qjd_promise_state(ctx, p) != C.int(PromiseRejected) {
+		return 0
+	}
+	r := C.qjd_promise_result(ctx, p)
+	var ptr uintptr
+	if C.JS_IsObject(r) != 0 {
+		ptr = uintptr(C.qjd_value_ptr(r))
+	}
+	C.JS_FreeValue(ctx, r)
+	return ptr
 }
 
 // flushRejections reports rejections still unhandled once the job queue
@@ -537,12 +588,12 @@ func (rts *runtimeState) flushRejections() {
 	pending := rts.pendingRejections
 	rts.pendingRejections = nil
 	regMu.Unlock()
-	for _, msg := range pending {
+	for _, rej := range pending {
 		// the watchdog interrupt inside an async function surfaces as a
 		// rejection (js_async_function_resume swallows the uncatchable
 		// "interrupted" into the function's promise); relabel like
 		// GetESError and pumpJobs do for the sync and job paths
-		msg, _ = rts.relabelInterrupt(msg)
+		msg, _ := rts.relabelInterrupt(rej.msg)
 		rts.reportJobError(msg)
 	}
 }
@@ -775,16 +826,15 @@ func (d *Context) PushPromiseResultTop() {
 }
 
 // RetractTopPromiseRejection drops any pending unhandled-rejection record
-// for the top promise. The rejection tracker fires synchronously when a
+// for the top promise - and for its reason, wherever else it was recorded
+// (see retractRejection). The rejection tracker fires synchronously when a
 // promise rejects (fulfill_or_reject_promise), so by the time a caller has
 // decided to surface that rejection itself (e.g. as a load error) the record
 // already exists; removing it avoids a duplicate "async rule error".
 func (d *Context) RetractTopPromiseRejection() {
 	s := d.st()
-	ptr := uintptr(C.qjd_value_ptr(s.at(-1)))
-	regMu.Lock()
-	delete(s.rts.pendingRejections, ptr)
-	regMu.Unlock()
+	p := s.at(-1)
+	s.rts.retractRejection(uintptr(C.qjd_value_ptr(p)), rejectionReasonPtr(s.ctx, p))
 }
 
 func (d *Context) popN(n int) {
@@ -1003,6 +1053,12 @@ func goThreadFinalize(p unsafe.Pointer) {
 			if k.ctx == ctx {
 				cs.rts.deadVals = append(cs.rts.deadVals, m)
 				delete(cs.rts.modules, k)
+			}
+		}
+		for k, m := range cs.rts.esModules {
+			if k.ctx == ctx {
+				cs.rts.deadVals = append(cs.rts.deadVals, m)
+				delete(cs.rts.esModules, k)
 			}
 		}
 		cs.rts.deadCtxs = append(cs.rts.deadCtxs, ctx)
@@ -1836,164 +1892,4 @@ func (d *Context) JsonDecode(idx int) {
 	}
 	C.JS_FreeValue(s.ctx, s.stack[n])
 	s.stack[n] = v
-}
-
-// ---------------------------------------------------------------------------
-// CommonJS require (Duktape 1.x protocol with wb-rules extensions)
-
-// resolveModuleID resolves "./x" / "../x" against the requiring module's id
-// the way Duktape's CommonJS support does.
-func resolveModuleID(baseID, id string) string {
-	if !strings.HasPrefix(id, "./") && !strings.HasPrefix(id, "../") {
-		return id
-	}
-	base := ""
-	if i := strings.LastIndex(baseID, "/"); i >= 0 {
-		base = baseID[:i]
-	}
-	parts := []string{}
-	if base != "" {
-		parts = strings.Split(base, "/")
-	}
-	for _, seg := range strings.Split(id, "/") {
-		switch seg {
-		case ".", "":
-		case "..":
-			if len(parts) > 0 {
-				parts = parts[:len(parts)-1]
-			}
-		default:
-			parts = append(parts, seg)
-		}
-	}
-	return strings.Join(parts, "/")
-}
-
-//export goRequire
-func goRequire(ctx *C.JSContext, thisVal C.JSValue, argc C.int, argv *C.JSValue, baseVal C.JSValue) C.JSValue {
-	cs := stateFor(ctx)
-	if cs == nil || argc < 1 {
-		return throwTypeErr(ctx, "require: bad context or missing id")
-	}
-	rts := cs.rts
-	args := unsafe.Slice(argv, int(argc))
-	var n C.size_t
-	cid := C.JS_ToCStringLen(ctx, &n, args[0])
-	if cid == nil {
-		return C.qjd_exception()
-	}
-	id := C.GoStringN(cid, C.int(n))
-	C.JS_FreeCString(ctx, cid)
-
-	var bn C.size_t
-	if cb := C.JS_ToCStringLen(ctx, &bn, baseVal); cb != nil {
-		id = resolveModuleID(C.GoStringN(cb, C.int(bn)), id)
-		C.JS_FreeCString(ctx, cb)
-	}
-
-	if mod, ok := rts.modules[moduleKey{ctx, id}]; ok {
-		return C.qjd_get_module_exports(ctx, mod)
-	}
-
-	// Fresh module + exports objects.
-	module := C.JS_NewObject(ctx)
-	exports := C.JS_NewObject(ctx)
-	setPropStr(ctx, module, "exports", C.JS_DupValue(ctx, exports))
-	{
-		cidStr := C.CString(id)
-		setPropStr(ctx, module, "id", C.JS_NewStringLen(ctx, cidStr, C.size_t(len(id))))
-		C.free(unsafe.Pointer(cidStr))
-	}
-
-	// Look up this realm's Duktape.modSearch (assigned by wb-rules).
-	glob := C.JS_GetGlobalObject(ctx)
-	duk := getPropStr(ctx, glob, "Duktape")
-	modSearch := getPropStr(ctx, duk, "modSearch")
-	requireFn := getPropStr(ctx, glob, "require")
-	C.JS_FreeValue(ctx, duk)
-	C.JS_FreeValue(ctx, glob)
-
-	fail := func(v C.JSValue) C.JSValue {
-		C.JS_FreeValue(ctx, modSearch)
-		C.JS_FreeValue(ctx, requireFn)
-		C.JS_FreeValue(ctx, module)
-		C.JS_FreeValue(ctx, exports)
-		return v
-	}
-
-	if C.JS_IsFunction(ctx, modSearch) != 1 {
-		return fail(throwTypeErr(ctx, "require: no Duktape.modSearch"))
-	}
-
-	cidr := C.CString(id)
-	resolvedID := C.JS_NewStringLen(ctx, cidr, C.size_t(len(id)))
-	C.free(unsafe.Pointer(cidr))
-	msArgs := []C.JSValue{resolvedID, requireFn, exports, module}
-	rts.pushActive(ctx)
-	srcVal := C.qjd_call(ctx, modSearch, C.qjd_undefined(), 4, &msArgs[0], 0) // require() is called from JS: nested
-	rts.popActive()
-	C.JS_FreeValue(ctx, resolvedID)
-	if C.qjd_tag(srcVal) == C.JS_TAG_EXCEPTION {
-		return fail(C.qjd_exception())
-	}
-
-	// Pre-register for require-cycles: a module requiring its requirer sees
-	// the partially-built exports instead of recursing forever.
-	rts.modules[moduleKey{ctx, id}] = C.JS_DupValue(ctx, module)
-	failCached := func(v C.JSValue) C.JSValue {
-		if m, ok := rts.modules[moduleKey{ctx, id}]; ok {
-			C.JS_FreeValue(ctx, m)
-			delete(rts.modules, moduleKey{ctx, id})
-		}
-		return fail(v)
-	}
-	if C.qjd_tag(srcVal) == C.JS_TAG_STRING {
-		var sn C.size_t
-		csrc := C.JS_ToCStringLen(ctx, &sn, srcVal)
-		src := C.GoStringN(csrc, C.int(sn))
-		C.JS_FreeCString(ctx, csrc)
-		C.JS_FreeValue(ctx, srcVal)
-
-		filename := id
-		fv := getPropStr(ctx, module, "filename")
-		if C.qjd_tag(fv) == C.JS_TAG_STRING {
-			var fn2 C.size_t
-			cf := C.JS_ToCStringLen(ctx, &fn2, fv)
-			filename = C.GoStringN(cf, C.int(fn2))
-			C.JS_FreeCString(ctx, cf)
-		}
-		C.JS_FreeValue(ctx, fv)
-
-		wrapped := "(function(require,exports,module){" + src + "\n})"
-		cw := C.CString(wrapped)
-		cf := C.CString(filename)
-		fn := C.qjd_eval(ctx, cw, C.size_t(len(wrapped)), cf, evalGlobal, 0)
-		C.free(unsafe.Pointer(cw))
-		C.free(unsafe.Pointer(cf))
-		if C.qjd_tag(fn) == C.JS_TAG_EXCEPTION {
-			return failCached(C.qjd_exception())
-		}
-		cbase := C.CString(id)
-		boundRequire := C.qjd_new_require(ctx, cbase)
-		C.free(unsafe.Pointer(cbase))
-		callArgs := []C.JSValue{boundRequire, exports, module}
-		rts.pushActive(ctx)
-		res := C.qjd_call(ctx, fn, exports, 3, &callArgs[0], 0)
-		rts.popActive()
-		C.JS_FreeValue(ctx, fn)
-		C.JS_FreeValue(ctx, boundRequire)
-		if C.qjd_tag(res) == C.JS_TAG_EXCEPTION {
-			return failCached(C.qjd_exception())
-		}
-		C.JS_FreeValue(ctx, res)
-	} else {
-		C.JS_FreeValue(ctx, srcVal)
-	}
-
-	out := C.qjd_get_module_exports(ctx, module)
-	C.JS_FreeValue(ctx, modSearch)
-	C.JS_FreeValue(ctx, requireFn)
-	C.JS_FreeValue(ctx, module)
-	C.JS_FreeValue(ctx, exports)
-	return out
 }

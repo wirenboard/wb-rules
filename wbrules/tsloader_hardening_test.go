@@ -256,9 +256,10 @@ func TestBatchSamePathReplacementUsesNewestRegistry(t *testing.T) {
 	dir := t.TempDir()
 	typesPath, pathA, pathB := tsCheckFixture(t, dir)
 	regOut := filepath.Join(dir, "registry-used")
-	// the registry temp file is the last argument; keep what it contained
+	// the check runs `-p <tempdir>/tsconfig.json` with the registry written
+	// next to the config as wb-controls.d.ts; keep what it contained
 	fake := writeFakeTsgo(t, dir, "tsgo-reg",
-		`for a; do last=$a; done`+"\n"+`cat "$last" > `+regOut+"\nexit 0\n")
+		`for a; do last=$a; done`+"\n"+`cat "$(dirname "$last")/wb-controls.d.ts" > `+regOut+"\nexit 0\n")
 
 	c := NewTSCompiler(fake, typesPath)
 	var mu sync.Mutex

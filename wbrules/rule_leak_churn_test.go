@@ -523,6 +523,32 @@ func TestLeakChurnSpawn(t *testing.T) {
 // (h) PersistentStorage open/write churn: the global storage exercised from
 // the engine context (writes, reads, StorableObject round trip, delete) and
 // a per-file local storage re-opened across reloads.
+// ES module rule file reloaded every cycle: each reload compiles the file as
+// a module in a fresh realm and re-evaluates its imports (an ES module, a
+// CommonJS one bridged through a synthetic module, a dynamic import()); the
+// previous realm's module instances, namespaces and import.meta objects must
+// all go with it.
+func TestLeakChurnEsmImports(t *testing.T) {
+	h := newChurnHarness(t, func(o *ESEngineOptions) {
+		o.SetModulesDirs([]string{testRuleModulesDir(), testModulesDir()})
+	})
+	runChurn(t, h, func(i int) {
+		h.mustLoad("esmchurn.js", fmt.Sprintf(`
+import { double } from "test/esm/util";
+import cjs, { adder } from "test/helloworld";
+import * as helper from "test/esm/helper";
+defineVirtualDevice("esmchurn", {cells: {c: {type: "value", value: %d}}});
+defineRule("esmchurn_rule", {whenChanged: "esmchurn/c", then: async function () {
+  const m = await import("test/esm/tla");
+  dev["esmchurn/c"] = double(adder(m.v, cjs.hello)) + helper.counter();
+}});
+const r = require("test/esm/helper");
+if (r.greet !== helper.greet) throw new Error("require/import instance mismatch");
+export const cycle = %d;
+`, i, i))
+	})
+}
+
 func TestLeakChurnPersistentStorage(t *testing.T) {
 	h := newChurnHarness(t, func(o *ESEngineOptions) {
 		o.SetPersistentDBFile(filepath.Join(t.TempDir(), "churn-pdb.db"))

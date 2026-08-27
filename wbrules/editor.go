@@ -192,6 +192,48 @@ func (editor *Editor) GetTypes(args *struct{}, reply *EditorTypesResponse) error
 	return nil
 }
 
+type EditorResolveModuleArgs struct {
+	// From is the importing file: a rule file's virtual path (as listed by
+	// Editor.List) or the absolute path of a module returned by an earlier
+	// ResolveModule call (for the module's own imports).
+	From      string `json:"from"`
+	Specifier string `json:"specifier"`
+}
+
+type EditorResolveModuleResponse struct {
+	Path    string `json:"path"` // absolute path of the resolved module file
+	Content string `json:"content"`
+}
+
+// ResolveModule resolves an import specifier exactly as the engine does for
+// the file it is written in (relative ones next to the file, bare ones in the
+// module directories) and returns the module file's source, so an editor can
+// type-check and complete imports against this controller's modules.
+func (editor *Editor) ResolveModule(args *EditorResolveModuleArgs, reply *EditorResolveModuleResponse) error {
+	resolver, ok := editor.locFileManager.(ModuleResolver)
+	if !ok {
+		return &EditorError{EDITOR_ERROR_READ, "Module resolution unavailable"}
+	}
+	from := args.From
+	if !strings.HasPrefix(from, "/") {
+		// a rule file not (yet) known to the engine - an unsaved editor tab -
+		// has no location: bare specifiers still resolve, relative ones
+		// cannot ("needs an importing file")
+		if entry, err := editor.locateFile(from); err == nil {
+			from = entry.PhysicalPath
+		} else {
+			from = ""
+		}
+	}
+	path, content, err := resolver.ResolveModuleForEditor(from, args.Specifier)
+	if err != nil {
+		return &EditorError{EDITOR_ERROR_FILE_NOT_FOUND, err.Error()}
+	}
+	reply.Path = path
+	reply.Content = content
+	return nil
+}
+
 func (editor *Editor) locateFile(virtualPath string) (*LocFileEntry, error) {
 	entries, err := editor.locFileManager.ListSourceFiles()
 	if err != nil {

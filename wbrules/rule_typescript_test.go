@@ -75,6 +75,7 @@ type RuleTypeScriptSuite struct {
 func (s *RuleTypeScriptSuite) SetupTest() {
 	s.TsgoPath = tsgoForTests()
 	s.TsTypesPath = testTypesPath()
+	s.ModulesPath = testRuleModulesDir()
 	s.SetupSkippingDefs("testrules_ts.ts")
 }
 
@@ -538,6 +539,54 @@ func (s *RuleTypeScriptSuite) TestRemovedFileCheckVerdictNotResurrected() {
 
 // The engine checks with --strict false; the same declarations must also
 // hold under --strict true (external IDEs), which nothing else exercises.
+// ES modules in TypeScript: a .ts rule file with imports runs as a real ES
+// module; a .ts module in the module directories is transpiled on import
+// and its tracebacks map back to its source lines.
+func (s *RuleTypeScriptSuite) TestTsEsmImports() {
+	s.Ck("LiveLoadScript", s.LiveLoadScript("testrules_ts_esm.ts"))
+	for _, item := range []string{
+		"[info] Module esm typed init",
+		"[info] Module esm util init",
+		"[info] Module esm helper init",
+		"[changed] testrules_ts_esm.ts",
+	} {
+		s.SkipTill(item)
+	}
+	s.publish("/devices/tsesm/controls/trigger/on", "1", "tsesm/trigger", "tsesm/out")
+	s.VerifyUnordered(
+		"tst -> /devices/tsesm/controls/trigger/on: [1] (QoS 1)",
+		"driver -> /devices/tsesm/controls/trigger: [1] (QoS 1, retained)",
+		"driver -> /devices/tsesm/controls/out: [3] (QoS 1, retained)",
+		"[info] tsesm: hello ts 2",
+	)
+	// the throw happens in the .ts module (line 13 of typed.ts), called from
+	// line 27 of the rule file: both frames are source-mapped
+	s.publish("/devices/tsesm/controls/boom/on", "1", "tsesm/boom")
+	s.Verify(
+		"tst -> /devices/tsesm/controls/boom/on: [1] (QoS 1)",
+		"driver -> /devices/tsesm/controls/boom: [1] (QoS 1, retained)",
+		regexp.MustCompile(`(?s:ECMAScript error:.*typed module boom in rule.*typed\.ts:13.*testrules_ts_esm\.ts:27.*)`),
+	)
+}
+
+// The background check resolves a relative import of a sibling .ts file
+// (bundler resolution, --allowImportingTsExtensions) and types the call
+// against it.
+func (s *RuleTypeScriptSuite) TestTsEsmRelativeImportChecked() {
+	s.CopyDataFileToTempDir("esmlib/tslib.ts", "esmlib/tslib.ts")
+	s.Ck("LiveLoadScript", s.LiveLoadScript("testrules_ts_esm_check.ts"))
+	s.SkipTill("wbrules-log -> /wbrules/updates/changed: [testrules_ts_esm_check.ts] (QoS 1)")
+	s.Verify(regexp.MustCompile(`TS check: /.*testrules_ts_esm_check\.ts:8:.*number.*string.*`))
+}
+
+// A bare specifier is typed from the module directories (tsconfig "paths"),
+// not swallowed by the `declare module "*"` fallback.
+func (s *RuleTypeScriptSuite) TestTsEsmBareImportChecked() {
+	s.Ck("LiveLoadScript", s.LiveLoadScript("testrules_ts_esm_badcall.ts"))
+	s.SkipTill("wbrules-log -> /wbrules/updates/changed: [testrules_ts_esm_badcall.ts] (QoS 1)")
+	s.Verify(regexp.MustCompile(`TS check: /.*testrules_ts_esm_badcall\.ts:9:.*string.*number.*`))
+}
+
 func TestTypeAssertionsFixtureStrict(t *testing.T) {
 	tsgo := tsgoForTests()
 	if tsgo == "" {
@@ -545,7 +594,8 @@ func TestTypeAssertionsFixtureStrict(t *testing.T) {
 	}
 	root := filepath.Dir(testModulesDir())
 	cmd := exec.Command(tsgo, "--noEmit", "--target", "esnext", "--lib", "esnext",
-		"--strict", "true", "--module", "esnext", "--moduleDetection", "force",
+		"--strict", "true", "--module", "preserve", "--moduleDetection", "force",
+		"--allowImportingTsExtensions",
 		filepath.Join(root, "types", "wb-rules.d.ts"),
 		filepath.Join(root, "wbrules", "testrules_ts_typeassert.ts"))
 	out, err := cmd.CombinedOutput()
