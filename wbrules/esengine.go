@@ -1,6 +1,7 @@
 package wbrules
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/json"
@@ -26,11 +27,20 @@ import (
 type itemType int
 
 const (
-	LIB_FILE                      = "lib.js"
-	LIB_SYS_PATH                  = "/usr/share/wb-rules-system/scripts"
-	LIB_REL_PATH_1                = "scripts"
-	LIB_REL_PATH_2                = "../scripts"
-	MIN_INTERVAL_MS               = 1
+	LIB_FILE        = "lib.js"
+	LIB_SYS_PATH    = "/usr/share/wb-rules-system/scripts"
+	LIB_REL_PATH_1  = "scripts"
+	LIB_REL_PATH_2  = "../scripts"
+	MIN_INTERVAL_MS = 1
+	// Max wall time for one synchronous JS run before the engine interrupts
+	// it. A runaway rule (while(true), while(sleep(x)), ...) blocks the whole
+	// single-threaded engine for this long - and takes the Editor RPC with it
+	// - so keep it short; legitimate rule work is event-driven and quick.
+	DEFAULT_JS_EXECUTION_LIMIT = 10 * time.Second
+	// Cap on the shared JS heap. A runaway that allocates (e.g. a tight loop
+	// building objects) throws out-of-memory here instead of growing until the
+	// process is OOM-killed. 0 disables. Rules normally use a few MB.
+	DEFAULT_JS_MEMORY_LIMIT       = 512 * 1024 * 1024
 	MIN_INTERVAL_LOW_THRESHOLD_MS = 10
 	PERSISTENT_DB_CHMOD           = 0640
 	SOURCE_ITEM_DEVICE            = itemType(iota)
@@ -67,22 +77,51 @@ var searchDirs = []string{LIB_SYS_PATH}
 // cache for quicker filename hashing
 var filenameMd5s = make(map[string]string)
 
+// ReadConfigFunc reads the file readConfig() was asked for; nil means the
+// real os.ReadFile.
+type ReadConfigFunc func(path string) ([]byte, error)
+
 type ESEngineOptions struct {
 	*RuleEngineOptions
 	PersistentDBFile     string
 	PersistentDBFileMode os.FileMode
 	ModulesDirs          []string
+	JsExecutionLimit     time.Duration  // max wall time for one synchronous JS run; 0 = unlimited
+	SpawnFunc            SpawnFunc      // runs spawn()/runShellCommand(); nil = the real Spawn
+	ReadConfigFunc       ReadConfigFunc // reads files for readConfig(); nil = os.ReadFile
+	JsMemoryLimit        int64          // max bytes for the shared JS heap; 0 = unlimited
+	LoadGuardDir         string         // dir for load-crash guard state; empty disables the guard
 }
 
 func NewESEngineOptions() *ESEngineOptions {
 	return &ESEngineOptions{
 		RuleEngineOptions:    NewRuleEngineOptions(),
 		PersistentDBFileMode: PERSISTENT_DB_CHMOD,
+		JsExecutionLimit:     DEFAULT_JS_EXECUTION_LIMIT,
+		JsMemoryLimit:        DEFAULT_JS_MEMORY_LIMIT,
 	}
+}
+
+func (o *ESEngineOptions) SetLoadGuardDir(dir string) {
+	o.LoadGuardDir = dir
 }
 
 func (o *ESEngineOptions) SetPersistentDBFile(file string) {
 	o.PersistentDBFile = file
+}
+
+// SetSpawnFunc replaces the external-command runner used by spawn() and
+// runShellCommand() (nil restores the real one). Tests that load untrusted
+// scripts use it so their shell commands never run on the host.
+func (o *ESEngineOptions) SetSpawnFunc(fn SpawnFunc) {
+	o.SpawnFunc = fn
+}
+
+// SetReadConfigFunc replaces the file reader used by readConfig() (nil
+// restores the real one, os.ReadFile). Tests that load untrusted scripts
+// use it so those scripts cannot read host files.
+func (o *ESEngineOptions) SetReadConfigFunc(fn ReadConfigFunc) {
+	o.ReadConfigFunc = fn
 }
 
 func (o *ESEngineOptions) SetPersistentDBFileMode(mode os.FileMode) {
@@ -116,10 +155,36 @@ type ESEngine struct {
 	editableSources map[string]string        // map from virtual paths to abs paths for editable files
 	sourcesMtx      sync.Mutex
 
-	tracker           wbgong.ContentTracker
+	tracker wbgong.ContentTracker
+	// spawnFunc runs external commands for spawn()/runShellCommand(); nil
+	// means the real Spawn. Tests that load untrusted scripts (the corpus)
+	// install a stub so top-level shell commands in those scripts never
+	// execute on the host.
+	spawnFunc SpawnFunc
+	// readConfigFunc reads the file for readConfig(); nil means os.ReadFile.
+	// Stubbed alongside spawnFunc when loading untrusted scripts.
+	readConfigFunc    ReadConfigFunc
 	persistentDBCache map[string]string
 	persistentDB      *bolt.DB
 	modulesDirs       []string
+	loadGuard         *loadGuard
+
+	// orphanedCallbacks records one-shot callback stash keys whose only
+	// invocation was dropped because the engine had stopped (e.g. a spawn
+	// completing after Stop). The recording goroutine cannot sweep them
+	// itself - that would touch the JS heap concurrently - so they are swept
+	// at the next single-threaded boundary: Start, Stop or Close.
+	orphanedCallbacks    []orphanedCallback
+	orphanedCallbacksMtx sync.Mutex
+
+	// closed marks a terminal Close(): the JS heap is gone and the engine
+	// must not be used again.
+	closed bool
+}
+
+type orphanedCallback struct {
+	ctx *ESContext
+	key ESCallback
 }
 
 func init() {
@@ -148,8 +213,23 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		persistentDBCache: make(map[string]string),
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
+		// detects (and, at construction, reacts to) a file that crashed the
+		// process during its last load, so a poison-pill rule can't crash-loop
+		// the engine forever
+		loadGuard: newLoadGuard(options.LoadGuardDir, LOAD_CRASH_QUARANTINE_THRESHOLD),
 	}
-	engine.globalCtx = engine.ctxFactory.newESContext(engine.MaybeCallSync, "")
+	engine.globalCtx = engine.ctxFactory.newESContext(func(thunk func()) { engine.MaybeCallSync(thunk) }, "")
+	// a runaway rule (while(true) etc.) must error out, not freeze the loop
+	engine.globalCtx.SetExecutionTimeLimit(options.JsExecutionLimit)
+	engine.spawnFunc = options.SpawnFunc
+	engine.readConfigFunc = options.ReadConfigFunc
+	// and one that allocates without bound must throw, not OOM-kill the process
+	engine.globalCtx.SetMemoryLimit(options.JsMemoryLimit)
+	// async rule callbacks that throw after an await fail as promise jobs;
+	// without this they die silently on stderr instead of the rule log
+	engine.globalCtx.SetJobErrorHandler(func(msg string) {
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("async rule error: %s", msg))
+	})
 
 	if options.PersistentDBFile != "" {
 		if err = engine.SetPersistentDBMode(options.PersistentDBFile,
@@ -184,40 +264,7 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	engine.initModulesStorage(engine.globalCtx)
 
 	engine.globalCtx.PushGlobalObject()
-
-	engine.globalCtx.DefineFunctions(map[string]func(*ESContext) int{
-		"format":               engine.esFormat,
-		"log":                  engine.makeLogFunc(ENGINE_LOG_INFO),
-		"debug":                engine.makeLogFunc(ENGINE_LOG_DEBUG),
-		"publish":              engine.esPublish,
-		"_wbDevObject":         engine.esWbDevObject,
-		"_wbCellObject":        engine.esWbCellObject,
-		"_wbStartTimer":        engine.esWbStartTimer,
-		"_wbStopTimer":         engine.esWbStopTimer,
-		"_wbCheckCurrentTimer": engine.esWbCheckCurrentTimer,
-		"_wbSpawn":             engine.esWbSpawn,
-		"_wbDefineRule":        engine.esWbDefineRule,
-		"runRules":             engine.esWbRunRules,
-		"readConfig":           engine.esReadConfig,
-		"_wbPersistentSet":     engine.esPersistentSet,
-		"_wbPersistentGet":     engine.esPersistentGet,
-		"disableRule":          engine.esWbDisableRule,
-		"enableRule":           engine.esWbEnableRule,
-		"runRule":              engine.esWbRunRule,
-		"defineVirtualDevice":  engine.esDefineVirtualDevice,
-		"getDevice":            engine.esGetDevice,
-		"getControl":           engine.esGetControl,
-		"_wbPersistentName":    engine.esPersistentName,
-		"trackMqtt":            engine.trackMqtt,
-	})
-	engine.globalCtx.GetPropString(-1, "log")
-	engine.globalCtx.DefineFunctions(map[string]func(*ESContext) int{
-		"debug":   engine.makeLogFunc(ENGINE_LOG_DEBUG),
-		"info":    engine.makeLogFunc(ENGINE_LOG_INFO),
-		"warning": engine.makeLogFunc(ENGINE_LOG_WARNING),
-		"error":   engine.makeLogFunc(ENGINE_LOG_ERROR),
-	})
-	engine.globalCtx.Pop()
+	engine.installBuiltins(engine.globalCtx)
 
 	// set global prototype to __wbModulePrototype
 	engine.globalCtx.GetPropString(-1, MODULE_OBJ_PROTO_NAME)
@@ -247,6 +294,76 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	engine.RuleEngine.setupRuleEngineSettingsDevice()
 
 	return
+}
+
+// Start starts the engine loops. On a restart it first reclaims callback
+// stash entries orphaned while the engine was stopped (both Start and the
+// sweep run before any loop goroutine exists, so the JS heap access is
+// single-threaded).
+func (engine *ESEngine) Start() {
+	engine.sweepOrphanedCallbacks()
+	engine.RuleEngine.Start()
+}
+
+// Stop shuts the engine down. The engine can be started again; Close is the
+// terminal counterpart.
+func (engine *ESEngine) Stop() {
+	engine.RuleEngine.Stop()
+	// the loops are gone: reclaim one-shot callbacks whose completion was
+	// dropped during the shutdown itself
+	engine.sweepOrphanedCallbacks()
+}
+
+// Close permanently destroys the engine: it stops the loops if they are
+// still running, closes the persistent DB, and frees the native JS heap -
+// DestroyHeap also releases every entry the process-global Go registries
+// held for this heap. Unlike Stop, Close is terminal: the engine must not
+// be used afterwards. Idempotent - extra calls do nothing.
+//
+// Follow-up candidates beyond Close (owned callback handles, an explicit
+// heap owner object, per-file SourceRealm ownership) are tracked outside
+// this code.
+func (engine *ESEngine) Close() {
+	if engine.closed {
+		return
+	}
+	engine.closed = true
+	if engine.IsActive() {
+		engine.Stop()
+	}
+	if engine.persistentDB != nil {
+		engine.persistentDB.Close()
+		engine.persistentDB = nil
+	}
+	engine.globalCtx.DestroyHeap()
+	// Mark every context invalid so any straggler (a Go finalizer, a late
+	// producer whose thunk was dropped) sees IsValid()==false instead of
+	// reaching into the freed heap.
+	for _, ctx := range engine.localCtxs {
+		ctx.markClosed()
+	}
+	engine.localCtxs = make(map[string]*ESContext)
+	engine.globalCtx.markClosed()
+}
+
+// noteOrphanedCallback schedules a one-shot callback stash entry for the
+// next single-threaded sweep; called from producer goroutines whose
+// completion thunk the stopped engine dropped.
+func (engine *ESEngine) noteOrphanedCallback(ctx *ESContext, key ESCallback) {
+	engine.orphanedCallbacksMtx.Lock()
+	engine.orphanedCallbacks = append(engine.orphanedCallbacks, orphanedCallback{ctx, key})
+	engine.orphanedCallbacksMtx.Unlock()
+}
+
+func (engine *ESEngine) sweepOrphanedCallbacks() {
+	engine.orphanedCallbacksMtx.Lock()
+	orphans := engine.orphanedCallbacks
+	engine.orphanedCallbacks = nil
+	engine.orphanedCallbacksMtx.Unlock()
+	for _, o := range orphans {
+		// no-op when the context was invalidated meanwhile (reload swept it)
+		o.ctx.RemoveCallback(o.key)
+	}
 }
 
 func (engine *ESEngine) exportModSearch(ctx *ESContext) {
@@ -675,6 +792,49 @@ func (engine *ESEngine) LoadFile(path string) (err error) {
 	return engine.LiveLoadFile(path)
 }
 
+// esBuiltinFuncs is the full set of Go builtins visible to rule scripts.
+func (engine *ESEngine) esBuiltinFuncs() map[string]func(*ESContext) int {
+	return map[string]func(*ESContext) int{
+		"format":               engine.esFormat,
+		"log":                  engine.makeLogFunc(ENGINE_LOG_INFO),
+		"debug":                engine.makeLogFunc(ENGINE_LOG_DEBUG),
+		"publish":              engine.esPublish,
+		"_wbDevObject":         engine.esWbDevObject,
+		"_wbCellObject":        engine.esWbCellObject,
+		"_wbStartTimer":        engine.esWbStartTimer,
+		"_wbStopTimer":         engine.esWbStopTimer,
+		"_wbCheckCurrentTimer": engine.esWbCheckCurrentTimer,
+		"_wbSpawn":             engine.esWbSpawn,
+		"_wbDefineRule":        engine.esWbDefineRule,
+		"runRules":             engine.esWbRunRules,
+		"readConfig":           engine.esReadConfig,
+		"_wbPersistentSet":     engine.esPersistentSet,
+		"_wbPersistentGet":     engine.esPersistentGet,
+		"disableRule":          engine.esWbDisableRule,
+		"enableRule":           engine.esWbEnableRule,
+		"runRule":              engine.esWbRunRule,
+		"defineVirtualDevice":  engine.esDefineVirtualDevice,
+		"getDevice":            engine.esGetDevice,
+		"getControl":           engine.esGetControl,
+		"_wbPersistentName":    engine.esPersistentName,
+		"trackMqtt":            engine.trackMqtt,
+	}
+}
+
+// installBuiltins defines the Go builtins (and log's level methods) as
+// own properties of the object at the stack top.
+func (engine *ESEngine) installBuiltins(ctx *ESContext) {
+	ctx.DefineFunctions(engine.esBuiltinFuncs())
+	ctx.GetPropString(-1, "log")
+	ctx.DefineFunctions(map[string]func(*ESContext) int{
+		"debug":   engine.makeLogFunc(ENGINE_LOG_DEBUG),
+		"info":    engine.makeLogFunc(ENGINE_LOG_INFO),
+		"warning": engine.makeLogFunc(ENGINE_LOG_WARNING),
+		"error":   engine.makeLogFunc(ENGINE_LOG_ERROR),
+	})
+	ctx.Pop()
+}
+
 // Prepares new context
 func (engine *ESEngine) prepareNewContext(path string) (newLocalCtx *ESContext) {
 	// prepare threads storage
@@ -689,6 +849,13 @@ func (engine *ESEngine) prepareNewContext(path string) (newLocalCtx *ESContext) 
 	// [ stash threads thread ]
 	newLocalCtx = engine.ctxFactory.newESContextFromDuktape(engine.globalCtx.syncFunc, path, engine.globalCtx.GetContext(-1))
 	// [ stash threads thread ]
+	if newLocalCtx == nil {
+		// realm creation failed: the JS heap is at its memory limit. Report
+		// a load error instead of dereferencing a nil context.
+		engine.globalCtx.Pop3()
+		// []
+		return nil
+	}
 
 	engine.localCtxs[path] = newLocalCtx
 
@@ -729,6 +896,27 @@ func (engine *ESEngine) prepareNewContext(path string) (newLocalCtx *ESContext) 
 
 	newLocalCtx.Pop2()
 	// []
+
+	// Bind the realm-sensitive API to this realm: QuickJS dispatches a C
+	// function to the realm it was created in, and promise jobs (code
+	// after an await) run with no calling-realm context - so builtins
+	// inherited from the shared prototype would attribute late
+	// defineRule/setTimeout calls to the wrong file. Realm-local copies
+	// of the Go builtins plus rebound JS wrappers keep attribution.
+	newLocalCtx.PushGlobalObject()
+	// [ global ]
+	engine.installBuiltins(newLocalCtx)
+	newLocalCtx.Pop()
+	// []
+	// Compile the wrapper layer IN THIS REALM: the binder source comes
+	// from the shared lib, but eval'ing it here creates realm-local
+	// closures whose builtin references resolve to the realm-local Go
+	// funcs installed above - so calls made after an await still land in
+	// this realm and keep their file attribution.
+	if newLocalCtx.PevalString("eval('(' + __wbBindRealmAPI.toString() + ')')(this);") != 0 {
+		wbgong.Error.Println("failed to bind realm API for " + path)
+	}
+	newLocalCtx.Pop()
 
 	// export modSearch
 	engine.exportModSearch(newLocalCtx)
@@ -799,11 +987,48 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 		return false, nil
 	}
 
+	// a file that repeatedly crashed the whole process while loading is
+	// quarantined: skip it so it can't crash-loop the engine. Editing it
+	// (which changes its mtime) releases the quarantine.
+	if engine.loadGuard.quarantined(path) {
+		wbgong.Error.Printf("[loadguard] skipping quarantined file %s (edit it to retry)", path)
+		// the file must not look healthy in the editor: record a load error
+		// (shown by Editor.List/Load) and say so in the rules console
+		scriptErr := NewScriptError(fmt.Sprintf(
+			"[loadguard] this file crashed the rule engine while loading "+
+				"%d times in a row and is skipped until it is edited",
+			LOAD_CRASH_QUARANTINE_THRESHOLD), nil)
+		engine.setSourceError(currentSource, &scriptErr)
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("%s: %s", path, scriptErr.Error()))
+		return true, scriptErr
+	}
+
 	// create new context for this file
 	newLocalCtx := engine.prepareNewContext(path)
+	if newLocalCtx == nil {
+		scriptErr := NewScriptError(
+			"cannot create a JS context for this file (js heap memory limit reached?)", nil)
+		engine.setSourceError(currentSource, &scriptErr)
+		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("%s: %s", path, scriptErr.Error()))
+		return true, scriptErr
+	}
 	currentSource.Context = newLocalCtx
 
-	return true, engine.trackESError(path, newLocalCtx.LoadScenario(path))
+	// bracket the actual evaluation with the load-crash marker: if the process
+	// dies inside LoadScenario, the surviving marker names this file next boot
+	engine.loadGuard.beginLoad(path)
+	err = engine.trackESError(path, newLocalCtx.LoadScenario(path))
+	engine.loadGuard.endLoad(path)
+	return true, err
+}
+
+// setSourceError records a load error on a file entry. The entry is shared
+// with the Editor RPC (ListSourceFiles copies it under sourcesMtx), so the
+// write must hold the same lock.
+func (engine *ESEngine) setSourceError(entry *LocFileEntry, err *ScriptError) {
+	engine.sourcesMtx.Lock()
+	defer engine.sourcesMtx.Unlock()
+	entry.Error = err
 }
 
 func (engine *ESEngine) trackESError(path string, err error) error {
@@ -827,8 +1052,12 @@ func (engine *ESEngine) trackESError(path string, err error) error {
 
 	scriptErr := NewScriptError(esError.Message, traceback)
 
-	// set error in the file entry
-	engine.sources[path].Error = &scriptErr
+	// set error in the file entry (under the lock the RPC readers take)
+	engine.sourcesMtx.Lock()
+	if entry := engine.sources[path]; entry != nil {
+		entry.Error = &scriptErr
+	}
+	engine.sourcesMtx.Unlock()
 
 	engine.Log(ENGINE_LOG_ERROR, scriptErr.Error())
 	return scriptErr
@@ -878,7 +1107,7 @@ func (engine *ESEngine) loadScriptAndRefresh(path string, loadIfUnchanged bool) 
 }
 
 func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
-	r := make(chan error)
+	r := make(chan error, 1)
 	engine.WhenEngineReady(func() {
 		wbgong.Debug.Printf("OverwriteScript(%s)", virtualPath)
 		cleanPath, virtualPath, _, err := engine.checkVirtualPath(virtualPath)
@@ -908,7 +1137,27 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 		}
 		r <- engine.loadScriptAndRefresh(cleanPath, true)
 	})
-	return <-r
+	return engine.waitOrStopped(r)
+}
+
+// waitOrStopped waits for a result from a thunk handed to WhenEngineReady/
+// CallSync, failing fast with ErrEngineStopped when the engine stops before
+// the thunk delivered one - the thunk was dropped and would leave the caller
+// (e.g. the Editor RPC) hanging forever. The channel must be buffered so a
+// dropped caller never blocks a late thunk.
+func (engine *ESEngine) waitOrStopped(r chan error) error {
+	select {
+	case err := <-r:
+		return err
+	case <-engine.syncStopCh():
+		// the loops are gone; prefer a result that arrived just before
+		select {
+		case err := <-r:
+			return err
+		default:
+			return ErrEngineStopped
+		}
+	}
 }
 
 // LiveLoadFile loads the specified script in the running engine.
@@ -917,12 +1166,12 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 // the script isn't loaded.
 func (engine *ESEngine) LiveLoadFile(path string) error {
 	wbgong.Debug.Printf("LiveLoadFile: %s", path)
-	r := make(chan error)
+	r := make(chan error, 1)
 	engine.WhenEngineReady(func() {
 		r <- engine.loadScriptAndRefresh(path, false)
 	})
 
-	return <-r
+	return engine.waitOrStopped(r)
 }
 
 func (engine *ESEngine) LiveRemoveFile(path string) error {
@@ -1100,6 +1349,22 @@ func (engine *ESEngine) esGetControl(ctx *ESContext) int {
 	return 1
 }
 
+// throwOnConversionError rethrows the error a getter or Proxy trap raised
+// while a script-supplied object was being converted (GetJSObject returned
+// the ConversionError sentinel): the converted object is unusable, and
+// Duktape propagated such throws to the calling script, so treating it as a
+// silent bad parameter would hide the script's own bug. The rethrown value
+// is an Error carrying the original error's message ("TypeError: boom");
+// the original error subclass is not preserved.
+func throwOnConversionError(ctx *ESContext, v any) (int, bool) {
+	ce, ok := v.(ConversionError)
+	if !ok {
+		return 0, false
+	}
+	ctx.PushErrorObject(duktape.DUK_ERR_ERROR, ce.Message)
+	return duktape.DUK_RET_INSTACK_ERROR, true
+}
+
 // defineVirtualDevice creates virtual device object in MQTT
 // and returns JS object to control it
 func (engine *ESEngine) esDefineVirtualDevice(ctx *ESContext) int {
@@ -1107,7 +1372,25 @@ func (engine *ESEngine) esDefineVirtualDevice(ctx *ESContext) int {
 		return duktape.DUK_RET_ERROR
 	}
 	name := ctx.GetString(0)
-	obj := ctx.GetJSObject(1).(objx.Map)
+	objAny := ctx.GetJSObject(1)
+	if rc, thrown := throwOnConversionError(ctx, objAny); thrown {
+		return rc
+	}
+	obj, ok := objAny.(objx.Map)
+	if !ok { // an array or other non-plain object
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	// The device's removal must land in the owning file's cleanup scope even
+	// when this call is a top-level-await continuation: the ambient scope
+	// pushed by loadScript was popped when the file's synchronous part
+	// returned, so without this a device defined after an await would
+	// survive the file's reload/removal. The realm-local __filename keeps
+	// attribution correct after an await (see prepareNewContext).
+	if currentFilename := ctx.GetCurrentFilename(); currentFilename != "" {
+		engine.cleanup.PushCleanupScope(currentFilename)
+		defer engine.cleanup.PopCleanupScope(currentFilename)
+	}
 
 	if err := engine.DefineVirtualDevice(name, obj); err != nil {
 		wbgong.Error.Printf("device definition error: %v", err)
@@ -1216,8 +1499,8 @@ func (engine *ESEngine) esVdevGetError(ctx *ESContext) int {
 	devProxy := engine.GetDeviceProxy(devId)
 	meta := devProxy.GetMeta()
 	if meta != nil {
-		if errStr, ok := meta[wbgong.CONV_META_SUBTOPIC_ERROR]; ok {
-			errString = errStr.(string)
+		if errStr, ok := meta[wbgong.CONV_META_SUBTOPIC_ERROR].(string); ok {
+			errString = errStr
 		}
 	}
 	ctx.PushString(errString)
@@ -1463,7 +1746,15 @@ func (engine *ESEngine) esVdevAddControl(ctx *ESContext) int {
 		return duktape.DUK_RET_ERROR
 	}
 	ctrlId := ctx.GetString(0)
-	ctrlDef := ctx.GetJSObject(1).(objx.Map)
+	ctrlDefAny := ctx.GetJSObject(1)
+	if rc, thrown := throwOnConversionError(ctx, ctrlDefAny); thrown {
+		return rc
+	}
+	ctrlDef, ok := ctrlDefAny.(objx.Map)
+	if !ok {
+		wbgong.Error.Printf("addControl(): bad parameters")
+		return duktape.DUK_RET_TYPE_ERROR
+	}
 
 	// push this
 	ctx.PushThis()
@@ -1722,8 +2013,22 @@ func (engine *ESEngine) esVdevCellSetTitle(ctx *ESContext) int {
 	}
 	m := make(wbgong.Title)
 	if ctx.IsObject(0) {
-		for k, v := range ctx.GetJSObject(0).(objx.Map) {
-			m[k] = v.(string)
+		titlesAny := ctx.GetJSObject(0)
+		if rc, thrown := throwOnConversionError(ctx, titlesAny); thrown {
+			return rc
+		}
+		titles, ok := titlesAny.(objx.Map)
+		if !ok {
+			wbgong.Error.Printf("setTitle(): bad parameters")
+			return duktape.DUK_RET_TYPE_ERROR
+		}
+		for k, v := range titles {
+			str, ok := v.(string)
+			if !ok {
+				wbgong.Error.Printf("setTitle(): title for %q is not a string", k)
+				return duktape.DUK_RET_TYPE_ERROR
+			}
+			m[k] = str
 		}
 	} else if ctx.IsString(0) {
 		m["en"] = ctx.GetString(0)
@@ -1746,11 +2051,30 @@ func (engine *ESEngine) esVdevCellSetEnumTitles(ctx *ESContext) int {
 		return duktape.DUK_RET_ERROR
 	}
 
+	enumTitlesAny := ctx.GetJSObject(0)
+	if rc, thrown := throwOnConversionError(ctx, enumTitlesAny); thrown {
+		return rc
+	}
+	enumTitles, ok := enumTitlesAny.(objx.Map)
+	if !ok {
+		wbgong.Error.Printf("setEnumTitles(): bad parameters")
+		return duktape.DUK_RET_TYPE_ERROR
+	}
 	m := make(map[string]wbgong.Title)
-	for value, title := range ctx.GetJSObject(0).(objx.Map) {
+	for value, title := range enumTitles {
 		m[value] = make(wbgong.Title)
-		for k, v := range title.(map[string]any) {
-			m[value][k] = v.(string)
+		langs, ok := title.(map[string]any)
+		if !ok {
+			wbgong.Error.Printf("setEnumTitles(): titles for %q must be an object {lang: title}", value)
+			return duktape.DUK_RET_TYPE_ERROR
+		}
+		for k, v := range langs {
+			str, ok := v.(string)
+			if !ok {
+				wbgong.Error.Printf("setEnumTitles(): title for %q/%q is not a string", value, k)
+				return duktape.DUK_RET_TYPE_ERROR
+			}
+			m[value][k] = str
 		}
 	}
 
@@ -1919,7 +2243,15 @@ func (engine *ESEngine) esVdevCellSetValue(ctx *ESContext) int {
 	}
 
 	if ctx.IsObject(0) {
-		m := ctx.GetJSObject(0).(objx.Map)
+		mAny := ctx.GetJSObject(0)
+		if rc, thrown := throwOnConversionError(ctx, mAny); thrown {
+			return rc
+		}
+		m, ok := mAny.(objx.Map)
+		if !ok {
+			wbgong.Error.Printf("setValue (%s/%s): bad parameters", ctrlProxy.devProxy.name, ctrlProxy.name)
+			return duktape.DUK_RET_TYPE_ERROR
+		}
 		if !m.Has(JS_CTRLPROXY_FUNC_SETVALUE_VALUE) {
 			wbgong.Error.Printf("setValue (%s/%s): no value parameter present", ctrlProxy.devProxy.name, ctrlProxy.name)
 			return duktape.DUK_RET_TYPE_ERROR
@@ -1939,14 +2271,42 @@ func (engine *ESEngine) esVdevCellSetValue(ctx *ESContext) int {
 		value = ctx.GetJSObject(0)
 	}
 
-	// A non-nil error here means the control disappeared (all other write
-	// failures are logged-and-swallowed inside SetValue); report it to the
-	// rule console like any other failed write - a write must never throw.
-	if err := ctrlProxy.SetValue(value, notifySubs); err != nil {
-		engine.Log(ENGINE_LOG_ERROR, err.Error())
+	// A non-nil error means the control disappeared (all other write failures
+	// are reported inside SetValueAt); report it the same way, with the
+	// caller's location - a write must never throw.
+	if err := ctrlProxy.SetValueAt(value, notifySubs, engine.ruleCallSiteFunc(ctx)); err != nil {
+		engine.Log(ENGINE_LOG_ERROR, engine.withRuleCallSite(ctx, err.Error()))
 	}
 
 	return 0
+}
+
+// ruleCallSite returns "<physical path>:<line>" of the innermost JS stack frame
+// that belongs to a loaded rule file ("" if none) - the place in a rule that
+// made the call currently executing. It costs a JS Error object, so callers
+// use it lazily, on failure paths only (ruleCallSiteFunc).
+func (engine *ESEngine) ruleCallSite(ctx *ESContext) string {
+	tb := ctx.GetTraceback()
+	engine.sourcesMtx.Lock()
+	defer engine.sourcesMtx.Unlock()
+	for _, loc := range tb {
+		if _, loaded := engine.sources[loc.filename]; loaded {
+			return fmt.Sprintf("%s:%d", loc.filename, loc.line)
+		}
+	}
+	return ""
+}
+
+func (engine *ESEngine) ruleCallSiteFunc(ctx *ESContext) func() string {
+	return func() string { return engine.ruleCallSite(ctx) }
+}
+
+// withRuleCallSite appends " at file:line" to msg when the call site is known.
+func (engine *ESEngine) withRuleCallSite(ctx *ESContext, msg string) string {
+	if at := engine.ruleCallSite(ctx); at != "" {
+		return msg + " at " + at
+	}
+	return msg
 }
 
 func (engine *ESEngine) getControlFromCtx(ctx *ESContext) (*ControlProxy, int) {
@@ -2058,16 +2418,22 @@ func (engine *ESEngine) initCellObjectPrototype(ctx *ESContext) {
 	ctx.DefineFunctions(map[string]func(*ESContext) int{
 		JS_DEVPROXY_FUNC_RAWVALUE: func(ctx *ESContext) int {
 			ctx.PushThis()
-			c := ctx.GetGoObject(-1).(*ControlProxy)
+			c, ok := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
+			if !ok { // a cell method called with a foreign this
+				return duktape.DUK_RET_TYPE_ERROR
+			}
 
 			ctx.PushString(c.RawValue())
 			return 1
 		},
 		JS_DEVPROXY_FUNC_VALUE: func(ctx *ESContext) int {
 			ctx.PushThis()
-			c := ctx.GetGoObject(-1).(*ControlProxy)
+			c, ok := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
+			if !ok { // a cell method called with a foreign this
+				return duktape.DUK_RET_TYPE_ERROR
+			}
 
 			m := objx.New(map[string]any{
 				JS_DEVPROXY_FUNC_VALUE_RET: c.Value(),
@@ -2077,33 +2443,47 @@ func (engine *ESEngine) initCellObjectPrototype(ctx *ESContext) {
 		},
 		JS_DEVPROXY_FUNC_SETVALUE: func(ctx *ESContext) int {
 			ctx.PushThis()
-			c := ctx.GetGoObject(-1).(*ControlProxy)
+			c, ok := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
+			if !ok { // a cell method called with a foreign this
+				return duktape.DUK_RET_TYPE_ERROR
+			}
 
 			if ctx.GetTop() != 1 || !ctx.IsObject(-1) {
 				return duktape.DUK_RET_ERROR
 			}
-			m, ok := ctx.GetJSObject(-1).(objx.Map)
+			mAny := ctx.GetJSObject(-1)
+			if rc, thrown := throwOnConversionError(ctx, mAny); thrown {
+				return rc
+			}
+			m, ok := mAny.(objx.Map)
 			if !ok || !m.Has(JS_DEVPROXY_FUNC_SETVALUE_ARG) {
 				wbgong.Error.Printf("invalid control definition")
 				return duktape.DUK_RET_TYPE_ERROR
 			}
 
-			errSet := c.SetValue(m[JS_DEVPROXY_FUNC_SETVALUE_ARG], true)
+			errSet := c.SetValueAt(m[JS_DEVPROXY_FUNC_SETVALUE_ARG], true, engine.ruleCallSiteFunc(ctx))
 			if errSet != nil {
-				engine.Log(ENGINE_LOG_ERROR, errSet.Error())
+				engine.Log(ENGINE_LOG_ERROR, engine.withRuleCallSite(ctx, errSet.Error()))
 			}
 			return 1
 		},
 		JS_DEVPROXY_FUNC_SETMETA: func(ctx *ESContext) int {
 			ctx.PushThis()
-			c := ctx.GetGoObject(-1).(*ControlProxy)
+			c, ok := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
+			if !ok { // a cell method called with a foreign this
+				return duktape.DUK_RET_TYPE_ERROR
+			}
 
 			if ctx.GetTop() != 1 || !ctx.IsObject(-1) {
 				return duktape.DUK_RET_ERROR
 			}
-			m, ok := ctx.GetJSObject(-1).(objx.Map)
+			mAny := ctx.GetJSObject(-1)
+			if rc, thrown := throwOnConversionError(ctx, mAny); thrown {
+				return rc
+			}
+			m, ok := mAny.(objx.Map)
 			if !ok || !m.Has(JS_DEVPROXY_FUNC_SETVALUE_ARG) {
 				wbgong.Error.Printf("invalid control definition")
 				return duktape.DUK_RET_TYPE_ERROR
@@ -2118,16 +2498,22 @@ func (engine *ESEngine) initCellObjectPrototype(ctx *ESContext) {
 		},
 		JS_DEVPROXY_FUNC_ISCOMPLETE: func(ctx *ESContext) int {
 			ctx.PushThis()
-			c := ctx.GetGoObject(-1).(*ControlProxy)
+			c, ok := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
+			if !ok { // a cell method called with a foreign this
+				return duktape.DUK_RET_TYPE_ERROR
+			}
 
 			ctx.PushBoolean(c.IsComplete())
 			return 1
 		},
 		JS_DEVPROXY_FUNC_GETMETA: func(ctx *ESContext) int {
 			ctx.PushThis()
-			c := ctx.GetGoObject(-1).(*ControlProxy)
+			c, ok := ctx.GetGoObject(-1).(*ControlProxy)
 			ctx.Pop()
+			if !ok { // a cell method called with a foreign this
+				return duktape.DUK_RET_TYPE_ERROR
+			}
 
 			ctrlMeta := c.GetMeta()
 			if ctrlMeta == nil {
@@ -2178,15 +2564,17 @@ func (engine *ESEngine) esWbStartTimer(ctx *ESContext) int {
 	}
 
 	var callback func()
+	var callbackKey ESCallback
 	if name == NO_TIMER_NAME {
-		f := ctx.WrapCallback(0)
+		callbackKey = ctx.storeCallback(0)
+		key := callbackKey
 		callback = func() {
 			currentFilename := ctx.GetCurrentFilename()
 			if currentFilename != "" {
 				engine.cleanup.PushCleanupScope(currentFilename)
 				defer engine.cleanup.PopCleanupScope(currentFilename)
 			}
-			f(nil)
+			ctx.invokeCallback(key, nil)
 		}
 	}
 
@@ -2197,6 +2585,21 @@ func (engine *ESEngine) esWbStartTimer(ctx *ESContext) int {
 
 	// add timer to script cleanup
 	engine.handleTimerCleanup(ctx, timerId)
+
+	if callbackKey != 0 {
+		// The callback dies with the timer: sweep its stash entry the moment
+		// the engine forgets the timer (fired one-shot, clearTimeout, file
+		// cleanup) instead of waiting for a Go finalizer. The deferred sweep
+		// let setTimeout+clearTimeout churn pile entries up between Go GCs,
+		// and the JS atom table keeps that high-water mark forever. The hook
+		// runs on the engine loop with no engine locks held (see removeTimer);
+		// on an invalidated context RemoveCallback is a no-op - the entry was
+		// already swept.
+		key := callbackKey
+		engine.OnTimerRemoveByIndex(timerId, func() {
+			ctx.RemoveCallback(key)
+		})
+	}
 
 	ctx.PushNumber(float64(timerId))
 	return 1
@@ -2241,10 +2644,20 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 		return duktape.DUK_RET_ERROR
 	}
 
-	callbackFn := ESCallbackFunc(nil)
+	// The callback fires exactly once (result or spawnError), so its stash
+	// entry is stored by key and swept right after that invocation - the
+	// finalizer-driven sweep let heavy spawn churn pile entries up between
+	// Go GCs (see esWbStartTimer for the same pattern on timers). If the
+	// engine stops before the command finishes, the dropped completion is
+	// recorded (noteOrphanedCallback) and the entry swept at the next
+	// Start/Stop/Close; if the file reloads first, invalidate() has already
+	// swept it and both invoke and remove are no-ops on the invalid context.
+	hasCallback := false
+	var callbackKey ESCallback
 
 	if ctx.IsFunction(1) {
-		callbackFn = ctx.WrapCallback(1)
+		callbackKey = ctx.storeCallback(1)
+		hasCallback = true
 	} else if !ctx.IsNullOrUndefined(1) {
 		return duktape.DUK_RET_ERROR
 	}
@@ -2259,14 +2672,49 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 
 	captureOutput := ctx.GetBoolean(2)
 	captureErrorOutput := ctx.GetBoolean(3)
+	spawnFn := engine.spawnFunc
+	if spawnFn == nil {
+		spawnFn = Spawn
+	}
+	// invoke runs the stored callback once and sweeps its stash entry.
+	invokeCallbackOnce := func(args objx.Map) {
+		defer ctx.RemoveCallback(callbackKey)
+		ctx.invokeCallback(callbackKey, args)
+	}
+
 	go func() {
-		r, err := Spawn(args[0], args[1:], captureOutput, captureErrorOutput, input)
+		r, err := spawnFn(args[0], args[1:], captureOutput, captureErrorOutput, input)
 		if err != nil {
 			wbgong.Error.Printf("external command failed: %v", err)
+			if hasCallback {
+				spawnErr := err.Error()
+				dropErr := engine.MaybeCallSync(func() {
+					if !ctx.IsValid() {
+						return
+					}
+					currentFilename := ctx.GetCurrentFilename()
+					if currentFilename != "" {
+						engine.cleanup.PushCleanupScope(currentFilename)
+						defer engine.cleanup.PopCleanupScope(currentFilename)
+					}
+					// lib.js turns this into a promise rejection; the legacy
+					// exitCallback contract never fired for exec failures and
+					// still does not
+					invokeCallbackOnce(objx.New(map[string]any{"spawnError": spawnErr}))
+				})
+				if dropErr != nil {
+					// stopped engine dropped the thunk: the invocation that
+					// would have swept the stash entry never runs - record
+					// the key for the next single-threaded sweep
+					engine.noteOrphanedCallback(ctx, callbackKey)
+				}
+			}
 			return
 		}
-		if callbackFn != nil {
-			engine.CallSync(func() {
+		if hasCallback {
+			// MaybeCallSync: the engine may already be stopping and the
+			// thunk dropped - see the orphan handling below
+			dropErr := engine.MaybeCallSync(func() {
 				// check that context is still alive
 				// (file is not removed or reloaded)
 				if !ctx.IsValid() {
@@ -2287,8 +2735,14 @@ func (engine *ESEngine) esWbSpawn(ctx *ESContext) int {
 					args["capturedOutput"] = r.CapturedOutput
 				}
 				args["capturedErrorOutput"] = r.CapturedErrorOutput
-				callbackFn(args)
+				invokeCallbackOnce(args)
 			})
+			if dropErr != nil {
+				// the stopped engine dropped this completion, so the
+				// callback's stash entry was never swept; without this the
+				// key (and the realm it pins) would leak across a restart
+				engine.noteOrphanedCallback(ctx, callbackKey)
+			}
 		} else if r.ExitStatus != 0 {
 			wbgong.Error.Printf("command '%s' failed with exit status %d",
 				strings.Join(args, " "), r.ExitStatus)
@@ -2353,7 +2807,7 @@ func (engine *ESEngine) esWbDefineRule(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) trackMqtt(ctx *ESContext) int {
-	if !ctx.IsString(0) || !ctx.IsFunction(1) {
+	if ctx.GetTop() < 2 || !ctx.IsString(0) || !ctx.IsFunction(1) {
 		engine.Log(ENGINE_LOG_ERROR, "bad track definition")
 		return duktape.DUK_RET_ERROR
 	}
@@ -2464,14 +2918,26 @@ func (engine *ESEngine) esReadConfig(ctx *ESContext) int {
 	}
 
 	if numArgs == 2 {
-		params := ctx.GetJSObject(1).(objx.Map)
+		paramsAny := ctx.GetJSObject(1)
+		if rc, thrown := throwOnConversionError(ctx, paramsAny); thrown {
+			return rc
+		}
+		params, ok := paramsAny.(objx.Map)
+		if !ok {
+			engine.Log(ENGINE_LOG_ERROR, "invalid readConfig call, params must be an object")
+			return duktape.DUK_RET_TYPE_ERROR
+		}
 		if params.Has("logErrorOnNoFile") {
 			logErrorOnNoFile, _ = params["logErrorOnNoFile"].(bool)
 		}
 	}
 
 	path := ctx.GetString(0)
-	in, err := os.Open(path)
+	readFile := engine.readConfigFunc
+	if readFile == nil {
+		readFile = os.ReadFile
+	}
+	data, err := readFile(path)
 
 	if err != nil {
 		if logErrorOnNoFile {
@@ -2479,9 +2945,8 @@ func (engine *ESEngine) esReadConfig(ctx *ESContext) int {
 		}
 		return duktape.DUK_RET_ERROR
 	}
-	defer in.Close()
 
-	reader := JsonConfigReader.New(in)
+	reader := JsonConfigReader.New(bytes.NewReader(data))
 	preprocessedContent, err := io.ReadAll(reader)
 	if err != nil {
 		// JsonConfigReader doesn't produce its own errors, thus
@@ -2500,15 +2965,18 @@ func (engine *ESEngine) esReadConfig(ctx *ESContext) int {
 }
 
 func (engine *ESEngine) EvalScript(code string) error {
-	ch := make(chan error)
-	engine.CallSync(func() {
-		err := engine.globalCtx.EvalScript(code)
-		if err != nil {
-			engine.Logf(ENGINE_LOG_ERROR, "eval error: %v", err)
+	var evalErr error
+	// fail fast on a stopped engine: the old unconditional channel receive
+	// waited forever for a thunk CallSync had silently dropped
+	if err := engine.CallSyncWait(func() {
+		evalErr = engine.globalCtx.EvalScript(code)
+		if evalErr != nil {
+			engine.Logf(ENGINE_LOG_ERROR, "eval error: %v", evalErr)
 		}
-		ch <- err
-	})
-	return <-ch
+	}); err != nil {
+		return err
+	}
+	return evalErr
 }
 
 // Persistent storage features
@@ -2635,8 +3103,17 @@ func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 		shouldDelete = true
 	} else {
 		shouldDelete = false
-		// parse value
-		value = ctx.JsonEncode(2)
+		// Serialize the value; a non-serializable one (e.g. an object with a
+		// reference cycle) must throw to the WRITING rule - storing a bogus
+		// value silently, or reporting it through an unrelated log channel,
+		// hides the bug from its author.
+		var encErr error
+		value, encErr = ctx.JsonEncodeChecked(2)
+		if encErr != nil {
+			ctx.PushErrorObject(duktape.DUK_ERR_ERROR,
+				fmt.Sprintf("persistent storage %s/%s: cannot serialize value: %s", bucket, key, encErr))
+			return duktape.DUK_RET_INSTACK_ERROR
+		}
 	}
 
 	// perform a transaction
@@ -2789,5 +3266,8 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 
 	wbgong.Error.Printf("error requiring module %s, not found", id)
 
-	return duktape.DUK_RET_ERROR
+	// throw a descriptive Error instead of a bare rc code so script errors
+	// read "cannot find module 'X'" in the UI and logs
+	ctx.PushErrorObject(duktape.DUK_ERR_ERROR, fmt.Sprintf("cannot find module %q", id))
+	return duktape.DUK_RET_INSTACK_ERROR
 }

@@ -1,0 +1,7 @@
+[submodule "third_party/quickjs"]
+	path = third_party/quickjs
+	url = https://github.com/bellard/quickjs
+[submodule "wbrules/testdata/corpus"]
+	path = wbrules/testdata/corpus
+	url = ../wb-rules-corpus.git
+	update = none

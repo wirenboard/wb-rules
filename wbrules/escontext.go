@@ -2,6 +2,7 @@ package wbrules
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -43,6 +44,14 @@ type ESContext struct {
 
 	ruleNames map[string]*Rule
 
+	// storedCallbacks are the _esCallbacks stash keys this context created.
+	// The stash is heap-wide, so these entries do not die with the context:
+	// invalidate() must sweep them, or each one pins the dead context's
+	// whole realm (its scope chains, its realm-local builtins) until the
+	// process restarts. Entries removed the normal way (RemoveCallback) are
+	// pruned here as well, so the set stays bounded for long-lived contexts.
+	storedCallbacks map[ESCallback]struct{}
+
 	valid bool
 }
 
@@ -57,6 +66,24 @@ type ESError struct {
 type ESContextFactory struct {
 	duktapeToESContextMap map[duktape.Context]*ESContext
 	callbackIndex         ESCallback
+
+	// heapCtx is the first (engine-global) context created on this heap. It
+	// lives as long as the engine and gives invalidate() a context that can
+	// still reach the heap-wide stash after a file context's own realm is
+	// gone.
+	heapCtx *ESContext
+
+	// preprocessor transforms rule-file source before evaluation (used for
+	// source transpilation); nil means load sources as-is.
+	preprocessor func(path string, src []byte) ([]byte, error)
+
+	// lineTranslator maps generated (transpiled) line numbers back to
+	// source lines for preprocessed files; nil means identity.
+	lineTranslator func(file string, line int) (int, bool)
+
+	// wrapPrologue returns extra same-line source injected into the rule
+	// file wrapper (e.g. "use strict" for transpiled files); nil = none.
+	wrapPrologue func(path string) string
 }
 
 func newESContextFactory() *ESContextFactory {
@@ -75,13 +102,21 @@ func (f *ESContextFactory) newESContext(syncFunc ESSyncFunc, filename string) *E
 }
 
 func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, filename string, dctx *duktape.Context) *ESContext {
+	if dctx == nil {
+		// realm creation failed (the JS heap hit its memory limit)
+		return nil
+	}
 	ctx := &ESContext{
-		dctx,     // *duktape.Context
-		syncFunc, // syncFunc
-		nil,      // callbackErrorHandler
-		f,        // factory
-		make(map[string]*Rule),
-		true, // validation flag
+		Context:              dctx,
+		syncFunc:             syncFunc,
+		callbackErrorHandler: nil,
+		factory:              f,
+		ruleNames:            make(map[string]*Rule),
+		storedCallbacks:      make(map[ESCallback]struct{}),
+		valid:                true,
+	}
+	if f.heapCtx == nil {
+		f.heapCtx = ctx
 	}
 	ctx.callbackErrorHandler = ctx.DefaultCallbackErrorHandler
 	ctx.initGlobalObject()
@@ -100,6 +135,30 @@ func (ctx *ESContext) invalidate() {
 	// remove context from factory, just in case
 	delete(ctx.factory.duktapeToESContextMap, *ctx.Context)
 
+	// Sweep this context's callback entries out of the heap-wide stash: the
+	// stash outlives the context, and a surviving entry would pin the dead
+	// realm (with everything its scope chains reference) until process
+	// restart. The context's own realm may already be gone here, so the
+	// sweep goes through the long-lived heap context. The finalizer-driven
+	// RemoveCallback path skips invalid contexts and the keys are already
+	// gone, so nothing is deleted twice.
+	if heap := ctx.factory.heapCtx; heap != nil && heap != ctx && heap.IsValid() {
+		for key := range ctx.storedCallbacks {
+			heap.RemoveCallback(key)
+		}
+	}
+	ctx.storedCallbacks = nil
+
+	ctx.Context = nil
+	ctx.valid = false
+}
+
+// markClosed invalidates the context WITHOUT touching the JS heap - for
+// ESEngine.Close, which has already destroyed the whole heap. Stragglers
+// (Go finalizers, producers whose thunks were dropped) then see
+// IsValid()==false instead of reaching into freed memory.
+func (ctx *ESContext) markClosed() {
+	ctx.storedCallbacks = nil
 	ctx.Context = nil
 	ctx.valid = false
 }
@@ -178,8 +237,25 @@ func (ctx *ESContext) getJSObject(objIndex int, top bool) any {
 	}
 }
 
+// ConversionError marks a GetJSObject result whose conversion ran a getter
+// or Proxy trap that threw. The partially converted value is discarded; a
+// builtin receiving this sentinel rethrows the recorded error to the calling
+// script (Duktape propagated such throws out of its property reads). The
+// sentinel is intentionally NOT objx.Map/[]any, so an unaudited call site's
+// type assertion fails closed instead of using a partial object.
+type ConversionError struct {
+	Message string
+}
+
+func (e ConversionError) Error() string { return e.Message }
+
 func (ctx *ESContext) GetJSObject(objIndex int) any {
-	return ctx.getJSObject(objIndex, true)
+	ctx.TakeConversionError() // drop a stale record from a non-conversion Enum
+	v := ctx.getJSObject(objIndex, true)
+	if msg, failed := ctx.TakeConversionError(); failed {
+		return ConversionError{Message: msg}
+	}
+	return v
 }
 
 func (ctx *ESContext) PushJSObject(obj any) {
@@ -339,6 +415,9 @@ func (ctx *ESContext) storeCallback(callbackStackIndex int) ESCallback {
 	// get previous callback index
 	key := ctx.factory.callbackIndex
 	ctx.factory.callbackIndex++
+	if ctx.storedCallbacks != nil {
+		ctx.storedCallbacks[key] = struct{}{}
+	}
 
 	wbgong.Debug.Printf("store callback %d at context %p\n", key, ctx)
 
@@ -391,9 +470,12 @@ func (ctx *ESContext) removeCallbackSync(key ESCallback) {
 }
 
 func (ctx *ESContext) RemoveCallback(key ESCallback) {
+	// invalid context: its keys were already swept by invalidate()
 	if !ctx.IsValid() {
 		return
 	}
+
+	delete(ctx.storedCallbacks, key)
 
 	defer ctx.assertStackClean(ctx.GetTop())
 
@@ -410,8 +492,6 @@ func (ctx *ESContext) EvalScript(code string) error {
 	}
 	return nil
 }
-
-var syntaxErrorRx = regexp.MustCompile(`^SyntaxError:.*?\(line\s+(\d+)\)\s*(\n|$)`)
 
 func (ctx *ESContext) LoadScript(path string) error {
 	defer ctx.Pop()
@@ -432,12 +512,40 @@ func (ctx *ESContext) LoadScenario(path string) error {
 		return err
 	}
 
-	// wrap source code
-	src := "function F(module){" + string(srcRaw) + "\n}"
+	if pp := ctx.factory.preprocessor; pp != nil {
+		srcRaw, err = pp(path, srcRaw)
+		if err != nil {
+			line := 1
+			var lineErr interface{ SourceLine() int }
+			if errors.As(err, &lineErr) {
+				line = lineErr.SourceLine()
+			}
+			return ESError{Message: err.Error(), Traceback: ESTraceback{{filename: path, line: line}}}
+		}
+	}
+
+	// wrap source code; exports is provided (aliasing module.exports) so
+	// CommonJS-style module files also load as plain rule files. A
+	// preprocessor may inject a same-line prologue via factory hooks.
+	//
+	// The wrapper is async so a rule file may use top-level await
+	// (`val = await changed(...)`). Files that use no top-level await are
+	// unaffected: an async function with no await runs synchronously to
+	// completion, and a throw before any await settles its promise
+	// synchronously - both are handled below exactly as the old synchronous
+	// wrapper was. A file that does await at the top level leaves a pending
+	// promise and finishes on the microtask queue, like an async rule body.
+	prologue := ""
+	if pl := ctx.factory.wrapPrologue; pl != nil {
+		prologue = pl(path)
+	}
+	src := "async function F(module, exports){" + prologue + string(srcRaw) + "\n}"
 
 	// Source code evaluation.
-	// Checking if there are extra curly braces
-	if err := ctx.PcompileString(duktape.DUK_COMPILE_EVAL, src); err != 0 {
+	// Checking if there are extra curly braces. Compile with the real path
+	// so syntax-error tracebacks carry the script file name.
+	ctx.PushString(path)
+	if err := ctx.PcompileStringFilename(duktape.DUK_COMPILE_EVAL, src); err != 0 {
 		defer ctx.Pop()
 		return ctx.GetESErrorAugmentingSyntaxErrors(path)
 	}
@@ -461,13 +569,38 @@ func (ctx *ESContext) LoadScenario(path string) error {
 	ctx.PushString(path)
 	ctx.PutPropString(-2, "filename")
 
-	// call function
-	defer ctx.Pop()
-	if r := ctx.Pcall(1); r != 0 {
+	// push 'exports' argument, aliased as module.exports
+	ctx.PushObject()
+	ctx.Dup(-1)
+	ctx.PutPropString(-3, "exports")
+
+	// Call the wrapper. Use the no-pump variant so we can inspect the
+	// returned promise before the microtask queue is drained: F is async, and
+	// if the body threw before reaching any top-level await its promise is
+	// already rejected, which we want to surface as a synchronous load error
+	// (exactly as the old sync wrapper did) rather than let the pump report it
+	// as a deferred "async rule error".
+	defer ctx.Pop() // pop the promise (or the synchronous exception)
+	if r := ctx.PcallNoPump(2); r != 0 {
+		ctx.PumpJobs()
 		return ctx.GetESErrorAugmentingSyntaxErrors(path)
 	}
 
-	return nil
+	var loadErr error
+	if ctx.PromiseStateTop() == duktape.PromiseRejected {
+		// retract it from the unhandled-rejection tracker before the pump
+		// flushes, so it is reported once (here) as a load error
+		ctx.RetractTopPromiseRejection()
+		ctx.PushPromiseResultTop()
+		loadErr = ctx.GetESErrorAugmentingSyntaxErrors(path)
+		ctx.Pop() // pop the rejection reason
+	}
+
+	// Now run microtasks: a top-level await continues here, and any unrelated
+	// pending rejection is still reported. A pending promise (genuine
+	// top-level await) just keeps running on later pumps.
+	ctx.PumpJobs()
+	return loadErr
 }
 
 func (ctx *ESContext) LoadFunctionFromString(filename, content string) error {
@@ -541,16 +674,34 @@ func (ctx *ESContext) Format() string {
 	return buf.String()
 }
 
-var fileRx = regexp.MustCompile(`^\s*\S+\s+(.*):(\d+)(?:\s+[^:]*)?$`)
+// QuickJS stack lines: "    at func (file:line:col)" or "    at file:line:col"
+// (the latter for syntax errors). Native frames ("at fn (native)") don't match.
+var fileRx = regexp.MustCompile(`^\s*at\s+(?:[^(]*\()?([^():]*):(\d+)(?::\d+)?\)?$`)
 
 func (ctx *ESContext) GetESError() (r ESError) {
 	r.Traceback = ESTraceback{}
+	// Unlike Duktape, QuickJS's .stack holds only frame lines (no leading
+	// "Error: msg"), so take the message from the error value itself.
+	r.Message = ctx.SafeToString(-1)
+	// the execution watchdog surfaces only as "InternalError: interrupted";
+	// replace it with a message that says why (the traceback is still appended
+	// below, so the offending location is kept)
+	aborted := false
+	if msg, ok := ctx.ExecTimeoutAbort(r.Message); ok {
+		r.Message = msg
+		aborted = true
+	}
 	if !ctx.GetPropString(-1, "stack") {
-		r.Message = ctx.SafeToString(-1)
 		ctx.Pop()
 		return
 	}
-	stackLines := strings.Split(ctx.SafeToString(-1), "\n")
+	stackStr := ctx.SafeToString(-1)
+	if aborted {
+		// the interpreter's own frame position is the statement before the
+		// interrupted loop; the shim recorded the real one
+		stackStr = ctx.RelocateAbortStack(stackStr)
+	}
+	stackLines := strings.Split(stackStr, "\n")
 	r.Traceback = make(ESTraceback, 0, len(stackLines))
 	for _, line := range stackLines {
 		groups := fileRx.FindStringSubmatch(line)
@@ -563,39 +714,48 @@ func (ctx *ESContext) GetESError() (r ESError) {
 			r.Traceback = append(r.Traceback, ESLocation{groups[1], lineNumber})
 		}
 	}
-	r.Message = ctx.SafeToString(-1)
+	if tr := ctx.factory.lineTranslator; tr != nil {
+		for i := range r.Traceback {
+			if src, ok := tr(r.Traceback[i].filename, r.Traceback[i].line); ok {
+				r.Traceback[i].line = src
+			}
+		}
+		stackStr = translateStackLines(stackStr, tr)
+	}
+	// Duktape's .stack embeds the message and wb-rules logged it whole;
+	// reproduce that shape (message first, frame lines after).
+	if len(r.Traceback) > 0 {
+		r.Message = r.Message + "\n" + strings.TrimRight(stackStr, "\n")
+	}
 	ctx.Pop()
 	return
 }
 
-func (ctx *ESContext) GetESErrorAugmentingSyntaxErrors(path string) (r ESError) {
-	// SyntaxError have no script files in their stack trace,
-	// but provide line number info in the message
-	// FIXME: need to use ctx.GetErrorCode() to check
-	// for SyntaxError (requires newer duktape)
-	r = ctx.GetESError()
-	if len(r.Traceback) != 0 {
-		return
-	}
+var stackLineRefRx = regexp.MustCompile(`([^\s():]+\.ts):(\d+)`)
 
-	groups := syntaxErrorRx.FindStringSubmatch(r.Message)
-	if groups == nil {
-		return
-	}
+// translateStackLines rewrites file.ts:NN references in a stack text using
+// the transpiler's source maps, so logged tracebacks show .ts source lines.
+func translateStackLines(stack string, tr func(string, int) (int, bool)) string {
+	return stackLineRefRx.ReplaceAllStringFunc(stack, func(ref string) string {
+		g := stackLineRefRx.FindStringSubmatch(ref)
+		n, err := strconv.Atoi(g[2])
+		if err != nil {
+			return ref
+		}
+		if src, ok := tr(g[1], n); ok {
+			return fmt.Sprintf("%s:%d", g[1], src)
+		}
+		return ref
+	})
+}
 
-	lineNumber, err := strconv.Atoi(groups[1])
-	if err != nil {
-		wbgong.Warn.Printf("bad js line number: %d", lineNumber)
-		return
-	}
-
-	r = ESError{
-		r.Message,
-		ESTraceback{
-			{filename: path, line: lineNumber},
-		},
-	}
-	return
+// GetESErrorAugmentingSyntaxErrors is kept for its call sites: with
+// Duktape, syntax errors carried no stack frames and the line number had
+// to be recovered from the "(line N)" suffix of the message. QuickJS
+// syntax errors come with a regular "at file:line" stack frame that
+// GetESError already parses, so no augmentation is needed.
+func (ctx *ESContext) GetESErrorAugmentingSyntaxErrors(path string) ESError {
+	return ctx.GetESError()
 }
 
 func (ctx *ESContext) GetTraceback() ESTraceback {

@@ -85,8 +85,8 @@ func (s *RuleNotifyEmailSuite) TestEmailWithQuotes() {
 // transmitted as proper UTF-8. Duktape stores strings as CESU-8 internally, so
 // the subject/body are base64-encoded from their real UTF-8 bytes rather than
 // handed to the shell (or Duktape.enc) directly. Note that the "sending email:"
-// log line below still shows the CESU-8 bytes of the emoji — that is a separate
-// cosmetic quirk of logging through Duktape, not of the message we send.
+// log line below shows the emoji as proper UTF-8 — QuickJS strings reach Go
+// as valid UTF-8 (Duktape leaked CESU-8 surrogate bytes into this log line).
 func (s *RuleNotifyEmailSuite) TestEmailEmoji() {
 	s.setErrorCode(0)
 
@@ -94,7 +94,7 @@ func (s *RuleNotifyEmailSuite) TestEmailEmoji() {
 	s.VerifyUnordered(
 		"driver -> /devices/test_email/controls/send_emoji: [1] (QoS 1)",
 		"tst -> /devices/test_email/controls/send_emoji/on: [1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [sending email: \xed\xa0\xbc\xed\xbf\xa0 тема] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [sending email: 🏠 тема] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [run command: /usr/sbin/sendmail -t] (QoS 1)",
 		"wbrules-log -> /wbrules/log/info: [input: To: me@example.org\r\nSubject: =?utf-8?B?8J+PoCDRgtC10LzQsA==?=\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n8J+PoCDRgtC10LrRgdGC] (QoS 1)",
 	)

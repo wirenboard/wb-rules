@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -102,6 +103,25 @@ type RuleSuiteBase struct {
 	VdevStorageFile  string
 	ModulesPath      string /* ':'-separated list */
 	CleanUp          func()
+}
+
+// The package dir at process start: go test sets the initial cwd to the
+// package dir, and this must be captured before any DataFileFixture test
+// chdirs away (a failing test strands cwd in a deleted temp dir, which
+// would otherwise cascade module-not-found failures into every later suite).
+var testPackageDir, _ = os.Getwd()
+
+// testModulesDir resolves ../modules for test engines. Prefer the source
+// file location; under -trimpath builds (deb test stage) runtime.Caller
+// yields virtual paths, so fall back to the start-of-process package dir.
+func testModulesDir() string {
+	if _, thisFile, _, ok := runtime.Caller(0); ok {
+		p := filepath.Join(filepath.Dir(thisFile), "..", "modules")
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return filepath.Join(testPackageDir, "..", "modules")
 }
 
 var logVerifyRx = regexp.MustCompile(`^\[(info|debug|warning|error)\] (.*)`)
@@ -268,9 +288,7 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 
 	engineOptions := NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(s.PersistentDBFile)
-	currentDir, err := os.Getwd()
-	s.Ck("os.Getwd()", err)
-	defaultModulesPath := filepath.Join(currentDir, "..", "modules")
+	defaultModulesPath := testModulesDir()
 	moduleDirs := append(strings.Split(s.ModulesPath, ":"), defaultModulesPath)
 	engineOptions.SetModulesDirs(moduleDirs)
 	s.logClient = s.Broker.MakeClient("wbrules-log")
@@ -309,7 +327,21 @@ func (s *RuleSuiteBase) loadScripts(scripts []string) {
 }
 
 func (s *RuleSuiteBase) ReplaceScript(oldName, newName string) {
+	// The content tracker hashes content PLUS mtime truncated to seconds, so
+	// replacing a file with identical bytes still counts as "changed" whenever
+	// the copy lands in a different wall-clock second - which is exactly what
+	// happens on a loaded machine (the TestNoReloading flake). Pin the old
+	// mtime back after the copy: identical content then hashes identically in
+	// every run, while genuinely changed content still reloads regardless.
+	var oldMtime time.Time
+	target := filepath.Join(s.DataFileTempDir(), oldName)
+	if st, err := os.Stat(target); err == nil {
+		oldMtime = st.ModTime()
+	}
 	copiedScriptPath := s.CopyDataFileToTempDir(newName, oldName)
+	if !oldMtime.IsZero() {
+		s.Ck("Chtimes()", os.Chtimes(copiedScriptPath, oldMtime, oldMtime))
+	}
 	s.Ck("LiveLoadFile()", s.engine.LiveLoadFile(copiedScriptPath))
 }
 
@@ -406,12 +438,13 @@ func (s *RuleSuiteBase) TearDownTest() {
 
 	s.TearDownDataFiles()
 
-	s.engine.Stop()
+	// terminal Close: stops the engine, closes the persistent DB and frees
+	// the JS heap - a heap per suite test otherwise outlives the fixture
+	s.engine.Close()
 	s.WaitFor(func() bool {
 		return !s.engine.IsActive()
 	})
 
-	s.engine.ClosePersistentDB()
 	s.PersistentDBFile = ""
 	s.VdevStorageFile = ""
 

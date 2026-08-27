@@ -8,6 +8,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -65,6 +66,8 @@ func main() {
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
 
 	wbgoso := flag.String("wbgo", WBGO_FILE, "Location to wbgo.so file")
+	jsTimeout := flag.Duration("js-timeout", wbrules.DEFAULT_JS_EXECUTION_LIMIT, "Max wall time for one synchronous JS run (0 to disable)")
+	jsMemLimit := flag.Int64("js-memory-limit", wbrules.DEFAULT_JS_MEMORY_LIMIT, "Max bytes for the shared JS heap (0 to disable)")
 
 	flag.Parse()
 
@@ -144,6 +147,15 @@ func main() {
 	engineOptions.SetPersistentDBFile(*persistentDbFile)
 	engineOptions.SetModulesDirs(strings.Split(os.Getenv(WBRULES_MODULES_ENV), ":"))
 	engineOptions.SetCleanupOnStop(*cleanup)
+	engineOptions.JsExecutionLimit = *jsTimeout
+	engineOptions.JsMemoryLimit = *jsMemLimit
+	// keep the load-crash guard state next to the persistent DB (a writable,
+	// persistent location). With persistence disabled (-pdb ""), leave the dir
+	// empty so the guard is explicitly disabled rather than writing marker/state
+	// files into the process cwd (filepath.Dir("") == ".").
+	if *persistentDbFile != "" {
+		engineOptions.SetLoadGuardDir(filepath.Dir(*persistentDbFile))
+	}
 
 	if *noQueues {
 		engineOptions.SetTesting(true)
@@ -155,7 +167,9 @@ func main() {
 		wbgong.Error.Fatalf("error creating engine: %v", err)
 	}
 	engine.Start()
-	defer engine.Stop()
+	// terminal shutdown: Close stops the engine and destroys the native JS
+	// runtime (heap + process-global registries) instead of leaving it behind
+	defer engine.Close()
 
 	gotSome := false
 	watcher := wbgong.NewDirWatcher("(^|/)[^/.][^/]*\\.js(\\"+wbrules.FILE_DISABLED_SUFFIX+")?$", engine)

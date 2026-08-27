@@ -31,6 +31,10 @@ func captureCommandOutput(pipe io.ReadCloser, wg *sync.WaitGroup, result *string
 	}()
 }
 
+// SpawnFunc is the signature of Spawn; the engine's command runner can be
+// replaced with one (ESEngineOptions.SetSpawnFunc), e.g. by tests.
+type SpawnFunc func(name string, args []string, captureOutput bool, captureErrorOutput bool, input *string) (*CommandResult, error)
+
 func Spawn(name string, args []string, captureOutput bool, captureErrorOutput bool, input *string) (*CommandResult, error) {
 	r := &CommandResult{0, "", ""}
 	var err error
