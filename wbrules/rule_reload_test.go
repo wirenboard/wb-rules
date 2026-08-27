@@ -112,7 +112,10 @@ func (s *RuleReloadSuite) TestReload() {
 	s.publish("/devices/vdev/controls/anotherCell/on", "11")
 	s.publish("/devices/vdev/controls/someCell/on", "0", "vdev/someCell")
 
-	s.Verify(
+	// unordered (like VerifyRules above): driver echoes and rule log lines
+	// come from different MQTT clients, so their relative order flips
+	// under load
+	s.VerifyUnordered(
 		"tst -> /devices/vdev/controls/anotherCell/on: [11] (QoS 1)",
 		"tst -> /devices/vdev/controls/someCell/on: [0] (QoS 1)",
 		"driver -> /devices/vdev/controls/someCell: [0] (QoS 1, retained)",
@@ -123,7 +126,7 @@ func (s *RuleReloadSuite) TestReload() {
 	)
 
 	s.publish("/devices/vdev/controls/someCell/on", "1", "vdev/someCell")
-	s.Verify(
+	s.VerifyUnordered(
 		"tst -> /devices/vdev/controls/someCell/on: [1] (QoS 1)",
 		"driver -> /devices/vdev/controls/someCell: [1] (QoS 1, retained)",
 		"[info] detRun",

@@ -103,6 +103,9 @@ type RuleSuiteBase struct {
 	VdevStorageFile  string
 	ModulesPath      string /* ':'-separated list */
 	CleanUp          func()
+
+	TsgoPath    string
+	TsTypesPath string
 }
 
 // The package dir at process start: go test sets the initial cwd to the
@@ -122,6 +125,14 @@ func testModulesDir() string {
 		}
 	}
 	return filepath.Join(testPackageDir, "..", "modules")
+}
+
+// testTypesPath resolves ../types/wb-rules.d.ts for test engines, sharing
+// testModulesDir's -trimpath fallback: a raw runtime.Caller join would
+// produce the Go MODULE path in the deb test stage, which is not a
+// filesystem path, and the engine would silently disable type checks.
+func testTypesPath() string {
+	return filepath.Join(filepath.Dir(testModulesDir()), "types", "wb-rules.d.ts")
 }
 
 var logVerifyRx = regexp.MustCompile(`^\[(info|debug|warning|error)\] (.*)`)
@@ -288,9 +299,17 @@ func (s *RuleSuiteBase) SetupTest(waitForRetained bool, ruleFiles ...string) {
 
 	engineOptions := NewESEngineOptions()
 	engineOptions.SetPersistentDBFile(s.PersistentDBFile)
+	// a loaded CI builder (parallel arches, tsgo children) can delay a
+	// just-closed engine's bolt lock release past the 1-second production
+	// default; construction must wait, not fail
+	engineOptions.SetPersistentDBOpenTimeout(30 * time.Second)
 	defaultModulesPath := testModulesDir()
 	moduleDirs := append(strings.Split(s.ModulesPath, ":"), defaultModulesPath)
 	engineOptions.SetModulesDirs(moduleDirs)
+	if s.TsgoPath != "" {
+		engineOptions.SetTsgoPath(s.TsgoPath)
+		engineOptions.SetTsTypesPath(s.TsTypesPath)
+	}
 	s.logClient = s.Broker.MakeClient("wbrules-log")
 
 	s.engine, err = NewESEngine(s.driver, s.logClient, engineOptions)
@@ -434,31 +453,43 @@ func (s *RuleSuiteBase) SetCellValueNoVerify(devID, ctrlID string, value any) {
 }
 
 func (s *RuleSuiteBase) TearDownTest() {
+	// Resource cleanup is DEFERRED: an assertion failure below (VerifyEmpty
+	// finding straggler messages on a loaded CI builder) calls FailNow,
+	// which exits this function early - without the defer that skipped
+	// closing the engine and the driver, leaking their bolt file locks (and
+	// the fixture's cwd) into the NEXT test's setup, which then failed with
+	// "can't open persistent DB file: timeout" and cascaded one flake
+	// across the whole suite.
+	defer func() {
+		s.TearDownDataFiles()
+
+		// terminal Close: stops the engine, closes the persistent DB and
+		// frees the JS heap - a heap per suite test otherwise outlives the
+		// fixture
+		if s.engine != nil {
+			s.engine.Close()
+			s.WaitFor(func() bool {
+				return !s.engine.IsActive()
+			})
+		}
+
+		s.PersistentDBFile = ""
+		s.VdevStorageFile = ""
+
+		if s.CleanUp != nil {
+			s.CleanUp()
+		}
+
+		err := s.driver.StopLoop()
+		s.Ck("StopLoop()", err)
+
+		s.client.Stop()
+		s.logClient.Stop()
+
+		s.driver.Close()
+	}()
+
 	s.Broker.VerifyEmpty()
-
-	s.TearDownDataFiles()
-
-	// terminal Close: stops the engine, closes the persistent DB and frees
-	// the JS heap - a heap per suite test otherwise outlives the fixture
-	s.engine.Close()
-	s.WaitFor(func() bool {
-		return !s.engine.IsActive()
-	})
-
-	s.PersistentDBFile = ""
-	s.VdevStorageFile = ""
-
-	if s.CleanUp != nil {
-		s.CleanUp()
-	}
-
-	err := s.driver.StopLoop()
-	s.Ck("StopLoop()", err)
-
-	s.client.Stop()
-	s.logClient.Stop()
-
-	s.driver.Close()
 }
 
 // TBD: metadata (like, meta["devname"]["controlName"])

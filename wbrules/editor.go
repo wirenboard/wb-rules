@@ -42,7 +42,7 @@ const (
 
 var (
 	hiddenFileError       = &EditorError{EDITOR_ERROR_INVALID_PATH, "File name should not start with a dot"}
-	invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should end with .js"}
+	invalidExtensionError = &EditorError{EDITOR_ERROR_INVALID_EXT, "File name should end with .js or .ts"}
 	invalidLenError       = &EditorError{EDITOR_ERROR_INVALID_LEN, "File path should be shorter than or equal to 255 chars"}
 	listDirError          = &EditorError{EDITOR_ERROR_LISTDIR, "Error listing the directory"}
 	readError             = &EditorError{EDITOR_ERROR_READ, "Error reading the file"}
@@ -56,7 +56,7 @@ var (
 func validateScriptPath(pth string) error {
 	if strings.HasPrefix(path.Base(pth), ".") {
 		return hiddenFileError
-	} else if !strings.HasSuffix(pth, ".js") {
+	} else if !strings.HasSuffix(pth, ".js") && !strings.HasSuffix(pth, ".ts") {
 		return invalidExtensionError
 	} else if len(pth) > 255 {
 		return invalidLenError
@@ -118,8 +118,78 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 	return nil
 }
 
+type EditorTsDiag struct {
+	File     string `json:"file,omitempty"` // set only for diags from other files
+	Line     int    `json:"line"`
+	Column   int    `json:"column"`
+	Severity string `json:"severity"`
+	Message  string `json:"message"`
+	Code     int    `json:"code,omitempty"` // TypeScript diagnostic code (TSnnnn)
+}
+
+type EditorCheckResponse struct {
+	// "ready" | "pending" | "not-ts" | "unsupported"; diags are valid
+	// only when ready - clients poll again on pending
+	Status string         `json:"status"`
+	Diags  []EditorTsDiag `json:"diags"`
+}
+
+type EditorTypesResponse struct {
+	Content string `json:"content"`
+}
+
 type EditorPathArgs struct {
 	Path string `json:"path"`
+}
+
+// Check type-checks one .ts rule file on demand with the engine's own
+// tsgo and installed declarations - the authoritative verdict for
+// editors.
+func (editor *Editor) Check(args *EditorPathArgs, reply *EditorCheckResponse) error {
+	entry, err := editor.locateFile(args.Path)
+	if err != nil {
+		return err
+	}
+	tsm, ok := editor.locFileManager.(TsFileManager)
+	if !ok {
+		// a manager without the optional TypeScript extension
+		reply.Status = TS_CHECK_UNSUPPORTED
+		reply.Diags = []EditorTsDiag{}
+		return nil
+	}
+	diags, status := tsm.CheckTsFile(entry.PhysicalPath)
+	reply.Status = status
+	reply.Diags = make([]EditorTsDiag, 0, len(diags))
+	for _, d := range diags {
+		file := ""
+		// tsgo prints paths relative to its working directory; a diagnostic
+		// belongs to the checked file iff the paths agree on a separator
+		// boundary (other/bar.ts must never match mother/bar.ts)
+		if !pathsRefSameFile(entry.PhysicalPath, d.File) {
+			// from another file pulled in by the program (import/reference);
+			// clients must not anchor it here
+			file = d.File
+		}
+		reply.Diags = append(reply.Diags, EditorTsDiag{
+			File: file, Line: d.Line, Column: d.Column, Severity: d.Severity, Message: d.Message, Code: d.Code,
+		})
+	}
+	return nil
+}
+
+// GetTypes returns the installed wb-rules.d.ts, so editors validate
+// against the API of the engine actually running on this controller.
+func (editor *Editor) GetTypes(args *struct{}, reply *EditorTypesResponse) error {
+	tsm, ok := editor.locFileManager.(TsFileManager)
+	if !ok {
+		return &EditorError{EDITOR_ERROR_READ, "Type declarations unavailable"}
+	}
+	content, err := tsm.TsTypesContent()
+	if err != nil {
+		return &EditorError{EDITOR_ERROR_READ, "Type declarations unavailable"}
+	}
+	reply.Content = content
+	return nil
 }
 
 func (editor *Editor) locateFile(virtualPath string) (*LocFileEntry, error) {

@@ -58,7 +58,10 @@ func (s *VirtualCellsStorageSuite) TestStorage1() {
 
 func (s *VirtualCellsStorageSuite) TestStorage2() {
 	s.publish("/devices/test-trigger/controls/echo/on", "1", "test-trigger/echo")
-	s.Verify(
+	// unordered: the echo publish (driver client) and the log line
+	// (wbrules-log client) come from different MQTT clients, so their
+	// relative order flips under load
+	s.VerifyUnordered(
 		"tst -> /devices/test-trigger/controls/echo/on: [1] (QoS 1)",
 		"driver -> /devices/test-trigger/controls/echo: [1] (QoS 1)",
 		"[info] vdev true, true, false, bar",

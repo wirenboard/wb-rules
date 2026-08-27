@@ -7,7 +7,7 @@
 
 Файл правил исполняется как тело функции-обёртки (CommonJS-стиль: `module`, `exports`).
 При синхронной обёртке `var v = await sleep(100)` на верхнем уровне — это `SyntaxError`, а
-TS-чекер (ADR-012) предлагает «сделать файл модулем» (`export {}`), что для файла правил
+TS-чекер ([ADR-012](ADR-012-background-check-parameters-checkjs.md)) предлагает «сделать файл модулем» (`export {}`), что для файла правил
 бессмысленно. Top-level `await` — естественная форма линейных сценариев ([ADR-007](ADR-007-promise-native-lib-js.md)), и его
 семантика должна быть окончательной с первого релиза движка: миграция пользовательских файлов с
 идиомы `(async () => {...})()` на TLA и обратно дороже, чем одна доработка до релиза.
@@ -50,13 +50,13 @@ TS-чекер (ADR-012) предлагает «сделать файл моду�
 - Async-обёртка превращает синхронные `throw` в rejection'ы — нивелировано инспекцией.
 - `module.exports`, выставленный после TLA, не виден синхронному `require` (редкий случай).
 - `moduleDetection: force` делает TS-фикстуры модулями ⇒ аугментация `WbControls` через
-  `declare global` (ADR-014).
+  `declare global` ([ADR-014](ADR-014-live-controls-registry-wbcontrols.md)).
 - Правила, объявленные после `await`, регистрируются из promise job — корректно благодаря
   `__wbBindRealmAPI` ([ADR-004](ADR-004-one-runtime-realm-per-file.md)).
 
 ## Ссылки
 
-- [ADR-003](ADR-003-go-duktape-compatible-shim.md), [ADR-004](ADR-004-one-runtime-realm-per-file.md), [ADR-005](ADR-005-microtask-pump-rejection-tracker.md), ADR-012, ADR-014.
+- [ADR-003](ADR-003-go-duktape-compatible-shim.md), [ADR-004](ADR-004-one-runtime-realm-per-file.md), [ADR-005](ADR-005-microtask-pump-rejection-tracker.md), [ADR-012](ADR-012-background-check-parameters-checkjs.md), [ADR-014](ADR-014-live-controls-registry-wbcontrols.md).
 - `wbrules/escontext.go` (`LoadScenario`), `internal/quickjsduk/duktape.go`
   (`PcallNoPump`, `PromiseStateTop`, `RetractTopPromiseRejection`), `wbrules/rule_tla_test.go`,
   `wbrules/testrules_tla.js`.

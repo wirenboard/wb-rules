@@ -52,6 +52,38 @@ channels:
     parameters:
       clientId:
         $ref: '#/components/parameters/clientId'
+  wbrulesEditorCheck:
+    address: '/rpc/v1/wbrules/Editor/Check/{clientId}'
+    messages:
+      wbrulesEditorCheck:
+        $ref: '#/components/messages/wbrulesEditorCheck'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorCheckReply:
+    address: '/rpc/v1/wbrules/Editor/Check/{clientId}/reply'
+    messages:
+      wbrulesEditorCheckReply:
+        $ref: '#/components/messages/wbrulesEditorCheckReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorGetTypes:
+    address: '/rpc/v1/wbrules/Editor/GetTypes/{clientId}'
+    messages:
+      wbrulesEditorGetTypes:
+        $ref: '#/components/messages/wbrulesEditorGetTypes'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorGetTypesReply:
+    address: '/rpc/v1/wbrules/Editor/GetTypes/{clientId}/reply'
+    messages:
+      wbrulesEditorGetTypesReply:
+        $ref: '#/components/messages/wbrulesEditorGetTypesReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
   wbrulesEditorRemove:
     address: '/rpc/v1/wbrules/Editor/Remove/{clientId}'
     messages:
@@ -127,6 +159,32 @@ operations:
         $ref: '#/channels/wbrulesEditorListReply'
       messages:
         - $ref: '#/channels/wbrulesEditorListReply/messages/wbrulesEditorListReply'
+  wbrulesEditorCheck:
+    action: send
+    channel:
+      $ref: '#/channels/wbrulesEditorCheck'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/wbrulesEditorCheck/messages/wbrulesEditorCheck'
+    reply:
+      channel:
+        $ref: '#/channels/wbrulesEditorCheckReply'
+      messages:
+        - $ref: '#/channels/wbrulesEditorCheckReply/messages/wbrulesEditorCheckReply'
+  wbrulesEditorGetTypes:
+    action: send
+    channel:
+      $ref: '#/channels/wbrulesEditorGetTypes'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/wbrulesEditorGetTypes/messages/wbrulesEditorGetTypes'
+    reply:
+      channel:
+        $ref: '#/channels/wbrulesEditorGetTypesReply'
+      messages:
+        - $ref: '#/channels/wbrulesEditorGetTypesReply/messages/wbrulesEditorGetTypesReply'
   wbrulesEditorLoad:
     action: send
     channel:
@@ -197,6 +255,22 @@ components:
       name: editorListReply
       payload:
         $ref: '#/components/schemas/wbrulesEditorListReplyPayload'
+    wbrulesEditorCheck:
+      name: editorCheck
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorCheckPayload'
+    wbrulesEditorCheckReply:
+      name: editorCheckReply
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorCheckReplyPayload'
+    wbrulesEditorGetTypes:
+      name: editorGetTypes
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorGetTypesPayload'
+    wbrulesEditorGetTypesReply:
+      name: editorGetTypesReply
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorGetTypesReplyPayload'
     wbrulesEditorLoad:
       name: editorLoad
       payload:
@@ -358,6 +432,91 @@ components:
               type: boolean
             error:
               $ref: '#/components/schemas/errorItem'
+          required:
+            - content
+      required:
+        - id
+        - result
+    wbrulesEditorCheckPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            path:
+              type: string
+              description: virtual path of the rule file to type-check
+          required:
+            - path
+      required:
+        - id
+        - params
+    wbrulesEditorCheckReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [ready, pending, not-ts, unsupported]
+              description: >-
+                diags are valid only for 'ready'; poll again on 'pending';
+                'not-ts' for files the checker does not cover (not a
+                rule file, or disabled; .js files ARE checked); 'unsupported'
+                when the engine runs without tsgo or without the bundled
+                type declarations
+            diags:
+              type: array
+              items:
+                type: object
+                properties:
+                  file:
+                    type: string
+                    description: set only for diagnostics from another file (import/reference)
+                  line:
+                    type: number
+                  column:
+                    type: number
+                  severity:
+                    type: string
+                    enum: [error, warning]
+                  message:
+                    type: string
+                  code:
+                    type: number
+                    description: TypeScript diagnostic code (the NNNN of TSNNNN), when known
+          required:
+            - status
+            - diags
+      required:
+        - id
+        - result
+    wbrulesEditorGetTypesPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+      required:
+        - id
+        - params
+    wbrulesEditorGetTypesReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: object
+          properties:
+            content:
+              type: string
+              description: the installed wb-rules.d.ts declarations
           required:
             - content
       required:

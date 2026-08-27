@@ -44,7 +44,7 @@
 | Per-script RSS-лимит | невозможен при одном heap ([ADR-004](ADR-004-one-runtime-realm-per-file.md)) |
 | Только watchdog | не закрывает crash-loop при краше в загрузке и панику CallSync |
 | Лимит 60 с | 60 с простоя всех правил на контроллере — слишком долго; 10 с покрывает реальные правила корпуса |
-| Lint в редакторе как единственная защита | не защищает ssh/scp-воркфлоу; реализован как дополнение (ADR-016) |
+| Lint в редакторе как единственная защита | не защищает ssh/scp-воркфлоу; реализован как дополнение ([ADR-016](ADR-016-custom-forgot-await-diagnostics-not-eslint.md)) |
 | Убивать процесс при OOM и полагаться на systemd | теряются все правила и состояние; цикл рестартов |
 
 ## Последствия
@@ -70,7 +70,7 @@
 
 ## Ссылки
 
-- [ADR-004](ADR-004-one-runtime-realm-per-file.md), [ADR-005](ADR-005-microtask-pump-rejection-tracker.md), ADR-016.
+- [ADR-004](ADR-004-one-runtime-realm-per-file.md), [ADR-005](ADR-005-microtask-pump-rejection-tracker.md), [ADR-016](ADR-016-custom-forgot-await-diagnostics-not-eslint.md).
 - `wbrules/esengine.go` (`DEFAULT_JS_EXECUTION_LIMIT`, `DEFAULT_JS_MEMORY_LIMIT`),
   `wbrules/engine.go` (`ENGINE_CALLSYNC_TIMEOUT`, строки ~1036–1057), `wbrules/loadguard.go`,
   `internal/quickjsduk/duktape.go` (`SetExecutionTimeLimit`, `SetMemoryLimit`, `goInterrupt`),

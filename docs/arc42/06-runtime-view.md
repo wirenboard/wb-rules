@@ -1,6 +1,6 @@
 # 6. Представление времени выполнения
 
-Сценарии ниже показывают, как блоки из §5 взаимодействуют в ключевых ситуациях. Везде действует инвариант: весь JS исполняется на одной горутине («engine loop», `syncQueue` → `syncLoop`), остальные горутины (драйвер, таймеры, RPC) лишь ставят замыкания в очередь через `CallSync`/`MaybeCallSync`.
+Сценарии ниже показывают, как блоки из §5 взаимодействуют в ключевых ситуациях. Везде действует инвариант: весь JS исполняется на одной горутине («engine loop», `syncQueue` → `syncLoop`), остальные горутины (драйвер, таймеры, RPC, tsgo-проверки) лишь ставят замыкания в очередь через `CallSync`/`MaybeCallSync`.
 
 ## 6.1 (g) Старт процесса
 
@@ -15,10 +15,10 @@ sequenceDiagram
     M->>D: NewDriverBase(id wb-rules, storage -vdb, Reown=!precise) → StartLoop(), SetFilter(AllDevices), WaitForReady
     M->>E: NewESEngine(driver, engineMqttClient, options)
     E->>Q: NewContext() → globalCtx · SetExecutionTimeLimit(-js-timeout) · SetMemoryLimit(-js-memory-limit) · SetJobErrorHandler
-    E->>E: persistent DB (-pdb, 0640) · прототипы · installBuiltins
+    E->>E: NewTSCompiler(-tsgo) (Available()? иначе лог «tsgo binary not found …») · persistent DB (-pdb, 0640) · прототипы · installBuiltins
     E->>Q: loadLib(): eval lib.js в globalCtx → глобал сохраняется в heap stash как __wbGlobalPrototype
     E->>D: setupRuleEngineSettingsDevice() → vdev «wbrules» / «Rule debugging»
-    M->>E: engine.Start() → mainLoop(), syncLoop() · NewDirWatcher(regexp js|.disabled) · SetSourceRoot(-editdir)
+    M->>E: engine.Start() → mainLoop(), syncLoop() · NewDirWatcher(regexp js|ts|.disabled) · SetSourceRoot(-editdir)
     loop каждый аргумент (файл/каталог)
         M->>E: watcher.Load(path) → LiveLoadFile → сценарий 6.2
     end
@@ -27,10 +27,10 @@ sequenceDiagram
 ```
 
 1. Флаги → `-http` (метрики, pprof) → `wbgong.Init(wbgo.so)`; при дефолтном `-broker` и наличии `/var/run/mosquitto/mosquitto.sock` — переключение на unix-сокет.
-2. Драйвер (MQTT-клиент `rules`) стартует и ждёт готовности; затем `NewESEngine`: лимиты и обработчик async-ошибок ставятся на `globalCtx` (runtime-wide), далее prototypes, builtins, `lib.js`, vdev настроек.
+2. Драйвер (MQTT-клиент `rules`) стартует и ждёт готовности; затем `NewESEngine`: лимиты и обработчик async-ошибок ставятся на `globalCtx` (runtime-wide), далее prototypes, builtins, `lib.js`, vdev настроек. Проба tsgo — только лог (ADR-011); персистентный `tsgo --api --async` стартует лениво при первой транспиляции `.ts`.
 3. `engine.Start()` запускает `mainLoop` (ждёт `driverReadyCh`) и `syncLoop`; DirWatcher загружает файлы; при `-editdir` регистрируется Editor RPC — уже после загрузки всех файлов.
 
-## 6.2 (a) Загрузка / перезагрузка файла правил
+## 6.2 (a) Загрузка / перезагрузка `.js`
 
 ```mermaid
 sequenceDiagram
@@ -61,11 +61,41 @@ sequenceDiagram
 ```
 
 1. Источник — fsnotify (DirWatcher в wbgo-private) или `watcher.Load` при старте; всё на engine loop. `ContentTracker` (md5) отсекает неизменённое содержимое (кроме `loadIfUnchanged=true` от `LiveWriteScript`).
-2. `runCleanups(path)` снимает всё, что файл создал раньше: правила, vdev (удаляются и создаются заново), `trackMqtt`, таймеры; старый realm помечается `invalid` (поздние колбэки пропускаются). Карантин loadguard проверяется до создания realm'а (см. 6.4).
+2. `runCleanups(path)` снимает всё, что файл создал раньше: правила, vdev (удаляются и создаются заново), `trackMqtt`, таймеры; старый realm помечается `invalid` (поздние колбэки пропускаются). Карантин loadguard проверяется до создания realm'а (см. 6.5).
 3. Новый realm: глобал файла наследует `__wbGlobalPrototype` (lib.js), realm-локальные builtins и `__wbBindRealmAPI` (ADR-004, ADR-007).
 4. Файл всегда оборачивается в `async function F(module, exports)` (ADR-006): синхронная ошибка = отклонённый промис ⇒ ошибка загрузки; `await` верхнего уровня оставляет промис pending. `Refresh()` пересобирает зависимости и cron и публикует `/wbrules/updates/changed`.
 
-## 6.3 (b) Изменение контрола → правило → запись
+## 6.3 (b) Загрузка `.ts`
+
+```mermaid
+sequenceDiagram
+    participant E as ESEngine (engine loop)
+    participant TS as TSCompiler
+    participant TG1 as tsgo --api --async (child)
+    participant C as ESContext
+    participant TG2 as tsgo --noEmit (batch)
+    participant B as MQTT
+    E->>E: как в 6.2 до LoadScenario (tracker, cleanups, loadguard, новый realm)
+    E->>TS: preprocessRuleSource(path, src): Available()? иначе ошибка «TypeScript compiler not found … wb-tsgo» + tracker.Untrack
+    TS->>TG1: transpileModule(src, ESNext, sourceMap) по stdin/stdout (JSON-RPC)
+    TG1-->>TS: JS + source map → lineMaps[path]
+    alt синтаксическая ошибка
+        TS-->>E: TSSyntaxError{Line} → ошибка загрузки на строке .ts, tsCheckResults[path] = терминальный вердикт
+    end
+    E->>C: LoadScenario с wrapPrologue «"use strict"», lineTranslator=TranslateLine → запуск как в 6.2
+    E->>E: scheduleTsCheck(path): tsCheckGen[path]++, entry pending, registry = controlsRegistryDts()
+    E->>TS: CheckAsync(path, registry, report) — батч 300 мс, семафор 2
+    TS->>TG2: tsgo --noEmit --pretty false --target esnext --lib esnext --strict false --module esnext --moduleDetection force --allowJs --checkJs <files> wb-rules.d.ts /tmp/wb-controls-*.d.ts (60 s)
+    TG2-->>TS: «path(line,col): error TSnnnn: msg» построчно
+    TS-->>E: report(diags) → MaybeCallSync: gen совпал? → tsCheckResults[path]={ready,diags}
+    E->>B: /wbrules/log/warning «TS check: file:line:col: msg» (≤10 строк на файл)
+    Note over E: правила уже работают · диагностика advisory · Editor.Check читает кэш
+```
+
+1. Транспиляция — «run first, check later» (ADR-010): ~1 мс на файл через персистентный дочерний процесс; source map даёт таблицу строк, трейсбеки указывают на `.ts`. Отсутствие tsgo — ошибка загрузки; `loadScript` снимает файл с дедупликации (`Untrack`), чтобы повтор сработал, когда tsgo появится.
+2. Фоновая проверка батчится (0.27 с/файл против 0.34 с на 20 файлов) и ограничена двумя процессами; реестр контролов передаётся временным `.d.ts` (ADR-014). Результат — в лог правил и в кэш `Editor.Check`; `.js` проверяются тоже (`--checkJs`), но advisory (ADR-012).
+
+## 6.4 (c) Изменение контрола → правило → запись
 
 ```mermaid
 sequenceDiagram
@@ -101,7 +131,7 @@ sequenceDiagram
 2. Запись в локальный vdev обновляет кэш немедленно и порождает новое событие; запись во внешнее устройство идёт в `/on`-топик, кэш обновится по эху. Отказ драйвера (неверный тип) — только лог (ADR-009).
 3. Async-колбэк: после первого `await` управление возвращается в Go, шим дренирует микрозадачи; дальнейшие шаги выполняются из других входов в JS на той же горутине (ADR-005).
 
-## 6.4 (c) Watchdog, ограничение кучи, карантин loadguard
+## 6.5 (d) Watchdog, ограничение кучи, карантин loadguard
 
 ```mermaid
 sequenceDiagram
@@ -135,7 +165,7 @@ sequenceDiagram
 1. Watchdog измеряет wall-time одного синхронного входа в JS или одного promise job (каждый job — своё окно `jobStart`); срабатывание — обычное JS-исключение с понятным текстом, другие правила работают дальше (ADR-008). Лимит кучи общий для всех realm'ов (ADR-004): аллокационная бомба даёт catchable OOM, а не смерть процесса.
 2. Loadguard защищает от crash-loop «файл падает при каждой загрузке → systemd перезапускает → Editor RPC недоступен»: после трёх подряд крахов файл пропускается до редактирования.
 
-## 6.5 (d) Editor.Save из homeui
+## 6.6 (e) Editor.Save из homeui
 
 ```mermaid
 sequenceDiagram
@@ -150,15 +180,41 @@ sequenceDiagram
     RPC->>ED: Save(args): path.Clean, validateScriptPath · файл отключён ⇒ +.disabled
     ED->>E: LiveWriteScript(virtualPath, content) → CallSync: checkVirtualPath → физический путь под -editdir
     E->>FS: MkdirAll, os.WriteFile (DirWatcher тоже сработает — ContentTracker дедуплицирует)
-    E->>E: loadScriptAndRefresh(cleanPath, true) — сценарий 6.2
+    E->>E: loadScriptAndRefresh(cleanPath, true) — сценарий 6.2 (для .ts — 6.3)
     alt загрузка без ошибок
         ED-->>RPC: EditorSaveResponse{path}
     else ScriptError / ошибка записи
         ED-->>RPC: {path, error: msg, traceback:[{line,name}]} (in-band) / RPC error 1002 (EDITOR_ERROR_WRITE)
     end
     RPC->>B: /rpc/v1/wbrules/Editor/Save/<clientId>/reply
-    B-->>UI: ответ · параллельно /wbrules/updates/changed и /wbrules/log/* обновляют список/консоль
+    B-->>UI: ответ · параллельно /wbrules/updates/changed и /wbrules/log/* обновляют список/консоль · для .ts → checkTsFile (6.7)
 ```
 
 1. RPC обслуживается горутиной сервера wbgo.so; `Save` блокируется на `LiveWriteScript` до завершения загрузки на engine loop. Ошибка скрипта возвращается в теле ответа (редактор показывает её у строки), системная — кодом RPC.
 2. Сохранение = запись + принудительная перезагрузка (`loadIfUnchanged=true`), включая удаление/пересоздание vdev (гонка драйвера исправлена в wbgo-private #100).
+
+## 6.7 (f) Редактор homeui: типы, реестр, language service, опрос Editor.Check
+
+```mermaid
+sequenceDiagram
+    participant P as edit-rule.tsx
+    participant S as rulesStore / devicesStore
+    participant RPC as Editor RPC (через MQTT)
+    participant LS as ts-language-service (lazy chunk)
+    participant CM as CodeMirror 6
+    P->>RPC: Editor.Load(path) → content · Editor.GetTypes() (race с таймаутом 3 с)
+    RPC-->>P: wb-rules.d.ts контроллера (fallback: vendored autocomplete/wb-rules.d.ts)
+    P->>S: buildControlsRegistry(devicesStore) → interface WbControls {...}
+    P->>LS: import() → loadTsEditorSupport(path, content, typesDts, registryDts)
+    LS->>LS: TS LS (lib.es*.d.ts, allowJs+checkJs, strict:false) + кастомные диагностики 990001–990004
+    LS-->>CM: completions, hover, lint (squiggles)
+    P->>S: checkTsFile(path)
+    loop ≤40 раз, backoff 700 мс → 2 с (≈1 мин), пока status=pending
+        S->>RPC: Editor.Check({path})
+        RPC-->>S: {status, diags}
+    end
+    S-->>CM: ready ⇒ controller-diagnostics → merge (dedupe против LS), lint-refresh · /wbrules/log/error с path:line → runtime-errors → lint · /wbrules/log/+ → консоль · /wbrules/updates/changed → список
+```
+
+1. Типы берутся с контроллера (`GetTypes`), vendored-копия — fallback для старых прошивок (ADR-015); реестр контролов строится из `devicesStore` — тот же приём, что `controlsRegistryDts` на контроллере (ADR-014).
+2. Локальная диагностика мгновенна; авторитетный вердикт контроллера приходит опросом `Editor.Check` и показывается инлайн с дедупликацией (ADR-016 — кастомные проверки «забытого await» вместо ESLint).

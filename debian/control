@@ -4,12 +4,12 @@ Section: misc
 Priority: optional
 Multi-Arch: foreign
 Standards-Version: 4.5.1
-Build-Depends: debhelper-compat (= 13), golang-1.26-go:native (>= 1.26.7)
+Build-Depends: debhelper-compat (= 13), golang-1.26-go:native (>= 1.26.7), wb-tsgo:native <!nocheck>
 Homepage: https://github.com/wirenboard/wb-rules
 
 Package: wb-rules
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, wb-tsgo
 Breaks: wb-mqtt-confed (<< 1.0.2), wb-rules-system (<< 1.6.13), wb-mqtt-dac (<< 1.1.2)
 Recommends: modemmanager (>=1.22.0), ssmtp, curl
 Description: Wiren Board Rule Engine

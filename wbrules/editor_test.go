@@ -36,7 +36,7 @@ func (s *EditorSuite) SetupTest() {
 	s.RpcFixture = testutils.NewRpcFixture(
 		s.T(), "wbrules", "Editor", "wbrules",
 		NewEditor(s),
-		"ChangeState", "List", "Load", "Remove", "Rename", "Save")
+		"ChangeState", "Check", "GetTypes", "List", "Load", "Remove", "Rename", "Save")
 }
 
 func (s *EditorSuite) TearDownTest() {
@@ -45,6 +45,10 @@ func (s *EditorSuite) TearDownTest() {
 	s.Suite.TearDownTest()
 }
 
+// EditorSuite deliberately implements ONLY LocFileManager, not the optional
+// TsFileManager extension: it doubles as the compile-time proof that a
+// manager without the TypeScript hooks (an external adapter, a test double)
+// still satisfies the Editor - see TestCheckWithoutTsSupport.
 func (s *EditorSuite) ScriptDir() string {
 	return s.DataFileTempDir()
 }
@@ -291,6 +295,19 @@ func (s *EditorSuite) TestSaveFile() {
 		EDITOR_ERROR_INVALID_PATH, "EditorError", "File name should not start with a dot")
 }
 
+// A manager that implements only LocFileManager (no TsFileManager
+// extension): Check answers "unsupported" with an empty diagnostics list and
+// GetTypes fails cleanly, instead of every implementation being forced to
+// grow the TypeScript methods.
+func (s *EditorSuite) TestCheckWithoutTsSupport() {
+	s.VerifyRpc("Check", objx.Map{"path": "sample1.js"}, objx.Map{
+		"status": TS_CHECK_UNSUPPORTED,
+		"diags":  []interface{}{},
+	})
+	s.VerifyRpcError("GetTypes", objx.Map{},
+		EDITOR_ERROR_READ, "EditorError", "Type declarations unavailable")
+}
+
 func (s *EditorSuite) TestRemoveFile() {
 	s.VerifyRpc("Remove", objx.Map{"path": "sample1.js"}, true)
 	s.verifySources(map[string]string{
@@ -395,7 +412,7 @@ func (s *EditorSuite) TestRenameFile() {
 	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": "sub/.hidden.js"},
 		EDITOR_ERROR_INVALID_PATH, "EditorError", "File name should not start with a dot")
 	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": "sample1_new"},
-		EDITOR_ERROR_INVALID_EXT, "EditorError", "File name should end with .js")
+		EDITOR_ERROR_INVALID_EXT, "EditorError", "File name should end with .js or .ts")
 	s.VerifyRpcError("Rename", objx.Map{"path": "sample1.js", "new_path": strings.Repeat("x", 255) + ".js"},
 		EDITOR_ERROR_INVALID_LEN, "EditorError", "File path should be shorter than or equal to 255 chars")
 	s.VerifyRpcError("Rename", objx.Map{"path": "nosuchfile.js", "new_path": "sample1_new.js"},

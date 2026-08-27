@@ -105,9 +105,10 @@ func (s *RuleCronDisableSuite) TestCronRuleStaysDisabledAfterReload() {
 	s.SkipTill("[info] cron rule enabled")
 
 	s.cron.invokeEntries("@hourly")
-	s.Verify(
-		"[info] cron rule fired",
-	)
+	// SkipTill, not Verify: the driver's echo of the enabled/on publish
+	// (driver client) can trail the rule log line (wbrules-log client)
+	// under load and still be queued at this point
+	s.SkipTill("[info] cron rule fired")
 }
 
 func TestRuleCronSuite(t *testing.T) {

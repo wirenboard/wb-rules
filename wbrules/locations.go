@@ -27,6 +27,20 @@ type LocFileManager interface {
 	LiveWriteScript(virtualPath, content string) error
 }
 
+// TsFileManager is the optional TypeScript extension of LocFileManager.
+// The Editor detects it with a type assertion, so a LocFileManager
+// implementation without TypeScript support (an out-of-repository adapter
+// or test double) keeps compiling and simply answers "unsupported".
+type TsFileManager interface {
+	// CheckTsFile returns the cached background type-check verdict for
+	// one rule file plus a status: "ready", "pending", "not-ts" or
+	// "unsupported" (see TS_CHECK_* constants).
+	CheckTsFile(physicalPath string) ([]TSDiag, string)
+	// TsTypesContent returns the installed wb-rules.d.ts so editors can
+	// validate against the API of the engine actually running.
+	TsTypesContent() (string, error)
+}
+
 // ScriptError denotes an error that was caused by JavaScript code.
 // Files with such errors are partially loaded.
 type ScriptError struct {
