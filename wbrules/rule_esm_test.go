@@ -1,6 +1,7 @@
 package wbrules
 
 import (
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -250,6 +251,17 @@ func (s *EsmSuite) TestEditorResolveModule() {
 	err := editor.ResolveModule(&EditorResolveModuleArgs{From: libPath, Specifier: "no/such"}, &reply)
 	s.Error(err)
 	s.Contains(err.Error(), `cannot find module "no/such"`)
+	// the editor is served files from the rules workspace only: an absolute
+	// specifier (or a relative one from a foreign base) pointing elsewhere
+	// is refused, while the runtime resolver would accept it
+	outside := filepath.Join(s.T().TempDir(), "outside.js")
+	s.Ck("write", os.WriteFile(outside, []byte("exports.x = 1;"), 0o600))
+	err = editor.ResolveModule(&EditorResolveModuleArgs{From: libPath, Specifier: outside}, &reply)
+	s.Error(err)
+	s.Contains(err.Error(), "outside the rule and module directories")
+	s.Empty(reply.Path, "a failed call leaves no stale reply")
+	err = editor.ResolveModule(&EditorResolveModuleArgs{From: outside, Specifier: "./outside.js"}, &reply)
+	s.Error(err)
 	// an unsaved rule (unknown to the engine) still resolves bare specifiers;
 	// a relative one has nothing to be relative to
 	s.Ck("ResolveModule", editor.ResolveModule(
@@ -258,6 +270,18 @@ func (s *EsmSuite) TestEditorResolveModule() {
 	err = editor.ResolveModule(&EditorResolveModuleArgs{From: "unsaved.ts", Specifier: "./x.js"}, &reply)
 	s.Error(err)
 	s.Contains(err.Error(), "needs an importing file")
+}
+
+func (s *EsmSuite) TestExplicitCjsExtension() {
+	// .cjs: a script by name whatever its text looks like (the .mjs
+	// counterpart, which needs the TypeScript modules, is in the TS suite)
+	s.loadEsm("testrules_esm_explicit.cjs")
+	s.publish("/devices/cjsx/controls/trigger/on", "1", "cjsx/trigger")
+	s.Verify(
+		"tst -> /devices/cjsx/controls/trigger/on: [1] (QoS 1)",
+		"driver -> /devices/cjsx/controls/trigger: [1] (QoS 1, retained)",
+		"[info] cjsx: object 29",
+	)
 }
 
 func TestEsmSuite(t *testing.T) {

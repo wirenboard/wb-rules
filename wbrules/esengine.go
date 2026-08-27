@@ -287,7 +287,7 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		// the stripped "use strict" prologue is re-added inside the
 		// single-line wrapper, keeping line numbers aligned
 		engine.ctxFactory.wrapPrologue = func(path string) string {
-			if strings.HasSuffix(path, ".ts") && !strings.HasSuffix(path, ".d.ts") {
+			if isTypeScriptFile(path) {
 				return `"use strict";`
 			}
 			return ""
@@ -300,13 +300,13 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	} else {
 		// explicit -tsgo="": .ts files are rejected, never run as raw JS
 		engine.ctxFactory.preprocessor = func(path string, src []byte) ([]byte, error) {
-			if strings.HasSuffix(path, ".d.ts") {
+			if isDeclarationFile(path) {
 				// the deb ships wb-rules.d.ts inside a watched dir;
 				// declaration files are not executable code and must
 				// not produce a boot error
 				return []byte("// TypeScript declaration file, nothing to execute\n"), nil
 			}
-			if strings.HasSuffix(path, ".ts") {
+			if isTypeScriptFile(path) {
 				return nil, fmt.Errorf(`TypeScript support is disabled (-tsgo="")`)
 			}
 			return src, nil
@@ -396,14 +396,14 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 // background afterwards and only ever produces warnings — rules run first,
 // diagnostics arrive later.
 func (engine *ESEngine) preprocessRuleSource(path string, src []byte) ([]byte, error) {
-	if strings.HasSuffix(path, ".d.ts") {
+	if isDeclarationFile(path) {
 		// declaration files carry no executable code and make the
 		// transpiler panic; they may sit in watched rule dirs
 		wbgong.Debug.Printf("skipping TypeScript declaration file %s", path)
 		return []byte("// TypeScript declaration file, nothing to execute\n"), nil
 	}
-	isTS := strings.HasSuffix(path, ".ts")
-	if !isTS && !strings.HasSuffix(path, ".js") {
+	isTS := isTypeScriptFile(path)
+	if !isTS && !isJavaScriptFile(path) {
 		return src, nil
 	}
 
@@ -1341,7 +1341,7 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 	// The .ts/.js split here is a load-path distinction, not a language one:
 	// only .ts goes through tsgo, so only a .ts failure can be caused by tsgo
 	// being absent. Available() re-probes the tsgo binary.
-	if err != nil && strings.HasSuffix(path, ".ts") && engine.tsc != nil && !engine.tsc.Available() {
+	if err != nil && isTypeScriptFile(path) && engine.tsc != nil && !engine.tsc.Available() {
 		engine.tracker.Untrack(virtualPath)
 	}
 	return true, err
@@ -3562,8 +3562,7 @@ func (engine *ESEngine) CheckTsFile(physicalPath string) ([]TSDiag, string) {
 	if engine.tsc == nil || !engine.tsc.Available() || !engine.tsc.CheckSupported() {
 		return nil, TS_CHECK_UNSUPPORTED
 	}
-	checkable := (strings.HasSuffix(physicalPath, ".ts") || strings.HasSuffix(physicalPath, ".js")) &&
-		!strings.HasSuffix(physicalPath, ".d.ts")
+	checkable := isTypeScriptFile(physicalPath) || isJavaScriptFile(physicalPath)
 	if !checkable {
 		return nil, TS_CHECK_NOT_TS
 	}

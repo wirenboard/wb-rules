@@ -578,7 +578,8 @@ components:
               description: >-
                 the import specifier as written: relative ("./x") resolves next
                 to the importing file, bare ("my-helper", "dir/x") in the module
-                directories, absolute as is; ".js"/".ts" are probed
+                directories, absolute as is; ".js"/".ts" are probed. Only files
+                under the rule directory and the module directories are served
           required:
             - from
             - specifier
@@ -604,7 +605,10 @@ components:
             - content
         error:
           type: object
-          description: 'code 1003 when the specifier cannot be resolved'
+          description: >-
+            code 1003 when the specifier cannot be resolved (or resolves
+            outside the rule and module directories - only those are served),
+            1005 when the engine has no module resolution
       required:
         - id
     wbrulesEditorRemovePayload:

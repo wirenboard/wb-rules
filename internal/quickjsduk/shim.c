@@ -421,10 +421,13 @@ JSModuleDef *qjd_new_cjs_module(JSContext *ctx, const char *name, JSValue export
     JSModuleDef *m = JS_NewCModule(ctx, name, cjs_module_init);
     if (!m)
         return NULL;
-    if (JS_AddModuleExport(ctx, m, "default") < 0)
+    if (JS_AddModuleExport(ctx, m, "default") < 0 ||
+        cjs_each_export_name(ctx, exports, cjs_add_export, m) < 0) {
+        /* a half-built definition must not stay registered under the name:
+         * a later import would find it and get undefined exports */
+        JS_FreeValue(ctx, JS_MKPTR(JS_TAG_MODULE, m));
         return NULL;
-    if (cjs_each_export_name(ctx, exports, cjs_add_export, m) < 0)
-        return NULL;
+    }
     JS_SetModulePrivateValue(ctx, m, JS_DupValue(ctx, exports));
     return m;
 }

@@ -29,21 +29,73 @@ import (
 // requiring MODULE ID (so from a rule file, "./x" is just "x" in the module
 // directories), never against the file system. See resolveModuleID.
 //
-// A candidate is tried as given, then with ".js" and ".ts" appended, and a
-// missing ".js" falls back to the ".ts" of the same name (the TypeScript
-// convention of importing the emitted name).
+// A candidate is tried as given (if it names a .js/.ts/.mjs/.mts/.cjs/.cts
+// file), a missing ".js" falls back to the ".ts" of the same name (the
+// TypeScript convention of importing the emitted name; .mjs -> .mts,
+// .cjs -> .cts likewise), and a name without a module extension gets them
+// appended in turn.
 
-var moduleProbeExts = []string{".js", ".ts"}
+// File kinds by extension, Node.js-style: .js/.ts decide their format by
+// their syntax (an import/export declaration makes an ES module), .mjs/.mts
+// are always ES modules and .cjs/.cts always classic CommonJS-style
+// scripts. .ts/.mts/.cts are TypeScript, transpiled on load.
+var (
+	jsExts          = []string{".js", ".mjs", ".cjs"}
+	tsExts          = []string{".ts", ".mts", ".cts"}
+	declExts        = []string{".d.ts", ".d.mts", ".d.cts"}
+	moduleProbeExts = append(append([]string{}, jsExts...), tsExts...)
+)
 
-// probeModuleFile returns the first existing regular file for path p among
-// the candidate spellings, or "".
-func probeModuleFile(p string) string {
-	cands := []string{p}
-	for _, ext := range moduleProbeExts {
-		cands = append(cands, p+ext)
+func hasAnySuffix(p string, exts []string) bool {
+	for _, ext := range exts {
+		if strings.HasSuffix(p, ext) {
+			return true
+		}
 	}
-	if strings.HasSuffix(p, ".js") {
-		cands = append(cands, strings.TrimSuffix(p, ".js")+".ts")
+	return false
+}
+
+// isTypeScriptFile: a .ts/.mts/.cts source (declaration files excluded).
+func isTypeScriptFile(p string) bool { return hasAnySuffix(p, tsExts) && !isDeclarationFile(p) }
+
+// isDeclarationFile: .d.ts and friends - no executable code.
+func isDeclarationFile(p string) bool { return hasAnySuffix(p, declExts) }
+
+// isJavaScriptFile: a .js/.mjs/.cjs source.
+func isJavaScriptFile(p string) bool { return hasAnySuffix(p, jsExts) }
+
+// isModuleFile reports whether a path names a file the engine can load as a
+// module (JavaScript or TypeScript) - a `import "./config.json"` must fail
+// as unsupported rather than run through the CommonJS wrapper.
+func isModuleFile(p string) bool { return hasAnySuffix(p, moduleProbeExts) }
+
+// tsSourceFor maps an emitted JavaScript name to its TypeScript source
+// name (the TypeScript convention of importing the output name), "" if the
+// name is not a JavaScript one.
+func tsSourceFor(p string) string {
+	for i, ext := range jsExts {
+		if strings.HasSuffix(p, ext) {
+			return strings.TrimSuffix(p, ext) + tsExts[i]
+		}
+	}
+	return ""
+}
+
+// probeModuleFile returns the first existing regular module file for path p
+// among the candidate spellings, or "": the path as written (if it names a
+// .js/.ts file), the TypeScript source behind a ".js" name, then ".js" and
+// ".ts" appended.
+func probeModuleFile(p string) string {
+	var cands []string
+	if isModuleFile(p) {
+		cands = append(cands, p)
+		if ts := tsSourceFor(p); ts != "" {
+			cands = append(cands, ts)
+		}
+	} else {
+		for _, ext := range moduleProbeExts {
+			cands = append(cands, p+ext)
+		}
 	}
 	for _, c := range cands {
 		if fi, err := os.Stat(c); err == nil && fi.Mode().IsRegular() {
@@ -56,20 +108,24 @@ func probeModuleFile(p string) string {
 	return ""
 }
 
-// ResolveModule implements duktape.ModuleHost.
+// ResolveModule implements duktape.ModuleHost (the runtime's resolution: a
+// miss is also logged, a missing module being a deployment problem worth
+// noticing in the service log).
 func (engine *ESEngine) ResolveModule(base, spec string) (string, error) {
+	name, err := engine.resolveModule(base, spec)
+	if err != nil {
+		wbgong.Error.Printf("[modules] %s", err)
+	}
+	return name, err
+}
+
+func (engine *ESEngine) resolveModule(base, spec string) (string, error) {
 	wbgong.Debug.Printf("[modules] resolve %q from %q", spec, base)
 	notFound := func() error {
-		var err error
 		if base != "" {
-			err = fmt.Errorf("cannot find module %q (imported from %s)", spec, base)
-		} else {
-			err = fmt.Errorf("cannot find module %q", spec)
+			return fmt.Errorf("cannot find module %q (imported from %s)", spec, base)
 		}
-		// the script gets the error thrown; the service log gets a line too
-		// (a missing module is a deployment problem worth noticing)
-		wbgong.Error.Printf("[modules] %s", err)
-		return err
+		return fmt.Errorf("cannot find module %q", spec)
 	}
 	switch {
 	case spec == "":
@@ -106,7 +162,7 @@ func (engine *ESEngine) LoadModuleSource(name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("cannot read module %s: %w", name, err)
 	}
-	if !strings.HasSuffix(name, ".ts") {
+	if !isTypeScriptFile(name) {
 		return string(src), nil
 	}
 	if engine.tsc == nil {
@@ -165,19 +221,44 @@ func (engine *ESEngine) InitImportMeta(d *duktape.Context, name string) {
 }
 
 // ResolveModuleForEditor implements ModuleResolver (Editor.ResolveModule).
-// Only JavaScript and TypeScript files are served, as their source (a .ts
-// module is what the editor's language service wants, not its transpile).
+// Files are served as their source (a .ts module is what the editor's
+// language service wants, not its transpile), and only from the rules
+// workspace: the rule directory and the module directories. The runtime
+// resolves an absolute specifier anywhere (a rule can read any file through
+// spawn() anyway), but the editor must not become a general file reader.
+// Misses are not logged: an editor completing a specifier probes freely.
 func (engine *ESEngine) ResolveModuleForEditor(fromPhysical, spec string) (string, string, error) {
-	name, err := engine.ResolveModule(fromPhysical, spec)
+	name, err := engine.resolveModule(fromPhysical, spec)
 	if err != nil {
 		return "", "", err
 	}
-	if !strings.HasSuffix(name, ".js") && !strings.HasSuffix(name, ".ts") {
-		return "", "", fmt.Errorf("cannot find module %q: %s is not a JavaScript or TypeScript file", spec, name)
+	if !engine.inRulesWorkspace(name) {
+		return "", "", fmt.Errorf("cannot find module %q: %s is outside the rule and module directories", spec, name)
 	}
 	src, err := os.ReadFile(name)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot read module %s: %w", name, err)
 	}
 	return name, string(src), nil
+}
+
+// inRulesWorkspace reports whether an absolute path lies under the rules
+// source root or one of the module directories.
+func (engine *ESEngine) inRulesWorkspace(name string) bool {
+	roots := append([]string{}, engine.modulesDirs...)
+	if engine.sourceRoot != "" {
+		roots = append(roots, engine.sourceRoot)
+	}
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		if abs, err := filepath.Abs(root); err == nil {
+			root = abs
+		}
+		if rel, err := filepath.Rel(root, name); err == nil && rel != ".." && !strings.HasPrefix(rel, "../") {
+			return true
+		}
+	}
+	return false
 }

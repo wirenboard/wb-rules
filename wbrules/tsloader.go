@@ -784,10 +784,14 @@ func (c *TSCompiler) checkMany(paths []string, registryDts string) (map[string][
 		// file by the path it was requested with and anything else as an
 		// absolute path, so log lines and Editor.Check carry real, clickable
 		// paths.
-		// A diagnostic outside the batch (possible only via cross-file
-		// resolution, which require()-style loading keeps rare) is charged
-		// to paths[0] and takes that file's .js/.ts severity policy.
-		owner := paths[0]
+		// A diagnostic inside a file the batch pulled in through an import
+		// (a module file, a sibling library) is dropped: it cannot be
+		// attributed to the rule file that imported it, so charging it to a
+		// batch member would put a red mark on an innocent file, and legacy
+		// sloppy .js modules would turn into errors for every .ts importer.
+		// The importer's own misuse of the module is still reported on the
+		// importer; a module that is itself a rule file gets its own check.
+		owner := ""
 		file := g[1]
 		for _, p := range paths {
 			if pathsRefSameFile(file, p) {
@@ -795,13 +799,11 @@ func (c *TSCompiler) checkMany(paths []string, registryDts string) (map[string][
 				break
 			}
 		}
-		if file == g[1] {
-			if abs, err := filepath.Abs(file); err == nil {
-				file = abs
-			}
+		if owner == "" {
+			continue
 		}
 		severity := g[4]
-		if strings.HasSuffix(owner, ".js") {
+		if isJavaScriptFile(owner) {
 			if sloppyJsCodes[code] {
 				continue
 			}

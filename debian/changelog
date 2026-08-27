@@ -35,17 +35,23 @@ wb-rules (3.0.0~quickjs2.1) unstable; urgency=medium
     for one that awaits at the top level); import() works everywhere.
     import.meta carries url, filename, dirname and static (module.static's
     counterpart). A missing or throwing import is a load error with the
-    module's traceback, reported once.
+    module's traceback, reported once. The extension can fix the format
+    the Node.js way: .mjs/.mts are always ES modules, .cjs/.cts always
+    classic scripts; all six load from the rule directories and resolve in
+    the module directories.
   * The TypeScript transpile runs with module "preserve" (import/export
     emitted as written, CommonJS forms untouched); the background check
     runs from a generated tsconfig with module "preserve",
     allowImportingTsExtensions and "paths" mapping bare specifiers onto the
     module directories, so imports from module files and sibling files are
-    typed for real.
+    typed for real. Diagnostics inside an imported file itself are dropped
+    (they belong to no rule file; a legacy sloppy .js module stays silent),
+    the importer's misuse of it is still reported.
   * Editor.ResolveModule mqtt-rpc method: resolves an import specifier the
     way the engine does for the file it is written in and returns the module
-    file's source, so editors can type imports against this controller's
-    modules (documented in asyncapi).
+    file's source - files under the rule and module directories only - so
+    editors can type imports against this controller's modules (documented
+    in asyncapi).
 
  -- Evgeny Boger <boger@wirenboard.com>  Wed, 19 Aug 2026 21:00:00 +0400
 

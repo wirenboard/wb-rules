@@ -56,7 +56,7 @@ var (
 func validateScriptPath(pth string) error {
 	if strings.HasPrefix(path.Base(pth), ".") {
 		return hiddenFileError
-	} else if !strings.HasSuffix(pth, ".js") && !strings.HasSuffix(pth, ".ts") {
+	} else if !isModuleFile(pth) {
 		return invalidExtensionError
 	} else if len(pth) > 255 {
 		return invalidLenError
@@ -224,6 +224,10 @@ func (editor *Editor) ResolveModule(args *EditorResolveModuleArgs, reply *Editor
 		} else {
 			from = ""
 		}
+	}
+	*reply = EditorResolveModuleResponse{}
+	if len(from) > 4096 || len(args.Specifier) > 4096 {
+		return &EditorError{EDITOR_ERROR_FILE_NOT_FOUND, "path too long"}
 	}
 	path, content, err := resolver.ResolveModuleForEditor(from, args.Specifier)
 	if err != nil {

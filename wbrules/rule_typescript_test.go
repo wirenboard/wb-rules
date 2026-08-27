@@ -579,6 +579,51 @@ func (s *RuleTypeScriptSuite) TestTsEsmRelativeImportChecked() {
 	s.Verify(regexp.MustCompile(`TS check: /.*testrules_ts_esm_check\.ts:8:.*number.*string.*`))
 }
 
+// A legacy sloppy .js module pulled into the program by an import keeps its
+// own problems to itself: only the importer's misuse is reported, on the
+// importer.
+func (s *RuleTypeScriptSuite) TestTsEsmSloppyModuleDiagnosticsNotCharged() {
+	s.Ck("LiveLoadScript", s.LiveLoadScript("testrules_ts_esm_sloppy.ts"))
+	s.SkipTill("wbrules-log -> /wbrules/updates/changed: [testrules_ts_esm_sloppy.ts] (QoS 1)")
+	// the journal gets exactly the importer's line; nothing about the module's
+	// implicit globals (which would have been TS2304 errors, since the
+	// importer is .ts)
+	s.Verify(regexp.MustCompile(`TS check: /.*testrules_ts_esm_sloppy\.ts:6:.*Expected 0-1 arguments.*`))
+	editor := NewEditor(s.engine)
+	var check EditorCheckResponse
+	for i := 0; i < 100; i++ {
+		s.Ck("Editor.Check", editor.Check(&EditorPathArgs{Path: "testrules_ts_esm_sloppy.ts"}, &check))
+		if check.Status != TS_CHECK_PENDING {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	s.Equal(TS_CHECK_READY, check.Status)
+	s.Len(check.Diags, 1, "only the importer's own misuse: %v", check.Diags)
+	s.Equal(6, check.Diags[0].Line)
+	s.Empty(check.Diags[0].File)
+}
+
+// .mjs: an ES module by name (strict, import.meta, no module/exports) that
+// requires a .cts module and imports a .mts one - TypeScript by extension,
+// classic and module by extension.
+func (s *RuleTypeScriptSuite) TestExplicitMjsWithTypeScriptModules() {
+	s.Ck("LiveLoadScript", s.LiveLoadScript("testrules_esm_explicit.mjs"))
+	for _, item := range []string{
+		"[info] Module esm legacy.cts init",
+		"[info] Module esm typed-only.mts init",
+		"[changed] testrules_esm_explicit.mjs",
+	} {
+		s.SkipTill(item)
+	}
+	s.publish("/devices/esmx/controls/trigger/on", "1", "esmx/trigger")
+	s.Verify(
+		"tst -> /devices/esmx/controls/trigger/on: [1] (QoS 1)",
+		"driver -> /devices/esmx/controls/trigger: [1] (QoS 1, retained)",
+		"[info] esmx: ReferenceError undefined true 42:object true",
+	)
+}
+
 // A bare specifier is typed from the module directories (tsconfig "paths"),
 // not swallowed by the `declare module "*"` fallback.
 func (s *RuleTypeScriptSuite) TestTsEsmBareImportChecked() {

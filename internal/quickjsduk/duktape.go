@@ -544,39 +544,57 @@ func goPromiseRejection(rt *C.JSRuntime, promise unsafe.Pointer, reason unsafe.P
 	rts.pendingRejections[uintptr(promise)] = pendingRejection{msg: m, reason: uintptr(reason)}
 }
 
-// retractRejection drops the pending record of promise `ptr` and, when the
-// rejection reason is an object (`reason` != 0), every other record carrying
-// that same reason - a host that surfaces the error itself must not see it
-// reported again as an unhandled rejection, whichever internal promises
-// QuickJS rejected with it along the way (a module body's async-function
-// promise, for one).
-func (rts *runtimeState) retractRejection(ptr, reason uintptr) {
+// retractRejection drops the pending record of promise `ptr` and every other
+// record carrying the same reason - a host that surfaces the error itself
+// must not see it reported again as an unhandled rejection, whichever
+// internal promises QuickJS rejected with it along the way (a module body's
+// async-function promise, for one). An object reason is matched by identity
+// (`reason`); a primitive one (`throw "text"`, `throw 42`) has no identity
+// and is matched by its stored text (`text`) among the records without one.
+func (rts *runtimeState) retractRejection(ptr, reason uintptr, text string) {
 	regMu.Lock()
 	defer regMu.Unlock()
 	delete(rts.pendingRejections, ptr)
-	if reason == 0 {
-		return
-	}
 	for k, v := range rts.pendingRejections {
-		if v.reason == reason {
+		if (reason != 0 && v.reason == reason) || (reason == 0 && v.reason == 0 && v.msg == text) {
 			delete(rts.pendingRejections, k)
 		}
 	}
 }
 
-// rejectionReasonPtr returns the identity of a rejected promise's reason
-// (0 unless the promise is rejected with an object).
-func rejectionReasonPtr(ctx *C.JSContext, p C.JSValue) uintptr {
+// rejectionReason describes a rejected promise's reason the way the tracker
+// keys it: the identity for an object, the stringified value for a
+// primitive (nothing for a promise that is not rejected).
+func rejectionReason(ctx *C.JSContext, p C.JSValue) (ptr uintptr, text string) {
 	if C.qjd_promise_state(ctx, p) != C.int(PromiseRejected) {
-		return 0
+		return 0, ""
 	}
 	r := C.qjd_promise_result(ctx, p)
-	var ptr uintptr
+	defer C.JS_FreeValue(ctx, r)
 	if C.JS_IsObject(r) != 0 {
-		ptr = uintptr(C.qjd_value_ptr(r))
+		return uintptr(C.qjd_value_ptr(r)), ""
 	}
-	C.JS_FreeValue(ctx, r)
-	return ptr
+	text = "[unstringifiable]"
+	var n C.size_t
+	if cs := C.JS_ToCStringLen(ctx, &n, r); cs != nil {
+		text = C.GoStringN(cs, C.int(n))
+		C.JS_FreeCString(ctx, cs)
+	} else {
+		C.JS_FreeValue(ctx, C.JS_GetException(ctx))
+	}
+	return 0, text
+}
+
+// excludeFromWatchdog runs fn - host work such as reading and transpiling a
+// module file, done from inside a JS entry - without it counting against
+// the script's execution window: the watchdog's start mark is moved forward
+// by the time fn took.
+func (rts *runtimeState) excludeFromWatchdog(fn func()) {
+	t0 := time.Now()
+	fn()
+	if rts.execStart.Load() != 0 {
+		rts.execStart.Add(int64(time.Since(t0)))
+	}
 }
 
 // flushRejections reports rejections still unhandled once the job queue
@@ -834,7 +852,8 @@ func (d *Context) PushPromiseResultTop() {
 func (d *Context) RetractTopPromiseRejection() {
 	s := d.st()
 	p := s.at(-1)
-	s.rts.retractRejection(uintptr(C.qjd_value_ptr(p)), rejectionReasonPtr(s.ctx, p))
+	ptr, text := rejectionReason(s.ctx, p)
+	s.rts.retractRejection(uintptr(C.qjd_value_ptr(p)), ptr, text)
 }
 
 func (d *Context) popN(n int) {

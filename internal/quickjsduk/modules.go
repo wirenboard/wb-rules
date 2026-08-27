@@ -126,17 +126,32 @@ func newJSString(ctx *C.JSContext, s string) C.JSValue {
 	return C.JS_NewStringLen(ctx, cs, C.size_t(len(s)))
 }
 
-// hostFor returns the runtime state and module host for a realm, throwing
-// when either is missing.
+// host returns the module host installed on this runtime (nil if none).
 func (rts *runtimeState) host() ModuleHost {
 	regMu.Lock()
 	defer regMu.Unlock()
 	return rts.moduleHost
 }
 
+// moduleFormatByName: an explicit format from the file name, Node.js-style:
+// .mjs/.mts are always ES modules, .cjs/.cts always classic scripts; other
+// names (.js/.ts) are decided by their syntax.
+func moduleFormatByName(name string) (isModule, explicit bool) {
+	switch {
+	case strings.HasSuffix(name, ".mjs"), strings.HasSuffix(name, ".mts"):
+		return true, true
+	case strings.HasSuffix(name, ".cjs"), strings.HasSuffix(name, ".cts"):
+		return false, true
+	}
+	return false, false
+}
+
 // compileSource compiles src for module `name` either as the classic script
 // wrapper `prefix + src + suffix` (a function expression) or, when that fails
-// and the source carries module syntax, as an ES module. Returns the compiled
+// and the source carries module syntax, as an ES module. A .mjs/.mts name
+// skips the wrapper and compiles as a module outright (so a file without
+// any import/export still gets module semantics: strict mode, import.meta);
+// a .cjs/.cts name never tries the module parse. Returns the compiled
 // function or module value (owned by the caller), whether it is a module, and
 // whether an exception is pending instead. A module already compiled in this
 // realm under `name` is returned again instead of being recompiled (QuickJS
@@ -160,17 +175,21 @@ func (rts *runtimeState) compileSource(ctx *C.JSContext, src, name, prefix, suff
 	cname := C.CString(name)
 	defer C.free(unsafe.Pointer(cname))
 
-	wrapped := prefix + src + suffix
-	cw := C.CString(wrapped)
-	anchor := rts.anchor()
-	rts.pushActive(ctx)
-	fn := C.qjd_eval(ctx, cw, C.size_t(len(wrapped)), cname, evalGlobal, anchor)
-	rts.popActive()
-	C.free(unsafe.Pointer(cw))
-	if C.qjd_tag(fn) != C.JS_TAG_EXCEPTION {
-		return fn, false, false
+	forceModule, explicit := moduleFormatByName(name)
+	var fn C.JSValue
+	if !forceModule {
+		wrapped := prefix + src + suffix
+		cw := C.CString(wrapped)
+		anchor := rts.anchor()
+		rts.pushActive(ctx)
+		fn = C.qjd_eval(ctx, cw, C.size_t(len(wrapped)), cname, evalGlobal, anchor)
+		rts.popActive()
+		C.free(unsafe.Pointer(cw))
+		if C.qjd_tag(fn) != C.JS_TAG_EXCEPTION {
+			return fn, false, false
+		}
 	}
-	if !LooksLikeESModule(src) {
+	if !forceModule && (explicit || !LooksLikeESModule(src)) {
 		if legacyErrors && strings.HasPrefix(prefix, "(") && strings.HasSuffix(suffix, ")") {
 			program := prefix[1:] + src + suffix[:len(suffix)-1]
 			cp := C.CString(program)
@@ -187,12 +206,15 @@ func (rts *runtimeState) compileSource(ctx *C.JSContext, src, name, prefix, suff
 		}
 		return fn, false, true // the wrapper's syntax error stands
 	}
-	// module syntax is present: the wrapper cannot hold it, the module
-	// parser can - its verdict (and its error) is the relevant one
-	C.JS_FreeValue(ctx, C.JS_GetException(ctx))
+	// module syntax is present (or the name says module): the wrapper
+	// cannot hold it, the module parser can - its verdict (and its error)
+	// is the relevant one
+	if !forceModule {
+		C.JS_FreeValue(ctx, C.JS_GetException(ctx))
+	}
 
 	csrc := C.CString(src)
-	anchor = rts.anchor()
+	anchor := rts.anchor()
 	rts.pushActive(ctx)
 	mod := C.qjd_compile_module(ctx, csrc, C.size_t(len(src)), cname, anchor)
 	rts.popActive()
@@ -250,7 +272,8 @@ func (rts *runtimeState) evaluateModuleSync(ctx *C.JSContext, mod C.JSValue, nam
 		return ns, C.qjd_tag(ns) == C.JS_TAG_EXCEPTION
 	case C.int(PromiseRejected):
 		reason := C.qjd_promise_result(ctx, p)
-		rts.retractRejection(uintptr(C.qjd_value_ptr(p)), rejectionReasonPtr(ctx, p))
+		ptr, text := rejectionReason(ctx, p)
+		rts.retractRejection(uintptr(C.qjd_value_ptr(p)), ptr, text)
 		C.JS_FreeValue(ctx, p)
 		return C.JS_Throw(ctx, reason), true
 	default:
@@ -390,26 +413,43 @@ func goRequire(ctx *C.JSContext, thisVal C.JSValue, argc C.int, argv *C.JSValue,
 	if h == nil {
 		return throwTypeErr(ctx, "require: no module host")
 	}
-	name, err := h.ResolveModule("", id)
+	var name string
+	var err error
+	rts.excludeFromWatchdog(func() { name, err = h.ResolveModule("", id) })
 	if err != nil {
 		return throwErrorWithCode(ctx, err.Error(), "MODULE_NOT_FOUND")
 	}
 	// the same file already loaded under another id (or imported): alias
 	if mod, ok := rts.cachedModule(ctx, fileKey(name)); ok {
 		regMu.Lock()
+		if old, had := rts.modules[moduleKey{ctx, id}]; had {
+			rts.deadVals = append(rts.deadVals, old)
+		}
 		rts.modules[moduleKey{ctx, id}] = C.JS_DupValue(ctx, mod)
 		regMu.Unlock()
 		out := C.qjd_get_module_exports(ctx, mod)
 		C.JS_FreeValue(ctx, mod)
 		return out
 	}
-	src, err := h.LoadModuleSource(name)
-	if err != nil {
-		return throwErrorWithCode(ctx, err.Error(), "")
-	}
-	compiled, isModule, exc := rts.compileSource(ctx, src, name, cjsWrapPrefix, cjsWrapSuffix, false)
-	if exc {
-		return compiled
+	// an ES module this realm has compiled (imported) but not required yet:
+	// no need to read and transpile its source again
+	var compiled C.JSValue
+	var isModule, exc bool
+	regMu.Lock()
+	cached, known := rts.esModules[moduleKey{ctx, name}]
+	regMu.Unlock()
+	if known {
+		compiled, isModule = C.JS_DupValue(ctx, cached), true
+	} else {
+		var src string
+		rts.excludeFromWatchdog(func() { src, err = h.LoadModuleSource(name) })
+		if err != nil {
+			return throwErrorWithCode(ctx, err.Error(), "")
+		}
+		compiled, isModule, exc = rts.compileSource(ctx, src, name, cjsWrapPrefix, cjsWrapSuffix, false)
+		if exc {
+			return compiled
+		}
 	}
 	mod, exc := rts.loadCompiled(ctx, id, name, compiled, isModule)
 	if exc {
@@ -432,7 +472,9 @@ func goModuleNormalize(ctx *C.JSContext, cbase *C.char, cname *C.char) *C.char {
 		throwTypeErr(ctx, "import: no module host")
 		return nil
 	}
-	resolved, err := h.ResolveModule(C.GoString(cbase), C.GoString(cname))
+	var resolved string
+	var err error
+	cs.rts.excludeFromWatchdog(func() { resolved, err = h.ResolveModule(C.GoString(cbase), C.GoString(cname)) })
 	if err != nil {
 		throwErrorWithCode(ctx, err.Error(), "ERR_MODULE_NOT_FOUND")
 		return nil
@@ -466,7 +508,9 @@ func goModuleLoad(ctx *C.JSContext, cname *C.char) *C.JSModuleDef {
 		return m
 	}
 
-	src, err := h.LoadModuleSource(name)
+	var src string
+	var err error
+	rts.excludeFromWatchdog(func() { src, err = h.LoadModuleSource(name) })
 	if err != nil {
 		throwErrorWithCode(ctx, err.Error(), "")
 		return nil
@@ -502,7 +546,9 @@ func goModuleLoad(ctx *C.JSContext, cname *C.char) *C.JSModuleDef {
 // Like the other compile entry points, pending promise jobs are drained
 // afterwards (a CommonJS dependency may have queued some while loading).
 // A non-module file's syntax error is reported the way wb-rules always did
-// (compileSource legacyErrors).
+// (compileSource legacyErrors). A module is one per realm and name: a
+// second call with the same filename returns the already compiled module,
+// whatever source it is given - callers load each file into a fresh realm.
 func (d *Context) CompileScriptOrModule(src, filename, prefix, suffix string) (isModule bool, rc int) {
 	s := d.st()
 	val, isModule, exc := s.rts.compileSource(s.ctx, src, filename, prefix, suffix, true)

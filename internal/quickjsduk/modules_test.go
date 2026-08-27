@@ -28,7 +28,7 @@ func (h *testModuleHost) ResolveModule(base, spec string) (string, error) {
 	default:
 		p = "/mods/" + spec
 	}
-	for _, cand := range []string{p, p + ".js"} {
+	for _, cand := range []string{p, p + ".js", p + ".mjs", p + ".cjs"} {
 		if _, ok := h.files[cand]; ok {
 			return cand, nil
 		}
@@ -228,6 +228,118 @@ func TestRequireThrowingESModule(t *testing.T) {
 	if len(jobErrs) != 0 {
 		t.Fatalf("duplicate rejection report: %v", jobErrs)
 	}
+}
+
+func TestRequireThrowingESModulePrimitiveReason(t *testing.T) {
+	// a primitive reason has no object identity: the duplicate record
+	// QuickJS makes for the module body's promise must still be retracted
+	for _, thrown := range []string{"'string boom'", "42", "null"} {
+		ctx := NewContext()
+		ctx.SetModuleHost(&testModuleHost{files: map[string]string{
+			"/mods/boom.js": "export const x = 1; throw " + thrown + ";",
+		}})
+		var jobErrs []string
+		ctx.SetJobErrorHandler(func(msg string) { jobErrs = append(jobErrs, msg) })
+		got := evalString(t, ctx, `(function(){
+			try { require("boom"); return "no-error"; }
+			catch (e) { return "caught " + String(e); }
+		})()`)
+		if !strings.HasPrefix(got, "caught ") {
+			t.Fatalf("throw %s: expected the module's throw to be caught, got %q", thrown, got)
+		}
+		ctx.PumpJobs()
+		if len(jobErrs) != 0 {
+			t.Fatalf("throw %s: duplicate rejection report: %v", thrown, jobErrs)
+		}
+		ctx.DestroyHeap()
+	}
+}
+
+func TestEntryModulePrimitiveThrowRetractsOnce(t *testing.T) {
+	ctx := NewContext()
+	defer ctx.DestroyHeap()
+	ctx.SetModuleHost(&testModuleHost{files: map[string]string{}})
+	var jobErrs []string
+	ctx.SetJobErrorHandler(func(msg string) { jobErrs = append(jobErrs, msg) })
+	isModule, rc := ctx.CompileScriptOrModule(`export const a = 1; throw "entry boom";`, "/rules/e.js",
+		"(async function(module, exports){", "\n})")
+	if rc != 0 || !isModule {
+		t.Fatalf("compile: rc=%d isModule=%v", rc, isModule)
+	}
+	if rc := ctx.EvalModuleNoPump(); rc != 0 {
+		t.Fatalf("eval: %s", ctx.SafeToString(-1))
+	}
+	if ctx.PromiseStateTop() != PromiseRejected {
+		t.Fatal("expected a rejected evaluation promise")
+	}
+	ctx.RetractTopPromiseRejection()
+	ctx.Pop()
+	ctx.PumpJobs()
+	if len(jobErrs) != 0 {
+		t.Fatalf("the host surfaced the error itself; tracker must stay quiet: %v", jobErrs)
+	}
+}
+
+func TestRequireAfterImportDoesNotReloadSource(t *testing.T) {
+	ctx := NewContext()
+	defer ctx.DestroyHeap()
+	host := &testModuleHost{files: map[string]string{
+		"/mods/esm.js": "export const x = 1;",
+	}}
+	ctx.SetModuleHost(host)
+	loadEntry(t, ctx, "/rules/i.js", `import { x } from "esm"; globalThis.viaImport = x;`)
+	loadEntry(t, ctx, "/rules/r.js", `globalThis.viaRequire = require("esm").x;`)
+	if got := evalString(t, ctx, "viaImport + ':' + viaRequire"); got != "1:1" {
+		t.Fatalf("bad result: %q", got)
+	}
+	if len(host.loads) != 1 {
+		t.Fatalf("the compiled module must be reused, source loaded %d times: %v", len(host.loads), host.loads)
+	}
+}
+
+func TestExplicitFormatByExtension(t *testing.T) {
+	ctx := NewContext()
+	defer ctx.DestroyHeap()
+	ctx.SetModuleHost(&testModuleHost{files: map[string]string{
+		// no import/export at all - the name alone makes it a module:
+		// strict mode, import.meta, no `module`
+		"/mods/plain.mjs": "globalThis.mjsMeta = typeof import.meta.filename + ':' + typeof module;",
+		// looks like a module (an export at a line start inside a string)
+		// but the name says script: `module` and `exports` are there
+		"/mods/legacy.cjs": "var s = '\\nexport const fake = 1';\nexports.ok = typeof module + ':' + s.length;",
+	}})
+	// bare specifiers probe the explicit extensions too
+	loadEntry(t, ctx, "/rules/a.js", `
+globalThis.cjs = require("legacy").ok;
+(async () => { const m = await import("plain"); globalThis.mjs = globalThis.mjsMeta; })();
+`)
+	if got := evalString(t, ctx, "cjs + '|' + mjs"); got != "object:22|string:undefined" {
+		t.Fatalf("bad explicit-format result: %q", got)
+	}
+	// a .mjs entry with no module syntax still runs as a module: strict
+	isModule, rc := ctx.CompileScriptOrModule(`try { undeclaredVar = 1; globalThis.mode = "sloppy"; } catch (e) { globalThis.mode = e.name; }`,
+		"/rules/strict.mjs", "(async function(module, exports){", "\n})")
+	if rc != 0 || !isModule {
+		t.Fatalf(".mjs must compile as a module: rc=%d isModule=%v", rc, isModule)
+	}
+	if rc := ctx.EvalModuleNoPump(); rc != 0 {
+		t.Fatalf("eval: %s", ctx.SafeToString(-1))
+	}
+	ctx.Pop()
+	ctx.PumpJobs()
+	if got := evalString(t, ctx, "mode"); got != "ReferenceError" {
+		t.Fatalf(".mjs must run strict, got %q", got)
+	}
+	// a .cjs entry never tries the module parse: an export declaration is a
+	// syntax error, reported from the wrapper
+	_, rc = ctx.CompileScriptOrModule(`export const x = 1;`, "/rules/legacy.cjs", "(async function(module, exports){", "\n})")
+	if rc == 0 {
+		t.Fatal(".cjs with an export declaration must not compile")
+	}
+	if msg := ctx.SafeToString(-1); !strings.Contains(msg, "SyntaxError") {
+		t.Fatalf("expected a SyntaxError, got %q", msg)
+	}
+	ctx.Pop()
 }
 
 func TestSharedInstanceAcrossRequireAndImport(t *testing.T) {

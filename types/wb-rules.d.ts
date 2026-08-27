@@ -843,7 +843,11 @@ interface String {
 /** Absolute path of the current rule file. */
 declare const __filename: string;
 
-/** Per-file module object (rule files are CommonJS-like scenarios). */
+/**
+ * Per-file module object (rule files are CommonJS-like scenarios). Not
+ * present in an ES module file (one using import/export): there `module`
+ * and `exports` are undefined at runtime - use `import.meta` and `export`.
+ */
 declare const module: {
   readonly filename: string;
   /**
@@ -892,5 +896,5 @@ interface ImportMeta {
   readonly static: Record<string, any>;
 }
 
-// CommonJS-style module surface available in every rule file
+// CommonJS-style module surface available in every classic (non-ES-module) rule file
 declare var exports: Record<string, any>;

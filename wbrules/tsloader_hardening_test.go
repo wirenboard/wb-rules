@@ -21,6 +21,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// firstFileOfConfig is a shell prologue for a fake compiler: the check runs
+// `-p <tsconfig>`, so the first batch file comes from the config's "files"
+// (a diagnostic must name a batch file to be attributed - any other path is
+// dropped as belonging to an imported file).
+const firstFileOfConfig = `first=$(sed -n 's/.*"files":\["\([^"]*\)".*/\1/p' "$2")` + "\n"
+
 // writeFakeTsgo writes an executable shell script playing the compiler.
 func writeFakeTsgo(t *testing.T, dir, name, body string) string {
 	t.Helper()
@@ -77,7 +83,7 @@ func TestCheckManyAbnormalExitPoisonsDiaglessFiles(t *testing.T) {
 	dir := t.TempDir()
 	typesPath, pathA, pathB := tsCheckFixture(t, dir)
 	fake := writeFakeTsgo(t, dir, "tsgo-crash",
-		`printf '%s(3,1): error TS2322: boom\n' "$1"`+"\nexit 2\n")
+		firstFileOfConfig+`printf '%s(3,1): error TS2322: boom\n' "$first"`+"\nexit 2\n")
 
 	c := NewTSCompiler(fake, typesPath)
 	results, err := c.checkMany([]string{pathA, pathB}, "")
@@ -98,7 +104,7 @@ func TestCheckManyUnpositionedErrorPoisonsDiaglessFiles(t *testing.T) {
 	dir := t.TempDir()
 	typesPath, pathA, pathB := tsCheckFixture(t, dir)
 	fake := writeFakeTsgo(t, dir, "tsgo-unpositioned",
-		`printf '%s(3,1): error TS2322: boom\n' "$1"`+"\n"+
+		firstFileOfConfig+`printf '%s(3,1): error TS2322: boom\n' "$first"`+"\n"+
 			`echo "error TS5023: Unknown compiler option 'wat'."`+"\nexit 0\n")
 
 	c := NewTSCompiler(fake, typesPath)
@@ -126,7 +132,7 @@ func TestCheckManyBoundsFloodedOutput(t *testing.T) {
 	dir := t.TempDir()
 	typesPath, pathA, pathB := tsCheckFixture(t, dir)
 	fake := writeFakeTsgo(t, dir, "tsgo-flood",
-		`printf '%s(3,1): error TS2322: boom\n' "$1"`+"\n"+
+		firstFileOfConfig+`printf '%s(3,1): error TS2322: boom\n' "$first"`+"\n"+
 			`head -c 2000000 /dev/zero | tr '\0' 'x'`+"\necho\nexit 1\n")
 
 	c := NewTSCompiler(fake, typesPath)

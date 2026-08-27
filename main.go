@@ -178,7 +178,9 @@ func main() {
 	defer engine.Close()
 
 	gotSome := false
-	watcher := wbgong.NewDirWatcher("(^|/)[^/.][^/]*\\.(js|ts)(\\"+wbrules.FILE_DISABLED_SUFFIX+")?$", engine)
+	// rule files: .js/.ts (format by syntax), .mjs/.mts (ES modules),
+	// .cjs/.cts (classic scripts)
+	watcher := wbgong.NewDirWatcher("(^|/)[^/.][^/]*\\.([mc]?js|[mc]?ts)(\\"+wbrules.FILE_DISABLED_SUFFIX+")?$", engine)
 	if *editDir != "" {
 		err := engine.SetSourceRoot(*editDir)
 		if err != nil {
