@@ -20,7 +20,7 @@
   запускается сразу. Source map V3 → `lineMaps[path]`, строки `.ts` в трейсбеках
   (`TranslateLine`); синтаксическая ошибка → `TSSyntaxError{Line}` → ошибка загрузки у строки `.ts`.
 - **Проверка**: транзиентный процесс `tsgo --noEmit --pretty false --target esnext --lib esnext --strict false
-  --module esnext --moduleDetection force --allowJs --checkJs <files> wb-rules.d.ts
+  --module preserve --moduleDetection force --esModuleInterop --allowJs --checkJs <files> wb-rules.d.ts
   /tmp/wb-controls-*.d.ts` в фоне (`checkSem` = 2 конкурентных, 60 с таймаут, `Pdeathsig=SIGKILL`),
   результат — `TS check: file:line:col: msg` в лог правил (≤10 строк/файл) + кэш для `Editor.Check`
   ([ADR-015](ADR-015-homeui-editor-ts-language-service-plus-controller-verdict.md)). Детали параметров — [ADR-012](ADR-012-background-check-parameters-checkjs.md).

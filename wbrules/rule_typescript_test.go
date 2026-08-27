@@ -545,7 +545,7 @@ func TestTypeAssertionsFixtureStrict(t *testing.T) {
 	}
 	root := filepath.Dir(testModulesDir())
 	cmd := exec.Command(tsgo, "--noEmit", "--target", "esnext", "--lib", "esnext",
-		"--strict", "true", "--module", "esnext", "--moduleDetection", "force",
+		"--strict", "true", "--module", "preserve", "--moduleDetection", "force", "--esModuleInterop",
 		filepath.Join(root, "types", "wb-rules.d.ts"),
 		filepath.Join(root, "wbrules", "testrules_ts_typeassert.ts"))
 	out, err := cmd.CombinedOutput()

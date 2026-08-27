@@ -85,7 +85,7 @@ sequenceDiagram
     E->>C: LoadScenario с wrapPrologue «"use strict"», lineTranslator=TranslateLine → запуск как в 6.2
     E->>E: scheduleTsCheck(path): tsCheckGen[path]++, entry pending, registry = controlsRegistryDts()
     E->>TS: CheckAsync(path, registry, report) — батч 300 мс, семафор 2
-    TS->>TG2: tsgo --noEmit --pretty false --target esnext --lib esnext --strict false --module esnext --moduleDetection force --allowJs --checkJs <files> wb-rules.d.ts /tmp/wb-controls-*.d.ts (60 s)
+    TS->>TG2: tsgo --noEmit --pretty false --target esnext --lib esnext --strict false --module preserve --moduleDetection force --esModuleInterop --allowJs --checkJs <files> wb-rules.d.ts /tmp/wb-controls-*.d.ts (60 s)
     TG2-->>TS: «path(line,col): error TSnnnn: msg» построчно
     TS-->>E: report(diags) → MaybeCallSync: gen совпал? → tsCheckResults[path]={ready,diags}
     E->>B: /wbrules/log/warning «TS check: file:line:col: msg» (≤10 строк на файл)

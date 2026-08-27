@@ -94,7 +94,7 @@ graph LR
 |---|---|
 | `/usr/lib/wb-rules/wbgo.so` (`-wbgo`) | Go-plugin драйвера (`wbgong.Init`): `Driver/DriverTx/Control/LocalDevice`, `DirWatcher` (fsnotify), `ContentTracker`, `MQTTRPCServer`, `MQTTClient` |
 | `/usr/bin/tsgo --api --async` (`-tsgo`) | персистентный дочерний процесс: LSP-framed JSON-RPC `transpileModule` (ESNext, source map); respawn при транспортной ошибке, `Pdeathsig=SIGKILL`, I/O watchdog 15 с |
-| `tsgo --noEmit --pretty false --target esnext --lib esnext --strict false --module esnext --moduleDetection force --allowJs --checkJs <files> wb-rules.d.ts /tmp/wb-controls-*.d.ts` | транзиентный процесс фоновой проверки; батч 300 мс, ≤2 одновременно, таймаут 60 с; вывод `path(line,col): error TSnnnn: msg` |
+| `tsgo --noEmit --pretty false --target esnext --lib esnext --strict false --module preserve --moduleDetection force --esModuleInterop --allowJs --checkJs <files> wb-rules.d.ts /tmp/wb-controls-*.d.ts` | транзиентный процесс фоновой проверки; батч 300 мс, ≤2 одновременно, таймаут 60 с; вывод `path(line,col): error TSnnnn: msg` |
 | `/bin/sh -c ...` | `spawn()`, `runShellCommand()`; `Notify` → `curl`, `/usr/sbin/sendmail -t`, `gammu`/`wb-gsm` |
 | HTTP `-http 127.0.0.1:9090` | `/metrics` (Prometheus, VictoriaMetrics client), `/debug/pprof/*` |
 | Сигналы | `SIGINT`/`SIGTERM` — корректное завершение; systemd `Restart=on-failure` |

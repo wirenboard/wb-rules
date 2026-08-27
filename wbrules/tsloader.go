@@ -132,6 +132,7 @@ type TSDiag struct {
 }
 
 const tsScriptTargetESNext = 99 // core.ScriptTarget enum value
+const tsModuleKindCommonJS = 1  // core.ModuleKind enum value
 
 func NewTSCompiler(binPath, typesPath string) *TSCompiler {
 	c := &TSCompiler{binPath: binPath, lineMaps: map[string][]int{}, checkSem: make(chan struct{}, 2)}
@@ -398,6 +399,15 @@ func (c *TSCompiler) transpileLocked(src, fileName string) (string, error) {
 				"compilerOptions": map[string]any{
 					"target":    tsScriptTargetESNext,
 					"sourceMap": true,
+					// CommonJS output: import/export statements become require()
+					// calls and exports.* assignments, which the async function
+					// wrapper (require, exports and module are its parameters)
+					// runs as-is - ESM syntax left in place would be a
+					// SyntaxError there. Top-level await passes through
+					// untouched. esModuleInterop lets a default import of a
+					// CommonJS module (import fs from "fs") work.
+					"module":          tsModuleKindCommonJS,
+					"esModuleInterop": true,
 				},
 				"reportDiagnostics": true,
 			},
@@ -618,9 +628,12 @@ func pathsRefSameFile(a, b string) bool {
 func (c *TSCompiler) checkMany(paths []string, registryDts string) (map[string][]TSDiag, error) {
 	// --lib esnext: no DOM globals, so rule-script names like 'history'
 	// or 'name' don't collide with browser declarations.
-	// --module esnext + --moduleDetection force: rule files may use
+	// --module preserve + --moduleDetection force: rule files may use
 	// top-level await (the runtime wraps them in an async function), which
-	// TypeScript only permits in a module.
+	// TypeScript only permits in a module; "preserve" (unlike esnext) also
+	// accepts the CommonJS forms the transpiler emits and runs -
+	// `import x = require("m")` and `export =` - instead of flagging them
+	// as syntax errors (TS1202/TS1203) that block the rest of the check.
 	// --allowJs --checkJs: type-check .js rule files too (against the wb-rules
 	// types + the live-device registry), so a wrong-typed write like
 	// dev["buzzer/enabled"] = 123 is caught in legacy .js as well as .ts. No-op
@@ -646,9 +659,11 @@ func (c *TSCompiler) checkMany(paths []string, registryDts string) (map[string][
 	paths = present
 	// --pretty false: diagnostics in the plain "path(line,col): error TSnnnn"
 	// form the parser below expects, whatever the default becomes
+	// --esModuleInterop: the transpiler emits interop helpers, so a default
+	// import of a CommonJS module (import fs from "fs") must type-check too.
 	args := []string{"--noEmit", "--pretty", "false", "--target", "esnext", "--lib", "esnext",
-		"--strict", "false", "--module", "esnext", "--moduleDetection", "force",
-		"--allowJs", "--checkJs"}
+		"--strict", "false", "--module", "preserve", "--moduleDetection", "force",
+		"--esModuleInterop", "--allowJs", "--checkJs"}
 	args = append(args, paths...)
 	args = append(args, c.typesGl)
 	// The registry (a generated `interface WbControls { ... }` built from the

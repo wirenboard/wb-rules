@@ -207,7 +207,7 @@ type ESEngine struct {
 	// completing after Stop). The recording goroutine cannot sweep them
 	// itself - that would touch the JS heap concurrently - so they are swept
 	// at the next single-threaded boundary: Start, Stop or Close.
-	orphanedCallbacks    []orphanedCallback
+	orphanedCallbacks    map[orphanedCallback]struct{}
 	orphanedCallbacksMtx sync.Mutex
 
 	// closed marks a terminal Close(): the JS heap is gone and the engine
@@ -225,6 +225,10 @@ type ESEngine struct {
 
 	tsCheckMu      sync.Mutex
 	tsCheckResults map[string]*tsCheckEntry // latest background verdict per physical path
+
+	// fs.watch of the built-in fs module (fswatch.go): the shared inotify
+	// instance and its watchers; closed per file on reload, wholesale at Stop
+	fsWatch fsWatchState
 }
 
 type orphanedCallback struct {
@@ -321,6 +325,12 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	// async rule callbacks that throw after an await fail as promise jobs;
 	// without this they die silently on stderr instead of the rule log
 	engine.globalCtx.SetJobErrorHandler(func(msg string) {
+		// the tracker hands over the raw stack: map generated lines of .ts
+		// files back to source lines like the synchronous error path does
+		// (the CommonJS interop preamble alone shifts them by dozens)
+		if tr := engine.ctxFactory.lineTranslator; tr != nil {
+			msg = translateStackLines(msg, tr)
+		}
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("async rule error: %s", msg))
 	})
 
@@ -619,8 +629,11 @@ func (engine *ESEngine) Start() {
 func (engine *ESEngine) Stop() {
 	// engine loop first: a draining .ts load must not respawn the compiler
 	engine.RuleEngine.Stop()
-	// the loops are gone: reclaim one-shot callbacks whose completion was
-	// dropped during the shutdown itself
+	// the loops are gone: fs.watch watchers can no longer deliver, and
+	// their listeners' stash entries are swept single-threaded here
+	engine.closeFsWatchers()
+	// reclaim one-shot callbacks whose completion was dropped during the
+	// shutdown itself
 	engine.sweepOrphanedCallbacks()
 	if engine.tsc != nil {
 		engine.tsc.Stop()
@@ -664,8 +677,28 @@ func (engine *ESEngine) Close() {
 // completion thunk the stopped engine dropped.
 func (engine *ESEngine) noteOrphanedCallback(ctx *ESContext, key ESCallback) {
 	engine.orphanedCallbacksMtx.Lock()
-	engine.orphanedCallbacks = append(engine.orphanedCallbacks, orphanedCallback{ctx, key})
+	if engine.orphanedCallbacks == nil {
+		engine.orphanedCallbacks = make(map[orphanedCallback]struct{})
+	}
+	engine.orphanedCallbacks[orphanedCallback{ctx, key}] = struct{}{}
 	engine.orphanedCallbacksMtx.Unlock()
+}
+
+// forgetOrphanedCallback withdraws a note: the completion thunk did run
+// and swept the entry itself. Producers note BEFORE queueing their thunk
+// because a stopping engine can accept a thunk and then discard it in
+// the queue drain, which MaybeCallSync cannot report.
+func (engine *ESEngine) forgetOrphanedCallback(ctx *ESContext, key ESCallback) {
+	engine.orphanedCallbacksMtx.Lock()
+	delete(engine.orphanedCallbacks, orphanedCallback{ctx, key})
+	engine.orphanedCallbacksMtx.Unlock()
+}
+
+// OrphanedCallbackCount reports pending notes (tests).
+func (engine *ESEngine) OrphanedCallbackCount() int {
+	engine.orphanedCallbacksMtx.Lock()
+	defer engine.orphanedCallbacksMtx.Unlock()
+	return len(engine.orphanedCallbacks)
 }
 
 func (engine *ESEngine) sweepOrphanedCallbacks() {
@@ -673,7 +706,7 @@ func (engine *ESEngine) sweepOrphanedCallbacks() {
 	orphans := engine.orphanedCallbacks
 	engine.orphanedCallbacks = nil
 	engine.orphanedCallbacksMtx.Unlock()
-	for _, o := range orphans {
+	for o := range orphans {
 		// no-op when the context was invalidated meanwhile (reload swept it)
 		o.ctx.RemoveCallback(o.key)
 	}
@@ -1118,6 +1151,10 @@ func (engine *ESEngine) esBuiltinFuncs() map[string]func(*ESContext) int {
 		"_wbStopTimer":         engine.esWbStopTimer,
 		"_wbCheckCurrentTimer": engine.esWbCheckCurrentTimer,
 		"_wbSpawn":             engine.esWbSpawn,
+		"_wbFsSync":            engine.esWbFsSync,
+		"_wbFsAsync":           engine.esWbFsAsync,
+		"_wbFsWatch":           engine.esWbFsWatch,
+		"_wbFsWatchClose":      engine.esWbFsWatchClose,
 		"_wbDefineRule":        engine.esWbDefineRule,
 		"runRules":             engine.esWbRunRules,
 		"readConfig":           engine.esReadConfig,
@@ -1420,6 +1457,8 @@ func (engine *ESEngine) runCleanups(path string) {
 
 		// cleanup timers of this context
 		engine.runTimerCleanups(engine.localCtxs[path])
+		// and its fs.watch watchers
+		engine.runFsWatchCleanups(localCtx)
 
 		// TODO: launch internal cleanups
 		engine.removeThreadFromStorage(engine.globalCtx, path)
@@ -3571,6 +3610,15 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 	// get module name (id)
 	id := ctx.GetString(0)
 	wbgong.Debug.Printf("[modsearch] required module %s", id)
+
+	// engine-provided modules come first and shadow same-named files, as
+	// Node's core modules do; they have no module.static storage
+	if src, ok := builtinModuleSource(id); ok {
+		ctx.PushString(builtinModuleFilename(id))
+		ctx.PutPropString(3, MODULE_FILENAME_PROP)
+		ctx.PushString(src)
+		return 1
+	}
 
 	// try to find this module in directory
 	for _, dir := range engine.modulesDirs {

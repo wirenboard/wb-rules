@@ -330,8 +330,78 @@ function __legacyIdioms() {
   return [r1, r2, r3, r4, lvl];
 }
 
+// ---------------------------------------------------------------------------
+// the built-in fs module: typed through require() overloads and as a module
+function __fsModule() {
+  const fs = require("fs");
+  const fsp = require("fs/promises");
+  const nodeFs = require("node:fs");
+  const text: string = fs.readFileSync("/etc/hostname");
+  const text2: string = fs.readFileSync("/etc/hostname", "utf8");
+  const text3: string = fs.readFileSync("/etc/hostname", { encoding: "utf8", flag: "r" });
+  // @ts-expect-error - only utf8 text: no other encoding
+  fs.readFileSync("/etc/hostname", "latin1");
+  // @ts-expect-error - callbacks are not part of the API
+  fs.readFile("/etc/hostname", (err: unknown, data: string) => data);
+  fs.writeFileSync("/tmp/x", "data", { mode: "644", flag: "wx" });
+  // @ts-expect-error - strings only, no Buffer/number
+  fs.writeFileSync("/tmp/x", 42);
+  const st = fs.statSync("/tmp/x");
+  const size: number = st.size;
+  const isFile: boolean = st.isFile();
+  const mtime: Date = st.mtime;
+  const maybe: import("fs").Stats | undefined = fs.statSync("/tmp/x", { throwIfNoEntry: false });
+  // @ts-expect-error - without throwIfNoEntry:false the result is never undefined
+  const notMaybe: undefined = fs.statSync("/tmp/x");
+  const names: string[] = fs.readdirSync("/tmp");
+  const dirents = fs.readdirSync("/tmp", { withFileTypes: true });
+  const direntName: string = dirents[0].name;
+  const isDir: boolean = dirents[0].isDirectory();
+  // @ts-expect-error - names are strings, not Dirents
+  names[0].isDirectory();
+  const created: string | undefined = fs.mkdirSync("/tmp/a/b", { recursive: true });
+  const nothing: void = fs.mkdirSync("/tmp/c");
+  fs.rmSync("/tmp/a", { recursive: true, force: true });
+  fs.copyFileSync("/tmp/x", "/tmp/y", fs.constants.COPYFILE_EXCL);
+  fs.accessSync("/tmp/x", fs.constants.R_OK | fs.constants.W_OK);
+  fs.utimesSync("/tmp/x", new Date(), Date.now() / 1000);
+  const w = fs.watch("/tmp", (eventType, filename) => {
+    const t: "rename" | "change" = eventType;
+    const f: string = filename;
+    return [t, f];
+  });
+  w.close();
+  // @ts-expect-error - recursive watching is not available
+  fs.watch("/tmp", { recursive: true }, () => {});
+  const exists: boolean = fs.existsSync("/tmp/x");
+  const p1: Promise<string> = fs.readFile("/tmp/x");
+  const p2: Promise<string> = fsp.readFile("/tmp/x");
+  const p3: Promise<boolean> = fs.exists("/tmp/x");
+  const p4: Promise<import("fs").Dirent[]> = fs.promises.readdir("/tmp", { withFileTypes: true });
+  const p5: Promise<void> = nodeFs.writeFile("/tmp/x", "y");
+  // @ts-expect-error - the promise variant returns a Promise, not the text
+  const notText: string = fs.readFile("/tmp/x");
+  // non-literal option values fall back to the union results
+  const flag: boolean = Math.random() > 0.5;
+  // (with a boolean variable the result may be undefined - under strict
+  // null checks assigning it to a plain Stats is an error, but this
+  // fixture must also stay clean under --strict false, so no assertion)
+  const maybeStats: import("fs").Stats | undefined = fs.statSync("/tmp/x", { throwIfNoEntry: flag });
+  const either: string[] | import("fs").Dirent[] = fs.readdirSync("/tmp", { withFileTypes: flag });
+  const maybeCreated: string | undefined = fs.mkdirSync("/tmp/z", { recursive: flag });
+  fs.symlinkSync("/tmp/x", "/tmp/y", "file");
+  // @ts-expect-error - only Node's symlink types
+  fs.symlinkSync("/tmp/x", "/tmp/y", "bogus");
+  fs.readFileSync("/tmp/x", { flag: "a+" });
+  // an unknown module is still `any`
+  const other = require("some-other-module");
+  other.anything();
+  return [text, text2, text3, size, isFile, mtime, maybe, notMaybe, direntName, isDir, created, nothing, exists, p1, p2, p3, p4, p5, notText, maybeStats, either, maybeCreated];
+}
+
 // keep "unused function" style checkers quiet without executing anything
 exports.__wbTypeAssertions = [
+  __fsModule,
   __legacyIdioms,
   __registryTypedRefs,
   __typedVirtualDevices,

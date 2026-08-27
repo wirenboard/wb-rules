@@ -74,3 +74,4 @@
 | **Leak-тесты / канарейка** | `MemoryUsed()` после 2×`RunGC()` как мера роста heap; `__wbAsyncWaiters()` — диагностический счётчик ожидающих промисов. |
 | **Engine loop / CallSync** | Единственная горутина, исполняющая JS (`syncQueue`); `CallSync` — синхронный вызов в неё (таймаут 120 с, в debug — предупреждение вместо panic); `MaybeCallSync` — неблокирующий после остановки. |
 | **EventBuffer** | Буфер `ControlChangeEvent` (cap 16) между горутиной драйвера и engine loop с коалесценцией событий одного контрола. |
+| **Модуль `fs`** | Встроенный модуль файловой системы (`require("fs")`, ADR-017): JS-слой `fsmodule.js` в realm'е каждого файла + Go-builtin'ы `_wbFs*`; `fs.watch` — inotify напрямую. |

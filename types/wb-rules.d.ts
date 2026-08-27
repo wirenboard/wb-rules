@@ -856,6 +856,9 @@ declare const module: {
   exports: Record<string, any>;
 };
 
+/** The built-in filesystem module (declared at the end of this file). */
+declare function require(id: "fs" | "node:fs"): typeof import("fs");
+declare function require(id: "fs/promises" | "node:fs/promises"): typeof import("fs/promises");
 declare function require(id: string): any;
 /**
  * wb-rules resolves `require("x.mod")` against its own module directories
@@ -873,3 +876,308 @@ declare const global: typeof globalThis;
 
 // CommonJS-style module surface available in every rule file
 declare var exports: Record<string, any>;
+
+// ---------------------------------------------------------------------------
+// Built-in module "fs" - require("fs"), require("fs/promises")
+// ---------------------------------------------------------------------------
+
+/**
+ * Node.js-shaped filesystem API provided by the engine itself.
+ *
+ * Differences from Node: files are read and written as UTF-8 strings (no
+ * Buffer, no other encoding); the asynchronous functions return promises
+ * instead of taking callbacks (`fs.readFile === fs.promises.readFile`);
+ * `exists()` has a promise form; `fs.watch()` takes its listener directly
+ * and returns an object with `close()`; `readFile` refuses files over 10 MiB.
+ * Paths are used as given (relative ones resolve against the engine
+ * process's working directory) with the engine's own privileges.
+ */
+declare module "fs" {
+  export type Encoding = "utf8" | "utf-8";
+  /** Node's file system flags (the `flag` option of writeFile/appendFile). */
+  export type OpenFlag = "r" | "rs" | "r+" | "rs+" | "w" | "wx" | "w+" | "wx+" | "a" | "ax" | "a+" | "ax+" | "as" | "as+";
+  /** A permission mode: an integer or an octal string such as "644". */
+  export type Mode = number | string;
+  /** A timestamp for utimes: seconds since the epoch, a numeric string or a Date. */
+  export type TimeLike = number | string | Date;
+
+  export interface ReadFileOptions {
+    encoding?: Encoding | null;
+    /** Default "r"; a creating flag ("a+") yields "" for a new file. */
+    flag?: OpenFlag;
+  }
+  export interface WriteFileOptions {
+    encoding?: Encoding | null;
+    /** Mode of a newly created file (default 0o666, subject to umask). */
+    mode?: Mode;
+    /** Default "w" for writeFile, "a" for appendFile. */
+    flag?: OpenFlag;
+  }
+  export interface StatOptions {
+    /** BigInt stats are not supported. */
+    bigint?: false;
+    /** false: return undefined for a missing path (ENOENT/ENOTDIR) instead of throwing. */
+    throwIfNoEntry?: boolean;
+  }
+  export interface ReaddirOptions {
+    encoding?: Encoding | null;
+    /** true: Dirent objects instead of names. */
+    withFileTypes?: boolean;
+    /** true: descend into subdirectories (names come relative to path). */
+    recursive?: boolean;
+  }
+  export interface MkdirOptions {
+    /** true: create missing parents; the first directory created is returned. */
+    recursive?: boolean;
+    /** Default 0o777, subject to umask. */
+    mode?: Mode;
+  }
+  export interface RmOptions {
+    /** Remove directories and their contents. */
+    recursive?: boolean;
+    /** Ignore a missing path. */
+    force?: boolean;
+  }
+  export interface RmdirOptions {
+    /** @deprecated Node deprecated this spelling; use rm(path, { recursive: true }). */
+    recursive?: boolean;
+  }
+  export interface EncodingOptions {
+    encoding?: Encoding | null;
+  }
+  export interface WatchOptions {
+    persistent?: boolean;
+    /** Recursive watching is not supported. */
+    recursive?: false;
+    encoding?: Encoding | null;
+  }
+  export type WatchEventType = "rename" | "change";
+  /** filename is the changed entry (directory watch) or the watched file's base name. */
+  export type WatchListener = (eventType: WatchEventType, filename: string) => void;
+
+  /** Result of stat()/lstat(): the POSIX fields plus the type predicates. */
+  export class Stats {
+    private constructor();
+    dev: number;
+    ino: number;
+    /** File type and permission bits (compare with constants.S_IF*, mask 0o777). */
+    mode: number;
+    nlink: number;
+    uid: number;
+    gid: number;
+    rdev: number;
+    size: number;
+    blksize: number;
+    blocks: number;
+    atimeMs: number;
+    mtimeMs: number;
+    ctimeMs: number;
+    /** stat(2) has no birth time on Linux; this is ctime. */
+    birthtimeMs: number;
+    atime: Date;
+    mtime: Date;
+    ctime: Date;
+    birthtime: Date;
+    isFile(): boolean;
+    isDirectory(): boolean;
+    isSymbolicLink(): boolean;
+    isBlockDevice(): boolean;
+    isCharacterDevice(): boolean;
+    isFIFO(): boolean;
+    isSocket(): boolean;
+  }
+
+  /** A directory entry from readdir(path, { withFileTypes: true }). */
+  export class Dirent {
+    private constructor();
+    name: string;
+    /** The directory this entry was read from. */
+    parentPath: string;
+    /** @deprecated Node's older name of parentPath. */
+    path: string;
+    isFile(): boolean;
+    isDirectory(): boolean;
+    isSymbolicLink(): boolean;
+    isFIFO(): boolean;
+    isSocket(): boolean;
+    isCharacterDevice(): boolean;
+    isBlockDevice(): boolean;
+  }
+
+  /** Returned by watch(); close() stops the watcher (idempotent). */
+  export class FSWatcher {
+    private constructor();
+    close(): void;
+  }
+
+  export const constants: {
+    readonly F_OK: 0;
+    readonly R_OK: 4;
+    readonly W_OK: 2;
+    readonly X_OK: 1;
+    /** copyFile mode bit: fail if the destination exists. */
+    readonly COPYFILE_EXCL: 1;
+    readonly COPYFILE_FICLONE: 2;
+    readonly COPYFILE_FICLONE_FORCE: 4;
+    readonly S_IFMT: number;
+    readonly S_IFREG: number;
+    readonly S_IFDIR: number;
+    readonly S_IFCHR: number;
+    readonly S_IFBLK: number;
+    readonly S_IFIFO: number;
+    readonly S_IFLNK: number;
+    readonly S_IFSOCK: number;
+  };
+
+  // --- synchronous API: blocks the engine loop for the duration of the call
+
+  /** Reads a whole file as a UTF-8 string (at most 10 MiB). */
+  export function readFileSync(path: string, options?: ReadFileOptions | Encoding | null): string;
+  /** Writes data, creating or truncating the file (flag "w"); not atomic. */
+  export function writeFileSync(path: string, data: string, options?: WriteFileOptions | Encoding | null): void;
+  /** Appends data, creating the file if needed (flag "a"). */
+  export function appendFileSync(path: string, data: string, options?: WriteFileOptions | Encoding | null): void;
+  export function statSync(path: string, options?: StatOptions & { throwIfNoEntry?: true }): Stats;
+  export function statSync(path: string, options: StatOptions & { throwIfNoEntry: false }): Stats | undefined;
+  export function statSync(path: string, options?: StatOptions): Stats | undefined;
+  /** Like statSync but does not follow a final symbolic link. */
+  export function lstatSync(path: string, options?: StatOptions & { throwIfNoEntry?: true }): Stats;
+  export function lstatSync(path: string, options: StatOptions & { throwIfNoEntry: false }): Stats | undefined;
+  export function lstatSync(path: string, options?: StatOptions): Stats | undefined;
+  export function readdirSync(path: string, options: ReaddirOptions & { withFileTypes: true }): Dirent[];
+  export function readdirSync(path: string, options?: (ReaddirOptions & { withFileTypes?: false }) | Encoding | null): string[];
+  export function readdirSync(path: string, options?: ReaddirOptions | Encoding | null): string[] | Dirent[];
+  /** true if the path exists (follows symlinks); never throws. */
+  export function existsSync(path: string): boolean;
+  export function mkdirSync(path: string, options: MkdirOptions & { recursive: true }): string | undefined;
+  export function mkdirSync(path: string, options?: (MkdirOptions & { recursive?: false }) | Mode | null): void;
+  export function mkdirSync(path: string, options?: MkdirOptions | Mode | null): string | undefined;
+  /** Removes an empty directory. */
+  export function rmdirSync(path: string, options?: RmdirOptions): void;
+  /** Removes a file, or a directory tree with { recursive: true }. */
+  export function rmSync(path: string, options?: RmOptions): void;
+  /** Removes a file (a directory fails with EISDIR). */
+  export function unlinkSync(path: string): void;
+  export function renameSync(oldPath: string, newPath: string): void;
+  /** Copies a file preserving its mode; mode: constants.COPYFILE_EXCL to refuse overwriting. */
+  export function copyFileSync(src: string, dest: string, mode?: number): void;
+  /** Throws unless the path is accessible for mode (constants.F_OK/R_OK/W_OK/X_OK, default F_OK). */
+  export function accessSync(path: string, mode?: number): void;
+  /** Resolves symbolic links and returns an absolute path. */
+  export function realpathSync(path: string, options?: EncodingOptions | Encoding | null): string;
+  /** Returns the target of a symbolic link. */
+  export function readlinkSync(path: string, options?: EncodingOptions | Encoding | null): string;
+  /** Creates a symbolic link at path pointing to target (type only matters on Windows). */
+  export function symlinkSync(target: string, path: string, type?: "dir" | "file" | "junction" | null): void;
+  export function chmodSync(path: string, mode: Mode): void;
+  /** Creates a unique directory prefix + six random characters and returns its path. */
+  export function mkdtempSync(prefix: string, options?: EncodingOptions | Encoding | null): string;
+  export function truncateSync(path: string, len?: number | null): void;
+  export function utimesSync(path: string, atime: TimeLike, mtime: TimeLike): void;
+
+  /**
+   * Watches a file or a directory (not recursive). The listener runs on the
+   * engine loop; the watcher is closed automatically when the rule file is
+   * reloaded or removed, and when the watched path itself disappears.
+   */
+  export function watch(filename: string, listener: WatchListener): FSWatcher;
+  export function watch(
+    filename: string,
+    options: WatchOptions | Encoding | null | undefined,
+    listener: WatchListener
+  ): FSWatcher;
+
+  // --- asynchronous API: the I/O runs off the engine loop, the promise
+  // settles on it (the same functions as fs.promises)
+
+  export function readFile(path: string, options?: ReadFileOptions | Encoding | null): Promise<string>;
+  export function writeFile(path: string, data: string, options?: WriteFileOptions | Encoding | null): Promise<void>;
+  export function appendFile(path: string, data: string, options?: WriteFileOptions | Encoding | null): Promise<void>;
+  export function stat(path: string, options?: StatOptions & { throwIfNoEntry?: true }): Promise<Stats>;
+  export function stat(path: string, options: StatOptions & { throwIfNoEntry: false }): Promise<Stats | undefined>;
+  export function stat(path: string, options?: StatOptions): Promise<Stats | undefined>;
+  export function lstat(path: string, options?: StatOptions & { throwIfNoEntry?: true }): Promise<Stats>;
+  export function lstat(path: string, options: StatOptions & { throwIfNoEntry: false }): Promise<Stats | undefined>;
+  export function lstat(path: string, options?: StatOptions): Promise<Stats | undefined>;
+  export function readdir(path: string, options: ReaddirOptions & { withFileTypes: true }): Promise<Dirent[]>;
+  export function readdir(path: string, options?: (ReaddirOptions & { withFileTypes?: false }) | Encoding | null): Promise<string[]>;
+  export function readdir(path: string, options?: ReaddirOptions | Encoding | null): Promise<string[] | Dirent[]>;
+  /** Promise form of existsSync (a wb-rules addition; Node's fs.promises has no exists). */
+  export function exists(path: string): Promise<boolean>;
+  export function mkdir(path: string, options: MkdirOptions & { recursive: true }): Promise<string | undefined>;
+  export function mkdir(path: string, options?: (MkdirOptions & { recursive?: false }) | Mode | null): Promise<void>;
+  export function mkdir(path: string, options?: MkdirOptions | Mode | null): Promise<string | undefined>;
+  export function rmdir(path: string, options?: RmdirOptions): Promise<void>;
+  export function rm(path: string, options?: RmOptions): Promise<void>;
+  export function unlink(path: string): Promise<void>;
+  export function rename(oldPath: string, newPath: string): Promise<void>;
+  export function copyFile(src: string, dest: string, mode?: number): Promise<void>;
+  export function access(path: string, mode?: number): Promise<void>;
+  export function realpath(path: string, options?: EncodingOptions | Encoding | null): Promise<string>;
+  export function readlink(path: string, options?: EncodingOptions | Encoding | null): Promise<string>;
+  export function symlink(target: string, path: string, type?: "dir" | "file" | "junction" | null): Promise<void>;
+  export function chmod(path: string, mode: Mode): Promise<void>;
+  export function mkdtemp(prefix: string, options?: EncodingOptions | Encoding | null): Promise<string>;
+  export function truncate(path: string, len?: number | null): Promise<void>;
+  export function utimes(path: string, atime: TimeLike, mtime: TimeLike): Promise<void>;
+
+  /** The asynchronous API as one object; also what require("fs/promises") returns. */
+  export const promises: typeof import("fs/promises");
+}
+
+/** The promise API of the "fs" module (the same functions as fs.promises). */
+declare module "fs/promises" {
+  import type {
+    Dirent,
+    Encoding,
+    EncodingOptions,
+    MkdirOptions,
+    Mode,
+    ReaddirOptions,
+    ReadFileOptions,
+    RmdirOptions,
+    RmOptions,
+    Stats,
+    StatOptions,
+    TimeLike,
+    WriteFileOptions,
+  } from "fs";
+
+  export const constants: typeof import("fs").constants;
+  export function readFile(path: string, options?: ReadFileOptions | Encoding | null): Promise<string>;
+  export function writeFile(path: string, data: string, options?: WriteFileOptions | Encoding | null): Promise<void>;
+  export function appendFile(path: string, data: string, options?: WriteFileOptions | Encoding | null): Promise<void>;
+  export function stat(path: string, options?: StatOptions & { throwIfNoEntry?: true }): Promise<Stats>;
+  export function stat(path: string, options: StatOptions & { throwIfNoEntry: false }): Promise<Stats | undefined>;
+  export function stat(path: string, options?: StatOptions): Promise<Stats | undefined>;
+  export function lstat(path: string, options?: StatOptions & { throwIfNoEntry?: true }): Promise<Stats>;
+  export function lstat(path: string, options: StatOptions & { throwIfNoEntry: false }): Promise<Stats | undefined>;
+  export function lstat(path: string, options?: StatOptions): Promise<Stats | undefined>;
+  export function readdir(path: string, options: ReaddirOptions & { withFileTypes: true }): Promise<Dirent[]>;
+  export function readdir(path: string, options?: (ReaddirOptions & { withFileTypes?: false }) | Encoding | null): Promise<string[]>;
+  export function readdir(path: string, options?: ReaddirOptions | Encoding | null): Promise<string[] | Dirent[]>;
+  export function exists(path: string): Promise<boolean>;
+  export function mkdir(path: string, options: MkdirOptions & { recursive: true }): Promise<string | undefined>;
+  export function mkdir(path: string, options?: (MkdirOptions & { recursive?: false }) | Mode | null): Promise<void>;
+  export function mkdir(path: string, options?: MkdirOptions | Mode | null): Promise<string | undefined>;
+  export function rmdir(path: string, options?: RmdirOptions): Promise<void>;
+  export function rm(path: string, options?: RmOptions): Promise<void>;
+  export function unlink(path: string): Promise<void>;
+  export function rename(oldPath: string, newPath: string): Promise<void>;
+  export function copyFile(src: string, dest: string, mode?: number): Promise<void>;
+  export function access(path: string, mode?: number): Promise<void>;
+  export function realpath(path: string, options?: EncodingOptions | Encoding | null): Promise<string>;
+  export function readlink(path: string, options?: EncodingOptions | Encoding | null): Promise<string>;
+  export function symlink(target: string, path: string, type?: "dir" | "file" | "junction" | null): Promise<void>;
+  export function chmod(path: string, mode: Mode): Promise<void>;
+  export function mkdtemp(prefix: string, options?: EncodingOptions | Encoding | null): Promise<string>;
+  export function truncate(path: string, len?: number | null): Promise<void>;
+  export function utimes(path: string, atime: TimeLike, mtime: TimeLike): Promise<void>;
+}
+
+declare module "node:fs" {
+  export * from "fs";
+}
+declare module "node:fs/promises" {
+  export * from "fs/promises";
+}
