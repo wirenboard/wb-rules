@@ -38,7 +38,7 @@
 | **Языки документации** | README, changelog, arc42 — русский; комментарии в коде — английский |
 | **Сообщения лога как контракт** | префиксы `async rule error:`, `control X/Y: write ignored (...) at file:line`, `[loadguard]`, `execution timed out: exceeded the 10s js-timeout` — разбираются homeui и людьми; менять только с обновлением редактора |
 | **Лицензии** | wb-rules — MIT-WB (`LICENSE`, Contactless Devices LLC); QuickJS — MIT (`third_party/quickjs/LICENSE`, Bellard/Gordon); `debian/copyright` wb-rules — уточнить, отражает ли он QuickJS |
-| **Версионирование** | `debian/changelog` `2.47.0~quickjs<N>`; `CONFIG_VERSION` в `internal/quickjsduk/qjs_build.c` обновляется вместе с submodule |
+| **Версионирование** | `debian/changelog` `3.0.0~quickjs<N>`; `CONFIG_VERSION` в `internal/quickjsduk/qjs_build.c` обновляется вместе с submodule |
 | **Тестирование** | новые баги закрепляются минимальными синтетическими тестами в репо (`rule_corpus_regress_test.go` и др.), а не ссылками на корпус; leak-канарейки (`MemoryUsed()` после 2×`RunGC()`); сьюты на fake broker `wbgong/testutils` |
 | **Публичные интерфейсы** | MQTT-RPC описывается в `asyncapi.mqtt-rpc.yml`; retained-топики для служебных данных не вводятся |
 

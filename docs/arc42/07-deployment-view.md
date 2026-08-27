@@ -44,7 +44,7 @@ graph TB
 
 | Пакет | Содержимое | Примечания |
 |---|---|---|
-| `wb-rules` (`2.47.0~quickjs1`) | `/usr/bin/wb-rules`, `/usr/lib/wb-rules/wbgo.so`, `lib.js`, модули `wb-notify.js`/`wb-alarms.js`, `load_alarms.js`, `alarms.conf` + `alarms.schema.json`, `/etc/wb-rules/rules.js`, `/etc/wb-configs.d/13wb-rules`, два systemd-юнита | `Depends: ${shlibs:Depends}`; `Breaks` старых `wb-mqtt-confed`, `wb-rules-system`, `wb-mqtt-dac`; `Build-Depends: golang-1.26-go:native`; dh-сборка, `dh_builddeb -Zgzip` |
+| `wb-rules` (`3.0.0~quickjs1`) | `/usr/bin/wb-rules`, `/usr/lib/wb-rules/wbgo.so`, `lib.js`, модули `wb-notify.js`/`wb-alarms.js`, `load_alarms.js`, `alarms.conf` + `alarms.schema.json`, `/etc/wb-rules/rules.js`, `/etc/wb-configs.d/13wb-rules`, два systemd-юнита | `Depends: ${shlibs:Depends}`; `Breaks` старых `wb-mqtt-confed`, `wb-rules-system`, `wb-mqtt-dac`; `Build-Depends: golang-1.26-go:native`; dh-сборка, `dh_builddeb -Zgzip` |
 | `wb-rules-system` | системные правила `/usr/share/wb-rules-system/rules/*.js` (должны оставаться ES5 — совместимость со stable 2.46.x) | загружаются первыми по порядку аргументов юнита |
 | `wb-mqtt-homeui` | SPA (редактор правил и консоль) | — |
 
