@@ -7,6 +7,12 @@ wb-rules (3.0.0~quickjs1) unstable; urgency=medium
     template strings, Proxy, async/await and promises). Existing ES5 rules
     run unchanged; the full upstream test suite passes. Architecture notes
     and decision records in docs/arc42.
+  * Major version. Rule files run inside an async wrapper, so await is a
+    reserved word in them: a rule with a variable or function named await
+    no longer loads - a compatibility break. Beyond marking that break,
+    a 3.x line lets users and support tell the QuickJS engine from the
+    Duktape-based 2.x at a glance, and keeps the documentation
+    unambiguous about which engine it describes.
   * The js-timeout abort names the loop it interrupted (the last call site
     inside it) instead of the statement before the loop: QuickJS records
     the position from a pc already moved to the loop's back-edge target,
