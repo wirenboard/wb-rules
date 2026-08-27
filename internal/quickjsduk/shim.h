@@ -58,6 +58,11 @@ JSValue qjd_throw_type_error(JSContext *ctx, const char *msg);
 JSValue qjd_throw_error(JSContext *ctx, const char *msg);
 JSValue qjd_throw_range_error(JSContext *ctx, const char *msg);
 
+/* "file:line:col" of the innermost bytecode frame at the time of the call;
+ * defined in qjs_build.c (needs interpreter internals). See the watchdog
+ * (goInterrupt) for why it is read from inside the interrupt handler. */
+int qjd_top_bytecode_location(JSRuntime *rt, char *out, int out_size);
+
 /* Helpers for opaque access without JSValue->ptr casting on the Go side. */
 void *qjd_get_opaque(JSValue v, JSClassID cid);
 JSValue qjd_new_obj_with_opaque(JSContext *ctx, JSClassID cid, void *p);

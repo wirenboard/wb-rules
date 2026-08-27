@@ -127,3 +127,65 @@ func TestScriptOwnInterruptedErrorIsNotRelabelled(t *testing.T) {
 	}
 	ctx.Pop()
 }
+
+// The watchdog's location must be the loop it interrupted (its last call
+// site), not the statement before the loop: QuickJS builds the abort's
+// backtrace from a pc it has already moved to the back-edge's jump target.
+// Both ways the abort surfaces are covered: the exception of a synchronous
+// run, and the rejection of an async function (a rule file's top level).
+func TestExecTimeoutLocationIsTheLoop(t *testing.T) {
+	ctx := NewContext()
+	defer ctx.DestroyHeap()
+	ctx.SetExecutionTimeLimit(150 * time.Millisecond)
+
+	rc := make(chan int, 1)
+	go func() { rc <- ctx.PevalString("var a = 1;\nvar b = 2;\nwhile (true) { Math.abs(a); }") }()
+	if r := <-rc; r == 0 {
+		t.Fatal("runaway loop finished without error")
+	}
+	if _, aborted := ctx.ExecTimeoutAbort(ctx.SafeToString(-1)); !aborted {
+		t.Fatal("watchdog abort was not reported")
+	}
+	if !ctx.GetPropString(-1, "stack") {
+		t.Fatal("no stack on the abort error")
+	}
+	raw := ctx.SafeToString(-1)
+	stack := ctx.RelocateAbortStack(raw)
+	ctx.Pop2()
+	if !strings.Contains(stack, "input:3:") {
+		t.Fatalf("sync abort not located in the loop (line 3): relocated %q, raw %q", stack, raw)
+	}
+
+	var jobErr string
+	ctx.SetJobErrorHandler(func(m string) { jobErr = m })
+	src := "(async function F() {\nvar a = 1;\nvar b = 2;\nwhile (true) { Math.abs(a); }\n})()"
+	go func() { rc <- ctx.PevalString(src) }()
+	<-rc
+	ctx.Pop()
+	if !strings.Contains(jobErr, "execution timed out") {
+		t.Fatalf("async abort not reported through the job path: %q", jobErr)
+	}
+	if !strings.Contains(jobErr, "at F (input:4:") || strings.Contains(jobErr, "input:3:") {
+		t.Fatalf("async abort not located in the loop (line 4): %q", jobErr)
+	}
+}
+
+// A stack whose first frame is not the file the watchdog interrupted in is
+// left alone, and so is a stack with no location to offer.
+func TestRelocateAbortStackLeavesForeignFrames(t *testing.T) {
+	stack := "    at f (other.js:2:3)\n    at <eval> (input:9:1)"
+	if got := relocateAbortStack(stack, "input:4:24"); got != stack {
+		t.Fatalf("foreign first frame rewritten: %q", got)
+	}
+	if got := relocateAbortStack(stack, ""); got != stack {
+		t.Fatalf("empty location rewrote the stack: %q", got)
+	}
+	got := relocateAbortStack("\n    at F (/etc/wb-rules/a.js:11:31)\n    at <eval> (/etc/wb-rules/a.js:20:3)", "/etc/wb-rules/a.js:14:5")
+	want := "\n    at F (/etc/wb-rules/a.js:14:5)\n    at <eval> (/etc/wb-rules/a.js:20:3)"
+	if got != want {
+		t.Fatalf("relocation: got %q, want %q", got, want)
+	}
+	if got := relocateAbortStack("    at /etc/wb-rules/a.js:11:31", "/etc/wb-rules/a.js:14:5"); got != "    at /etc/wb-rules/a.js:14:5" {
+		t.Fatalf("bare location form: %q", got)
+	}
+}
