@@ -214,11 +214,11 @@ const tailBufferCap = 4096
 
 func (b *tailBuffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.buf = append(b.buf, p...)
 	if len(b.buf) > tailBufferCap {
 		b.buf = b.buf[len(b.buf)-tailBufferCap:]
 	}
-	b.mu.Unlock()
 	return len(p), nil
 }
 
