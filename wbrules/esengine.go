@@ -280,13 +280,14 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		// configures the wb-tsgo dependency first, but manual installs
 		// and older-package upgrades may not)
 		engine.tsc = NewTSCompiler(options.TsgoPath, options.TsTypesPath)
+		engine.tsc.SetModuleDirs(options.ModulesDirs)
 		engine.ctxFactory.preprocessor = engine.preprocessRuleSource
 		engine.ctxFactory.lineTranslator = engine.tsc.TranslateLine
 		// transpiled TypeScript runs strict (tsc's own semantics):
 		// the stripped "use strict" prologue is re-added inside the
 		// single-line wrapper, keeping line numbers aligned
 		engine.ctxFactory.wrapPrologue = func(path string) string {
-			if strings.HasSuffix(path, ".ts") && !strings.HasSuffix(path, ".d.ts") {
+			if isTypeScriptFile(path) {
 				return `"use strict";`
 			}
 			return ""
@@ -299,13 +300,13 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	} else {
 		// explicit -tsgo="": .ts files are rejected, never run as raw JS
 		engine.ctxFactory.preprocessor = func(path string, src []byte) ([]byte, error) {
-			if strings.HasSuffix(path, ".d.ts") {
+			if isDeclarationFile(path) {
 				// the deb ships wb-rules.d.ts inside a watched dir;
 				// declaration files are not executable code and must
 				// not produce a boot error
 				return []byte("// TypeScript declaration file, nothing to execute\n"), nil
 			}
-			if strings.HasSuffix(path, ".ts") {
+			if isTypeScriptFile(path) {
 				return nil, fmt.Errorf(`TypeScript support is disabled (-tsgo="")`)
 			}
 			return src, nil
@@ -336,8 +337,8 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 
 	engine.globalCtx.SetCallbackErrorHandler(engine.CallbackErrorHandler)
 
-	// init modSearch for global
-	engine.exportModSearch(engine.globalCtx)
+	// module loading (require() and import) is served by the engine
+	engine.globalCtx.SetModuleHost(engine)
 
 	// init __wbModulePrototype
 	engine.initModulePrototype(engine.globalCtx)
@@ -395,14 +396,14 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 // background afterwards and only ever produces warnings — rules run first,
 // diagnostics arrive later.
 func (engine *ESEngine) preprocessRuleSource(path string, src []byte) ([]byte, error) {
-	if strings.HasSuffix(path, ".d.ts") {
+	if isDeclarationFile(path) {
 		// declaration files carry no executable code and make the
 		// transpiler panic; they may sit in watched rule dirs
 		wbgong.Debug.Printf("skipping TypeScript declaration file %s", path)
 		return []byte("// TypeScript declaration file, nothing to execute\n"), nil
 	}
-	isTS := strings.HasSuffix(path, ".ts")
-	if !isTS && !strings.HasSuffix(path, ".js") {
+	isTS := isTypeScriptFile(path)
+	if !isTS && !isJavaScriptFile(path) {
 		return src, nil
 	}
 
@@ -677,15 +678,6 @@ func (engine *ESEngine) sweepOrphanedCallbacks() {
 		// no-op when the context was invalidated meanwhile (reload swept it)
 		o.ctx.RemoveCallback(o.key)
 	}
-}
-
-func (engine *ESEngine) exportModSearch(ctx *ESContext) {
-	ctx.GetGlobalString("Duktape")
-	ctx.PushGoFunc(func(c *duktape.Context) int {
-		return engine.ModSearch(c)
-	})
-	ctx.PutPropString(-2, "modSearch")
-	ctx.Pop()
 }
 
 func (engine *ESEngine) initHeapStashObject(name string, ctx *ESContext) {
@@ -1231,9 +1223,6 @@ func (engine *ESEngine) prepareNewContext(path string) (newLocalCtx *ESContext) 
 	}
 	newLocalCtx.Pop()
 
-	// export modSearch
-	engine.exportModSearch(newLocalCtx)
-
 	return
 }
 
@@ -1352,7 +1341,7 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 	// The .ts/.js split here is a load-path distinction, not a language one:
 	// only .ts goes through tsgo, so only a .ts failure can be caused by tsgo
 	// being absent. Available() re-probes the tsgo binary.
-	if err != nil && strings.HasSuffix(path, ".ts") && engine.tsc != nil && !engine.tsc.Available() {
+	if err != nil && isTypeScriptFile(path) && engine.tsc != nil && !engine.tsc.Available() {
 		engine.tracker.Untrack(virtualPath)
 	}
 	return true, err
@@ -3560,74 +3549,6 @@ func (engine *ESEngine) esPersistentGet(ctx *ESContext) int {
 	return 1
 }
 
-// native modSearch implementation
-func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
-	// arguments:
-	// 0: id
-	// 1: require
-	// 2: exports
-	// 3: module
-
-	// get module name (id)
-	id := ctx.GetString(0)
-	wbgong.Debug.Printf("[modsearch] required module %s", id)
-
-	// try to find this module in directory
-	for _, dir := range engine.modulesDirs {
-		path := dir + "/" + id + ".js"
-		wbgong.Debug.Printf("[modsearch] trying to read file %s", path)
-
-		// TBD: something external to load scripts properly
-		// now just try to read file
-		src, err := os.ReadFile(path)
-
-		if err == nil {
-			wbgong.Debug.Printf("[modsearch] file found!")
-
-			// set module properties
-			// put module.filename
-			ctx.PushString(path)
-			// [ args | path ]
-			ctx.PutPropString(3, MODULE_FILENAME_PROP)
-			// [ args | ]
-
-			// put module.storage
-			ctx.PushHeapStash()
-			// [ args | heapStash ]
-			ctx.GetPropString(-1, MODULES_USER_STORAGE_OBJ_NAME)
-			// [ args | heapStash _esModules ]
-
-			// check if storage for this module is allocated
-			if !ctx.HasPropString(-1, path) {
-				// create storage
-				ctx.PushObject()
-				// [ args | heapStash _esModules newStorage ]
-				ctx.PutPropString(-2, path)
-				// [ args | heapStash _esModules ]
-			}
-			// add this storage to module
-			ctx.GetPropString(-1, path)
-			// [ args | heapStash _esModules storage ]
-			ctx.PutPropString(3, MODULE_STATIC_PROP)
-			// [ args | heapStash _esModules ]
-			ctx.Pop2()
-			// [ args | ]
-
-			// return module sources
-			ctx.PushString(string(src))
-
-			return 1
-		}
-	}
-
-	wbgong.Error.Printf("error requiring module %s, not found", id)
-
-	// throw a descriptive Error instead of a bare rc code so script errors
-	// read "cannot find module 'X'" in the UI and logs
-	ctx.PushErrorObject(duktape.DUK_ERR_ERROR, fmt.Sprintf("cannot find module %q", id))
-	return duktape.DUK_RET_INSTACK_ERROR
-}
-
 // CheckTsFile serves the Editor.Check RPC from the background-check
 // verdict cache - every .ts/.js load/save triggers a check, so this is a
 // cheap read that never blocks the serially-dispatched RPC loop on a
@@ -3641,8 +3562,7 @@ func (engine *ESEngine) CheckTsFile(physicalPath string) ([]TSDiag, string) {
 	if engine.tsc == nil || !engine.tsc.Available() || !engine.tsc.CheckSupported() {
 		return nil, TS_CHECK_UNSUPPORTED
 	}
-	checkable := (strings.HasSuffix(physicalPath, ".ts") || strings.HasSuffix(physicalPath, ".js")) &&
-		!strings.HasSuffix(physicalPath, ".d.ts")
+	checkable := isTypeScriptFile(physicalPath) || isJavaScriptFile(physicalPath)
 	if !checkable {
 		return nil, TS_CHECK_NOT_TS
 	}

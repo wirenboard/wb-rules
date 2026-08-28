@@ -10,8 +10,8 @@ extern JSValue goFuncCall(JSContext *ctx, JSValue this_val, int argc,
                           JSValue *argv, uint64_t id);
 extern void goObjFinalize(uint64_t id);
 extern void goThreadFinalize(void *jsctx);
-extern void goPromiseRejection(JSRuntime *rt, void *promise, const char *msg,
-                               const char *stack, int is_handled);
+extern void goPromiseRejection(JSRuntime *rt, void *promise, void *reason,
+                               const char *msg, const char *stack, int is_handled);
 extern JSValue goRequire(JSContext *ctx, JSValue this_val, int argc, JSValue *argv,
                          JSValue baseId);
 
@@ -253,7 +253,11 @@ JSValue qjd_json_parse(JSContext *ctx, const char *buf, size_t len, const char *
  * the derived promise. The host tracker is the only signal. The reason is
  * stringified immediately (it may die with its realm before the report);
  * the promise pointer is used purely as an identity key so a rejection
- * handled later in the same turn can retract the pending report. */
+ * handled later in the same turn can retract the pending report; the
+ * reason's identity (objects only) lets a host that surfaces an error
+ * synchronously retract every record of that same error - QuickJS runs a
+ * module body as an async function and drops that internal promise without
+ * a handler when it rejects, so a throwing module is recorded twice. */
 static void qjd_rejection_tracker(JSContext *ctx, JSValueConst promise,
                                   JSValueConst reason, JS_BOOL is_handled,
                                   void *opaque)
@@ -261,7 +265,7 @@ static void qjd_rejection_tracker(JSContext *ctx, JSValueConst promise,
     (void)opaque;
     JSRuntime *rt = JS_GetRuntime(ctx);
     if (is_handled) {
-        goPromiseRejection(rt, JS_VALUE_GET_PTR(promise), NULL, NULL, 1);
+        goPromiseRejection(rt, JS_VALUE_GET_PTR(promise), NULL, NULL, NULL, 1);
         return;
     }
     const char *msg = JS_ToCString(ctx, reason);
@@ -276,7 +280,8 @@ static void qjd_rejection_tracker(JSContext *ctx, JSValueConst promise,
         else if (JS_IsException(stackv))
             JS_FreeValue(ctx, JS_GetException(ctx));
     }
-    goPromiseRejection(rt, JS_VALUE_GET_PTR(promise), msg, stack, 0);
+    goPromiseRejection(rt, JS_VALUE_GET_PTR(promise),
+                       JS_IsObject(reason) ? JS_VALUE_GET_PTR(reason) : NULL, msg, stack, 0);
     if (stack)
         JS_FreeCString(ctx, stack);
     JS_FreeValue(ctx, stackv);
@@ -310,4 +315,119 @@ int64_t qjd_memory_used(JSRuntime *rt)
 void qjd_set_memory_limit(JSRuntime *rt, int64_t limit)
 {
     JS_SetMemoryLimit(rt, (size_t)limit);
+}
+
+/* ---------------------------------------------------------------------------
+ * ES modules
+ */
+
+extern char *goModuleNormalize(JSContext *ctx, const char *base, const char *name);
+extern JSModuleDef *goModuleLoad(JSContext *ctx, const char *name);
+
+static char *module_normalize_trampoline(JSContext *ctx, const char *base,
+                                         const char *name, void *opaque) {
+    return goModuleNormalize(ctx, base, name);
+}
+
+static JSModuleDef *module_loader_trampoline(JSContext *ctx, const char *name,
+                                             void *opaque) {
+    return goModuleLoad(ctx, name);
+}
+
+void qjd_install_module_loader(JSRuntime *rt) {
+    JS_SetModuleLoaderFunc(rt, module_normalize_trampoline, module_loader_trampoline, NULL);
+}
+
+char *qjd_js_strdup(JSContext *ctx, const char *s) { return js_strdup(ctx, s); }
+
+JSValue qjd_compile_module(JSContext *ctx, const char *input, size_t len, const char *filename, int anchor) {
+    if (anchor) JS_UpdateStackTop(JS_GetRuntime(ctx));
+    return JS_Eval(ctx, input, len, filename, JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+}
+
+JSValue qjd_eval_module(JSContext *ctx, JSValue modval, int anchor) {
+    if (anchor) JS_UpdateStackTop(JS_GetRuntime(ctx));
+    /* JS_EvalFunction consumes its argument */
+    return JS_EvalFunction(ctx, JS_DupValue(ctx, modval));
+}
+
+int qjd_is_module(JSValue v) { return JS_VALUE_GET_TAG(v) == JS_TAG_MODULE; }
+
+JSModuleDef *qjd_module_def(JSValue modval) { return (JSModuleDef *)JS_VALUE_GET_PTR(modval); }
+
+JSValue qjd_module_value(JSContext *ctx, JSModuleDef *m) {
+    return JS_DupValue(ctx, JS_MKPTR(JS_TAG_MODULE, m));
+}
+
+JSValue qjd_module_namespace(JSContext *ctx, JSValue modval) {
+    return JS_GetModuleNamespace(ctx, qjd_module_def(modval));
+}
+
+JSValue qjd_import_meta(JSContext *ctx, JSValue modval) {
+    return JS_GetImportMeta(ctx, qjd_module_def(modval));
+}
+
+/* Own enumerable string-keyed property names of `obj`, excluding "default"
+ * (the CommonJS bridge reserves it for module.exports itself). `fn` is called
+ * per name; a non-object yields no names. */
+static int cjs_each_export_name(JSContext *ctx, JSValueConst obj,
+                                int (*fn)(JSContext *, const char *, void *), void *arg) {
+    JSPropertyEnum *tab;
+    uint32_t len, i;
+    int r = 0;
+    if (!JS_IsObject(obj))
+        return 0;
+    if (JS_GetOwnPropertyNames(ctx, &tab, &len, obj, JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
+        return -1;
+    for (i = 0; i < len && r == 0; i++) {
+        const char *name = JS_AtomToCString(ctx, tab[i].atom);
+        if (!name) { r = -1; break; }
+        if (strcmp(name, "default") != 0)
+            r = fn(ctx, name, arg);
+        JS_FreeCString(ctx, name);
+    }
+    JS_FreePropertyEnum(ctx, tab, len);
+    return r;
+}
+
+static int cjs_add_export(JSContext *ctx, const char *name, void *arg) {
+    return JS_AddModuleExport(ctx, (JSModuleDef *)arg, name);
+}
+
+struct cjs_init_arg { JSModuleDef *m; JSValueConst exports; };
+
+static int cjs_set_export(JSContext *ctx, const char *name, void *arg) {
+    struct cjs_init_arg *a = arg;
+    JSValue v = JS_GetPropertyStr(ctx, a->exports, name);
+    if (JS_IsException(v))
+        return -1;
+    /* an export name added at load time but gone from the object since is
+     * left undefined; JS_SetModuleExport frees the value either way */
+    JS_SetModuleExport(ctx, a->m, name, v);
+    return 0;
+}
+
+static int cjs_module_init(JSContext *ctx, JSModuleDef *m) {
+    JSValue exports = JS_GetModulePrivateValue(ctx, m);
+    struct cjs_init_arg a = { m, exports };
+    int r = cjs_each_export_name(ctx, exports, cjs_set_export, &a);
+    if (r == 0)
+        r = JS_SetModuleExport(ctx, m, "default", JS_DupValue(ctx, exports));
+    JS_FreeValue(ctx, exports);
+    return r;
+}
+
+JSModuleDef *qjd_new_cjs_module(JSContext *ctx, const char *name, JSValue exports) {
+    JSModuleDef *m = JS_NewCModule(ctx, name, cjs_module_init);
+    if (!m)
+        return NULL;
+    if (JS_AddModuleExport(ctx, m, "default") < 0 ||
+        cjs_each_export_name(ctx, exports, cjs_add_export, m) < 0) {
+        /* a half-built definition must not stay registered under the name:
+         * a later import would find it and get undefined exports */
+        JS_FreeValue(ctx, JS_MKPTR(JS_TAG_MODULE, m));
+        return NULL;
+    }
+    JS_SetModulePrivateValue(ctx, m, JS_DupValue(ctx, exports));
+    return m;
 }

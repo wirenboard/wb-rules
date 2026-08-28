@@ -843,7 +843,11 @@ interface String {
 /** Absolute path of the current rule file. */
 declare const __filename: string;
 
-/** Per-file module object (rule files are CommonJS-like scenarios). */
+/**
+ * Per-file module object (rule files are CommonJS-like scenarios). Not
+ * present in an ES module file (one using import/export): there `module`
+ * and `exports` are undefined at runtime - use `import.meta` and `export`.
+ */
 declare const module: {
   readonly filename: string;
   /**
@@ -871,5 +875,26 @@ declare module "*";
 
 declare const global: typeof globalThis;
 
-// CommonJS-style module surface available in every rule file
+/**
+ * Metadata of the current ES module - a rule or module file that uses
+ * `import`/`export` (such files run as real ES modules: live bindings,
+ * native top-level await). Not available in classic (CommonJS-style) files,
+ * where `module` and `__filename` serve the same purpose.
+ */
+interface ImportMeta {
+  /** `file://` URL of this module file. */
+  readonly url: string;
+  /** Absolute path of this module file (of the module itself, not of the importing rule file - that is `__filename`). */
+  readonly filename: string;
+  /** Directory of this module file. */
+  readonly dirname: string;
+  /**
+   * Storage shared by every instance of this module file: all the rule files
+   * importing it, and its reloads. The ES-module counterpart of
+   * `module.static`; a file reached both ways shares one storage.
+   */
+  readonly static: Record<string, any>;
+}
+
+// CommonJS-style module surface available in every classic (non-ES-module) rule file
 declare var exports: Record<string, any>;

@@ -41,6 +41,15 @@ type TsFileManager interface {
 	TsTypesContent() (string, error)
 }
 
+// ModuleResolver is an optional LocFileManager extension serving the
+// Editor.ResolveModule RPC: the engine's own import resolution, so an editor
+// can type imports against the module files the controller actually has.
+type ModuleResolver interface {
+	// ResolveModuleForEditor resolves `spec` as written in the file at
+	// `fromPhysical` and returns the module's absolute path and source.
+	ResolveModuleForEditor(fromPhysical, spec string) (path, content string, err error)
+}
+
 // ScriptError denotes an error that was caused by JavaScript code.
 // Files with such errors are partially loaded.
 type ScriptError struct {

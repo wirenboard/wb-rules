@@ -183,26 +183,12 @@ func TestCallbackProtocol(t *testing.T) {
 	ctx.Pop3()
 }
 
-func TestRequireModSearch(t *testing.T) {
+func TestRequireModuleHost(t *testing.T) {
 	ctx := NewContext()
 	defer ctx.DestroyHeap()
-
-	// Install a modSearch like wb-rules does.
-	ctx.GetGlobalString("Duktape")
-	ctx.PushGoFunc(func(d *Context) int {
-		id := d.GetString(0)
-		if id != "testmod" {
-			d.PushErrorObject(DUK_ERR_ERROR, "module not found: "+id)
-			return DUK_RET_INSTACK_ERROR
-		}
-		// set module.filename like engine.ModSearch
-		d.PushString("/fake/testmod.js")
-		d.PutPropString(3, "filename")
-		d.PushString("exports.answer = 42; exports.name = module.id;")
-		return 1
-	})
-	ctx.PutPropString(-2, "modSearch")
-	ctx.Pop()
+	ctx.SetModuleHost(&testModuleHost{files: map[string]string{
+		"/mods/testmod.js": "exports.answer = 42; exports.name = module.id;",
+	}})
 
 	if r := ctx.PevalString("require('testmod').answer + ':' + require('testmod').name"); r != 0 {
 		t.Fatalf("require failed: %s", ctx.SafeToString(-1))
@@ -212,12 +198,12 @@ func TestRequireModSearch(t *testing.T) {
 	}
 	ctx.Pop()
 
-	// missing module → catchable error
-	if r := ctx.PevalString("try { require('nope'); 'no-error' } catch(e) { 'caught' }"); r != 0 {
+	// missing module → catchable error carrying a code
+	if r := ctx.PevalString("try { require('nope'); 'no-error' } catch(e) { e.code + ':' + e.message }"); r != 0 {
 		t.Fatalf("eval failed: %s", ctx.SafeToString(-1))
 	}
-	if got := ctx.GetString(-1); got != "caught" {
-		t.Fatalf("expected caught, got %q", got)
+	if got := ctx.GetString(-1); got != `MODULE_NOT_FOUND:cannot find module "nope"` {
+		t.Fatalf("unexpected error: %q", got)
 	}
 	ctx.Pop()
 }

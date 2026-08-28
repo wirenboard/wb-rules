@@ -44,6 +44,11 @@ type TSCompiler struct {
 	mapsMu   sync.Mutex
 	lineMaps map[string][]int // per transpiled file: generated line (1-based) -> source line
 
+	// moduleDirs are the engine's module directories (WB_RULES_MODULES): the
+	// check maps bare import specifiers onto them (tsconfig "paths") so
+	// `import { f } from "my-helper"` is typed from the real module file.
+	moduleDirs []string
+
 	checkSem chan struct{} // bounds concurrent background type-check processes
 	// atomic.Int64: a bare int64 under sync/atomic panics on 32-bit builds
 	// (armhf) unless 8-byte aligned, and this field was not
@@ -131,7 +136,8 @@ type TSDiag struct {
 	Code     int // TypeScript diagnostic code (TSnnnn)
 }
 
-const tsScriptTargetESNext = 99 // core.ScriptTarget enum value
+const tsScriptTargetESNext = 99  // core.ScriptTarget enum value
+const tsModuleKindPreserve = 200 // core.ModuleKind enum value
 
 func NewTSCompiler(binPath, typesPath string) *TSCompiler {
 	c := &TSCompiler{binPath: binPath, lineMaps: map[string][]int{}, checkSem: make(chan struct{}, 2)}
@@ -152,6 +158,21 @@ func NewTSCompiler(binPath, typesPath string) *TSCompiler {
 // CheckSupported reports whether the background type check can run at all:
 // it needs the API declarations (-ts-types). Transpilation does not.
 func (c *TSCompiler) CheckSupported() bool { return c != nil && c.typesGl != "" }
+
+// SetModuleDirs tells the background check where bare import specifiers
+// resolve (the engine's module directories, in lookup order).
+func (c *TSCompiler) SetModuleDirs(dirs []string) {
+	c.moduleDirs = c.moduleDirs[:0]
+	for _, d := range dirs {
+		if d == "" {
+			continue
+		}
+		if abs, err := filepath.Abs(d); err == nil {
+			d = abs
+		}
+		c.moduleDirs = append(c.moduleDirs, d)
+	}
+}
 
 // Available reports whether the tsgo binary exists.
 func (c *TSCompiler) Available() bool {
@@ -398,6 +419,14 @@ func (c *TSCompiler) transpileLocked(src, fileName string) (string, error) {
 				"compilerOptions": map[string]any{
 					"target":    tsScriptTargetESNext,
 					"sourceMap": true,
+					// module "preserve": import/export statements are emitted
+					// as written (the engine runs such a file as a real ES
+					// module) and CommonJS forms (`import x = require()`,
+					// `export =`) stay CommonJS - the loader decides the format
+					// from the emitted source. Unused imports are still elided
+					// (no verbatimModuleSyntax), so a module needed only for
+					// its side effects must be imported as `import "x"`.
+					"module": tsModuleKindPreserve,
 				},
 				"reportDiagnostics": true,
 			},
@@ -618,9 +647,13 @@ func pathsRefSameFile(a, b string) bool {
 func (c *TSCompiler) checkMany(paths []string, registryDts string) (map[string][]TSDiag, error) {
 	// --lib esnext: no DOM globals, so rule-script names like 'history'
 	// or 'name' don't collide with browser declarations.
-	// --module esnext + --moduleDetection force: rule files may use
+	// --module preserve + --moduleDetection force: rule files may use
 	// top-level await (the runtime wraps them in an async function), which
-	// TypeScript only permits in a module.
+	// TypeScript only permits in a module; "preserve" matches the transpile
+	// (ES module syntax runs as written, CommonJS forms stay legal) and
+	// resolves imports the bundler way: relative ones against sibling files,
+	// so `import { f } from "./lib.ts"` (--allowImportingTsExtensions) is
+	// typed from the real file.
 	// --allowJs --checkJs: type-check .js rule files too (against the wb-rules
 	// types + the live-device registry), so a wrong-typed write like
 	// dev["buzzer/enabled"] = 123 is caught in legacy .js as well as .ts. No-op
@@ -644,31 +677,55 @@ func (c *TSCompiler) checkMany(paths []string, registryDts string) (map[string][
 		return results, nil
 	}
 	paths = present
-	// --pretty false: diagnostics in the plain "path(line,col): error TSnnnn"
-	// form the parser below expects, whatever the default becomes
-	args := []string{"--noEmit", "--pretty", "false", "--target", "esnext", "--lib", "esnext",
-		"--strict", "false", "--module", "esnext", "--moduleDetection", "force",
-		"--allowJs", "--checkJs"}
-	args = append(args, paths...)
-	args = append(args, c.typesGl)
+	// The program is described by a temporary tsconfig rather than CLI
+	// flags: "paths" (bare specifiers -> the module directories) has no
+	// command-line form. Everything else is what the flags used to say:
+	// --pretty false keeps diagnostics in the plain "path(line,col): error
+	// TSnnnn" form the parser below expects, whatever the default becomes.
+	cfgDir, err := os.MkdirTemp("", "wb-rules-check-*")
+	if err != nil {
+		return nil, fmt.Errorf("type check did not run: cannot create the temp config: %w", err)
+	}
+	defer os.RemoveAll(cfgDir)
+	files := append([]string{}, paths...)
+	files = append(files, c.typesGl)
 	// The registry (a generated `interface WbControls { ... }` built from the
 	// controller's live device table) declaration-merges into the empty
 	// WbControls in wb-rules.d.ts, so this on-controller check flags wrong
 	// types on the stringly-referenced APIs (dev["dev/ctrl"], getControl(...))
-	// the same way the editor does. Passed as a temp file since tsgo takes
+	// the same way the editor does. Passed as a file since tsgo takes
 	// file paths.
 	var registryPath string
 	if registryDts != "" {
-		if f, err := os.CreateTemp("", "wb-controls-*.d.ts"); err == nil {
-			registryPath = f.Name()
-			_, _ = f.WriteString(registryDts)
-			_ = f.Close()
-			defer os.Remove(registryPath)
-			args = append(args, registryPath)
-		} else {
+		registryPath = filepath.Join(cfgDir, "wb-controls.d.ts")
+		if err := os.WriteFile(registryPath, []byte(registryDts), 0o600); err != nil {
 			wbgong.Error.Printf("ts check: cannot write registry temp: %s", err)
+			registryPath = ""
+		} else {
+			files = append(files, registryPath)
 		}
 	}
+	compilerOptions := map[string]any{
+		"noEmit": true, "pretty": false, "target": "esnext", "lib": []string{"esnext"},
+		"strict": false, "module": "preserve", "moduleDetection": "force",
+		"allowImportingTsExtensions": true, "allowJs": true, "checkJs": true,
+	}
+	if len(c.moduleDirs) > 0 {
+		targets := make([]string, 0, len(c.moduleDirs))
+		for _, d := range c.moduleDirs {
+			targets = append(targets, filepath.Join(d, "*"))
+		}
+		compilerOptions["paths"] = map[string][]string{"*": targets}
+	}
+	cfg, err := json.Marshal(map[string]any{"compilerOptions": compilerOptions, "files": files})
+	if err != nil {
+		return nil, fmt.Errorf("type check did not run: %w", err)
+	}
+	cfgPath := filepath.Join(cfgDir, "tsconfig.json")
+	if err := os.WriteFile(cfgPath, cfg, 0o600); err != nil {
+		return nil, fmt.Errorf("type check did not run: cannot write the temp config: %w", err)
+	}
+	args := []string{"-p", cfgPath}
 	// rootCtx parent: Stop() cancels it, killing this transient child too
 	checkCtx, cancel := context.WithTimeout(c.rootCtx, 60*time.Second)
 	defer cancel()
@@ -727,10 +784,14 @@ func (c *TSCompiler) checkMany(paths []string, registryDts string) (map[string][
 		// file by the path it was requested with and anything else as an
 		// absolute path, so log lines and Editor.Check carry real, clickable
 		// paths.
-		// A diagnostic outside the batch (possible only via cross-file
-		// resolution, which require()-style loading keeps rare) is charged
-		// to paths[0] and takes that file's .js/.ts severity policy.
-		owner := paths[0]
+		// A diagnostic inside a file the batch pulled in through an import
+		// (a module file, a sibling library) is dropped: it cannot be
+		// attributed to the rule file that imported it, so charging it to a
+		// batch member would put a red mark on an innocent file, and legacy
+		// sloppy .js modules would turn into errors for every .ts importer.
+		// The importer's own misuse of the module is still reported on the
+		// importer; a module that is itself a rule file gets its own check.
+		owner := ""
 		file := g[1]
 		for _, p := range paths {
 			if pathsRefSameFile(file, p) {
@@ -738,13 +799,11 @@ func (c *TSCompiler) checkMany(paths []string, registryDts string) (map[string][
 				break
 			}
 		}
-		if file == g[1] {
-			if abs, err := filepath.Abs(file); err == nil {
-				file = abs
-			}
+		if owner == "" {
+			continue
 		}
 		severity := g[4]
-		if strings.HasSuffix(owner, ".js") {
+		if isJavaScriptFile(owner) {
 			if sloppyJsCodes[code] {
 				continue
 			}

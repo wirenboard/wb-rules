@@ -524,9 +524,16 @@ func (ctx *ESContext) LoadScenario(path string) error {
 		}
 	}
 
-	// wrap source code; exports is provided (aliasing module.exports) so
-	// CommonJS-style module files also load as plain rule files. A
-	// preprocessor may inject a same-line prologue via factory hooks.
+	// A rule file is either a classic script or an ES module, decided by its
+	// source (CompileScriptOrModule): a file with import/export declarations
+	// (or import.meta) compiles as a module - a real one, with live bindings,
+	// import.meta and native top-level await - anything else takes the
+	// classic wrapper below.
+	//
+	// The classic wrapper: source wrapped in a function; exports is provided
+	// (aliasing module.exports) so CommonJS-style module files also load as
+	// plain rule files. A preprocessor may inject a same-line prologue via
+	// factory hooks.
 	//
 	// The wrapper is async so a rule file may use top-level await
 	// (`val = await changed(...)`). Files that use no top-level await are
@@ -535,55 +542,61 @@ func (ctx *ESContext) LoadScenario(path string) error {
 	// synchronously - both are handled below exactly as the old synchronous
 	// wrapper was. A file that does await at the top level leaves a pending
 	// promise and finishes on the microtask queue, like an async rule body.
+	// A module behaves the same way: its evaluation promise is settled
+	// synchronously unless it (or a dependency) awaits at the top level.
 	prologue := ""
 	if pl := ctx.factory.wrapPrologue; pl != nil {
 		prologue = pl(path)
 	}
-	src := "async function F(module, exports){" + prologue + string(srcRaw) + "\n}"
-
-	// Source code evaluation.
-	// Checking if there are extra curly braces. Compile with the real path
-	// so syntax-error tracebacks carry the script file name.
-	ctx.PushString(path)
-	if err := ctx.PcompileStringFilename(duktape.DUK_COMPILE_EVAL, src); err != 0 {
+	// Compile with the real path so syntax-error tracebacks carry the script
+	// file name; the wrapper keeps the source's line numbers (prologue on
+	// the first line), and a module is compiled bare.
+	isModule, rc := ctx.CompileScriptOrModule(string(srcRaw), path,
+		"(async function F(module, exports){"+prologue, "\n})")
+	if rc != 0 {
 		defer ctx.Pop()
 		return ctx.GetESErrorAugmentingSyntaxErrors(path)
 	}
-	ctx.Pop()
 
-	// compile function
-	if err = ctx.LoadFunctionFromString(path, src); err != nil {
-		return err
-	}
+	if isModule {
+		// [ module ] -> [ promise ]: link and evaluate (imports were loaded
+		// at compile time); the promise is inspected below like the
+		// wrapper's
+		defer ctx.Pop() // pop the promise (or the exception)
+		if r := ctx.EvalModuleNoPump(); r != 0 {
+			ctx.PumpJobs()
+			return ctx.GetESErrorAugmentingSyntaxErrors(path)
+		}
+	} else {
+		// [ fn ]: push 'module' argument
+		ctx.PushObject()
 
-	// push 'module' argument
-	ctx.PushObject()
+		// set module prototype
+		ctx.PushGlobalObject()
+		ctx.GetPropString(-1, "__wbModulePrototype")
+		ctx.SetPrototype(-3)
+		ctx.Pop()
 
-	// set module prototype
-	ctx.PushGlobalObject()
-	ctx.GetPropString(-1, "__wbModulePrototype")
-	ctx.SetPrototype(-3)
-	ctx.Pop()
+		// set 'filename' param
+		ctx.PushString(path)
+		ctx.PutPropString(-2, "filename")
 
-	// set 'filename' param
-	ctx.PushString(path)
-	ctx.PutPropString(-2, "filename")
+		// push 'exports' argument, aliased as module.exports
+		ctx.PushObject()
+		ctx.Dup(-1)
+		ctx.PutPropString(-3, "exports")
 
-	// push 'exports' argument, aliased as module.exports
-	ctx.PushObject()
-	ctx.Dup(-1)
-	ctx.PutPropString(-3, "exports")
-
-	// Call the wrapper. Use the no-pump variant so we can inspect the
-	// returned promise before the microtask queue is drained: F is async, and
-	// if the body threw before reaching any top-level await its promise is
-	// already rejected, which we want to surface as a synchronous load error
-	// (exactly as the old sync wrapper did) rather than let the pump report it
-	// as a deferred "async rule error".
-	defer ctx.Pop() // pop the promise (or the synchronous exception)
-	if r := ctx.PcallNoPump(2); r != 0 {
-		ctx.PumpJobs()
-		return ctx.GetESErrorAugmentingSyntaxErrors(path)
+		// Call the wrapper. Use the no-pump variant so we can inspect the
+		// returned promise before the microtask queue is drained: F is async,
+		// and if the body threw before reaching any top-level await its
+		// promise is already rejected, which we want to surface as a
+		// synchronous load error (exactly as the old sync wrapper did) rather
+		// than let the pump report it as a deferred "async rule error".
+		defer ctx.Pop() // pop the promise (or the synchronous exception)
+		if r := ctx.PcallNoPump(2); r != 0 {
+			ctx.PumpJobs()
+			return ctx.GetESErrorAugmentingSyntaxErrors(path)
+		}
 	}
 
 	var loadErr error

@@ -84,6 +84,22 @@ channels:
     parameters:
       clientId:
         $ref: '#/components/parameters/clientId'
+  wbrulesEditorResolveModule:
+    address: '/rpc/v1/wbrules/Editor/ResolveModule/{clientId}'
+    messages:
+      wbrulesEditorResolveModule:
+        $ref: '#/components/messages/wbrulesEditorResolveModule'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
+  wbrulesEditorResolveModuleReply:
+    address: '/rpc/v1/wbrules/Editor/ResolveModule/{clientId}/reply'
+    messages:
+      wbrulesEditorResolveModuleReply:
+        $ref: '#/components/messages/wbrulesEditorResolveModuleReply'
+    parameters:
+      clientId:
+        $ref: '#/components/parameters/clientId'
   wbrulesEditorRemove:
     address: '/rpc/v1/wbrules/Editor/Remove/{clientId}'
     messages:
@@ -185,6 +201,19 @@ operations:
         $ref: '#/channels/wbrulesEditorGetTypesReply'
       messages:
         - $ref: '#/channels/wbrulesEditorGetTypesReply/messages/wbrulesEditorGetTypesReply'
+  wbrulesEditorResolveModule:
+    action: send
+    channel:
+      $ref: '#/channels/wbrulesEditorResolveModule'
+    traits:
+      - $ref: '#/components/operationTraits/mqtt'
+    messages:
+      - $ref: '#/channels/wbrulesEditorResolveModule/messages/wbrulesEditorResolveModule'
+    reply:
+      channel:
+        $ref: '#/channels/wbrulesEditorResolveModuleReply'
+      messages:
+        - $ref: '#/channels/wbrulesEditorResolveModuleReply/messages/wbrulesEditorResolveModuleReply'
   wbrulesEditorLoad:
     action: send
     channel:
@@ -271,6 +300,14 @@ components:
       name: editorGetTypesReply
       payload:
         $ref: '#/components/schemas/wbrulesEditorGetTypesReplyPayload'
+    wbrulesEditorResolveModule:
+      name: editorResolveModule
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorResolveModulePayload'
+    wbrulesEditorResolveModuleReply:
+      name: editorResolveModuleReply
+      payload:
+        $ref: '#/components/schemas/wbrulesEditorResolveModuleReplyPayload'
     wbrulesEditorLoad:
       name: editorLoad
       payload:
@@ -522,6 +559,58 @@ components:
       required:
         - id
         - result
+    wbrulesEditorResolveModulePayload:
+      type: object
+      properties:
+        id:
+          type: number
+        params:
+          type: object
+          properties:
+            from:
+              type: string
+              description: >-
+                the importing file - a rule file's virtual path (as listed by
+                Editor.List) or the absolute path of a module returned by an
+                earlier ResolveModule call (to follow that module's own imports)
+            specifier:
+              type: string
+              description: >-
+                the import specifier as written: relative ("./x") resolves next
+                to the importing file, bare ("my-helper", "dir/x") in the module
+                directories, absolute as is; ".js"/".ts" are probed. Only files
+                under the rule directory and the module directories are served
+          required:
+            - from
+            - specifier
+      required:
+        - id
+        - params
+    wbrulesEditorResolveModuleReplyPayload:
+      type: object
+      properties:
+        id:
+          type: number
+        result:
+          type: object
+          properties:
+            path:
+              type: string
+              description: absolute path of the resolved module file
+            content:
+              type: string
+              description: the module file's source (TypeScript as written, not transpiled)
+          required:
+            - path
+            - content
+        error:
+          type: object
+          description: >-
+            code 1003 when the specifier cannot be resolved (or resolves
+            outside the rule and module directories - only those are served),
+            1005 when the engine has no module resolution
+      required:
+        - id
     wbrulesEditorRemovePayload:
       type: object
       properties:
