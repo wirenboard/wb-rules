@@ -378,7 +378,7 @@ func (rts *runtimeState) cachedModule(ctx *C.JSContext, key string) (C.JSValue, 
 	if m, ok := rts.modules[moduleKey{ctx, key}]; ok {
 		return C.JS_DupValue(ctx, m), true
 	}
-	return C.JSValue{}, false
+	return C.qjd_undefined(), false
 }
 
 //export goRequire
