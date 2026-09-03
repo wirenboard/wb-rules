@@ -41,7 +41,7 @@ amd64:
 
 test:
 	cp $(WBGO_LOCAL_PATH)/amd64.wbgo.so wbrules/wbgo.so
-	$(GOTEST) $(GO_FLAGS) $(GO_TEST_FLAGS) ./wbrules
+	$(GOTEST) $(GO_FLAGS) $(GO_TEST_FLAGS) ./...
 
 wb-rules: main.go wbrules/*.go
 	$(GO_ENV) $(GO) build $(GO_FLAGS)

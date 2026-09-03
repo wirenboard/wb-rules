@@ -43,10 +43,31 @@ func isSocket(path string) bool {
 	return info.Mode()&os.ModeSocket != 0
 }
 
-func main() {
+func exitCodeForFailure(reason any) int {
+	message := strings.ToLower(fmt.Sprint(reason))
+	for _, authError := range []string{
+		"not authorized",
+		"bad user name or password",
+		"bad username or password",
+	} {
+		if strings.Contains(message, authError) {
+			return 2
+		}
+	}
+	return 1
+}
+
+func run() (exitCode int) {
+	defer func() {
+		if reason := recover(); reason != nil {
+			exitCode = exitCodeForFailure(reason)
+			wbgong.Error.Printf("service failed: %v", reason)
+		}
+	}()
+
 	if len(os.Args) > 1 && os.Args[1] == "version" {
 		fmt.Println(version)
-		os.Exit(0)
+		return 0
 	}
 
 	var err error
@@ -127,7 +148,8 @@ func main() {
 	wbgong.Info.Println("driver is created")
 
 	if err := driver.StartLoop(); err != nil {
-		wbgong.Error.Fatalf("error starting the driver: %v", err)
+		wbgong.Error.Printf("error starting the driver: %v", err)
+		return exitCodeForFailure(err)
 	}
 	driver.WaitForReady()
 
@@ -189,4 +211,9 @@ func main() {
 
 	// wait for quit signal
 	<-exitCh
+	return 7
+}
+
+func main() {
+	os.Exit(run())
 }
