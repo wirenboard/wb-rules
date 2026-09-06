@@ -402,30 +402,55 @@ func (s *RuleSuiteBase) SetCellValueNoVerify(devID, ctrlID string, value any) {
 }
 
 func (s *RuleSuiteBase) TearDownTest() {
+	// Register cleanup before checking the broker: VerifyEmpty uses FailNow,
+	// so cleanup must not depend on it returning normally.
+	defer func() {
+		if s.driver != nil {
+			s.driver.Close()
+		}
+	}()
+	defer func() {
+		if s.logClient != nil {
+			s.logClient.Stop()
+		}
+	}()
+	defer func() {
+		if s.client != nil {
+			s.client.Stop()
+		}
+	}()
+	defer func() {
+		if s.driver != nil {
+			s.Ck("StopLoop()", s.driver.StopLoop())
+		}
+	}()
+	defer func() {
+		if s.CleanUp != nil {
+			s.CleanUp()
+		}
+	}()
+	defer func() {
+		if s.engine != nil {
+			s.engine.ClosePersistentDB()
+		}
+		s.PersistentDBFile = ""
+		s.VdevStorageFile = ""
+	}()
+	defer func() {
+		if s.engine != nil {
+			s.engine.Stop()
+			s.WaitFor(func() bool {
+				return !s.engine.IsActive()
+			})
+		}
+	}()
+	defer func() {
+		if s.DataFileFixture != nil {
+			s.TearDownDataFiles()
+		}
+	}()
+
 	s.Broker.VerifyEmpty()
-
-	s.TearDownDataFiles()
-
-	s.engine.Stop()
-	s.WaitFor(func() bool {
-		return !s.engine.IsActive()
-	})
-
-	s.engine.ClosePersistentDB()
-	s.PersistentDBFile = ""
-	s.VdevStorageFile = ""
-
-	if s.CleanUp != nil {
-		s.CleanUp()
-	}
-
-	err := s.driver.StopLoop()
-	s.Ck("StopLoop()", err)
-
-	s.client.Stop()
-	s.logClient.Stop()
-
-	s.driver.Close()
 }
 
 // TBD: metadata (like, meta["devname"]["controlName"])
