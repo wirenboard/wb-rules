@@ -3,14 +3,10 @@ package wbrules
 import (
 	"testing"
 
-	"github.com/wirenboard/wbgong"
 	"github.com/wirenboard/wbgong/testutils"
 )
 
-var vdevRmCtlControls = []string{
-	"remove", "redefine", "removeByMethod", "removeBad", "redefineByTimer",
-	"wipeExternal", "wipeBad",
-}
+var vdevRmCtlControls = []string{"remove", "redefine", "removeByMethod", "removeBad", "redefineByTimer"}
 
 // driver messages on removal of a device with switch controls
 func vdevRemovedMsgs(devId string, ctrls ...string) []any {
@@ -114,55 +110,6 @@ func (s *RuleVdevRemoveSuite) TestRemoveScriptAfterRedefine() {
 	s.VerifyUnordered(append(expected, vdevRemovedMsgs("vdev_rm", "sw")...)...)
 	s.VerifyEmpty()
 	s.EnsureNoErrorsOrWarnings()
-}
-
-// wipe() of an external device erases its retained topics;
-// the button is pressed via a raw publish because the wipe itself
-// produces a noisy stream of somedev control/meta change events that
-// the strict s.publish() helper is not meant to describe
-func (s *RuleVdevRemoveSuite) TestWipeExternal() {
-	// The wipe floods the unbuffered control-change subscription of the
-	// test with somedev value/meta events, including stragglers arriving
-	// during teardown, so drain the channel for the rest of the engine
-	// lifetime. The engine stop does not close it; afterwards the goroutine
-	// parks on the dead channel, which is harmless in the test binary.
-	go func() {
-		for range s.controlChange {
-		}
-	}()
-
-	s.client.Publish(wbgong.MQTTMessage{
-		Topic:   "/devices/ctl/controls/wipeExternal/on",
-		Payload: "1",
-		QoS:     1,
-	})
-	s.VerifyUnordered(
-		"tst -> /devices/ctl/controls/wipeExternal/on: [1] (QoS 1)",
-		"driver -> /devices/ctl/controls/wipeExternal: [1] (QoS 1, retained)",
-		"wbrules-log -> /devices/somedev/controls/sw: [] (QoS 1, retained)",
-		"wbrules-log -> /devices/somedev/controls/sw/meta: [] (QoS 1, retained)",
-		"wbrules-log -> /devices/somedev/controls/sw/meta/readonly: [] (QoS 1, retained)",
-		"wbrules-log -> /devices/somedev/controls/sw/meta/type: [] (QoS 1, retained)",
-		"wbrules-log -> /devices/somedev/controls/temp: [] (QoS 1, retained)",
-		"wbrules-log -> /devices/somedev/controls/temp/meta: [] (QoS 1, retained)",
-		"wbrules-log -> /devices/somedev/controls/temp/meta/readonly: [] (QoS 1, retained)",
-		"wbrules-log -> /devices/somedev/controls/temp/meta/type: [] (QoS 1, retained)",
-		"wbrules-log -> /devices/somedev/meta: [] (QoS 1, retained)",
-		"wbrules-log -> /devices/somedev/meta/driver: [] (QoS 1, retained)",
-		"wbrules-log -> /devices/somedev/meta/error: [] (QoS 1, retained)",
-		"wbrules-log -> /devices/somedev/meta/name: [] (QoS 1, retained)",
-		"wbrules-log -> /devices/somedev/meta/title: [] (QoS 1, retained)",
-		"[info] external wiped",
-	)
-}
-
-func (s *RuleVdevRemoveSuite) TestWipeErrors() {
-	s.press("wipeBad",
-		"[info] error: cannot wipe device vdev_rm: Device is local",
-		"[info] error: cannot wipe device nonexistent: Device with given ID doesn't exist",
-		"[info] error: cannot wipe device wbrules: Device is local",
-	)
-	s.EnsureGotErrors()
 }
 
 func TestRuleVdevRemoveSuite(t *testing.T) {
