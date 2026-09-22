@@ -4,9 +4,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
+	"testing/iotest"
 
 	"github.com/stretchr/testify/require"
+	"github.com/wirenboard/wbgong"
 	"github.com/wirenboard/wbgong/testutils"
 )
 
@@ -22,6 +26,33 @@ func checkNoTemporaryScripts(t *testing.T, dir string) {
 	paths, err := filepath.Glob(filepath.Join(dir, ".*"))
 	require.NoError(t, err)
 	require.Empty(t, paths, "temporary script files were not removed")
+}
+
+func TestWriteFileAtomicFailurePreservesOriginal(t *testing.T) {
+	const original = `log("original script");`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "script.js")
+	require.NoError(t, os.WriteFile(path, []byte(original), 0640))
+	before, err := os.Stat(path)
+	require.NoError(t, err)
+
+	// Inject a copy error only after supplying replacement bytes to the real
+	// atomic writer, exercising cleanup of a partially written temporary file.
+	partial := strings.NewReader(`log("partial`)
+	content := io.MultiReader(partial, iotest.ErrReader(syscall.ENOSPC))
+	err = wbgong.WriteFileAtomic(path, content, 0644)
+	require.ErrorIs(t, err, syscall.ENOSPC)
+	require.Zero(t, partial.Len(), "failure must occur after consuming replacement bytes")
+
+	checkScriptContent(t, path, original)
+	after, err := os.Stat(path)
+	require.NoError(t, err)
+	require.True(t, os.SameFile(before, after), "failed write replaced the original inode")
+	require.Equal(t, before.Mode().Perm(), after.Mode().Perm())
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "temporary script files were not removed")
+	require.Equal(t, "script.js", entries[0].Name())
 }
 
 type RuleEditorSuite struct {
