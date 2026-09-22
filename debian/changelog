@@ -1,3 +1,10 @@
+wb-rules (2.46.7) stable; urgency=medium
+
+  * Report persistent storage read and write transaction errors to rule
+    scripts instead of silently ignoring them
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 22 Sep 2026 18:23:28 +0400
+
 wb-rules (2.46.6) stable; urgency=medium
 
   * Fix flaky tests, no functional changes

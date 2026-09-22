@@ -94,6 +94,32 @@ func (s *PersistentStorageSuite) TestLocalPersistentStorage2() {
 	s.SkipTill("[info] file2: read objects undefined, \"hello_from_2\"")
 }
 
+func (s *PersistentStorageSuite) TestPersistentStorageTransactionErrors() {
+	s.Require().NoError(s.engine.ClosePersistentDB())
+
+	err := s.engine.EvalScript(`
+		var ps = new PersistentStorage('test_storage_errors', { global: true });
+		try {
+			ps.key = 42;
+		} catch (e) {
+			log('persistent write failed: ' + e);
+		}
+		try {
+			ps.key;
+		} catch (e) {
+			log('persistent read failed: ' + e);
+		}
+	`)
+	s.Require().NoError(err)
+
+	s.VerifyUnordered(
+		"[error] can't update persistent storage test_storage_errors/key: database not open",
+		"[info] persistent write failed: Error: can't update persistent storage test_storage_errors/key: database not open",
+		"[error] can't read persistent storage test_storage_errors/key: database not open",
+		"[info] persistent read failed: Error: can't read persistent storage test_storage_errors/key: database not open",
+	)
+}
+
 func TestPersistentStorageSuite(t *testing.T) {
 	s := new(PersistentStorageSuite)
 	s.SetupFixture()
