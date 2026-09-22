@@ -1,3 +1,9 @@
+wb-rules (2.46.7) stable; urgency=medium
+
+  * Save rule files atomically to prevent truncation on write errors
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 21 Sep 2026 10:23:28 +0400
+
 wb-rules (2.46.6) stable; urgency=medium
 
   * Fix flaky tests, no functional changes

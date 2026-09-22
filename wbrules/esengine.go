@@ -897,11 +897,11 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 			}
 		}
 
-		// WriteFile() will cause DirWatcher to wake up and invoke
+		// Atomic replacement will cause DirWatcher to wake up and invoke
 		// LiveLoadFile for the file, but as the new content
 		// will be already registered with the contentTracker,
 		// duplicate reload will not happen
-		err = os.WriteFile(cleanPath, []byte(content), 0644)
+		err = wbgong.WriteFileAtomic(cleanPath, strings.NewReader(content), 0644)
 		if err != nil {
 			r <- err
 			return
