@@ -2640,7 +2640,7 @@ func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 	}
 
 	// perform a transaction
-	engine.persistentDB.Update(func(tx *bolt.Tx) error {
+	err := engine.persistentDB.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 		if err != nil {
 			return err
@@ -2658,6 +2658,12 @@ func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 		}
 		return nil
 	})
+	if err != nil {
+		message := fmt.Sprintf("can't update persistent storage %s/%s: %v", bucket, key, err)
+		engine.Log(ENGINE_LOG_ERROR, message)
+		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, message)
+		return duktape.DUK_RET_INSTACK_ERROR
+	}
 
 	if shouldDelete {
 		wbgong.Debug.Printf("delete value from persistent storage %s: '%s'", bucket, key)
@@ -2702,7 +2708,7 @@ func (engine *ESEngine) esPersistentGet(ctx *ESContext) int {
 	// try to get these from cache
 	var ok bool
 	// read value
-	engine.persistentDB.View(func(tx *bolt.Tx) error {
+	err := engine.persistentDB.View(func(tx *bolt.Tx) error {
 		ok = false
 		b := tx.Bucket([]byte(bucket))
 		if b == nil { // no such bucket -> undefined
@@ -2714,6 +2720,12 @@ func (engine *ESEngine) esPersistentGet(ctx *ESContext) int {
 		}
 		return nil
 	})
+	if err != nil {
+		message := fmt.Sprintf("can't read persistent storage %s/%s: %v", bucket, key, err)
+		engine.Log(ENGINE_LOG_ERROR, message)
+		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, message)
+		return duktape.DUK_RET_INSTACK_ERROR
+	}
 
 	if !ok {
 		// push 'undefined'
