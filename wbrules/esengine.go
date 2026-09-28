@@ -2518,6 +2518,47 @@ func (engine *ESEngine) SetPersistentDB(filename string) error {
 	return engine.SetPersistentDBMode(filename, PERSISTENT_DB_CHMOD)
 }
 
+func isInvalidPersistentDBError(err error) bool {
+	return errors.Is(err, bolt.ErrInvalid) ||
+		errors.Is(err, bolt.ErrChecksum) ||
+		errors.Is(err, bolt.ErrVersionMismatch)
+}
+
+func invalidPersistentDBReason(err error) string {
+	switch {
+	case errors.Is(err, bolt.ErrInvalid):
+		return "magic mismatch"
+	case errors.Is(err, bolt.ErrChecksum):
+		return "checksum mismatch"
+	case errors.Is(err, bolt.ErrVersionMismatch):
+		return "version mismatch"
+	default:
+		return "unknown validation error"
+	}
+}
+
+func openPersistentDB(filename string, mode os.FileMode) (*bolt.DB, error) {
+	options := &bolt.Options{Timeout: 1 * time.Second}
+	db, err := bolt.Open(filename, mode, options)
+	if err == nil || !isInvalidPersistentDBError(err) {
+		return db, err
+	}
+	invalidErr := err
+	wbgong.Error.Printf("persistent storage database %s is invalid: %s. Recreating",
+		filename, invalidPersistentDBReason(invalidErr))
+
+	databaseFilename, resolveErr := filepath.EvalSymlinks(filename)
+	if resolveErr != nil {
+		return nil, fmt.Errorf("can't resolve invalid persistent DB path %s: %w", filename, resolveErr)
+	}
+
+	if removeErr := os.Remove(databaseFilename); removeErr != nil {
+		return nil, fmt.Errorf("can't remove invalid persistent DB %s: %w", databaseFilename, removeErr)
+	}
+
+	return bolt.Open(filename, mode, options)
+}
+
 func (engine *ESEngine) SetPersistentDBMode(filename string, mode os.FileMode) (err error) {
 	if engine.persistentDB != nil {
 		engine.Log(ENGINE_LOG_ERROR, "persistent storage DB is already opened")
@@ -2525,8 +2566,7 @@ func (engine *ESEngine) SetPersistentDBMode(filename string, mode os.FileMode) (
 		return
 	}
 
-	engine.persistentDB, err = bolt.Open(filename, mode,
-		&bolt.Options{Timeout: 1 * time.Second})
+	engine.persistentDB, err = openPersistentDB(filename, mode)
 
 	if err != nil {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("can't open persistent DB file: %v", err))
