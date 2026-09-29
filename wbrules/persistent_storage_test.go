@@ -2,11 +2,54 @@ package wbrules
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/wirenboard/wbgong"
 	"github.com/wirenboard/wbgong/testutils"
+	bolt "go.etcd.io/bbolt"
 )
+
+func TestOpenPersistentDBRecoversInvalidFile(t *testing.T) {
+	dir := t.TempDir()
+	filename := filepath.Join(dir, "persistent.db")
+	invalidContents := []byte("not a bbolt database")
+	assert := require.New(t)
+	assert.NoError(os.WriteFile(filename, invalidContents, 0600))
+	db, err := openPersistentDB(filename, 0640)
+	assert.NoError(err)
+	assert.NotNil(db)
+	assert.NoError(db.Close())
+
+	db, err = bolt.Open(filename, 0640, nil)
+	assert.NoError(err)
+	assert.NoError(db.Close())
+}
+
+func TestOpenPersistentDBRecoversSymlinkTarget(t *testing.T) {
+	dir := t.TempDir()
+	targetDir := filepath.Join(dir, "data")
+	target := filepath.Join(targetDir, "persistent.db")
+	filename := filepath.Join(dir, "persistent.db")
+	invalidContents := []byte("invalid database behind a symlink")
+	assert := require.New(t)
+	assert.NoError(os.Mkdir(targetDir, 0755))
+	assert.NoError(os.WriteFile(target, invalidContents, 0600))
+	assert.NoError(os.Symlink(filepath.Join("data", "persistent.db"), filename))
+	db, err := openPersistentDB(filename, 0640)
+	assert.NoError(err)
+	assert.NotNil(db)
+	assert.NoError(db.Close())
+
+	linkTarget, err := os.Readlink(filename)
+	assert.NoError(err)
+	assert.Equal(filepath.Join("data", "persistent.db"), linkTarget)
+
+	db, err = bolt.Open(target, 0640, nil)
+	assert.NoError(err)
+	assert.NoError(db.Close())
+}
 
 type PersistentStorageSuite struct {
 	RuleSuiteBase
