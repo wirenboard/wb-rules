@@ -1828,6 +1828,37 @@ func (engine *RuleEngine) GetDeviceIds() ([]string, error) {
 	return ids, nil
 }
 
+// RemoveVirtualDevice removes a virtual device created by a script
+// and unpublishes its MQTT topics. External devices are rejected.
+func (engine *RuleEngine) RemoveVirtualDevice(devId string) error {
+	if devId == RULE_ENGINE_SETTINGS_DEV_NAME {
+		return fmt.Errorf("cannot remove device %s: it is the rule engine settings device", devId)
+	}
+
+	errAccess := engine.driver.Access(func(tx wbgong.DriverTx) (err error) {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		localDevice, isLocal := dev.(wbgong.LocalDevice)
+		if !isLocal {
+			return wbgong.ExternalDeviceError
+		}
+
+		err = tx.RemoveDevice(localDevice)()
+
+		return
+	})
+
+	if errAccess != nil {
+		return fmt.Errorf("cannot remove device %s: %w", devId, errAccess)
+	}
+
+	// invalidate device/control proxies
+	atomic.AddUint32(&engine.rev, 1)
+	return nil
+}
+
 func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error {
 	// if device description has no controls (cells), skip this
 	if !obj.Has(VDEV_DESCR_PROP_CELLS) && !obj.Has(VDEV_DESCR_PROP_CONTROLS) {
@@ -1952,6 +1983,10 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	// defer cleanup
 	engine.cleanup.AddCleanup(func() {
 		err := engine.driver.Access(func(tx wbgong.DriverTx) error {
+			// already removed via RemoveVirtualDevice()
+			if dev.IsDeleted() {
+				return nil
+			}
 			return tx.RemoveDevice(dev)()
 		})
 		if err != nil {

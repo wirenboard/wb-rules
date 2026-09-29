@@ -1,3 +1,13 @@
+wb-rules (2.47.1) stable; urgency=medium
+
+  * Add removeVirtualDevice(id) removing a virtual device created by the
+    rule engine: the driver unpublishes its retained MQTT topics and the
+    same id can be defined again without reloading the file
+  * Add the remove() method of the device object, an equivalent of
+    removeVirtualDevice()
+
+ -- Vitalii Gaponov <vitalii.gaponov@wirenboard.com>  Tue, 29 Sep 2026 13:00:00 +0400
+
 wb-rules (2.47.0) stable; urgency=medium
 
   * Add getDevicesList() returning device objects for all devices known to
