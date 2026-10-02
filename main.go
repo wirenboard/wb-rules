@@ -82,7 +82,7 @@ func main() {
 	mqttDebug := flag.Bool("mqttdebug", false, "Enable MQTT debugging")
 	precise := flag.Bool("precise", false, "Don't reown devices without driver")
 	cleanup := flag.Bool("cleanup", false, "Clean up MQTT data on unload")
-	httpAddr := flag.String("http", HTTP_SOCK_FILE, "Serve metrics and runtime profiling data on host:port or on a unix socket (absolute path), empty to disable")
+	httpAddr := flag.String("http", HTTP_SOCK_FILE, "Serve metrics and runtime profiling data")
 
 	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
