@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -33,6 +34,8 @@ const (
 
 	MOSQUITTO_SOCK_FILE = "/var/run/mosquitto/mosquitto.sock"
 	DEFAULT_BROKER_URL  = "tcp://localhost:1883"
+
+	HTTP_SOCK_FILE = "/run/wb-rules/http.sock"
 )
 
 func isSocket(path string) bool {
@@ -41,6 +44,26 @@ func isSocket(path string) bool {
 		return false
 	}
 	return info.Mode()&os.ModeSocket != 0
+}
+
+// serveHTTP serves registered handlers on host:port or on a unix socket
+// when addr is an absolute path
+func serveHTTP(addr string) error {
+	network := "tcp"
+	if strings.HasPrefix(addr, "/") {
+		network = "unix"
+		// a socket left by a killed process makes bind fail with EADDRINUSE
+		if isSocket(addr) {
+			if err := os.Remove(addr); err != nil {
+				return err
+			}
+		}
+	}
+	listener, err := net.Listen(network, addr)
+	if err != nil {
+		return err
+	}
+	return http.Serve(listener, nil)
 }
 
 func main() {
@@ -59,7 +82,7 @@ func main() {
 	mqttDebug := flag.Bool("mqttdebug", false, "Enable MQTT debugging")
 	precise := flag.Bool("precise", false, "Don't reown devices without driver")
 	cleanup := flag.Bool("cleanup", false, "Clean up MQTT data on unload")
-	httpAddr := flag.String("http", "", "Serve metrics and runtime profiling data")
+	httpAddr := flag.String("http", HTTP_SOCK_FILE, "Serve metrics and runtime profiling data on host:port or on a unix socket (absolute path), empty to disable")
 
 	persistentDbFile := flag.String("pdb", PERSISTENT_DB_FILE, "Persistent storage DB file")
 	vdevDbFile := flag.String("vdb", VIRTUAL_DEVICES_DB_FILE, "Virtual devices values DB file")
@@ -84,7 +107,7 @@ func main() {
 		})
 		// debug/pprof handlers are registered in https://cs.opensource.google/go/go/+/refs/tags/go1.24.0:src/net/http/pprof/pprof.go;l=95
 		go func() {
-			log.Println(http.ListenAndServe(*httpAddr, nil))
+			log.Println(serveHTTP(*httpAddr))
 		}()
 	}
 
