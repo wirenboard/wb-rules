@@ -1769,5 +1769,28 @@ WBDEV_TARGET=bullseye-arm64 ./wbdev cdeb
 WBDEV_TARGET=bullseye-armhf ./wbdev cdeb
 ```
 
+### Метрики и профилирование
+
+wb-rules отдаёт метрики (`/metrics`) и профили pprof (`/debug/pprof/`) по HTTP через unix-сокет `/run/wb-rules/http.sock`.
+Адрес задаётся опцией `-http`: `host:port` или абсолютный путь к unix-сокету. Например, в `/etc/default/wb-rules`:
+```
+WB_RULES_OPTIONS="-http 127.0.0.1:9090"
+```
+
+```bash
+# Метрики
+curl --unix-socket /run/wb-rules/http.sock http://localhost/metrics
+
+# Профиль памяти в файл
+curl --unix-socket /run/wb-rules/http.sock -o heap.pb.gz http://localhost/debug/pprof/heap
+```
+
+Для работы с компьютера разработчика сокет пробрасывается в TCP-порт через ssh:
+
+```bash
+ssh -L 9090:/run/wb-rules/http.sock root@10.200.200.1
+go tool pprof http://localhost:9090/debug/pprof/profile?seconds=30
+```
+
 ## Ограничения
 Публикация более ~200 топиков в секунду может вызвать повышенное потребление CPU (как у wb-rules, так и со стороны mosquitto) и проблемы с производительностью. Рекомендуется оптимизировать частоту публикации топиков для обеспечения стабильной работы.
