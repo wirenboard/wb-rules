@@ -32,7 +32,7 @@ func TestWriteFileAtomicFailurePreservesOriginal(t *testing.T) {
 	const original = `log("original script");`
 	dir := t.TempDir()
 	path := filepath.Join(dir, "script.js")
-	require.NoError(t, os.WriteFile(path, []byte(original), 0640))
+	require.NoError(t, os.WriteFile(path, []byte(original), 0o640))
 	before, err := os.Stat(path)
 	require.NoError(t, err)
 
@@ -40,7 +40,7 @@ func TestWriteFileAtomicFailurePreservesOriginal(t *testing.T) {
 	// atomic writer, exercising cleanup of a partially written temporary file.
 	partial := strings.NewReader(`log("partial`)
 	content := io.MultiReader(partial, iotest.ErrReader(syscall.ENOSPC))
-	err = wbgong.WriteFileAtomic(path, content, 0644)
+	err = wbgong.WriteFileAtomic(path, content, 0o644)
 	require.ErrorIs(t, err, syscall.ENOSPC)
 	require.Zero(t, partial.Len(), "failure must occur after consuming replacement bytes")
 
@@ -73,7 +73,7 @@ func (s *RuleEditorSuite) TestSaveScriptAtomically() {
 	s.Verify("[info] first version", "[changed] sub/script.js")
 	path := s.DataFilePath(args.Path)
 	checkScriptContent(s.T(), path, args.Content)
-	s.Require().NoError(os.Chmod(path, 0640))
+	s.Require().NoError(os.Chmod(path, 0o640))
 	old, err := os.Open(path)
 	s.Require().NoError(err)
 	defer old.Close()
@@ -88,7 +88,7 @@ func (s *RuleEditorSuite) TestSaveScriptAtomically() {
 	s.Equal(`log("first version");`, string(oldContent))
 	info, err := os.Stat(path)
 	s.Require().NoError(err)
-	s.Equal(os.FileMode(0640), info.Mode().Perm())
+	s.Equal(os.FileMode(0o640), info.Mode().Perm())
 	s.Verify("[info] second version", "[changed] sub/script.js")
 
 	// DirWatcher's notification after replacement must not reload the script twice.

@@ -1,3 +1,9 @@
+wb-rules (2.48.1) stable; urgency=medium
+
+  * Fix golangci-lint issues
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 05 Oct 2026 10:20:28 +0400
+
 wb-rules (2.48.0) stable; urgency=medium
 
   * Serve metrics and pprof on the /run/wb-rules/http.sock unix socket

@@ -104,12 +104,12 @@ func (editor *Editor) Save(args *EditorSaveArgs, reply *EditorSaveResponse) erro
 	}
 
 	err := editor.locFileManager.LiveWriteScript(pth, args.Content)
-	switch err.(type) {
+	switch e := err.(type) {
 	case nil:
 		return nil
 	case ScriptError:
-		reply.Error = err.Error()
-		reply.Traceback = err.(ScriptError).Traceback
+		reply.Error = e.Error()
+		reply.Traceback = e.Traceback
 	default:
 		wbgong.Error.Printf("error writing %s: %s", pth, err)
 		return writeError

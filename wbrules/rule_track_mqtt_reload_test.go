@@ -8,7 +8,7 @@ import (
 
 // RuleTrackMqttReloadSuite covers reloading one of several scripts that track
 // the same MQTT topic. Two scripts (dup1, dup2) both call
-// trackMqtt("/wierd/sub/some", ...). The subscription is shared between them,
+// trackMqtt("/weird/sub/some", ...). The subscription is shared between them,
 // so reloading one script does not tear the subscription down. Previously the
 // reloaded tracker never received the current (retained) value because the
 // broker only redelivers retained values on a fresh subscription. Now the
@@ -23,11 +23,11 @@ func (s *RuleTrackMqttReloadSuite) SetupTest() {
 
 func (s *RuleTrackMqttReloadSuite) TestReloadWithSharedTopic() {
 	// A retained value reaches both trackers.
-	s.publish("/wierd/sub/some", "some-value")
+	s.publish("/weird/sub/some", "some-value")
 	s.VerifyUnordered(
-		"tst -> /wierd/sub/some: [some-value] (QoS 1, retained)",
-		"wbrules-log -> /wbrules/log/info: [tmp1: /wierd/sub/some=some-value (retained: true)] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [tmp2: /wierd/sub/some=some-value (retained: true)] (QoS 1)",
+		"tst -> /weird/sub/some: [some-value] (QoS 1, retained)",
+		"wbrules-log -> /wbrules/log/info: [tmp1: /weird/sub/some=some-value (retained: true)] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [tmp2: /weird/sub/some=some-value (retained: true)] (QoS 1)",
 	)
 
 	// Reloading dup1 (dup2 keeps the shared subscription alive) must replay the
@@ -35,7 +35,7 @@ func (s *RuleTrackMqttReloadSuite) TestReloadWithSharedTopic() {
 	s.Ck("OverwriteScript()", s.OverwriteScript("testrules_track_mqtt_dup1.js", "testrules_track_mqtt_dup1.js"))
 	s.VerifyUnordered(
 		"wbrules-log -> /wbrules/updates/changed: [testrules_track_mqtt_dup1.js] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [tmp1: /wierd/sub/some=some-value (retained: true)] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [tmp1: /weird/sub/some=some-value (retained: true)] (QoS 1)",
 	)
 
 	s.VerifyEmpty()

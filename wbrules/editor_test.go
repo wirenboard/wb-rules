@@ -2,6 +2,7 @@ package wbrules
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -86,7 +87,7 @@ func (s *EditorSuite) walkSources(walkFn func(virtualPath, physicalPath string))
 		}
 		relPath, err := filepath.Rel(s.DataFileTempDir(), path)
 		if err != nil {
-			return err
+			return fmt.Errorf("can't get relative path of %s: %w", path, err)
 		}
 		walkFn(relPath, path)
 		return nil
@@ -257,7 +258,7 @@ func (s *EditorSuite) TestSaveFile() {
 	})
 	s.EnsureNoErrorsOrWarnings()
 
-	s.expectLiveWrite("zzz.js", errors.New("fail!"))
+	s.expectLiveWrite("zzz.js", errors.New("fail"))
 	s.VerifyRpcError(
 		"Save",
 		objx.Map{"path": "zzz.js", "content": "// sample5"},

@@ -1,13 +1,14 @@
 package wbrules
 
 import (
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec // G501: md5 only shortens file names, not used for security
 	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,6 +22,7 @@ import (
 	duktape "github.com/wirenboard/go-duktape"
 	"github.com/wirenboard/wbgong"
 	bolt "go.etcd.io/bbolt"
+	berrors "go.etcd.io/bbolt/errors"
 )
 
 type itemType int
@@ -32,7 +34,7 @@ const (
 	LIB_REL_PATH_2                = "../scripts"
 	MIN_INTERVAL_MS               = 1
 	MIN_INTERVAL_LOW_THRESHOLD_MS = 10
-	PERSISTENT_DB_CHMOD           = 0640
+	PERSISTENT_DB_CHMOD           = 0o640
 	SOURCE_ITEM_DEVICE            = itemType(iota)
 	SOURCE_ITEM_RULE
 	SOURCE_ITEM_TIMER
@@ -149,13 +151,12 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		persistentDB:      nil,
 		modulesDirs:       options.ModulesDirs,
 	}
-	engine.globalCtx = engine.ctxFactory.newESContext(engine.MaybeCallSync, "")
+	engine.globalCtx = engine.ctxFactory.newESContext(engine.MaybeCallSync)
 
 	if options.PersistentDBFile != "" {
 		if err = engine.SetPersistentDBMode(options.PersistentDBFile,
 			options.PersistentDBFileMode); err != nil {
 			return
-			// panic("error opening persistent DB file: " + err.Error())
 		}
 		engine.Log(ENGINE_LOG_INFO, fmt.Sprintf("using file %s for persistent DB", options.PersistentDBFile))
 	}
@@ -748,7 +749,7 @@ func (engine *ESEngine) loadScript(path string, loadIfUnchanged bool) (bool, err
 
 	wasChangedOrFirstSeen, err := engine.tracker.Track(virtualPath, path)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("can't track script %s: %w", path, err)
 	}
 	if !loadIfUnchanged && !wasChangedOrFirstSeen {
 		wbgong.Debug.Printf("script %s unchanged, not reloading (possibly just reloaded)", path)
@@ -885,16 +886,16 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 	r := make(chan error)
 	engine.WhenEngineReady(func() {
 		wbgong.Debug.Printf("OverwriteScript(%s)", virtualPath)
-		cleanPath, virtualPath, _, err := engine.checkVirtualPath(virtualPath)
-		wbgong.Debug.Printf("OverwriteScript: %s %s %v", cleanPath, virtualPath, err)
+		cleanPath, cleanVirtualPath, _, err := engine.checkVirtualPath(virtualPath)
+		wbgong.Debug.Printf("OverwriteScript: %s %s %v", cleanPath, cleanVirtualPath, err)
 		if err != nil {
 			r <- err
 			return
 		}
 
 		// Make sure directories that contain the script exist
-		if strings.Contains(virtualPath, "/") {
-			if err = os.MkdirAll(filepath.Dir(cleanPath), 0777); err != nil {
+		if strings.Contains(cleanVirtualPath, "/") {
+			if err = os.MkdirAll(filepath.Dir(cleanPath), 0o777); err != nil {
 				wbgong.Error.Printf("error making dirs for %s: %s", cleanPath, err)
 				r <- err
 				return
@@ -905,7 +906,7 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 		// LiveLoadFile for the file, but as the new content
 		// will be already registered with the contentTracker,
 		// duplicate reload will not happen
-		err = wbgong.WriteFileAtomic(cleanPath, strings.NewReader(content), 0644)
+		err = wbgong.WriteFileAtomic(cleanPath, strings.NewReader(content), 0o644)
 		if err != nil {
 			r <- err
 			return
@@ -963,20 +964,20 @@ func (engine *ESEngine) wrapRuleCondFunc(ctx *ESContext, defIndex int, defProp s
 func getFilenameHash(filename string) string {
 	if result, ok := filenameMd5s[filename]; ok {
 		return result
-	} else {
-		// TODO: TBD: detect collisions on current configuration?
-		hash := md5.Sum([]byte(filename))
-
-		// reduce hash length to 32
-		for i := 0; i < md5.Size/4; i++ {
-			hash[i] = hash[i] ^ hash[md5.Size/4+i] ^ hash[md5.Size/2+i] ^ hash[md5.Size*3/4+i]
-		}
-
-		result = base64.RawURLEncoding.EncodeToString(hash[:md5.Size/4])
-		filenameMd5s[filename] = result
-
-		return result
 	}
+
+	// TODO: TBD: detect collisions on current configuration?
+	hash := md5.Sum([]byte(filename)) //nolint:gosec // G401: not used for security
+
+	// reduce hash length to 32
+	for i := range md5.Size / 4 {
+		hash[i] = hash[i] ^ hash[md5.Size/4+i] ^ hash[md5.Size/2+i] ^ hash[md5.Size*3/4+i]
+	}
+
+	result := base64.RawURLEncoding.EncodeToString(hash[:md5.Size/4])
+	filenameMd5s[filename] = result
+
+	return result
 }
 
 // localObjectId generates global-unique object ID
@@ -998,18 +999,18 @@ func (engine *ESEngine) expandLocalObjectId(ctx *ESContext, name string) string 
 	return name
 }
 
-// getStringPropFromObject gets string property value from object
-func (engine *ESEngine) getStringPropFromObject(ctx *ESContext, objIndex int, propName string) (id string, err error) {
-	// [ ... obj ... ]
+// getStringPropFromObject gets string property value from the object on top of the stack
+func (engine *ESEngine) getStringPropFromObject(ctx *ESContext, propName string) (id string, err error) {
+	// [ ... obj ]
 
-	if !ctx.HasPropString(objIndex, propName) {
+	if !ctx.HasPropString(-1, propName) {
 		err = noSuchPropError
 		return
 	}
 
-	ctx.GetPropString(objIndex, propName)
+	ctx.GetPropString(-1, propName)
 	defer ctx.Pop()
-	// [ ... obj ... prop ]
+	// [ ... obj prop ]
 
 	id = ctx.GetString(-1)
 
@@ -1237,7 +1238,7 @@ func (engine *ESEngine) esVdevIsVirtual(ctx *ESContext) int {
 	// [ cell | this ]
 
 	// get virtual device id
-	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
 		ctx.Pop()
 		// [ cell | ]
@@ -1264,7 +1265,7 @@ func (engine *ESEngine) esVdevGetDriverId(ctx *ESContext) int {
 	// [ cell | this ]
 
 	// get virtual device id
-	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
 		ctx.Pop()
 		// [ cell | ]
@@ -1293,7 +1294,7 @@ func (engine *ESEngine) esVdevSetError(ctx *ESContext) int {
 
 	ctx.PushThis()
 
-	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
 		ctx.Pop()
 
@@ -1311,7 +1312,7 @@ func (engine *ESEngine) esVdevSetError(ctx *ESContext) int {
 func (engine *ESEngine) esVdevGetError(ctx *ESContext) int {
 	ctx.PushThis()
 
-	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
 		ctx.Pop()
 
@@ -1352,7 +1353,7 @@ func (engine *ESEngine) esVdevGetId(ctx *ESContext) int {
 	// [ this ]
 
 	// get virtual device id
-	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
 		ctx.Pop()
 		// []
@@ -1393,7 +1394,7 @@ func (engine *ESEngine) esVdevGetCellId(ctx *ESContext) int {
 	// [ cell | this ]
 
 	// get virtual device id
-	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
 		ctx.Pop()
 		// [ cell | ]
@@ -1424,7 +1425,7 @@ func (engine *ESEngine) esVdevRemoveControl(ctx *ESContext) int {
 	// [ cell | this ]
 
 	// get virtual device id
-	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
 		ctx.Pop()
 		// [ cell | ]
@@ -1448,7 +1449,7 @@ func (engine *ESEngine) esVdevRemove(ctx *ESContext) int {
 	// [ this ]
 
 	// get virtual device id
-	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_DEVID)
 	ctx.Pop()
 	// []
 	if err != nil {
@@ -1470,7 +1471,7 @@ func (engine *ESEngine) esVdevControlExists(ctx *ESContext) int {
 	// [ cell | this ]
 
 	// get virtual device id
-	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
 		ctx.Pop()
 		// [ cell | ]
@@ -1501,7 +1502,7 @@ func (engine *ESEngine) esVdevGetControl(ctx *ESContext) int {
 	// [ cell | this ]
 
 	// get virtual device id
-	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
 		ctx.Pop()
 		// [ cell | ]
@@ -1527,7 +1528,7 @@ func (engine *ESEngine) esVdevControlsList(ctx *ESContext) int {
 	// [ cell | this ]
 
 	// get virtual device id
-	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
 		ctx.Pop()
 		// [ cell | ]
@@ -1595,7 +1596,7 @@ func (engine *ESEngine) esVdevAddControl(ctx *ESContext) int {
 	// [ cell | this ]
 
 	// get virtual device id
-	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	devId, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
 		ctx.Pop()
 		// [ cell | ]
@@ -1951,14 +1952,14 @@ func (engine *ESEngine) esVdevCellSetMax(ctx *ESContext) int {
 		wbgong.Error.Printf("setMax(): bad parameters")
 		return duktape.DUK_RET_ERROR
 	}
-	max := int(ctx.GetNumber(0))
+	maxVal := int(ctx.GetNumber(0))
 
 	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
 	if duk_ret < 0 {
 		return duk_ret
 	}
 
-	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MAX, strconv.Itoa(max))
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MAX, strconv.Itoa(maxVal))
 
 	return 0
 }
@@ -1968,14 +1969,14 @@ func (engine *ESEngine) esVdevCellSetMin(ctx *ESContext) int {
 		wbgong.Error.Printf("setMin(): bad parameters")
 		return duktape.DUK_RET_ERROR
 	}
-	min := int(ctx.GetNumber(0))
+	minVal := int(ctx.GetNumber(0))
 
 	ctrlProxy, duk_ret := engine.getControlFromCtx(ctx)
 	if duk_ret < 0 {
 		return duk_ret
 	}
 
-	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MIN, strconv.Itoa(min))
+	ctrlProxy.SetMeta(wbgong.CONV_META_SUBTOPIC_MIN, strconv.Itoa(minVal))
 
 	return 0
 }
@@ -2074,13 +2075,13 @@ func (engine *ESEngine) esVdevCellSetValue(ctx *ESContext) int {
 	return 0
 }
 
-func (engine *ESEngine) getControlFromCtx(ctx *ESContext) (*ControlProxy, int) {
+func (engine *ESEngine) getControlFromCtx(ctx *ESContext) (ctrl *ControlProxy, ret int) {
 	// push this
 	ctx.PushThis()
 	// [ cell | this ]
 
 	// get virtual device id
-	devID, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	devID, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_DEVID)
 	if err != nil {
 		ctx.Pop()
 		// [ cell | ]
@@ -2088,7 +2089,7 @@ func (engine *ESEngine) getControlFromCtx(ctx *ESContext) (*ControlProxy, int) {
 		return nil, duktape.DUK_RET_TYPE_ERROR
 	}
 
-	ctrlID, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_CELLID)
+	ctrlID, err := engine.getStringPropFromObject(ctx, VDEV_OBJ_PROP_CELLID)
 	if err != nil {
 		ctx.Pop()
 		// [ cell | ]
@@ -2096,7 +2097,7 @@ func (engine *ESEngine) getControlFromCtx(ctx *ESContext) (*ControlProxy, int) {
 		return nil, duktape.DUK_RET_TYPE_ERROR
 	}
 	ctx.Pop()
-	ctrl := engine.GetDeviceProxy(devID).EnsureControlProxy(ctrlID)
+	ctrl = engine.GetDeviceProxy(devID).EnsureControlProxy(ctrlID)
 	if ctrl.control == nil {
 		wbgong.Error.Printf("Control %s/%s not found", devID, ctrlID)
 		return nil, duktape.DUK_RET_ERROR
@@ -2261,9 +2262,7 @@ func (engine *ESEngine) initCellObjectPrototype(ctx *ESContext) {
 			}
 
 			dataMap := make(map[string]any)
-			for key, value := range ctrlMeta {
-				dataMap[key] = value
-			}
+			maps.Copy(dataMap, ctrlMeta)
 			m := objx.New(dataMap)
 			ctx.PushJSObject(m)
 
@@ -2596,7 +2595,7 @@ func (engine *ESEngine) esReadConfig(ctx *ESContext) int {
 	}
 
 	path := ctx.GetString(0)
-	in, err := os.Open(path)
+	in, err := os.Open(path) //nolint:gosec // G304: readConfig() reads the file the script asks for by design
 
 	if err != nil {
 		if logErrorOnNoFile {
@@ -2644,18 +2643,18 @@ func (engine *ESEngine) SetPersistentDB(filename string) error {
 }
 
 func isInvalidPersistentDBError(err error) bool {
-	return errors.Is(err, bolt.ErrInvalid) ||
-		errors.Is(err, bolt.ErrChecksum) ||
-		errors.Is(err, bolt.ErrVersionMismatch)
+	return errors.Is(err, berrors.ErrInvalid) ||
+		errors.Is(err, berrors.ErrChecksum) ||
+		errors.Is(err, berrors.ErrVersionMismatch)
 }
 
 func invalidPersistentDBReason(err error) string {
 	switch {
-	case errors.Is(err, bolt.ErrInvalid):
+	case errors.Is(err, berrors.ErrInvalid):
 		return "magic mismatch"
-	case errors.Is(err, bolt.ErrChecksum):
+	case errors.Is(err, berrors.ErrChecksum):
 		return "checksum mismatch"
-	case errors.Is(err, bolt.ErrVersionMismatch):
+	case errors.Is(err, berrors.ErrVersionMismatch):
 		return "version mismatch"
 	default:
 		return "unknown validation error"
@@ -2665,8 +2664,11 @@ func invalidPersistentDBReason(err error) string {
 func openPersistentDB(filename string, mode os.FileMode) (*bolt.DB, error) {
 	options := &bolt.Options{Timeout: 1 * time.Second}
 	db, err := bolt.Open(filename, mode, options)
-	if err == nil || !isInvalidPersistentDBError(err) {
-		return db, err
+	if err == nil {
+		return db, nil
+	}
+	if !isInvalidPersistentDBError(err) {
+		return nil, fmt.Errorf("%s: %w", filename, err)
 	}
 	invalidErr := err
 	wbgong.Error.Printf("persistent storage database %s is invalid: %s. Recreating",
@@ -2681,7 +2683,11 @@ func openPersistentDB(filename string, mode os.FileMode) (*bolt.DB, error) {
 		return nil, fmt.Errorf("can't remove invalid persistent DB %s: %w", databaseFilename, removeErr)
 	}
 
-	return bolt.Open(filename, mode, options)
+	db, err = bolt.Open(filename, mode, options)
+	if err != nil {
+		return nil, fmt.Errorf("recreating %s: %w", filename, err)
+	}
+	return db, nil
 }
 
 func (engine *ESEngine) SetPersistentDBMode(filename string, mode os.FileMode) (err error) {
@@ -2752,9 +2758,7 @@ func (engine *ESEngine) esPersistentName(ctx *ESContext) int {
 		ctx.Pop()
 	}
 
-	if global {
-
-	} else {
+	if !global {
 		// get global ID for bucket if this is local storage
 		name = engine.expandLocalObjectId(ctx, name)
 		engine.Log(ENGINE_LOG_INFO, "create local storage name: "+name)
@@ -2808,18 +2812,18 @@ func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 	err := engine.persistentDB.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 		if err != nil {
-			return err
+			return fmt.Errorf("can't create bucket: %w", err)
 		}
 
 		if shouldDelete {
 			if err := b.Delete([]byte(key)); err != nil {
-				return err
+				return fmt.Errorf("can't delete key: %w", err)
 			}
 			return nil
 		}
 
 		if err := b.Put([]byte(key), []byte(value)); err != nil {
-			return err
+			return fmt.Errorf("can't put key: %w", err)
 		}
 		return nil
 	})
@@ -2923,7 +2927,7 @@ func (engine *ESEngine) ModSearch(ctx *duktape.Context) int {
 
 		// TBD: something external to load scripts properly
 		// now just try to read file
-		src, err := os.ReadFile(path)
+		src, err := os.ReadFile(path) //nolint:gosec // G304: path comes from the module search path
 
 		if err == nil {
 			wbgong.Debug.Printf("[modsearch] file found!")

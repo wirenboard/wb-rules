@@ -70,8 +70,8 @@ func (err ESError) Error() string {
 	return err.Message
 }
 
-func (f *ESContextFactory) newESContext(syncFunc ESSyncFunc, filename string) *ESContext {
-	return f.newESContextFromDuktape(syncFunc, filename, duktape.NewContext())
+func (f *ESContextFactory) newESContext(syncFunc ESSyncFunc) *ESContext {
+	return f.newESContextFromDuktape(syncFunc, "", duktape.NewContext())
 }
 
 func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, filename string, dctx *duktape.Context) *ESContext {
@@ -250,7 +250,7 @@ func (ctx *ESContext) pushJSObjectUsingReflection(obj any) {
 	}
 	vIndex := ctx.PushArray()
 	n := v.Len()
-	for i := 0; i < n; i++ {
+	for i := range n {
 		ctx.PushJSObject(v.Index(i).Interface())
 		ctx.PutPropIndex(vIndex, uint(i))
 	}
@@ -263,7 +263,7 @@ func (ctx *ESContext) StringArrayToGo(arrIndex int) []string {
 
 	n := ctx.GetLength(arrIndex)
 	r := make([]string, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		ctx.GetPropIndex(arrIndex, uint(i))
 		r[i] = ctx.SafeToString(-1)
 		ctx.Pop()
@@ -316,16 +316,18 @@ func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) any {
 		argCount++
 	}
 	defer ctx.Pop3() // pop: result, callback list object, global stash
-	if s := ctx.PcallProp(-2-argCount, argCount); s != 0 {
+	if ctx.PcallProp(-2-argCount, argCount) != 0 {
 		ctx.callbackErrorHandler(ctx.GetESError())
 		return nil
-	} else if ctx.IsBoolean(-1) {
+	}
+	switch {
+	case ctx.IsBoolean(-1):
 		return ctx.ToBoolean(-1)
-	} else if ctx.IsString(-1) {
+	case ctx.IsString(-1):
 		return ctx.ToString(-1)
-	} else if ctx.IsNumber(-1) {
+	case ctx.IsNumber(-1):
 		return ctx.ToNumber(-1)
-	} else {
+	default:
 		return nil
 	}
 }
@@ -426,10 +428,10 @@ func (ctx *ESContext) LoadScript(path string) error {
 // about environment
 func (ctx *ESContext) LoadScenario(path string) error {
 	// load script file
-	srcRaw, err := os.ReadFile(path)
+	srcRaw, err := os.ReadFile(path) //nolint:gosec // G304: loading rule scripts by path is the whole point
 
 	if err != nil {
-		return err
+		return fmt.Errorf("can't read script: %w", err)
 	}
 
 	// wrap source code
@@ -444,7 +446,7 @@ func (ctx *ESContext) LoadScenario(path string) error {
 	ctx.Pop()
 
 	// compile function
-	if err = ctx.LoadFunctionFromString(path, src); err != nil {
+	if err := ctx.LoadFunctionFromString(path, src); err != nil {
 		return err
 	}
 
@@ -502,8 +504,8 @@ func (ctx *ESContext) DefineFunctions(fns map[string]func(*ESContext) int) {
 		f := fn
 		factory := ctx.factory
 		ctx.PushGoFunc(func(dctx *duktape.Context) int {
-			if ctx, ok := factory.duktapeToESContextMap[*dctx]; ok {
-				return f(ctx)
+			if esCtx, ok := factory.duktapeToESContextMap[*dctx]; ok {
+				return f(esCtx)
 			}
 			wbgong.Error.Panicf("No known conversion for duktape context to ESContext from %v", dctx)
 			panic("")
@@ -618,12 +620,11 @@ func (ctx *ESContext) AddRule(name string, rule *Rule) error {
 		return nil
 	}
 
-	if _, found := ctx.ruleNames[name]; !found {
-		ctx.ruleNames[name] = rule
-		return nil
-	} else {
+	if _, found := ctx.ruleNames[name]; found {
 		return fmt.Errorf("named rule redefinition: %s", name)
 	}
+	ctx.ruleNames[name] = rule
+	return nil
 }
 
 // TBD: handle loops in object graphs in PushJSObject

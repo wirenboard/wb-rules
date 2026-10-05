@@ -37,7 +37,7 @@ func Spawn(name string, args []string, captureOutput bool, captureErrorOutput bo
 	var stdinPipe io.WriteCloser
 	var stdoutPipe io.ReadCloser
 	var stderrPipe io.ReadCloser
-	cmd := exec.Command(name, args...)
+	cmd := exec.Command(name, args...) //nolint:gosec // G204: spawn() runs commands requested by rules by design
 	if input != nil {
 		if stdinPipe, err = cmd.StdinPipe(); err != nil {
 			return nil, fmt.Errorf("cmd.StdinPipe() failed: %w", err)
@@ -87,7 +87,7 @@ func Spawn(name string, args []string, captureOutput bool, captureErrorOutput bo
 			r.ExitStatus = exitErr.Sys().(syscall.WaitStatus).ExitStatus()
 			wbgong.Debug.Printf("command '%s': error: exit status: %d", cmd.Path, r.ExitStatus)
 		} else {
-			return nil, err
+			return nil, fmt.Errorf("error waiting for command: %w", err)
 		}
 	}
 

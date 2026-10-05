@@ -11,12 +11,11 @@ type RuleLocalButtonSuite struct {
 }
 
 func (s *RuleLocalButtonSuite) SetupTest() {
-	// s.RuleSuiteBase.SetupTest(false, "testrules_localbutton.js")
 	s.SetupSkippingDefs("testrules_localbutton.js")
 }
 
 func (s *RuleLocalButtonSuite) TestLocalButtons() {
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		// The change rule must be fired on each button press ('1' .../on value message)
 		s.publish("/devices/buttons/controls/somebutton/on", "1", "buttons/somebutton")
 		s.VerifyUnordered(

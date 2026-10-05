@@ -253,7 +253,6 @@ func (s *RuleReloadSuite) TestRemoveRestore() {
 
 	// load script and expect vdev definition at least
 	s.LiveLoadScript("testrules_reload_2.js")
-	// s.ReplaceScript("testrules_reload_2.js", "testrules_reload_2_changed.js")
 	s.SkipTill("[changed] testrules_reload_2.js")
 
 	s.VerifyRules()

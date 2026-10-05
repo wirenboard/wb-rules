@@ -86,8 +86,8 @@ func (s *AlarmSuite) publishTestDev() {
 	s.publishControl("somedev", "devTemp", "temperature", "11")
 }
 
-func (s *AlarmSuite) publishControlValue(dev, ctl, value string, expectedControlNames ...string) {
-	controlRef, topicBase := s.controlRef(dev, ctl)
+func (s *AlarmSuite) publishControlValue(ctl, value string, expectedControlNames ...string) {
+	controlRef, topicBase := s.controlRef("somedev", ctl)
 	s.publish(topicBase, value, append([]string{controlRef}, expectedControlNames...)...)
 	s.Verify(fmt.Sprintf("tst -> %s: [%s] (QoS 1, retained)", topicBase, value))
 }
@@ -105,7 +105,7 @@ func (s *AlarmSuite) verifyAlarmControlChange(name string, active bool) {
 func (s *AlarmSuite) verifyNotificationMsgs(alarm, text string, stopTimer, updateMeta bool) {
 	if updateMeta {
 		s.Verify(
-			fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta: [{\"order\":1,\"readonly\":true,\"title\":{\"en\":\"%s\"},\"type\":\"alarm\"}] (QoS 1, retained)", alarm, text),
+			fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta: [{\"order\":1,\"readonly\":true,\"title\":{\"en\":%q},\"type\":\"alarm\"}] (QoS 1, retained)", alarm, text),
 		)
 	}
 	if stopTimer {
@@ -122,8 +122,8 @@ func (s *AlarmSuite) verifyNotificationMsgs(alarm, text string, stopTimer, updat
 
 func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 	s.loadAlarms("alarms.conf", "importantDeviceIsOff")
-	for i := 0; i < 3; i++ {
-		s.publishControlValue("somedev", "importantDevicePower", "0",
+	for range 3 {
+		s.publishControlValue("importantDevicePower", "0",
 			"sampleAlarms/alarm_importantDeviceIsOff", "sampleAlarms/log")
 		s.verifyAlarmControlChange("importantDeviceIsOff", true)
 		s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is off", false, true)
@@ -137,10 +137,10 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 			}))
 
 		// no repeated alarm upon the same value
-		s.publishControlValue("somedev", "importantDevicePower", "0")
+		s.publishControlValue("importantDevicePower", "0")
 		s.VerifyEmpty()
 
-		for j := 0; j < 3; j++ {
+		for range 3 {
 			ts := s.AdvanceTime(200 * time.Second)
 			s.FireTimer(uint64(timerId), ts)
 			s.Verify(fmt.Sprintf("timer.fire(): %d", timerId))
@@ -148,42 +148,42 @@ func (s *AlarmSuite) TestRepeatedExpectedValueAlarm() {
 			s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is off", false, false)
 		}
 
-		s.publishControlValue("somedev", "importantDevicePower", "1",
+		s.publishControlValue("importantDevicePower", "1",
 			"sampleAlarms/alarm_importantDeviceIsOff", "sampleAlarms/log")
 		s.verifyAlarmControlChange("importantDeviceIsOff", false)
 		s.verifyNotificationMsgs("importantDeviceIsOff", "Important device is back on", true, true)
 
 		// alarm stays off
-		s.publishControlValue("somedev", "importantDevicePower", "1")
+		s.publishControlValue("importantDevicePower", "1")
 		s.VerifyEmpty()
 	}
 }
 
 func (s *AlarmSuite) TestNonRepeatedExpectedValueAlarm() {
 	s.loadAlarms("alarms1.conf", "unnecessaryDeviceIsOn")
-	for i := 0; i < 3; i++ {
-		s.publishControlValue("somedev", "unnecessaryDevicePower", "1",
+	for range 3 {
+		s.publishControlValue("unnecessaryDevicePower", "1",
 			"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
 		s.verifyAlarmControlChange("unnecessaryDeviceIsOn", true)
 		s.verifyNotificationMsgs("unnecessaryDeviceIsOn", "Unnecessary device is on", false, true)
 
 		// no repeated alarm upon the same value
-		s.publishControlValue("somedev", "unnecessaryDevicePower", "1")
+		s.publishControlValue("unnecessaryDevicePower", "1")
 		s.VerifyEmpty()
 
-		s.publishControlValue("somedev", "unnecessaryDevicePower", "0",
+		s.publishControlValue("unnecessaryDevicePower", "0",
 			"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
 		s.verifyAlarmControlChange("unnecessaryDeviceIsOn", false)
 		s.verifyNotificationMsgs("unnecessaryDeviceIsOn", "somedev/unnecessaryDevicePower is back to normal, value = false", false, true)
 		s.VerifyEmpty()
 
-		s.publishControlValue("somedev", "unnecessaryDevicePower", "0")
+		s.publishControlValue("unnecessaryDevicePower", "0")
 		s.VerifyEmpty()
 	}
 }
 
 func (s *AlarmSuite) setOutOfRangeTemp(temp int) {
-	s.publishControlValue("somedev", "devTemp", strconv.Itoa(temp),
+	s.publishControlValue("devTemp", strconv.Itoa(temp),
 		"sampleAlarms/alarm_temperatureOutOfBounds", "sampleAlarms/log")
 	s.verifyAlarmControlChange("temperatureOutOfBounds", true)
 	s.verifyNotificationMsgs("temperatureOutOfBounds", fmt.Sprintf("Temperature out of bounds, value = %d", temp), false, true)
@@ -191,7 +191,7 @@ func (s *AlarmSuite) setOutOfRangeTemp(temp int) {
 }
 
 func (s *AlarmSuite) setOkTemp(temp int, stopTimer bool) {
-	s.publishControlValue("somedev", "devTemp", strconv.Itoa(temp),
+	s.publishControlValue("devTemp", strconv.Itoa(temp),
 		"sampleAlarms/alarm_temperatureOutOfBounds", "sampleAlarms/log")
 	s.verifyAlarmControlChange("temperatureOutOfBounds", false)
 	s.verifyNotificationMsgs("temperatureOutOfBounds", fmt.Sprintf("Temperature is within bounds again, value = %d", temp), stopTimer, true)
@@ -204,10 +204,10 @@ func (s *AlarmSuite) TestRepeatedMinMaxAlarmWithMaxCount() {
 	// go below min
 	s.setOutOfRangeTemp(9)
 
-	s.publishControlValue("somedev", "devTemp", "8")
+	s.publishControlValue("devTemp", "8")
 	s.VerifyEmpty() // still out of bounds, but timer wasn't fired yet
 
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		ts := s.AdvanceTime(10 * time.Millisecond)
 		s.FireTimer(1, ts)
 		s.Verify("timer.fire(): 1")
@@ -242,13 +242,13 @@ func (s *AlarmSuite) TestMaxAlarm() {
 // readable.
 func (s *AlarmSuite) verifyWebhookNotificationMsgs(alarm, text, encodedText string) {
 	s.Verify(
-		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta: [{\"order\":1,\"readonly\":true,\"title\":{\"en\":\"%s\"},\"type\":\"alarm\"}] (QoS 1, retained)", alarm, text),
+		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/alarm_%s/meta: [{\"order\":1,\"readonly\":true,\"title\":{\"en\":%q},\"type\":\"alarm\"}] (QoS 1, retained)", alarm, text),
 		fmt.Sprintf("driver -> /devices/sampleAlarms/controls/log: [%s] (QoS 1, retained)", text),
 		fmt.Sprintf("[info] WEBHOOK URL: https://api.vk.com/method/messages.send METHOD: POST CONTENT-TYPE: application/x-www-form-urlencoded HEADERS: (none) BODY: access_token=vk1.a.test&peer_id=2000000001&random_id=0&v=5.131&message=%s", encodedText),
-		fmt.Sprintf("[info] WEBHOOK URL: https://platform-api.max.ru/messages METHOD: POST CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"max-token\"} BODY: {\"chat_id\":12345,\"text\":\"%s\"}", text),
-		fmt.Sprintf("[info] WEBHOOK URL: https://matrix.example.com/_matrix/client/v3/rooms/!abc%%3Amatrix.example.com/send/m.room.message/[txnId] METHOD: PUT CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"Bearer syt_test\"} BODY: {\"msgtype\":\"m.text\",\"body\":\"%s\"}", text),
-		fmt.Sprintf("[info] WEBHOOK URL: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key-12345 METHOD: POST CONTENT-TYPE: application/json HEADERS: (none) BODY: {\"msgtype\":\"text\",\"text\":{\"content\":\"%s\"}}", text),
-		fmt.Sprintf("[info] WEBHOOK URL: https://example.com/hook METHOD: POST CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"Bearer xyz\"} BODY: {\"event\": \"alarm\", \"text\": \"%s\"}", text),
+		fmt.Sprintf("[info] WEBHOOK URL: https://platform-api.max.ru/messages METHOD: POST CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"max-token\"} BODY: {\"chat_id\":12345,\"text\":%q}", text),
+		fmt.Sprintf("[info] WEBHOOK URL: https://matrix.example.com/_matrix/client/v3/rooms/!abc%%3Amatrix.example.com/send/m.room.message/[txnId] METHOD: PUT CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"Bearer syt_test\"} BODY: {\"msgtype\":\"m.text\",\"body\":%q}", text),
+		fmt.Sprintf("[info] WEBHOOK URL: https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test-key-12345 METHOD: POST CONTENT-TYPE: application/json HEADERS: (none) BODY: {\"msgtype\":\"text\",\"text\":{\"content\":%q}}", text),
+		fmt.Sprintf("[info] WEBHOOK URL: https://example.com/hook METHOD: POST CONTENT-TYPE: application/json HEADERS: {\"Authorization\":\"Bearer xyz\"} BODY: {\"event\": \"alarm\", \"text\": %q}", text),
 	)
 }
 
@@ -256,7 +256,7 @@ func (s *AlarmSuite) TestNewRecipientTypes() {
 	s.loadAlarms("alarms_new_recipients.conf", "unnecessaryDeviceIsOn")
 
 	// Activation: cell goes 0 -> 1, alarm fires once.
-	s.publishControlValue("somedev", "unnecessaryDevicePower", "1",
+	s.publishControlValue("unnecessaryDevicePower", "1",
 		"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
 	s.verifyAlarmControlChange("unnecessaryDeviceIsOn", true)
 	s.verifyWebhookNotificationMsgs(
@@ -266,7 +266,7 @@ func (s *AlarmSuite) TestNewRecipientTypes() {
 	)
 
 	// Deactivation: cell goes 1 -> 0, default noAlarmMessage embeds cell name & value.
-	s.publishControlValue("somedev", "unnecessaryDevicePower", "0",
+	s.publishControlValue("unnecessaryDevicePower", "0",
 		"sampleAlarms/alarm_unnecessaryDeviceIsOn", "sampleAlarms/log")
 	s.verifyAlarmControlChange("unnecessaryDeviceIsOn", false)
 	s.verifyWebhookNotificationMsgs(

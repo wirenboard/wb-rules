@@ -11,11 +11,12 @@ var vdevRmCtlControls = []string{"remove", "redefine", "removeByMethod", "remove
 // driver messages on removal of a device with switch controls
 func vdevRemovedMsgs(devId string, ctrls ...string) []any {
 	prefix := "driver -> /devices/" + devId
-	msgs := []any{
-		prefix + "/meta/driver: [] (QoS 1, retained)",
-		prefix + "/meta/name: [] (QoS 1, retained)",
-		prefix + "/meta: [] (QoS 1, retained)",
-	}
+	msgs := make([]any, 0, 3+6*len(ctrls))
+	msgs = append(msgs,
+		prefix+"/meta/driver: [] (QoS 1, retained)",
+		prefix+"/meta/name: [] (QoS 1, retained)",
+		prefix+"/meta: [] (QoS 1, retained)",
+	)
 	for _, ctrl := range ctrls {
 		msgs = append(msgs,
 			"Unsubscribe -- driver: /devices/"+devId+"/controls/"+ctrl+"/on",

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"sort"
 	"strconv"
 	"sync"
@@ -71,7 +72,7 @@ func (c *ControlSpec) String() string {
 
 type TimerFunc func(id TimerId, d time.Duration, periodic bool) wbgong.Timer
 
-func newTimer(id TimerId, d time.Duration, periodic bool) wbgong.Timer {
+func newTimer(_ TimerId, d time.Duration, periodic bool) wbgong.Timer {
 	if periodic {
 		return wbgong.NewRealTicker(d)
 	}
@@ -313,8 +314,8 @@ func (devProxy *DeviceProxy) GetMeta() (m wbgong.MetaInfo) {
 	return
 }
 
-func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgong.Control, value any,
-	prevValue any, tx wbgong.DriverTx) error {
+func (ctrlProxy *ControlProxy) updateValueHandler(_ wbgong.Control, value any,
+	_ any, _ wbgong.DriverTx) error {
 	ctrlProxy.Lock()
 	defer ctrlProxy.Unlock()
 
@@ -326,7 +327,7 @@ func (ctrlProxy *ControlProxy) updateValueHandler(ctrl wbgong.Control, value any
 
 // just a syntax sugar
 func (ctrlProxy *ControlProxy) accessDriver(f func(tx wbgong.DriverTx) error) error {
-	return ctrlProxy.devProxy.owner.Driver().Access(f)
+	return ctrlProxy.devProxy.owner.Driver().Access(f) //nolint:wrapcheck // the error comes from our own Access() callback
 }
 
 func (ctrlProxy *ControlProxy) getControl() wbgong.Control {
@@ -518,7 +519,7 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) *ControlChangeEven
 		case wbgong.CONV_META_SUBTOPIC_CONTROL_TITLE:
 			var t wbgong.Title
 			if err := json.Unmarshal([]byte(metaValue), &t); err != nil {
-				return err
+				return fmt.Errorf("invalid %s meta value %q: %w", key, metaValue, err)
 			}
 			if err := ctrl.SetTitle(t)(); err != nil {
 				return err
@@ -526,7 +527,7 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) *ControlChangeEven
 		case wbgong.CONV_META_SUBTOPIC_CONTROL_ENUM:
 			var t map[string]wbgong.Title
 			if err := json.Unmarshal([]byte(metaValue), &t); err != nil {
-				return err
+				return fmt.Errorf("invalid %s meta value %q: %w", key, metaValue, err)
 			}
 			if err := ctrl.SetEnumTitles(t)(); err != nil {
 				return err
@@ -534,35 +535,35 @@ func (ctrlProxy *ControlProxy) SetMeta(key, metaValue string) *ControlChangeEven
 		case wbgong.CONV_META_SUBTOPIC_ERROR:
 			return ctrl.SetError(errors.New(metaValue))()
 		case wbgong.CONV_META_SUBTOPIC_MAX:
-			if max, err := strconv.ParseFloat(metaValue, 64); err != nil {
-				return err
-			} else {
-				return ctrl.SetMax(max)()
+			maxVal, err := strconv.ParseFloat(metaValue, 64)
+			if err != nil {
+				return fmt.Errorf("invalid %s meta value %q: %w", key, metaValue, err)
 			}
+			return ctrl.SetMax(maxVal)()
 		case wbgong.CONV_META_SUBTOPIC_MIN:
-			if min, err := strconv.ParseFloat(metaValue, 64); err != nil {
-				return err
-			} else {
-				return ctrl.SetMin(min)()
+			minVal, err := strconv.ParseFloat(metaValue, 64)
+			if err != nil {
+				return fmt.Errorf("invalid %s meta value %q: %w", key, metaValue, err)
 			}
+			return ctrl.SetMin(minVal)()
 		case wbgong.CONV_META_SUBTOPIC_PRECISION:
-			if prec, err := strconv.ParseFloat(metaValue, 64); err != nil {
-				return err
-			} else {
-				return ctrl.SetPrecision(prec)()
+			prec, err := strconv.ParseFloat(metaValue, 64)
+			if err != nil {
+				return fmt.Errorf("invalid %s meta value %q: %w", key, metaValue, err)
 			}
+			return ctrl.SetPrecision(prec)()
 		case wbgong.CONV_META_SUBTOPIC_ORDER:
-			if order, err := strconv.Atoi(metaValue); err != nil {
-				return err
-			} else {
-				return ctrl.SetOrder(order)()
+			order, err := strconv.Atoi(metaValue)
+			if err != nil {
+				return fmt.Errorf("invalid %s meta value %q: %w", key, metaValue, err)
 			}
+			return ctrl.SetOrder(order)()
 		case wbgong.CONV_META_SUBTOPIC_READONLY:
-			if v, err := wbgong.RawValueToDataTyped(metaValue, wbgong.CONV_DATATYPE_BOOLEAN); err != nil {
-				return err
-			} else {
-				return ctrl.SetReadonly(v.(bool))()
+			v, err := wbgong.RawValueToDataTyped(metaValue, wbgong.CONV_DATATYPE_BOOLEAN)
+			if err != nil {
+				return fmt.Errorf("invalid %s meta value %q: %w", key, metaValue, err)
 			}
+			return ctrl.SetReadonly(v.(bool))()
 		case wbgong.CONV_META_SUBTOPIC_TYPE:
 			return ctrl.SetType(metaValue)()
 		case wbgong.CONV_META_SUBTOPIC_UNITS:
@@ -608,11 +609,12 @@ type cronProxy struct {
 	exec func(func())
 }
 
-func newCronProxy(cron Cron, exec func(func())) *cronProxy {
-	return &cronProxy{cron, exec}
+func newCronProxy(c Cron, exec func(func())) *cronProxy {
+	return &cronProxy{c, exec}
 }
 
 func (cp cronProxy) AddFunc(spec string, cmd func()) (cron.EntryID, error) {
+	//nolint:wrapcheck // transparent proxy, callers expect the original cron error
 	return cp.Cron.AddFunc(spec, func() {
 		cp.exec(cmd)
 	})
@@ -764,12 +766,6 @@ func NewRuleEngine(driver wbgong.Driver, mqtt wbgong.MQTTClient, options *RuleEn
 
 		controlChangeSubs: make([]chan *ControlChangeEvent, 0, ENGINE_CONTROL_CHANGE_SUBS_CAPACITY),
 	}
-
-	// if options.debugQueues {
-	// engine.controlChangeChLen = 0
-	// } else {
-	// engine.controlChangeChLen = ENGINE_CONTROL_CHANGE_QUEUE_LEN
-	// }
 
 	engine.readyQueue = wbgong.NewDeferredList(engine.CallSync)
 	engine.timerDeferQueue = wbgong.NewDeferredList(engine.CallHere)
@@ -929,7 +925,6 @@ ReadyWaitLoop:
 
 	engine.updateDebugEnabled()
 
-	// wbgong.Info.Printf("******** READY ********")
 	for range engine.eventBuffer.Observe() {
 		engine.processEvents(engine.eventBuffer.Retrieve())
 	}
@@ -1106,12 +1101,8 @@ func (engine *RuleEngine) StoreRuleControlSpec(rule *Rule, spec ControlSpec) {
 	list, found := engine.controlToRulesListMap[spec]
 	if !found {
 		list = make([]*Rule, 0, ENGINE_CONTROL_RULES_CAPACITY)
-	} else {
-		for _, item := range list {
-			if item == rule {
-				return
-			}
-		}
+	} else if slices.Contains(list, rule) {
+		return
 	}
 	wbgong.Debug.Printf("adding control spec %s for rule %d", spec.String(), rule.id)
 	engine.controlToRulesListMap[spec] = append(list, rule)
@@ -1122,12 +1113,8 @@ func (engine *RuleEngine) storeRuleTimer(rule *Rule, timerName string) {
 	list, found := engine.timerRules[timerName]
 	if !found {
 		list = make([]*Rule, 0, ENGINE_CONTROL_RULES_CAPACITY)
-	} else {
-		for _, item := range list {
-			if item == rule {
-				return
-			}
-		}
+	} else if slices.Contains(list, rule) {
+		return
 	}
 	engine.timerRules[timerName] = append(list, rule)
 }
@@ -1271,10 +1258,6 @@ func (engine *RuleEngine) RunRules(ctrlEvent *ControlChangeEvent, timerName stri
 	engine.uninitializedRules = make([]*Rule, 0, ENGINE_UNINITIALIZED_RULES_CAPACITY)
 
 	if ctrlEvent != nil {
-		/*if cell.IsFreshButton() {
-			// special case - a button that wasn't pressed yet
-			return
-		}*/
 		if ctrlEvent.IsComplete {
 			// control-dependent rules aren't run when any of their
 			// condition controls are incomplete
@@ -1375,10 +1358,11 @@ func (engine *RuleEngine) updateDebugEnabled() {
 			}
 
 			i, err := ctrl.GetValue()
-			if err == nil {
-				val = i.(bool)
+			if err != nil {
+				return fmt.Errorf("can't get %s value: %w", RULE_DEBUG_CELL_NAME, err)
 			}
-			return err
+			val = i.(bool)
+			return nil
 		})
 
 		if err != nil {
@@ -1399,7 +1383,7 @@ func (engine *RuleEngine) Start() {
 	engine.eventBuffer = NewEventBuffer()
 
 	engine.driver.OnDriverEvent(engine.driverEventHandler)
-	engine.driver.OnRetainReady(func(tx wbgong.DriverTx) {
+	engine.driver.OnRetainReady(func(_ wbgong.DriverTx) {
 		engine.driverReadyCh <- struct{}{}
 	})
 	engine.syncQueueActive = true
@@ -1541,7 +1525,6 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 	forceDefault := false
 	forceDefaultRaw, hasForceDefault := ctrlDef[VDEV_CONTROL_DESCR_PROP_FORCEDEFAULT]
 	if hasForceDefault {
-		ok := false
 		forceDefault, ok = forceDefaultRaw.(bool)
 		if !ok {
 			return fmt.Errorf("%s/%s: non-boolean value of forceDefault propery",
@@ -1554,7 +1537,6 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 	lazyInit := false
 	lazyInitRaw, hasLazyInit := ctrlDef[VDEV_CONTROL_DESCR_PROP_LAZYINIT]
 	if hasLazyInit {
-		ok := false
 		lazyInit, ok = lazyInitRaw.(bool)
 		if !ok {
 			return fmt.Errorf("%s/%s: non-boolean value of lazyInit propery",
@@ -1572,8 +1554,8 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 	// get 'order' property
 	orderValue, hasOrder := ctrlDef[VDEV_CONTROL_DESCR_PROP_ORDER]
 	if hasOrder {
-		order, ok := orderValue.(float64)
-		if !ok {
+		order, isNumber := orderValue.(float64)
+		if !isNumber {
 			return fmt.Errorf("%s/%s: non-number value of order property, has %T",
 				devId, ctrlId, orderValue)
 		}
@@ -1676,20 +1658,20 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 		args.SetMin(VDEV_CONTROL_RANGE_MIN_DEFAULT)
 	}
 	if ctrlType == wbgong.CONV_TYPE_RANGE || ctrlType == wbgong.CONV_TYPE_VALUE {
-		max, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_MAX]
+		maxRaw, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_MAX]
 		if ok {
-			fmax, ok := max.(float64)
-			if !ok {
+			fmax, isNumber := maxRaw.(float64)
+			if !isNumber {
 				return fmt.Errorf("%s/%s: non-numeric value of max property",
 					devId, ctrlId)
 			}
 			args.SetMax(fmax)
 		}
 
-		min, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_MIN]
+		minRaw, ok := ctrlDef[VDEV_CONTROL_DESCR_PROP_MIN]
 		if ok {
-			fmin, ok := min.(float64)
-			if !ok {
+			fmin, isNumber := minRaw.(float64)
+			if !isNumber {
 				return fmt.Errorf("%s/%s: non-numeric value of min property",
 					devId, ctrlId)
 			}
@@ -1751,7 +1733,7 @@ func (engine *RuleEngine) RemoveControl(devID, ctrlID string) error {
 	})
 
 	if errAccess != nil {
-		return errAccess
+		return errAccess //nolint:wrapcheck // the error comes from our own Access() callback
 	}
 	return nil
 }
@@ -1782,7 +1764,7 @@ func (engine *RuleEngine) AddControl(devID, ctrlID string, ctrlDef objx.Map) err
 	})
 
 	if errAccess != nil {
-		return errAccess
+		return errAccess //nolint:wrapcheck // the error comes from our own Access() callback
 	}
 	return nil
 }
@@ -1799,7 +1781,7 @@ func (engine *RuleEngine) GetDevice(devId string) error {
 	})
 
 	if errAccess != nil {
-		return errAccess
+		return errAccess //nolint:wrapcheck // the error comes from our own Access() callback
 	}
 	return nil
 }
@@ -1820,7 +1802,7 @@ func (engine *RuleEngine) GetDeviceIds() ([]string, error) {
 	})
 
 	if errAccess != nil {
-		return nil, errAccess
+		return nil, errAccess //nolint:wrapcheck // the error comes from our own Access() callback
 	}
 
 	// GetDevicesList() order is unspecified
@@ -1977,24 +1959,24 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	})
 
 	if err != nil {
-		return err
+		return err //nolint:wrapcheck // the error comes from our own Access() callback
 	}
 
 	// defer cleanup
 	engine.cleanup.AddCleanup(func() {
-		err := engine.driver.Access(func(tx wbgong.DriverTx) error {
+		errRemove := engine.driver.Access(func(tx wbgong.DriverTx) error {
 			// already removed via RemoveVirtualDevice()
 			if dev.IsDeleted() {
 				return nil
 			}
 			return tx.RemoveDevice(dev)()
 		})
-		if err != nil {
-			wbgong.Warn.Printf("failed to remove device %s in cleanup: %s", devId, err)
+		if errRemove != nil {
+			wbgong.Warn.Printf("failed to remove device %s in cleanup: %s", devId, errRemove)
 		}
 	})
 
-	return err
+	return nil
 }
 
 func (engine *RuleEngine) DefineRule(rule *Rule, ctx *ESContext) (id RuleId, err error) {
@@ -2185,7 +2167,7 @@ func (engine *RuleEngine) getRev() uint32 {
 
 func (engine *RuleEngine) GetDeviceProxyCacheSize() int {
 	count := 0
-	engine.deviceProxyCache.Range(func(key, value any) bool {
+	engine.deviceProxyCache.Range(func(_, _ any) bool {
 		count++
 		return true
 	})

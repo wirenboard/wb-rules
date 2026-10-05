@@ -6,7 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
-	_ "net/http/pprof"
+	_ "net/http/pprof" //nolint:gosec // G108: pprof is intentionally served on the debug HTTP endpoint
 	"os"
 	"os/signal"
 	"strings"
@@ -55,13 +55,13 @@ func serveHTTP(addr string) error {
 		// a socket left by a killed process makes bind fail with EADDRINUSE
 		if isSocket(addr) {
 			if err := os.Remove(addr); err != nil {
-				return err
+				return fmt.Errorf("can't remove stale socket %s: %w", addr, err)
 			}
 		}
 	}
 	listener, err := net.Listen(network, addr)
 	if err != nil {
-		return err
+		return fmt.Errorf("can't listen on %s: %w", addr, err)
 	}
 	return http.Serve(listener, nil)
 }
@@ -102,7 +102,7 @@ func main() {
 	}
 
 	if *httpAddr != "" {
-		http.HandleFunc("/metrics", func(w http.ResponseWriter, req *http.Request) {
+		http.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
 			metrics.WritePrometheus(w, true)
 		})
 		// debug/pprof handlers are registered in https://cs.opensource.google/go/go/+/refs/tags/go1.24.0:src/net/http/pprof/pprof.go;l=95
@@ -149,7 +149,7 @@ func main() {
 
 	wbgong.Info.Println("driver is created")
 
-	if err := driver.StartLoop(); err != nil {
+	if err = driver.StartLoop(); err != nil {
 		wbgong.Error.Fatalf("error starting the driver: %v", err)
 	}
 	driver.WaitForReady()

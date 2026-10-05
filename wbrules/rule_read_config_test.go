@@ -32,7 +32,7 @@ func (s *RuleReadConfigSuite) TearDownTest() {
 func (s *RuleReadConfigSuite) WriteConfig(filename, text string) (configPath string) {
 	configPath = filepath.Join(s.configDir, "conf.json")
 	// note that this is JSON config which supports comments, not just json
-	os.WriteFile(configPath, []byte(text), 0777)
+	os.WriteFile(configPath, []byte(text), 0o777)
 	return
 }
 

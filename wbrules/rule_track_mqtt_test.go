@@ -16,45 +16,45 @@ func (s *RuleTrackMqttSuite) SetupTest() {
 
 // TestTracker tests js which contains tracking like this:
 //
-// trackMqtt("/wierd/sub/some", ...
-// trackMqtt("/wierd/+/some", ...
-// trackMqtt("/wierd/+/another", ...
-// trackMqtt("/wierd/#", ...
+// trackMqtt("/weird/sub/some", ...
+// trackMqtt("/weird/+/some", ...
+// trackMqtt("/weird/+/another", ...
+// trackMqtt("/weird/#", ...
 func (s *RuleTrackMqttSuite) TestTracker() {
-	s.publish("/wierd/sub/some", "some-value")
+	s.publish("/weird/sub/some", "some-value")
 	s.VerifyUnordered(
-		"tst -> /wierd/sub/some: [some-value] (QoS 1, retained)",
-		"wbrules-log -> /wbrules/log/info: [1. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub/some, value: some-value, retained: true, qos: 1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [2. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub/some, value: some-value, retained: true, qos: 1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [4. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub/some, value: some-value, retained: true, qos: 1] (QoS 1)",
+		"tst -> /weird/sub/some: [some-value] (QoS 1, retained)",
+		"wbrules-log -> /wbrules/log/info: [1. weird topic got value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /weird/sub/some, value: some-value, retained: true, qos: 1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [2. weird topic got value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /weird/sub/some, value: some-value, retained: true, qos: 1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [4. weird topic got value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /weird/sub/some, value: some-value, retained: true, qos: 1] (QoS 1)",
 	)
 
-	s.publish("/wierd/sub2/some", "some-value")
+	s.publish("/weird/sub2/some", "some-value")
 	s.VerifyUnordered(
-		"tst -> /wierd/sub2/some: [some-value] (QoS 1, retained)",
-		"wbrules-log -> /wbrules/log/info: [2. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub2/some, value: some-value, retained: true, qos: 1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [4. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub2/some, value: some-value, retained: true, qos: 1] (QoS 1)",
+		"tst -> /weird/sub2/some: [some-value] (QoS 1, retained)",
+		"wbrules-log -> /wbrules/log/info: [2. weird topic got value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /weird/sub2/some, value: some-value, retained: true, qos: 1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [4. weird topic got value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /weird/sub2/some, value: some-value, retained: true, qos: 1] (QoS 1)",
 	)
 
-	s.publish("/wierd/sub3/another", "another-value")
+	s.publish("/weird/sub3/another", "another-value")
 	s.VerifyUnordered(
-		"tst -> /wierd/sub3/another: [another-value] (QoS 1, retained)",
-		"wbrules-log -> /wbrules/log/info: [3. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub3/another, value: another-value, retained: true, qos: 1] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [4. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/sub3/another, value: another-value, retained: true, qos: 1] (QoS 1)",
+		"tst -> /weird/sub3/another: [another-value] (QoS 1, retained)",
+		"wbrules-log -> /wbrules/log/info: [3. weird topic got value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /weird/sub3/another, value: another-value, retained: true, qos: 1] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [4. weird topic got value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /weird/sub3/another, value: another-value, retained: true, qos: 1] (QoS 1)",
 	)
 
-	s.publish("/wierd/different/long/topic/on", "random-value")
+	s.publish("/weird/different/long/topic/on", "random-value")
 	s.VerifyUnordered(
-		"tst -> /wierd/different/long/topic/on: [random-value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [4. wierd topic got value] (QoS 1)",
-		"wbrules-log -> /wbrules/log/info: [topic: /wierd/different/long/topic/on, value: random-value, retained: false, qos: 1] (QoS 1)",
+		"tst -> /weird/different/long/topic/on: [random-value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [4. weird topic got value] (QoS 1)",
+		"wbrules-log -> /wbrules/log/info: [topic: /weird/different/long/topic/on, value: random-value, retained: false, qos: 1] (QoS 1)",
 	)
 
 	s.VerifyEmpty()

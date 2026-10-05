@@ -17,8 +17,8 @@ func (s *RuleShellCommandSuite) SetupTest() {
 	s.SetupSkippingDefs("testrules_command.js")
 }
 
-func (s *RuleShellCommandSuite) fileExists(path string) bool {
-	if _, err := os.Stat(path); err != nil {
+func (s *RuleShellCommandSuite) fileExists(filePath string) bool {
+	if _, err := os.Stat(filePath); err != nil {
 		if os.IsNotExist(err) {
 			return false
 		}
@@ -27,9 +27,9 @@ func (s *RuleShellCommandSuite) fileExists(path string) bool {
 	return true
 }
 
-func (s *RuleShellCommandSuite) verifyFileExists(path string) {
-	if !s.fileExists(path) {
-		s.Require().Fail("file does not exist", "%s", path)
+func (s *RuleShellCommandSuite) verifyFileExists(filePath string) {
+	if !s.fileExists(filePath) {
+		s.Require().Fail("file does not exist", "%s", filePath)
 	}
 }
 

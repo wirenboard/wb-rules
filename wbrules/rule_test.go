@@ -37,14 +37,14 @@ func newFakeCron(t *testing.T) *fakeCron {
 	return &fakeCron{t, false, make(map[string][]fakeCronEntry), 0}
 }
 
-func (cron *fakeCron) AddFunc(spec string, cmd func()) (cron.EntryID, error) {
-	cron.lastID++
-	cron.entries[spec] = append(cron.entries[spec], fakeCronEntry{cron.lastID, cmd})
-	return cron.lastID, nil
+func (fc *fakeCron) AddFunc(spec string, cmd func()) (cron.EntryID, error) {
+	fc.lastID++
+	fc.entries[spec] = append(fc.entries[spec], fakeCronEntry{fc.lastID, cmd})
+	return fc.lastID, nil
 }
 
-func (cron *fakeCron) Remove(id cron.EntryID) {
-	for spec, entries := range cron.entries {
+func (fc *fakeCron) Remove(id cron.EntryID) {
+	for spec, entries := range fc.entries {
 		kept := entries[:0]
 		for _, entry := range entries {
 			if entry.id != id {
@@ -52,30 +52,30 @@ func (cron *fakeCron) Remove(id cron.EntryID) {
 			}
 		}
 		if len(kept) == 0 {
-			delete(cron.entries, spec)
+			delete(fc.entries, spec)
 		} else {
-			cron.entries[spec] = kept
+			fc.entries[spec] = kept
 		}
 	}
 }
 
-func (cron *fakeCron) Start() {
+func (fc *fakeCron) Start() {
 	wbgong.Debug.Printf("fakeCron.Start()")
-	cron.started = true
+	fc.started = true
 }
 
-func (cron *fakeCron) Stop() context.Context {
+func (fc *fakeCron) Stop() context.Context {
 	wbgong.Debug.Printf("fakeCron.Stop()")
-	cron.started = false
+	fc.started = false
 	return context.Background()
 }
 
-func (cron *fakeCron) invokeEntries(spec string) {
-	if !cron.started {
-		cron.t.Fatalf("trying to invoke cron entry (spec '%s') when cron isn't started yet",
+func (fc *fakeCron) invokeEntries(spec string) {
+	if !fc.started {
+		fc.t.Fatalf("trying to invoke cron entry (spec '%s') when cron isn't started yet",
 			spec)
 	}
-	if entries, found := cron.entries[spec]; found {
+	if entries, found := fc.entries[spec]; found {
 		for _, entry := range entries {
 			entry.cmd()
 		}
@@ -196,8 +196,6 @@ func (s *RuleSuiteBase) expectControlChange(expectedControlNames ...string) {
 				s.FailNow(fmt.Sprintf("timeout waiting for control change event: '%s'", expectedControlNames[i]))
 			}
 		}
-
-		t = nil
 
 		ctrlSpec := e.Spec
 		fullName := fmt.Sprintf("%s/%s", ctrlSpec.DeviceId, ctrlSpec.ControlId)
@@ -331,7 +329,7 @@ func (s *RuleSuiteBase) LiveLoadScript(script string) error {
 func (s *RuleSuiteBase) LiveLoadScriptToDir(script, dir string) error {
 	data := s.ReadSourceDataFile(script)
 	path := dir + "/" + script
-	s.DataFileFixture.Ckf("WriteFile", os.WriteFile(path, []byte(data), 0777))
+	s.DataFileFixture.Ckf("WriteFile", os.WriteFile(path, []byte(data), 0o777))
 	return s.engine.LiveLoadFile(path)
 }
 
