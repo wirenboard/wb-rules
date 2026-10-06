@@ -1,3 +1,9 @@
+wb-rules (2.48.1) stable; urgency=medium
+
+  * Clean up MQTT data on unload
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 06 Oct 2026 11:37:53 +0400
+
 wb-rules (2.48.0) stable; urgency=medium
 
   * Serve metrics and pprof on the /run/wb-rules/http.sock unix socket
