@@ -400,7 +400,7 @@ global.StorableObject = function (obj, ps, pskey) {
   var p = new Proxy(obj, {
     get: function (obj, key) {
       var val = obj[key];
-      if (typeof val === 'object') {
+      if (val !== null && typeof val === 'object') {
         return new StorableObject(val, obj._psself, key);
       }
       return val;
@@ -412,7 +412,7 @@ global.StorableObject = function (obj, ps, pskey) {
       }
 
       // check if value is an object without StorableObject's prototype
-      if (typeof value === 'object' && value._ps === undefined) {
+      if (value !== null && typeof value === 'object' && value._ps === undefined) {
         throw new Error(
           "don't write pure objects to PersistentStorage, use new StorableObject(obj) instead"
         );

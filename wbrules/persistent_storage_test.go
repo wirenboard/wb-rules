@@ -103,6 +103,31 @@ func TestPersistentStorageStrictMode(t *testing.T) {
 			`storage.foo = StorableObject({ nested: { value: 26.3 } }); storage.foo.nested.value = 0;`,
 			`{"nested":{"value":0}}`,
 		},
+		{
+			"null field round trip",
+			`var obj = StorableObject({ value: null });
+			 if (obj.value !== null) throw new Error("expected null field");
+			 storage.foo = obj;
+			 if (storage.foo.value !== null) throw new Error("expected persisted null field");`,
+			`{"value":null}`,
+		},
+		{
+			"standalone null field assignment",
+			`var obj = StorableObject({ value: 26.3 }); obj.value = null; storage.foo = obj;`,
+			`{"value":null}`,
+		},
+		{
+			"stored null field assignment",
+			`var obj = StorableObject({ value: 26.3 }); storage.foo = obj; obj.value = null;`,
+			`{"value":null}`,
+		},
+		{
+			"loaded nested null field assignment",
+			`storage.foo = StorableObject({ nested: { value: 26.3 } });
+			 storage.foo.nested.value = null;
+			 if (storage.foo.nested.value !== null) throw new Error("expected persisted null field");`,
+			`{"nested":{"value":null}}`,
+		},
 		{"false", `storage.foo = false;`, `false`},
 		{"zero", `storage.foo = 0;`, `0`},
 		{"empty string", `storage.foo = "";`, `""`},
