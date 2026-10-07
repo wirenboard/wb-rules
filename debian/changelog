@@ -1,3 +1,10 @@
+wb-rules (2.48.3) stable; urgency=medium
+
+  * Prevent duplicate PersistentStorage listeners and multiplying writes
+    when updating stored objects
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 07 Oct 2026 16:31:53 +0400
+
 wb-rules (2.48.2) stable; urgency=medium
 
   * Fix missing enum metadata for virtual controls with string enum labels

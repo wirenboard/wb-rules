@@ -473,7 +473,7 @@ global.PersistentStorage = function (name, options) {
             var len = value._ps.length;
             var found = false;
             for (var i = 0; i < len; i++) {
-              if (value._ps[i].p == o._psself && value._ps[i].k == key) {
+              if (value._ps[i].s == o._psself && value._ps[i].k == key) {
                 found = true;
                 break;
               }
