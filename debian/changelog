@@ -1,3 +1,9 @@
+wb-rules (2.48.2) stable; urgency=medium
+
+  * Fix missing enum metadata for virtual controls with string enum labels
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 07 Oct 2026 10:30:53 +0400
+
 wb-rules (2.48.1) stable; urgency=medium
 
   * Clean up MQTT data on unload
