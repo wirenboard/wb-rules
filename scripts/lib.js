@@ -513,5 +513,17 @@ __wbVdevPrototype.publish = function (topic, message) {
   publish('/devices/' + this.__deviceId + '/' + topic, message);
 };
 
-var Notify = require('wb-notify');
-var Alarms = require('wb-alarms');
+// Optional modules must not prevent the rule engine from starting.
+var Notify;
+try {
+  Notify = require('wb-notify');
+} catch (e) {
+  // Missing modules are already logged by the module loader.
+}
+
+var Alarms;
+try {
+  Alarms = require('wb-alarms');
+} catch (e) {
+  // Missing modules are already logged by the module loader.
+}
