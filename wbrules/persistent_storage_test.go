@@ -51,6 +51,85 @@ func TestOpenPersistentDBRecoversSymlinkTarget(t *testing.T) {
 	assert.NoError(db.Close())
 }
 
+func TestPersistentStorageStrictMode(t *testing.T) {
+	db, err := openPersistentDB(filepath.Join(t.TempDir(), "persistent.db"), 0600)
+	require.NoError(t, err)
+	defer db.Close()
+	engine := &ESEngine{persistentDB: db}
+	f := newESContextFactory()
+	ctx := f.newESContext(nil, "")
+	defer ctx.DestroyHeap()
+
+	ctx.PushGlobalObject()
+	ctx.DefineFunctions(map[string]func(*ESContext) int{
+		"_wbPersistentName": engine.esPersistentName,
+		"_wbPersistentSet":  engine.esPersistentSet,
+		"_wbPersistentGet":  engine.esPersistentGet,
+	})
+	ctx.Pop()
+	require.NoError(t, ctx.LoadScriptFromString("storage_setup.js", `
+		var __wbVdevPrototype = {};
+		function require() { return {}; }
+	`))
+	require.NoError(t, ctx.LoadScript("../scripts/lib.js"))
+
+	tests := []struct {
+		name     string
+		script   string
+		expected string
+	}{
+		{
+			"storable object",
+			`storage["foo"] = StorableObject({ name: "Temperature", value: 26.3 });`,
+			`{"name":"Temperature","value":26.3}`,
+		},
+		{
+			"standalone object update",
+			`var obj = StorableObject({ value: 26.3 }); obj.value = 0; storage.foo = obj;`,
+			`{"value":0}`,
+		},
+		{
+			"stored object update",
+			`var obj = StorableObject({ value: 26.3 }); storage.foo = obj; obj.value = 0;`,
+			`{"value":0}`,
+		},
+		{
+			"loaded object update",
+			`storage.foo = StorableObject({ value: 26.3 }); storage.foo.value = 0;`,
+			`{"value":0}`,
+		},
+		{
+			"nested object update",
+			`storage.foo = StorableObject({ nested: { value: 26.3 } }); storage.foo.nested.value = 0;`,
+			`{"nested":{"value":0}}`,
+		},
+		{"false", `storage.foo = false;`, `false`},
+		{"zero", `storage.foo = 0;`, `0`},
+		{"empty string", `storage.foo = "";`, `""`},
+		{"null deletes", `storage.foo = 42; storage.foo = null;`, ""},
+		{"undefined deletes", `storage.foo = 42; storage.foo = undefined;`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NoError(t, ctx.LoadScriptFromString("strict_storage.js", `
+				"use strict";
+				var storage = new PersistentStorage("storageName", {global: true});
+			`+tt.script))
+			require.NoError(t, db.View(func(tx *bolt.Tx) error {
+				bucket := tx.Bucket([]byte("storageName"))
+				require.NotNil(t, bucket)
+				value := bucket.Get([]byte("foo"))
+				if tt.expected == "" {
+					require.Nil(t, value)
+				} else {
+					require.JSONEq(t, tt.expected, string(value))
+				}
+				return nil
+			}))
+		})
+	}
+}
+
 type PersistentStorageSuite struct {
 	RuleSuiteBase
 	tmpDir string

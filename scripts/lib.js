@@ -117,6 +117,7 @@ var _WbRules = {
         } else {
           cellObject(name).setValue({ v: value });
         }
+        return true;
       },
     }));
   },
@@ -126,6 +127,7 @@ var _WbRules = {
     if (slashPosition > 0 && slashPosition < name.length - 1) {
       var target = _WbRules.getDevValue(o, name.slice(0, slashPosition));
       target[name.slice(slashPosition + 1)] = value;
+      return true;
     } else throw new Error('setting unsupported proxy value: ' + name);
   },
 
@@ -426,6 +428,7 @@ global.StorableObject = function (obj, ps, pskey) {
         // update is written here
         ps.s[ps.k] = o._psself;
       }
+      return true;
     },
     enumerate: function (o) {
       var keys = Object.keys(o);
@@ -487,7 +490,8 @@ global.PersistentStorage = function (name, options) {
           }
         }
 
-        return _wbPersistentSet(o.name, key, value);
+        _wbPersistentSet(o.name, key, value);
+        return true;
       },
     }
   );
