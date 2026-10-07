@@ -51,14 +51,15 @@ func TestOpenPersistentDBRecoversSymlinkTarget(t *testing.T) {
 	assert.NoError(db.Close())
 }
 
-func TestPersistentStorageStrictMode(t *testing.T) {
+func newPersistentStorageTestContext(t *testing.T) (*ESContext, *bolt.DB) {
+	t.Helper()
 	db, err := openPersistentDB(filepath.Join(t.TempDir(), "persistent.db"), 0600)
 	require.NoError(t, err)
-	defer db.Close()
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
 	engine := &ESEngine{persistentDB: db}
 	f := newESContextFactory()
 	ctx := f.newESContext(nil, "")
-	defer ctx.DestroyHeap()
+	t.Cleanup(ctx.DestroyHeap)
 
 	ctx.PushGlobalObject()
 	ctx.DefineFunctions(map[string]func(*ESContext) int{
@@ -72,7 +73,11 @@ func TestPersistentStorageStrictMode(t *testing.T) {
 		function require() { return {}; }
 	`))
 	require.NoError(t, ctx.LoadScript("../scripts/lib.js"))
+	return ctx, db
+}
 
+func TestPersistentStorageStrictMode(t *testing.T) {
+	ctx, db := newPersistentStorageTestContext(t)
 	tests := []struct {
 		name     string
 		script   string
