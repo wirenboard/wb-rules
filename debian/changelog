@@ -1,8 +1,106 @@
-wb-rules (2.46.2) stable; urgency=medium
+wb-rules (2.48.3) stable; urgency=medium
 
   * Fix race condition on service stop
 
- -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 07 Aug 2026 18:30:00 +0400
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 07 Oct 2026 10:30:00 +0400
+
+wb-rules (2.48.2) stable; urgency=medium
+
+  * Fix missing enum metadata for virtual controls with string enum labels
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 07 Oct 2026 10:30:53 +0400
+
+wb-rules (2.48.1) stable; urgency=medium
+
+  * Clean up MQTT data on unload
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 06 Oct 2026 11:37:53 +0400
+
+wb-rules (2.48.0) stable; urgency=medium
+
+  * Serve metrics and pprof on the /run/wb-rules/http.sock unix socket
+    instead of 127.0.0.1:9090
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 02 Oct 2026 20:37:53 +0400
+
+wb-rules (2.47.1) stable; urgency=medium
+
+  * Add removeVirtualDevice(id) removing a virtual device created by the
+    rule engine: the driver unpublishes its retained MQTT topics and the
+    same id can be defined again without reloading the file
+  * Add the remove() method of the device object, an equivalent of
+    removeVirtualDevice()
+
+ -- Vitalii Gaponov <vitalii.gaponov@wirenboard.com>  Tue, 29 Sep 2026 13:00:00 +0400
+
+wb-rules (2.47.0) stable; urgency=medium
+
+  * Add getDevicesList() returning device objects for all devices known to
+    the engine, both virtual and external
+  * Add the getDriverId() method of the device object returning the
+    /meta/driver value
+
+ -- Vitalii Gaponov <vitalii.gaponov@wirenboard.com>  Tue, 29 Sep 2026 12:00:00 +0400
+
+wb-rules (2.46.9) stable; urgency=medium
+
+  * Recover from invalid pdb/vdb databases
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 28 Sep 2026 10:23:28 +0400
+
+wb-rules (2.46.8) stable; urgency=medium
+
+  * Save rule files atomically to prevent truncation on write errors
+  * Fix deadlock when removing uninitialized lazy controls
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 23 Sep 2026 10:23:28 +0400
+
+wb-rules (2.46.7) stable; urgency=medium
+
+  * Report persistent storage read and write transaction errors to rule
+    scripts instead of silently ignoring them
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 22 Sep 2026 18:23:28 +0400
+
+wb-rules (2.46.6) stable; urgency=medium
+
+  * Fix flaky tests, no functional changes
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Fri, 04 Sep 2026 18:00:00 +0400
+
+wb-rules (2.46.5) stable; urgency=medium
+
+  * Notify.sendSMS: fix a vulnerability that let the message text or the
+    recipient number run arbitrary commands on the controller; allow double
+    quotes and non-BMP characters in the message
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 18 Aug 2026 22:00:00 +0400
+
+wb-rules (2.46.4) stable; urgency=medium
+
+  * A control write of a value that cannot be converted to the control's
+    datatype is now reported to the rule debug console (both
+    getControl("dev/ctrl").setValue(...) and dev["dev/ctrl"] = ...); previously
+    it went only to syslog and was invisible in the web UI. The write is still
+    ignored and the rule keeps running, so this is NOT a backward-incompatible
+    change - it just makes the mistake visible. A rejected write also no longer
+    updates the engine's cached value for that control.
+
+ -- Evgeny Boger <boger@wirenboard.com>  Tue, 18 Aug 2026 12:00:00 +0400
+
+wb-rules (2.46.3) stable; urgency=medium
+
+  * Reduce CPU usage of control reads and writes: the object returned for
+    dev[...] is now built once per control, and its methods once at startup,
+    instead of both being rebuilt on every access
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Thu, 13 Aug 2026 12:00:00 +0400
+
+wb-rules (2.46.2) stable; urgency=medium
+
+  * Fix unbounded memory growth with timer-driven rules that write controls
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 10 Aug 2026 12:50:00 +0400
 
 wb-rules (2.46.1) stable; urgency=medium
 

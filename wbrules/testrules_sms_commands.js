@@ -34,6 +34,15 @@ defineVirtualDevice('test_sms', {
     send_quoted: {
       type: 'pushbutton',
     },
+    send_injection: {
+      type: 'pushbutton',
+    },
+    send_bad_number: {
+      type: 'pushbutton',
+    },
+    send_nonbmp: {
+      type: 'pushbutton',
+    },
   },
 });
 
@@ -49,8 +58,33 @@ defineRule({
 defineRule({
   whenChanged: 'test_sms/send_quoted',
   then: function () {
-    // can't send messages with all types of quotes via mmcli,
-    // see https://gitlab.freedesktop.org/mobile-broadband/ModemManager/-/issues/275
     Notify.sendSMS('88005553535', 'test "value" \'single\'');
+  },
+});
+
+defineRule({
+  whenChanged: 'test_sms/send_injection',
+  then: function () {
+    Notify.sendSMS('88005553535', 'value $(id)', function (err) {
+      log('sms send status: {}', err ? 'error' : 'ok');
+    });
+  },
+});
+
+defineRule({
+  whenChanged: 'test_sms/send_bad_number',
+  then: function () {
+    Notify.sendSMS('$(id)', 'test value', function (err) {
+      log('sms send status: {}', err ? 'error' : 'ok');
+    });
+  },
+});
+
+defineRule({
+  whenChanged: 'test_sms/send_nonbmp',
+  then: function () {
+    Notify.sendSMS('88005553535', '🏠 текст', function (err) {
+      log('sms send status: {}', err ? 'error' : 'ok');
+    });
   },
 });

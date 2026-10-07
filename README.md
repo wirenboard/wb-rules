@@ -190,6 +190,9 @@ defineRule("crontest_hourly", {
 ```
 Вместо `@hourly` здесь можно задать любое выражение в формате `<second> <minute> <hour> <day of month> <month> [<day of week>]`,
 например, `00 00 20 * *` (выполнять правило каждый день в 20:00).
+
+**Примечание:** в отличие от классического cron (только минуты и старше), формат wb-rules поддерживает секунды — это расширение библиотеки `robfig/cron/v3`, а не стандартное поведение cron.
+
 Помимо стандартных выражений допускается использование ряда расширений,
 см. [описание](https://pkg.go.dev/github.com/robfig/cron/v3#hdr-CRON_Expression_Format)
 формата выражений используемой cron-библиотеки.
@@ -767,7 +770,33 @@ defineRule("onChange", {
 Также этот объект можно получить с помощью глобальной функции `getDevice(<id девайса>)`. Аналогично, можно получить объект контрола
 при помощи глобальной функции `getControl(<id девайса>/<id контрола>)`, т.е. для получения контрола `ctrlID` на девайсе `deviceID` нужно вызвать `getControl("deviceID/ctrlID")`.
 
+Список всех устройств, известных движку, возвращает глобальная функция `getDevicesList()`:
+массив таких же объектов устройств, отсортированный по id. В список входят и виртуальные устройства,
+созданные правилами, и внешние устройства других драйверов, обнаруженные по retained-сообщениям MQTT.
+Различить их можно методом `isVirtual()`, а значение `meta/driver` возвращает метод `getDriverId()`
+(пустая строка, если топика `meta/driver` у устройства нет). В список попадает и служебное устройство
+движка `wbrules`. Список — снимок на момент вызова: устройство может быть удалено позже, тогда при
+вызове методов его объекта возникнет исключение.
+
+```js
+getDevicesList().filter(function (d) { return d.isVirtual(); }).forEach(function (d) {
+  log(d.getId());
+});
+```
+
 К девайсу можно добавлять контролы динамически при помощи метода `addControl(<id контрола>, {описание параметров})`, удалять — `removeControl(<id контрола>)`.
+
+Виртуальное устройство можно удалить целиком: глобальной функцией `removeVirtualDevice(<id девайса>)`
+или методом `remove()` объекта устройства. Драйвер снимает все retained-топики устройства, после чего
+его id можно снова использовать в `defineVirtualDevice()`. Удалить можно только устройство, созданное
+через `defineVirtualDevice()`; для внешнего или несуществующего устройства возникает исключение.
+
+```js
+var vdev = defineVirtualDevice("tmpDevice", { cells: { x: { type: "switch", value: false } } });
+// ...
+vdev.remove(); // или removeVirtualDevice("tmpDevice")
+log(getDevice("tmpDevice")); // undefined
+```
 
 Для проверки контрола на существование можно воспользоваться функцией `isControlExists(<id контрола>)`. Так как при попытке установить
 значения контролов не виртуальных (внешних) девайсов возникает исключение — для проверки на принадлежность девайса можно использовать
@@ -788,10 +817,12 @@ getDevice("deviceID").controlsList().forEach(function(ctrl) {
 * `getCellId(string) => string`
 * `addControl(string, {описание параметров})`
 * `removeControl(string)`
+* `remove()`
 * `getControl(string) => __wbVdevCellPrototype`
 * `isControlExists(string) => boolean`
 * `controlsList() => []__wbVdevCellPrototype`
 * `isVirtual() => boolean`
+* `getDriverId() => string`
 * `setError(string)`
 * `getError() => string`
 
@@ -1738,5 +1769,28 @@ WBDEV_TARGET=bullseye-arm64 ./wbdev cdeb
 WBDEV_TARGET=bullseye-armhf ./wbdev cdeb
 ```
 
+### Метрики и профилирование
+
+wb-rules отдаёт метрики (`/metrics`) и профили pprof (`/debug/pprof/`) по HTTP через unix-сокет `/run/wb-rules/http.sock`.
+Адрес задаётся опцией `-http`: `host:port` или абсолютный путь к unix-сокету. Например, в `/etc/default/wb-rules`:
+```
+WB_RULES_OPTIONS="-http 127.0.0.1:9090"
+```
+
+```bash
+# Метрики
+curl --unix-socket /run/wb-rules/http.sock http://localhost/metrics
+
+# Профиль памяти в файл
+curl --unix-socket /run/wb-rules/http.sock -o heap.pb.gz http://localhost/debug/pprof/heap
+```
+
+Для работы с компьютера разработчика сокет пробрасывается в TCP-порт через ssh:
+
+```bash
+ssh -L 9090:/run/wb-rules/http.sock root@10.200.200.1
+go tool pprof http://localhost:9090/debug/pprof/profile?seconds=30
+```
+
 ## Ограничения
-Публикация более 100 топиков в секунду может вызвать повышенное потребление CPU и проблемы с производительностью. Рекомендуется оптимизировать частоту публикации топиков для обеспечения стабильной работы.
+Публикация более ~200 топиков в секунду может вызвать повышенное потребление CPU (как у wb-rules, так и со стороны mosquitto) и проблемы с производительностью. Рекомендуется оптимизировать частоту публикации топиков для обеспечения стабильной работы.

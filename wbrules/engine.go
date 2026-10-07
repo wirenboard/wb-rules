@@ -115,6 +115,7 @@ type proxyOwner interface {
 	Driver() wbgong.Driver
 	getRev() uint32
 	trackControlSpec(ControlSpec)
+	Log(EngineLogLevel, string)
 }
 
 type DeviceProxy struct {
@@ -245,6 +246,25 @@ func (devProxy *DeviceProxy) isVirtual() (isLocal bool, err error) {
 			return wbgong.DeviceNotExistError // TODO: careful with error here, some rules want control spec without control itself
 		}
 		_, isLocal = dev.(wbgong.LocalDevice)
+		return nil
+	})
+
+	return
+}
+
+func (devProxy *DeviceProxy) getDriverId() (driverId string, err error) {
+	devId := devProxy.name
+
+	if wbgong.DebuggingEnabled() {
+		wbgong.Debug.Printf("[devProxy] getDriverId for device %s", devId)
+	}
+
+	err = devProxy.owner.Driver().Access(func(tx wbgong.DriverTx) error {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		driverId = dev.GetDriverId()
 		return nil
 	})
 
@@ -432,13 +452,22 @@ func (ctrlProxy *ControlProxy) SetValue(value any, notifySubs bool) error {
 		return ctrl.SetOnValue(value)()
 	})
 
-	if isLocal && notifySubs {
-		// run update value handler immediately, don't wait for wbgong backend
+	if err == nil && isLocal && notifySubs {
+		// run update value handler immediately, don't wait for wbgong backend.
+		// Only on success: a rejected write must not poison the cached value, or
+		// a rule that catches the error and reads the control back would see the
+		// invalid value it just tried (and failed) to write.
 		ctrlProxy.updateValueHandler(nil, value, prevValue, nil)
 	}
 
 	if err != nil {
-		wbgong.Error.Printf("control %s/%s SetValue() error: %s", ctrlProxy.devProxy.name, ctrlProxy.name, err)
+		// A wrong-typed write has been logged-and-ignored since ~2015; keep that
+		// (the rule keeps running - no back-compat break) but surface it where
+		// the user actually looks: the rule debug console. engine.Log publishes
+		// to /wbrules/log/error, which homeui shows; wbgong.Error only reached
+		// syslog. The cache was left untouched above, so reads stay consistent.
+		ctrlProxy.devProxy.owner.Log(ENGINE_LOG_ERROR,
+			fmt.Sprintf("control %s/%s: write ignored (%s)", ctrlProxy.devProxy.name, ctrlProxy.name, err))
 	}
 	return nil
 }
@@ -832,20 +861,31 @@ func (engine *RuleEngine) syncLoop() {
 	}
 }
 
-func (engine *RuleEngine) processEvent(event *ControlChangeEvent) {
-	if wbgong.DebuggingEnabled() {
-		wbgong.Debug.Printf("control change: %s", event.Spec)
-		wbgong.Debug.Printf("rule engine: running rules after control change: %s", event.Spec)
+func (engine *RuleEngine) processEvents(events []*ControlChangeEvent) {
+	hasDebugControl := false
+	for _, event := range events {
+		if engine.isDebugControl(event.Spec) {
+			hasDebugControl = true
+			break
+		}
 	}
-	if engine.isDebugControl(event.Spec) {
+	if hasDebugControl {
 		engine.updateDebugEnabled()
 	}
 
 	engine.CallSync(func() {
-		engine.RunRules(event, NO_TIMER_NAME)
+		for _, event := range events {
+			if wbgong.DebuggingEnabled() {
+				wbgong.Debug.Printf("control change: %s", event.Spec)
+				wbgong.Debug.Printf("rule engine: running rules after control change: %s", event.Spec)
+			}
+			engine.RunRules(event, NO_TIMER_NAME)
+		}
 	})
 
-	engine.notifyControlChangeSubs(event)
+	for _, event := range events {
+		engine.notifyControlChangeSubs(event)
+	}
 }
 
 func (engine *RuleEngine) mainLoop() {
@@ -891,9 +931,7 @@ ReadyWaitLoop:
 
 	// wbgong.Info.Printf("******** READY ********")
 	for range engine.eventBuffer.Observe() {
-		for _, event := range engine.eventBuffer.Retrieve() {
-			engine.processEvent(event)
-		}
+		engine.processEvents(engine.eventBuffer.Retrieve())
 	}
 
 	engine.handleStop()
@@ -1653,6 +1691,8 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 							}
 						}
 						enumTitlesMap[key] = titleMap
+					} else if str, ok := value.(string); ok {
+						enumTitlesMap[key] = wbgong.Title{"en": str}
 					}
 				}
 			default:
@@ -1796,6 +1836,61 @@ func (engine *RuleEngine) GetDevice(devId string) error {
 	return nil
 }
 
+// GetDeviceIds returns sorted ids of all devices registered in the driver:
+// virtual devices of the running scripts and external devices discovered
+// from retained MQTT
+func (engine *RuleEngine) GetDeviceIds() ([]string, error) {
+	var ids []string
+	errAccess := engine.driver.Access(func(tx wbgong.DriverTx) error {
+		for _, dev := range tx.GetDevicesList() {
+			if dev.IsDeleted() {
+				continue
+			}
+			ids = append(ids, dev.GetId())
+		}
+		return nil
+	})
+
+	if errAccess != nil {
+		return nil, errAccess
+	}
+
+	// GetDevicesList() order is unspecified
+	sort.Strings(ids)
+	return ids, nil
+}
+
+// RemoveVirtualDevice removes a virtual device created by a script
+// and unpublishes its MQTT topics. External devices are rejected.
+func (engine *RuleEngine) RemoveVirtualDevice(devId string) error {
+	if devId == RULE_ENGINE_SETTINGS_DEV_NAME {
+		return fmt.Errorf("cannot remove device %s: it is the rule engine settings device", devId)
+	}
+
+	errAccess := engine.driver.Access(func(tx wbgong.DriverTx) (err error) {
+		dev := tx.GetDevice(devId)
+		if dev == nil {
+			return wbgong.DeviceNotExistError
+		}
+		localDevice, isLocal := dev.(wbgong.LocalDevice)
+		if !isLocal {
+			return wbgong.ExternalDeviceError
+		}
+
+		err = tx.RemoveDevice(localDevice)()
+
+		return
+	})
+
+	if errAccess != nil {
+		return fmt.Errorf("cannot remove device %s: %w", devId, errAccess)
+	}
+
+	// invalidate device/control proxies
+	atomic.AddUint32(&engine.rev, 1)
+	return nil
+}
+
 func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error {
 	// if device description has no controls (cells), skip this
 	if !obj.Has(VDEV_DESCR_PROP_CELLS) && !obj.Has(VDEV_DESCR_PROP_CONTROLS) {
@@ -1920,6 +2015,10 @@ func (engine *RuleEngine) DefineVirtualDevice(devId string, obj objx.Map) error 
 	// defer cleanup
 	engine.cleanup.AddCleanup(func() {
 		err := engine.driver.Access(func(tx wbgong.DriverTx) error {
+			// already removed via RemoveVirtualDevice()
+			if dev.IsDeleted() {
+				return nil
+			}
 			return tx.RemoveDevice(dev)()
 		})
 		if err != nil {

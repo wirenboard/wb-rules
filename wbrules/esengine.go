@@ -52,6 +52,7 @@ const (
 
 	THREAD_STORAGE_OBJ_NAME       = "_esThreads"
 	MODULES_USER_STORAGE_OBJ_NAME = "_esModules"
+	CELL_OBJ_PROTO_NAME           = "_esCellPrototype"
 	GLOBAL_INIT_ENV_FUNC_NAME     = "__esInitEnv"
 )
 
@@ -173,6 +174,9 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 	// init virtual device cell prototype
 	engine.initVdevCellPrototype(engine.globalCtx)
 
+	// init prototype for objects returned from _wbCellObject
+	engine.initCellObjectPrototype(engine.globalCtx)
+
 	// init threads storage
 	engine.initGlobalThreadList(engine.globalCtx)
 
@@ -201,7 +205,9 @@ func NewESEngine(driver wbgong.Driver, logMqttClient wbgong.MQTTClient, options 
 		"enableRule":           engine.esWbEnableRule,
 		"runRule":              engine.esWbRunRule,
 		"defineVirtualDevice":  engine.esDefineVirtualDevice,
+		"removeVirtualDevice":  engine.esRemoveVirtualDevice,
 		"getDevice":            engine.esGetDevice,
+		"getDevicesList":       engine.esGetDevicesList,
 		"getControl":           engine.esGetControl,
 		"_wbPersistentName":    engine.esPersistentName,
 		"trackMqtt":            engine.trackMqtt,
@@ -316,8 +322,10 @@ func (engine *ESEngine) initVdevPrototype(ctx *ESContext) {
 		"getControl":      engine.esVdevGetControl,
 		"isControlExists": engine.esVdevControlExists,
 		"removeControl":   engine.esVdevRemoveControl,
+		"remove":          engine.esVdevRemove,
 		"controlsList":    engine.esVdevControlsList,
 		"isVirtual":       engine.esVdevIsVirtual,
+		"getDriverId":     engine.esVdevGetDriverId,
 		"setError":        engine.esVdevSetError,
 		"getError":        engine.esVdevGetError,
 		// getCellValue and setCellValue are defined in lib.js
@@ -361,7 +369,7 @@ func (engine *ESEngine) initVdevCellPrototype(ctx *ESContext) {
 		"getValue":       engine.esVdevCellGetValue,
 	})
 
-	ctx.PutPropString(-2, "__wbVdevCellPrototype")
+	ctx.PutPropString(-2, VDEV_OBJ_PROTO_CELL_NAME)
 }
 
 func (engine *ESEngine) makeControlObject(ctx *ESContext, devID, ctrlID string) {
@@ -893,11 +901,11 @@ func (engine *ESEngine) LiveWriteScript(virtualPath, content string) error {
 			}
 		}
 
-		// WriteFile() will cause DirWatcher to wake up and invoke
+		// Atomic replacement will cause DirWatcher to wake up and invoke
 		// LiveLoadFile for the file, but as the new content
 		// will be already registered with the contentTracker,
 		// duplicate reload will not happen
-		err = os.WriteFile(cleanPath, []byte(content), 0644)
+		err = wbgong.WriteFileAtomic(cleanPath, strings.NewReader(content), 0644)
 		if err != nil {
 			r <- err
 			return
@@ -1061,6 +1069,64 @@ func (engine *ESEngine) esGetDevice(ctx *ESContext) int {
 	return 1
 }
 
+// makeDeviceObject pushes a device object for the given device id,
+// same as the one returned by getDevice()
+func (engine *ESEngine) makeDeviceObject(ctx *ESContext, devId string) {
+	// create virtual device object
+	ctx.PushObject()
+	// [ vDevObject ]
+
+	// get global object first
+	ctx.PushGlobalObject()
+	// [ vDevObject global ]
+
+	// get prototype object
+	ctx.GetPropString(-1, VDEV_OBJ_PROTO_NAME)
+	// [ vDevObject global __wbVdevPrototype ]
+
+	// apply prototype
+	ctx.SetPrototype(-3)
+	// [ vDevObject global ]
+
+	ctx.Pop()
+	// [ vDevObject ]
+
+	// push device ID property
+	ctx.PushString(devId)
+	// [ vDevObject devId ]
+
+	ctx.PutPropString(-2, VDEV_OBJ_PROP_DEVID)
+	// [ vDevObject ]
+}
+
+// getDevicesList() returns device objects for all devices registered
+// in the driver: virtual devices of the running scripts and external
+// devices discovered from retained MQTT
+func (engine *ESEngine) esGetDevicesList(ctx *ESContext) int {
+	if ctx.GetTop() != 0 {
+		engine.Log(ENGINE_LOG_ERROR, "getDevicesList(): bad parameters")
+		return duktape.DUK_RET_ERROR
+	}
+
+	ids, err := engine.GetDeviceIds()
+	if err != nil {
+		wbgong.Error.Printf("device listing error: %v", err)
+		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
+		return duktape.DUK_RET_INSTACK_ERROR
+	}
+
+	vIndex := ctx.PushArray()
+	// [ arr ]
+	for i, devId := range ids {
+		engine.makeDeviceObject(ctx, devId)
+		// [ arr vDevObject ]
+		ctx.PutPropIndex(vIndex, uint(i))
+		// [ arr ]
+	}
+
+	return 1
+}
+
 func (engine *ESEngine) esGetControl(ctx *ESContext) int {
 	if ctx.GetTop() != 1 || !ctx.IsString(0) {
 		engine.Log(ENGINE_LOG_ERROR, "getControl(): bad parameters")
@@ -1146,6 +1212,25 @@ func (engine *ESEngine) esDefineVirtualDevice(ctx *ESContext) int {
 	return 1
 }
 
+// removeVirtualDevice removes virtual device created by a script
+// and unpublishes its MQTT topics
+func (engine *ESEngine) esRemoveVirtualDevice(ctx *ESContext) int {
+	if ctx.GetTop() != 1 || !ctx.IsString(0) {
+		return duktape.DUK_RET_ERROR
+	}
+	return engine.removeVdevOrThrow(ctx, ctx.GetString(0))
+}
+
+// removeVdevOrThrow removes the device or throws a JS error, like defineVirtualDevice
+func (engine *ESEngine) removeVdevOrThrow(ctx *ESContext, devId string) int {
+	if err := engine.RemoveVirtualDevice(devId); err != nil {
+		wbgong.Error.Printf("device removal error: %v", err)
+		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, err.Error())
+		return duktape.DUK_RET_INSTACK_ERROR
+	}
+	return 0
+}
+
 func (engine *ESEngine) esVdevIsVirtual(ctx *ESContext) int {
 	// push this
 	ctx.PushThis()
@@ -1168,6 +1253,33 @@ func (engine *ESEngine) esVdevIsVirtual(ctx *ESContext) int {
 	}
 
 	ctx.PushBoolean(isVirtual)
+
+	return 1
+}
+
+// getDriverId() method of the device object: the value of /meta/driver
+func (engine *ESEngine) esVdevGetDriverId(ctx *ESContext) int {
+	// push this
+	ctx.PushThis()
+	// [ cell | this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	if err != nil {
+		ctx.Pop()
+		// [ cell | ]
+
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+	ctx.Pop()
+	devProxy := engine.GetDeviceProxy(devId)
+	driverId, errDriver := devProxy.getDriverId()
+	if errDriver != nil {
+		wbgong.Error.Printf("getDriverId(): error in executing function: %s", errDriver)
+		return duktape.DUK_RET_ERROR
+	}
+
+	ctx.PushString(driverId)
 
 	return 1
 }
@@ -1327,6 +1439,23 @@ func (engine *ESEngine) esVdevRemoveControl(ctx *ESContext) int {
 		wbgong.Error.Printf("Error in removing control %s on device %s: %v", ctrlId, devId, errControl)
 	}
 	return 1
+}
+
+// remove() method of the virtual device object
+func (engine *ESEngine) esVdevRemove(ctx *ESContext) int {
+	// push this
+	ctx.PushThis()
+	// [ this ]
+
+	// get virtual device id
+	devId, err := engine.getStringPropFromObject(ctx, -1, VDEV_OBJ_PROP_DEVID)
+	ctx.Pop()
+	// []
+	if err != nil {
+		return duktape.DUK_RET_TYPE_ERROR
+	}
+
+	return engine.removeVdevOrThrow(ctx, devId)
 }
 
 func (engine *ESEngine) esVdevControlExists(ctx *ESContext) int {
@@ -1935,7 +2064,12 @@ func (engine *ESEngine) esVdevCellSetValue(ctx *ESContext) int {
 		value = ctx.GetJSObject(0)
 	}
 
-	ctrlProxy.SetValue(value, notifySubs)
+	// A non-nil error here means the control disappeared (all other write
+	// failures are logged-and-swallowed inside SetValue); report it to the
+	// rule console like any other failed write - a write must never throw.
+	if err := ctrlProxy.SetValue(value, notifySubs); err != nil {
+		engine.Log(ENGINE_LOG_ERROR, err.Error())
+	}
 
 	return 0
 }
@@ -2032,6 +2166,20 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 
 	controlProxy := devProxy.EnsureControlProxy(ctx.GetString(-1))
 	ctx.PushGoObject(controlProxy)
+
+	ctx.PushHeapStash()
+	ctx.GetPropString(-1, CELL_OBJ_PROTO_NAME)
+	ctx.SetPrototype(-3)
+	ctx.Pop()
+
+	return 1
+}
+
+func (engine *ESEngine) initCellObjectPrototype(ctx *ESContext) {
+	ctx.PushHeapStash()
+	defer ctx.Pop()
+
+	ctx.PushObject()
 	ctx.DefineFunctions(map[string]func(*ESContext) int{
 		JS_DEVPROXY_FUNC_RAWVALUE: func(ctx *ESContext) int {
 			ctx.PushThis()
@@ -2122,7 +2270,7 @@ func (engine *ESEngine) esWbCellObject(ctx *ESContext) int {
 			return 1
 		},
 	})
-	return 1
+	ctx.PutPropString(-2, CELL_OBJ_PROTO_NAME)
 }
 
 func (engine *ESEngine) esWbStartTimer(ctx *ESContext) int {
@@ -2495,6 +2643,47 @@ func (engine *ESEngine) SetPersistentDB(filename string) error {
 	return engine.SetPersistentDBMode(filename, PERSISTENT_DB_CHMOD)
 }
 
+func isInvalidPersistentDBError(err error) bool {
+	return errors.Is(err, bolt.ErrInvalid) ||
+		errors.Is(err, bolt.ErrChecksum) ||
+		errors.Is(err, bolt.ErrVersionMismatch)
+}
+
+func invalidPersistentDBReason(err error) string {
+	switch {
+	case errors.Is(err, bolt.ErrInvalid):
+		return "magic mismatch"
+	case errors.Is(err, bolt.ErrChecksum):
+		return "checksum mismatch"
+	case errors.Is(err, bolt.ErrVersionMismatch):
+		return "version mismatch"
+	default:
+		return "unknown validation error"
+	}
+}
+
+func openPersistentDB(filename string, mode os.FileMode) (*bolt.DB, error) {
+	options := &bolt.Options{Timeout: 1 * time.Second}
+	db, err := bolt.Open(filename, mode, options)
+	if err == nil || !isInvalidPersistentDBError(err) {
+		return db, err
+	}
+	invalidErr := err
+	wbgong.Error.Printf("persistent storage database %s is invalid: %s. Recreating",
+		filename, invalidPersistentDBReason(invalidErr))
+
+	databaseFilename, resolveErr := filepath.EvalSymlinks(filename)
+	if resolveErr != nil {
+		return nil, fmt.Errorf("can't resolve invalid persistent DB path %s: %w", filename, resolveErr)
+	}
+
+	if removeErr := os.Remove(databaseFilename); removeErr != nil {
+		return nil, fmt.Errorf("can't remove invalid persistent DB %s: %w", databaseFilename, removeErr)
+	}
+
+	return bolt.Open(filename, mode, options)
+}
+
 func (engine *ESEngine) SetPersistentDBMode(filename string, mode os.FileMode) (err error) {
 	if engine.persistentDB != nil {
 		engine.Log(ENGINE_LOG_ERROR, "persistent storage DB is already opened")
@@ -2502,8 +2691,7 @@ func (engine *ESEngine) SetPersistentDBMode(filename string, mode os.FileMode) (
 		return
 	}
 
-	engine.persistentDB, err = bolt.Open(filename, mode,
-		&bolt.Options{Timeout: 1 * time.Second})
+	engine.persistentDB, err = openPersistentDB(filename, mode)
 
 	if err != nil {
 		engine.Log(ENGINE_LOG_ERROR, fmt.Sprintf("can't open persistent DB file: %v", err))
@@ -2617,7 +2805,7 @@ func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 	}
 
 	// perform a transaction
-	engine.persistentDB.Update(func(tx *bolt.Tx) error {
+	err := engine.persistentDB.Update(func(tx *bolt.Tx) error {
 		b, err := tx.CreateBucketIfNotExists([]byte(bucket))
 		if err != nil {
 			return err
@@ -2635,6 +2823,12 @@ func (engine *ESEngine) esPersistentSet(ctx *ESContext) int {
 		}
 		return nil
 	})
+	if err != nil {
+		message := fmt.Sprintf("can't update persistent storage %s/%s: %v", bucket, key, err)
+		engine.Log(ENGINE_LOG_ERROR, message)
+		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, message)
+		return duktape.DUK_RET_INSTACK_ERROR
+	}
 
 	if shouldDelete {
 		wbgong.Debug.Printf("delete value from persistent storage %s: '%s'", bucket, key)
@@ -2679,7 +2873,7 @@ func (engine *ESEngine) esPersistentGet(ctx *ESContext) int {
 	// try to get these from cache
 	var ok bool
 	// read value
-	engine.persistentDB.View(func(tx *bolt.Tx) error {
+	err := engine.persistentDB.View(func(tx *bolt.Tx) error {
 		ok = false
 		b := tx.Bucket([]byte(bucket))
 		if b == nil { // no such bucket -> undefined
@@ -2691,6 +2885,12 @@ func (engine *ESEngine) esPersistentGet(ctx *ESContext) int {
 		}
 		return nil
 	})
+	if err != nil {
+		message := fmt.Sprintf("can't read persistent storage %s/%s: %v", bucket, key, err)
+		engine.Log(ENGINE_LOG_ERROR, message)
+		ctx.PushErrorObject(duktape.DUK_ERR_ERROR, message)
+		return duktape.DUK_RET_INSTACK_ERROR
+	}
 
 	if !ok {
 		// push 'undefined'

@@ -1,6 +1,7 @@
 package wbrules
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/wirenboard/wbgong/testutils"
@@ -148,6 +149,60 @@ func (s *RuleMetaSuite) TestVirtualDeviceControlMetaUnits() {
 		"driver -> /devices/vDevWithControlMetaUnits/meta: [{\"driver\":\"wbrules\"}] (QoS 1, retained)",
 		"tst -> /devices/testDevice/controls/createVDevWithControlMetaUnits/on: [1] (QoS 1)",
 	)
+	s.VerifyEmpty()
+}
+
+func (s *RuleMetaSuite) TestVirtualDeviceControlEnum() {
+	tests := []struct {
+		name     string
+		enum     string
+		expected string
+	}{
+		{
+			name:     "strings",
+			enum:     `{0: "Ожидание", 1: "Зима[ЦО+ГВС]", 2: "Лето[ГВС]", 3: "Отопление[ЦО]"}`,
+			expected: `{"0":{"en":"Ожидание"},"1":{"en":"Зима[ЦО+ГВС]"},"2":{"en":"Лето[ГВС]"},"3":{"en":"Отопление[ЦО]"}}`,
+		},
+		{
+			name:     "localized",
+			enum:     `{0: {en: "Idle", ru: "Ожидание"}, 1: {en: "Winter", ru: "Зима[ЦО+ГВС]"}}`,
+			expected: `{"0":{"en":"Idle","ru":"Ожидание"},"1":{"en":"Winter","ru":"Зима[ЦО+ГВС]"}}`,
+		},
+		{
+			name:     "mixed",
+			enum:     `{0: "Ожидание", 1: {en: "Winter", ru: "Зима[ЦО+ГВС]"}}`,
+			expected: `{"0":{"en":"Ожидание"},"1":{"en":"Winter","ru":"Зима[ЦО+ГВС]"}}`,
+		},
+	}
+	for _, controlType := range []string{"value", "text"} {
+		value := "0"
+		if controlType == "text" {
+			value = `"0"`
+		}
+		for _, tt := range tests {
+			deviceID := "enum_" + controlType + "_" + tt.name
+			s.Ck("defineVirtualDevice()", s.engine.EvalScript(fmt.Sprintf(`
+				defineVirtualDevice(%q, {
+					cells: {
+						mode: {type: %q, value: %s, readonly: false, enum: %s}
+					}
+				});
+			`, deviceID, controlType, value, tt.enum)))
+			deviceTopic := "/devices/" + deviceID
+			controlTopic := deviceTopic + "/controls/mode"
+			s.VerifyUnordered(
+				"Subscribe -- driver: "+controlTopic+"/on",
+				"driver -> "+controlTopic+"/meta/order: [1] (QoS 1, retained)",
+				"driver -> "+controlTopic+"/meta/readonly: [0] (QoS 1, retained)",
+				"driver -> "+controlTopic+"/meta/type: ["+controlType+"] (QoS 1, retained)",
+				"driver -> "+controlTopic+`/meta: [{"enum":`+tt.expected+`,"order":1,"readonly":false,"type":"`+controlType+`"}] (QoS 1, retained)`,
+				"driver -> "+controlTopic+": [0] (QoS 1, retained)",
+				"driver -> "+deviceTopic+"/meta/driver: [wbrules] (QoS 1, retained)",
+				"driver -> "+deviceTopic+"/meta/name: [] (QoS 1, retained)",
+				"driver -> "+deviceTopic+`/meta: [{"driver":"wbrules"}] (QoS 1, retained)`,
+			)
+		}
+	}
 	s.VerifyEmpty()
 }
 

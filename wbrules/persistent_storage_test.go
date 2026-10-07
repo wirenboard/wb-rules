@@ -2,11 +2,54 @@ package wbrules
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/wirenboard/wbgong"
 	"github.com/wirenboard/wbgong/testutils"
+	bolt "go.etcd.io/bbolt"
 )
+
+func TestOpenPersistentDBRecoversInvalidFile(t *testing.T) {
+	dir := t.TempDir()
+	filename := filepath.Join(dir, "persistent.db")
+	invalidContents := []byte("not a bbolt database")
+	assert := require.New(t)
+	assert.NoError(os.WriteFile(filename, invalidContents, 0600))
+	db, err := openPersistentDB(filename, 0640)
+	assert.NoError(err)
+	assert.NotNil(db)
+	assert.NoError(db.Close())
+
+	db, err = bolt.Open(filename, 0640, nil)
+	assert.NoError(err)
+	assert.NoError(db.Close())
+}
+
+func TestOpenPersistentDBRecoversSymlinkTarget(t *testing.T) {
+	dir := t.TempDir()
+	targetDir := filepath.Join(dir, "data")
+	target := filepath.Join(targetDir, "persistent.db")
+	filename := filepath.Join(dir, "persistent.db")
+	invalidContents := []byte("invalid database behind a symlink")
+	assert := require.New(t)
+	assert.NoError(os.Mkdir(targetDir, 0755))
+	assert.NoError(os.WriteFile(target, invalidContents, 0600))
+	assert.NoError(os.Symlink(filepath.Join("data", "persistent.db"), filename))
+	db, err := openPersistentDB(filename, 0640)
+	assert.NoError(err)
+	assert.NotNil(db)
+	assert.NoError(db.Close())
+
+	linkTarget, err := os.Readlink(filename)
+	assert.NoError(err)
+	assert.Equal(filepath.Join("data", "persistent.db"), linkTarget)
+
+	db, err = bolt.Open(target, 0640, nil)
+	assert.NoError(err)
+	assert.NoError(db.Close())
+}
 
 type PersistentStorageSuite struct {
 	RuleSuiteBase
@@ -92,6 +135,32 @@ func (s *PersistentStorageSuite) TestLocalPersistentStorage2() {
 
 	s.publish("/devices/vdev/controls/localRead2/on", "1", "vdev/localRead2")
 	s.SkipTill("[info] file2: read objects undefined, \"hello_from_2\"")
+}
+
+func (s *PersistentStorageSuite) TestPersistentStorageTransactionErrors() {
+	s.Require().NoError(s.engine.ClosePersistentDB())
+
+	err := s.engine.EvalScript(`
+		var ps = new PersistentStorage('test_storage_errors', { global: true });
+		try {
+			ps.key = 42;
+		} catch (e) {
+			log('persistent write failed: ' + e);
+		}
+		try {
+			ps.key;
+		} catch (e) {
+			log('persistent read failed: ' + e);
+		}
+	`)
+	s.Require().NoError(err)
+
+	s.VerifyUnordered(
+		"[error] can't update persistent storage test_storage_errors/key: database not open",
+		"[info] persistent write failed: Error: can't update persistent storage test_storage_errors/key: database not open",
+		"[error] can't read persistent storage test_storage_errors/key: database not open",
+		"[info] persistent read failed: Error: can't read persistent storage test_storage_errors/key: database not open",
+	)
 }
 
 func TestPersistentStorageSuite(t *testing.T) {

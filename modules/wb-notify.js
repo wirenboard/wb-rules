@@ -37,24 +37,17 @@ function _sendSMSGammuLike(to, text, command, doneCallback) {
 function _sendSMSModemManager(to, text, doneCallback) {
   log('sending sms (via ModemManager): {}', text);
   var command =
-    'mmcli -m any --messaging-create-sms="number={},text={}" -K | cut -d: -f2- | xargs mmcli --send -s';
+    'base64 -d | mmcli -m any --messaging-create-sms="number={}"' +
+    ' --messaging-create-sms-with-text=/dev/stdin -K' +
+    ' | cut -d: -f2- | xargs mmcli --send -s';
 
-  if (text.indexOf('"') >= 0) {
-    // can't send messages with all types of quotes via mmcli,
-    // see https://gitlab.freedesktop.org/mobile-broadband/ModemManager/-/issues/275
-    log.warning(
-      "ModemManager can't handle SMS with double quotes now, auto replaced with single ones"
-    );
-    text = text.replace(/"/g, "'");
-  }
-  text = '\\"' + text + '\\"';
-
-  command = command.format(to, text);
+  command = command.format(to);
   debug('sms command: {}'.format(command));
 
   runShellCommand(command, {
     captureErrorOutput: true,
     captureOutput: true,
+    input: _utf8ToBase64(text),
     exitCallback: doneCallback,
   });
 }
@@ -75,6 +68,8 @@ function _checkUse4gModem(doneCallback) {
 function _shellQuote(s) {
   return "'" + String(s).replace(/'/g, "'\\''") + "'";
 }
+
+var _PHONE_NUMBER_RE = /^\+?[0-9]{3,20}$/;
 
 function _isValidJSON(str) {
   try {
@@ -250,6 +245,14 @@ exports.sendSMS = function (to, text, command, callback) {
   if (typeof command === 'function') {
     callback = command;
     command = undefined;
+  }
+
+  if (!_PHONE_NUMBER_RE.test(to)) {
+    _notifyDone(
+      callback,
+      new Error("error sending sms: invalid recipient '" + to + "', expected a phone number")
+    );
+    return;
   }
 
   var doneCallback = function (exitCode, capturedOutput, capturedErrorOutput) {
