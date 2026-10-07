@@ -1661,6 +1661,8 @@ func fillControlArgs(devId, ctrlId string, ctrlDef objx.Map, args wbgong.Control
 							}
 						}
 						enumTitlesMap[key] = titleMap
+					} else if str, ok := value.(string); ok {
+						enumTitlesMap[key] = wbgong.Title{"en": str}
 					}
 				}
 			default:
