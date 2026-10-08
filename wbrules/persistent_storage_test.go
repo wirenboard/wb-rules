@@ -1,8 +1,10 @@
 package wbrules
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -74,6 +76,63 @@ func newPersistentStorageTestContext(t *testing.T) (*ESContext, *bolt.DB) {
 	`))
 	require.NoError(t, ctx.LoadScript("../scripts/lib.js"))
 	return ctx, db
+}
+
+func TestPersistentStorageListeners(t *testing.T) {
+	tests := []struct {
+		name   string
+		setup  string
+		writes []string
+	}{
+		{"single registration", `storage.foo = obj;`, []string{"first/foo"}},
+		{"repeated registration", `storage.foo = obj; storage.foo = obj; storage.foo = obj;`, []string{"first/foo"}},
+		{"loaded object", `storage.foo = obj; obj = storage.foo;`, []string{"first/foo"}},
+		{"different keys", `storage.foo = obj; storage.bar = obj;`, []string{"first/foo", "first/bar"}},
+		{"different storages", `storage.foo = obj; other.foo = obj;`, []string{"first/foo", "second/foo"}},
+		{
+			"repeated registration at multiple destinations",
+			`storage.foo = obj; storage.bar = obj; other.foo = obj;
+			 storage.foo = obj; storage.bar = obj; other.foo = obj;`,
+			[]string{"first/foo", "first/bar", "second/foo"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, db := newPersistentStorageTestContext(t)
+			// Count actual native persistence calls, not the internal listener list.
+			require.NoError(t, ctx.LoadScriptFromString("listeners_setup.js", `
+				var writes = [];
+				var originalSet = _wbPersistentSet;
+				_wbPersistentSet = function(name, key, value) {
+					writes.push(name + "/" + key);
+					return originalSet(name, key, value);
+				};
+				var storage = new PersistentStorage("first", {global: true});
+				var other = new PersistentStorage("second", {global: true});
+				var obj = StorableObject({value: 0});
+			`+tt.setup))
+			// Repeated mutations must keep writing once per destination instead of
+			// registering more listeners during each automatic save.
+			for value := 1; value <= 4; value++ {
+				require.NoError(t, ctx.LoadScriptFromString("listeners_update.js",
+					fmt.Sprintf(`writes = []; obj.value = %d;`, value)))
+				require.Zero(t, ctx.PevalString("writes"))
+				writes := ctx.StringArrayToGo(-1)
+				ctx.Pop()
+				require.ElementsMatch(t, tt.writes, writes, "update %d", value)
+				require.NoError(t, db.View(func(tx *bolt.Tx) error {
+					for _, destination := range tt.writes {
+						parts := strings.SplitN(destination, "/", 2)
+						bucket := tx.Bucket([]byte(parts[0]))
+						require.NotNil(t, bucket)
+						require.JSONEq(t, fmt.Sprintf(`{"value":%d}`, value),
+							string(bucket.Get([]byte(parts[1]))), destination)
+					}
+					return nil
+				}))
+			}
+		})
+	}
 }
 
 func TestPersistentStorageStrictMode(t *testing.T) {
