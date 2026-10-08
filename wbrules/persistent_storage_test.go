@@ -135,6 +135,90 @@ func TestPersistentStorageListeners(t *testing.T) {
 	}
 }
 
+func TestPersistentStorageStrictMode(t *testing.T) {
+	ctx, db := newPersistentStorageTestContext(t)
+	tests := []struct {
+		name     string
+		script   string
+		expected string
+	}{
+		{
+			"storable object",
+			`storage["foo"] = StorableObject({ name: "Temperature", value: 26.3 });`,
+			`{"name":"Temperature","value":26.3}`,
+		},
+		{
+			"standalone object update",
+			`var obj = StorableObject({ value: 26.3 }); obj.value = 0; storage.foo = obj;`,
+			`{"value":0}`,
+		},
+		{
+			"stored object update",
+			`var obj = StorableObject({ value: 26.3 }); storage.foo = obj; obj.value = 0;`,
+			`{"value":0}`,
+		},
+		{
+			"loaded object update",
+			`storage.foo = StorableObject({ value: 26.3 }); storage.foo.value = 0;`,
+			`{"value":0}`,
+		},
+		{
+			"nested object update",
+			`storage.foo = StorableObject({ nested: { value: 26.3 } }); storage.foo.nested.value = 0;`,
+			`{"nested":{"value":0}}`,
+		},
+		{
+			"null field round trip",
+			`var obj = StorableObject({ value: null });
+			 if (obj.value !== null) throw new Error("expected null field");
+			 storage.foo = obj;
+			 if (storage.foo.value !== null) throw new Error("expected persisted null field");`,
+			`{"value":null}`,
+		},
+		{
+			"standalone null field assignment",
+			`var obj = StorableObject({ value: 26.3 }); obj.value = null; storage.foo = obj;`,
+			`{"value":null}`,
+		},
+		{
+			"stored null field assignment",
+			`var obj = StorableObject({ value: 26.3 }); storage.foo = obj; obj.value = null;`,
+			`{"value":null}`,
+		},
+		{
+			"loaded nested null field assignment",
+			`storage.foo = StorableObject({ nested: { value: 26.3 } });
+			 storage.foo.nested.value = null;
+			 if (storage.foo.nested.value !== null) throw new Error("expected persisted null field");`,
+			`{"nested":{"value":null}}`,
+		},
+		{"false", `storage.foo = false;`, `false`},
+		{"zero", `storage.foo = 0;`, `0`},
+		{"empty string", `storage.foo = "";`, `""`},
+		{"null deletes", `storage.foo = 42; storage.foo = null;`, ""},
+		{"undefined deletes", `storage.foo = 42; storage.foo = undefined;`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.NoError(t, ctx.LoadScriptFromString("strict_storage.js", `
+				"use strict";
+				var storage = new PersistentStorage("storageName", {global: true});
+			`+tt.script))
+			require.NoError(t, db.View(func(tx *bolt.Tx) error {
+				bucket := tx.Bucket([]byte("storageName"))
+				require.NotNil(t, bucket)
+				value := bucket.Get([]byte("foo"))
+				if tt.expected == "" {
+					require.Nil(t, value)
+				} else {
+					require.JSONEq(t, tt.expected, string(value))
+				}
+				return nil
+			}))
+		})
+	}
+}
+
 type PersistentStorageSuite struct {
 	RuleSuiteBase
 	tmpDir string

@@ -117,6 +117,7 @@ var _WbRules = {
         } else {
           cellObject(name).setValue({ v: value });
         }
+        return true;
       },
     }));
   },
@@ -126,6 +127,7 @@ var _WbRules = {
     if (slashPosition > 0 && slashPosition < name.length - 1) {
       var target = _WbRules.getDevValue(o, name.slice(0, slashPosition));
       target[name.slice(slashPosition + 1)] = value;
+      return true;
     } else throw new Error('setting unsupported proxy value: ' + name);
   },
 
@@ -398,7 +400,7 @@ global.StorableObject = function (obj, ps, pskey) {
   var p = new Proxy(obj, {
     get: function (obj, key) {
       var val = obj[key];
-      if (typeof val === 'object') {
+      if (val !== null && typeof val === 'object') {
         return new StorableObject(val, obj._psself, key);
       }
       return val;
@@ -410,7 +412,7 @@ global.StorableObject = function (obj, ps, pskey) {
       }
 
       // check if value is an object without StorableObject's prototype
-      if (typeof value === 'object' && value._ps === undefined) {
+      if (value !== null && typeof value === 'object' && value._ps === undefined) {
         throw new Error(
           "don't write pure objects to PersistentStorage, use new StorableObject(obj) instead"
         );
@@ -426,6 +428,7 @@ global.StorableObject = function (obj, ps, pskey) {
         // update is written here
         ps.s[ps.k] = o._psself;
       }
+      return true;
     },
     enumerate: function (o) {
       var keys = Object.keys(o);
@@ -487,7 +490,8 @@ global.PersistentStorage = function (name, options) {
           }
         }
 
-        return _wbPersistentSet(o.name, key, value);
+        _wbPersistentSet(o.name, key, value);
+        return true;
       },
     }
   );
@@ -509,5 +513,17 @@ __wbVdevPrototype.publish = function (topic, message) {
   publish('/devices/' + this.__deviceId + '/' + topic, message);
 };
 
-var Notify = require('wb-notify');
-var Alarms = require('wb-alarms');
+// Optional modules must not prevent the rule engine from starting.
+var Notify;
+try {
+  Notify = require('wb-notify');
+} catch (e) {
+  // Missing modules are already logged by the module loader.
+}
+
+var Alarms;
+try {
+  Alarms = require('wb-alarms');
+} catch (e) {
+  // Missing modules are already logged by the module loader.
+}
