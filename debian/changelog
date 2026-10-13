@@ -1,3 +1,9 @@
+wb-rules (2.48.6) stable; urgency=medium
+
+  * Alarms: pass MAX recipient chat_id as query parameter, fix HTTP 400
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Tue, 13 Oct 2026 13:36:29 +0300
+
 wb-rules (2.48.5) stable; urgency=medium
 
   * Fix notifing clients of removals before watcher load, update wbgo.so library
