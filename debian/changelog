@@ -2,7 +2,7 @@ wb-rules (2.48.7) stable; urgency=medium
 
   * Alarms: allow negative MAX recipient chatId (group chats) in config schema
 
- -- Victor Fedorov <victor.fedorov@wirenboard.com>  Fri, 16 Oct 2026 09:56:38 +0300
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Fri, 16 Oct 2026 11:36:38 +0300
 
 wb-rules (2.48.6) stable; urgency=medium
 
