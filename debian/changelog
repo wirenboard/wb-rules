@@ -1,3 +1,9 @@
+wb-rules (2.48.8) stable; urgency=medium
+
+  * Update wbgo.so
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 20 Oct 2026 15:31:53 +0400
+
 wb-rules (2.48.7) stable; urgency=medium
 
   * Alarms: allow negative MAX recipient chatId (group chats) in config schema
