@@ -1,3 +1,4 @@
 buildDebGolangWbgo defaultTargets: 'current-armhf current-arm64',
                    defaultGoVersion: '1.26',
-                   defaultRunLintian: true
+                   defaultRunLintian: true,
+                   defaultWbGoSoBranch: 'release/wb-2609'

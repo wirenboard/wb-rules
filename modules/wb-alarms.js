@@ -70,11 +70,11 @@ var recipientTypes = {
     if (!isFinite(chatId)) throw new Error("max recipient with non-numeric 'chatId'");
     return function sendMaxWrapper(text) {
       Notify.sendWebhook({
-        url: 'https://platform-api.max.ru/messages',
+        url: 'https://platform-api.max.ru/messages?chat_id=' + chatId,
         method: 'POST',
         contentType: 'application/json',
         headers: { Authorization: src.token },
-        body: JSON.stringify({ chat_id: chatId, text: text }),
+        body: JSON.stringify({ text: text }),
       });
     };
   },
