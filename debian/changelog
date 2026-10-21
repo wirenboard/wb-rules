@@ -1,3 +1,10 @@
+wb-rules (2.46.5+wb100) stable; urgency=medium
+
+  * Alarms: pass MAX recipient chat_id as query parameter, fix HTTP 400 (#247)
+  * Alarms: allow negative MAX recipient chatId (group chats) in config schema (#248)
+
+ -- Victor Fedorov <victor.fedorov@wirenboard.com>  Wed, 21 Oct 2026 13:53:28 +0300
+
 wb-rules (2.46.5) stable; urgency=medium
 
   * Notify.sendSMS: fix a vulnerability that let the message text or the
