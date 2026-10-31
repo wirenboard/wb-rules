@@ -54,6 +54,9 @@ import {execFile} from 'node:child_process';
 (async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-webhook-'));
   const headerFile = path.join(dir, "header's");
+  // The path is inside our freshly created private temp directory, never external input.
+  // Exclusive creation prevents following an existing symlink; cleanup runs below.
+  // eslint-disable-next-line security/detect-non-literal-fs-filename
   const handle = await fs.promises.open(headerFile, 'wx', 0o600);
   await handle.writeFile('X-Test: private-value\n');
   await handle.close();
