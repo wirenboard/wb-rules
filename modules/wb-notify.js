@@ -298,16 +298,17 @@ exports.sendSMS = function (to, text, command, callback) {
 exports.sendWebhook = function (opts, callback) {
   if (!opts || !opts.url) throw new Error("sendWebhook: 'url' required");
   var method = normalizeWebhookMethod(opts.method);
-  ['connectTimeout', 'timeout'].forEach(function (name) {
-    var value = opts[name];
+  function validateTimeout(name, value) {
     if (value !== undefined &&
         (typeof value !== 'number' || !isFinite(value) || value <= 0)) {
       throw new Error('sendWebhook: ' + name + ' must be a positive finite number');
     }
-  });
+  }
+  validateTimeout('connectTimeout', opts.connectTimeout);
+  validateTimeout('timeout', opts.timeout);
   if (opts.headersFile !== undefined &&
       (typeof opts.headersFile !== 'string' || opts.headersFile.charAt(0) !== '/' ||
-       /[\r\n\x00]/.test(opts.headersFile))) {
+       (/[\r\n]/.test(opts.headersFile) || opts.headersFile.indexOf(String.fromCharCode(0)) !== -1))) {
     throw new Error('sendWebhook: headersFile must be an absolute path without CR, LF or NUL');
   }
   if (opts.returnResponse !== undefined && typeof opts.returnResponse !== 'boolean') {

@@ -1,11 +1,13 @@
-// Run without a controller: node wbrules/notify_webhook_options_test.js
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const vm = require('node:vm');
-const path = require('node:path');
+// Run without a controller: node wbrules/notify_webhook_options_test.mjs
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let request;
-const log = Object.assign(() => {}, {error: () => {}});
-const context = {exports: {}, log, debug: () => {}, runShellCommand: (cmd, options) => {
+const log = Object.assign(() => { /* Intentional no-op: controller logging is stubbed in this test. */ }, {error: () => { /* Intentional no-op: controller logging is stubbed in this test. */ }});
+const context = {exports: {}, log, debug: () => { /* Intentional no-op: controller logging is stubbed in this test. */ }, runShellCommand: (cmd, options) => {
   request = {cmd, options};
 }};
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../modules/wb-notify.js'), 'utf8'), context);
@@ -46,13 +48,15 @@ assert.equal(result.response.statusCode, null);
 console.log('Webhook options: legacy command/callback, validation, quoting, HTTP status and transport errors passed');
 
 // Exercise the generated command with real curl against a loopback server only.
-const http = require('node:http');
-const os = require('node:os');
-const {exec} = require('node:child_process');
+import http from 'node:http';
+import os from 'node:os';
+import {execFile} from 'node:child_process';
 (async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wb-webhook-'));
   const headerFile = path.join(dir, "header's");
-  fs.writeFileSync(headerFile, 'X-Test: private-value\n', {mode: 0o600});
+  const handle = await fs.promises.open(headerFile, 'wx', 0o600);
+  await handle.writeFile('X-Test: private-value\n');
+  await handle.close();
   const server = http.createServer((req, res) => {
     assert.equal(req.headers['x-test'], 'private-value');
     if (req.url === '/slow') return setTimeout(() => res.end('late'), 500);
@@ -62,7 +66,8 @@ const {exec} = require('node:child_process');
   try {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
     context.runShellCommand = (cmd, options) => {
-      const child = exec(cmd, (err, stdout, stderr) => options.exitCallback(err ? err.code : 0, stdout, stderr));
+      // Execute the module-generated shell command, as wb-rules does; inputs here are test constants.
+      const child = execFile('/bin/sh', ['-c', cmd], (err, stdout, stderr) => options.exitCallback(err ? err.code : 0, stdout, stderr));
       child.stdin.end(options.input);
     };
     const call = route => new Promise(resolve => send({
