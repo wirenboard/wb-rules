@@ -1,3 +1,10 @@
+wb-rules (2.48.9) stable; urgency=medium
+
+  * Notify: add optional webhook connection and request timeouts
+  * Notify: support header files and optional HTTP response callbacks
+
+ -- Slava Shahoika <vistova@gmail.com>  Sat, 31 Oct 2026 22:04:59 +0300
+
 wb-rules (2.48.8) stable; urgency=medium
 
   * Update wbgo.so
