@@ -370,6 +370,10 @@ func (ctrlProxy *ControlProxy) GetMeta() (m wbgong.MetaInfo) {
 	ctrlProxy.accessDriver(func(tx wbgong.DriverTx) error {
 		ctrl.SetTx(tx)
 		m = ctrl.GetMetaJson()
+		// error is not a part of /meta JSON, but scripts read it as dev['device/control#error']
+		if err := ctrl.GetError(); err != nil {
+			m[wbgong.CONV_META_SUBTOPIC_ERROR] = err.Error()
+		}
 		return nil
 	})
 	return

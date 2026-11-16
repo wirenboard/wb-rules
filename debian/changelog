@@ -1,3 +1,9 @@
+wb-rules (2.48.9) stable; urgency=medium
+
+  * Exclude "error" from meta json
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Mon, 16 Nov 2026 16:31:53 +0400
+
 wb-rules (2.48.8) stable; urgency=medium
 
   * Update wbgo.so
