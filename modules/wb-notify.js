@@ -107,11 +107,12 @@ exports.normalizeWebhookMethod = normalizeWebhookMethod;
 // Report the send result: if a callback is provided, hand the error (or null on
 // success) to it and let the caller decide what to do. Otherwise, fall back to
 // logging the error so failures are not silently swallowed.
-function _notifyDone(callback, err) {
+function _notifyDone(callback, err, response) {
   if (typeof callback === 'function') {
     // Isolate user code: a throwing callback must not abort our exitCallback
     try {
-      callback(err);
+      if (arguments.length > 2) callback(err, response);
+      else callback(err);
     } catch (e) {
       log.error('error in notify callback: {}', e);
     }
@@ -297,6 +298,22 @@ exports.sendSMS = function (to, text, command, callback) {
 exports.sendWebhook = function (opts, callback) {
   if (!opts || !opts.url) throw new Error("sendWebhook: 'url' required");
   var method = normalizeWebhookMethod(opts.method);
+  function validateTimeout(name, value) {
+    if (value !== undefined &&
+        (typeof value !== 'number' || !isFinite(value) || value <= 0)) {
+      throw new Error('sendWebhook: ' + name + ' must be a positive finite number');
+    }
+  }
+  validateTimeout('connectTimeout', opts.connectTimeout);
+  validateTimeout('timeout', opts.timeout);
+  if (opts.headersFile !== undefined &&
+      (typeof opts.headersFile !== 'string' || opts.headersFile.charAt(0) !== '/' ||
+       (/[\r\n]/.test(opts.headersFile) || opts.headersFile.indexOf(String.fromCharCode(0)) !== -1))) {
+    throw new Error('sendWebhook: headersFile must be an absolute path without CR, LF or NUL');
+  }
+  if (opts.returnResponse !== undefined && typeof opts.returnResponse !== 'boolean') {
+    throw new Error('sendWebhook: returnResponse must be a boolean');
+  }
   var body = opts.body;
   var bodyIsObject = body != null && typeof body === 'object';
   if (bodyIsObject) body = JSON.stringify(body);
@@ -306,6 +323,10 @@ exports.sendWebhook = function (opts, callback) {
       : 'text/plain; charset=utf-8');
 
   var cmd = 'curl -sS --fail -X ' + _shellQuote(method);
+  if (opts.connectTimeout !== undefined) cmd += ' --connect-timeout ' + opts.connectTimeout;
+  if (opts.timeout !== undefined) cmd += ' --max-time ' + opts.timeout;
+  if (opts.headersFile !== undefined) cmd += ' -H ' + _shellQuote('@' + opts.headersFile);
+  if (opts.returnResponse) cmd += ' --write-out ' + _shellQuote('\\nWB_NOTIFY_HTTP_STATUS:%{http_code}');
   cmd += ' -H ' + _shellQuote('Content-Type: ' + contentType);
   if (opts.headers) {
     var headers = opts.headers;
@@ -327,9 +348,21 @@ exports.sendWebhook = function (opts, callback) {
     exitCallback: function exitCallback(exitCode, capturedOutput, capturedErrorOutput) {
       var err = null;
       if (exitCode != 0) {
-        err = new Error('error sending webhook:\n' + capturedOutput + '\n' + capturedErrorOutput);
+        err = opts.headersFile !== undefined
+          ? new Error('error sending webhook: curl exit code ' + exitCode)
+          : new Error('error sending webhook:\n' + capturedOutput + '\n' + capturedErrorOutput);
       }
-      _notifyDone(callback, err);
+      if (opts.returnResponse) {
+        var output = capturedOutput || '';
+        var match = /\nWB_NOTIFY_HTTP_STATUS:([0-9]{3})$/.exec(output);
+        _notifyDone(callback, err, {
+          statusCode: match && Number(match[1]) ? Number(match[1]) : null,
+          body: match ? output.slice(0, match.index) : output,
+          exitCode: exitCode,
+        });
+      } else {
+        _notifyDone(callback, err);
+      }
     },
   });
 };

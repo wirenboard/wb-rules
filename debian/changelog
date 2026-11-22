@@ -1,3 +1,10 @@
+wb-rules (2.48.10) stable; urgency=medium
+
+  * Notify: add optional webhook connection and request timeouts
+  * Notify: support header files and optional HTTP response callbacks
+
+ -- Slava Shahoika <vistova@gmail.com>  Sun, 22 Nov 2026 21:20:25 +0300
+
 wb-rules (2.48.9) stable; urgency=medium
 
   * Exclude "error" from meta json
