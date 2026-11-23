@@ -1,6 +1,6 @@
 wb-rules (2.48.9) stable; urgency=medium
 
-  * Update LICENSE: Automation Technologies, LLC (Wiren Board) as the copyright holder,
+  * Update LICENSE: Wiren Board as the copyright holder,
     2015 as the first publication year, use restricted to Wiren Board equipment
   * Fill debian/copyright in the DEP-5 format
 
