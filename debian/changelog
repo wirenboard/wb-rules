@@ -1,3 +1,9 @@
+wb-rules (2.49.0) stable; urgency=medium
+
+  * Update dependencies
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Tue, 24 Nov 2026 17:50:00 +0400
+
 wb-rules (2.48.9) stable; urgency=medium
 
   * Exclude "error" from meta json
