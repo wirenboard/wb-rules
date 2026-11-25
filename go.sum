@@ -14,8 +14,8 @@ github.com/valyala/histogram v1.2.0 h1:wyYGAZZt3CpwUiIb9AU/Zbllg1llXyrtApRS815OL
 github.com/valyala/histogram v1.2.0/go.mod h1:Hb4kBwb4UxsaNbbbh+RRz8ZR6pdodR57tzWUS3BUzXY=
 github.com/wirenboard/go-duktape v0.0.0-20240729075045-b4150233e350 h1:hjfTrSlSU/Mt2KGZXYMfWhkUJBW8/fmZP5dT4YepCts=
 github.com/wirenboard/go-duktape v0.0.0-20240729075045-b4150233e350/go.mod h1:RBaIu9caMBuL6Xk32Ty04qAjl/5cVSfEdCQtbWzvMQ0=
-github.com/wirenboard/wbgong v0.7.6-0.20261124173303-ee803ecd2293 h1:vgI0dV6kKLL0zrhQ4/YQVjcUeIe2C0bx6JY2IpYg4Tk=
-github.com/wirenboard/wbgong v0.7.6-0.20261124173303-ee803ecd2293/go.mod h1:kVXghysZnTAYHbGL8n7qP+iEin9qQS/Puhg9AWlTqgU=
+github.com/wirenboard/wbgong v0.7.6 h1:EOcyDgpRsQCkxY+nS5ZNd7Cq2NAGkXXfU3o5aZYT/40=
+github.com/wirenboard/wbgong v0.7.6/go.mod h1:kVXghysZnTAYHbGL8n7qP+iEin9qQS/Puhg9AWlTqgU=
 go.etcd.io/bbolt v1.5.0 h1:S7GAl7Fxv12yohbwFfIbQCGDWbQbtDGPET4P/bD4lxU=
 go.etcd.io/bbolt v1.5.0/go.mod h1:mkltfYE5aUHQxUct9N9V+Kp7aSjFqjgrhcXIS70Lrdk=
 go.yaml.in/yaml/v3 v3.0.5 h1:N6y/pJk8buWs9NY5ERU2HSMfm+IuD/OtfdAnq6kESPw=
