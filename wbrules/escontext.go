@@ -76,17 +76,16 @@ func (f *ESContextFactory) newESContext(syncFunc ESSyncFunc, filename string) *E
 
 func (f *ESContextFactory) newESContextFromDuktape(syncFunc ESSyncFunc, filename string, dctx *duktape.Context) *ESContext {
 	ctx := &ESContext{
-		dctx,     // *duktape.Context
-		syncFunc, // syncFunc
-		nil,      // callbackErrorHandler
-		f,        // factory
-		make(map[string]*Rule),
-		true, // validation flag
+		Context:   dctx,
+		syncFunc:  syncFunc,
+		factory:   f,
+		ruleNames: make(map[string]*Rule),
+		valid:     true,
 	}
 	ctx.callbackErrorHandler = ctx.DefaultCallbackErrorHandler
 	ctx.initGlobalObject()
 	ctx.initFilename(filename)
-	ctx.initHeapPropertyObjectIfNotExist(ESCALLBACKS_OBJ_NAME)
+	ctx.initCallbacksObject()
 
 	wbgong.Debug.Printf("create context %p\n", ctx)
 
@@ -283,16 +282,41 @@ func (ctx *ESContext) initFilename(filename string) {
 	ctx.PutGlobalString(FILENAME_PROP_NAME)
 }
 
-func (ctx *ESContext) initHeapPropertyObjectIfNotExist(propName string) {
-	// callback list stash property holds callback functions referenced by ids
-	ctx.PushHeapStash()
+// initCallbacksObject creates the object that holds callback functions
+// of this context referenced by ids.
+//
+// The object is kept in the thread stash of the context. Every script runs
+// in its own thread, so its callbacks are freed together with the script
+// once its thread is dropped, and don't keep the old script environment
+// alive after a reload (which is what happens with the heap stash shared
+// by all threads).
+//
+// The global stash is not used on purpose: Duktape looks stashes up through
+// the prototype chain, and script global objects inherit from the global
+// object of the engine, so a script could end up with the engine's stash.
+// Thread objects don't inherit from each other, so the thread stash always
+// belongs to the context itself.
+func (ctx *ESContext) initCallbacksObject() {
+	ctx.pushStash()
 	defer ctx.Pop()
 
 	// check if property exists
-	if !ctx.HasPropString(-1, propName) {
+	if !ctx.HasPropString(-1, ESCALLBACKS_OBJ_NAME) {
 		ctx.PushObject()
-		ctx.PutPropString(-2, propName)
+		ctx.PutPropString(-2, ESCALLBACKS_OBJ_NAME)
 	}
+}
+
+// pushStash pushes the thread stash of this context
+func (ctx *ESContext) pushStash() {
+	ctx.PushThreadStash(ctx.Context)
+}
+
+// pushCallbacksObject pushes the object that holds callbacks of this context
+func (ctx *ESContext) pushCallbacksObject() {
+	ctx.pushStash()
+	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
+	ctx.Remove(-2)
 }
 
 func (ctx *ESContext) callbackKey(key ESCallback) string {
@@ -306,16 +330,14 @@ func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) any {
 	}
 	wbgong.Debug.Printf("trying to invoke callback %d in context %p\n", key, ctx)
 
-	ctx.PushHeapStash()
-
-	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
+	ctx.pushCallbacksObject()
 	ctx.PushString(ctx.callbackKey(key))
 	argCount := 0
 	if args != nil {
 		ctx.PushJSObject(args)
 		argCount++
 	}
-	defer ctx.Pop3() // pop: result, callback list object, global stash
+	defer ctx.Pop2() // pop: result, callback list object
 	if s := ctx.PcallProp(-2-argCount, argCount); s != 0 {
 		ctx.callbackErrorHandler(ctx.GetESError())
 		return nil
@@ -331,10 +353,10 @@ func (ctx *ESContext) invokeCallback(key ESCallback, args objx.Map) any {
 }
 
 // storeCallback stores the callback from the specified stack index
-// (which should be >= 0) at 'key' in the callback list specified as propName.
-// If key is specified as nil, a new callback key is generated and returned
-// as uint64. In this case the returned value is guaranteed to be
-// greater than zero.
+// in the callbacks object of the context under a newly generated key
+// and returns the key, which is guaranteed to be greater than zero.
+// The index may be negative, i.e. relative to the stack top
+// at the moment of the call.
 func (ctx *ESContext) storeCallback(callbackStackIndex int) ESCallback {
 	// get previous callback index
 	key := ctx.factory.callbackIndex
@@ -342,15 +364,15 @@ func (ctx *ESContext) storeCallback(callbackStackIndex int) ESCallback {
 
 	wbgong.Debug.Printf("store callback %d at context %p\n", key, ctx)
 
-	ctx.PushHeapStash()
-	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
+	ctx.pushCallbacksObject()
 	if callbackStackIndex < 0 {
-		ctx.Dup(callbackStackIndex - 2)
+		// one value (callbacks object) was pushed since the call
+		ctx.Dup(callbackStackIndex - 1)
 	} else {
 		ctx.Dup(callbackStackIndex)
 	}
 	ctx.PutPropString(-2, ctx.callbackKey(key))
-	ctx.Pop2()
+	ctx.Pop()
 	return key
 }
 
@@ -397,10 +419,9 @@ func (ctx *ESContext) RemoveCallback(key ESCallback) {
 
 	defer ctx.assertStackClean(ctx.GetTop())
 
-	ctx.PushHeapStash()
-	ctx.GetPropString(-1, ESCALLBACKS_OBJ_NAME)
+	ctx.pushCallbacksObject()
 	ctx.DelPropString(-1, ctx.callbackKey(key))
-	ctx.Pop2()
+	ctx.Pop()
 }
 
 func (ctx *ESContext) EvalScript(code string) error {

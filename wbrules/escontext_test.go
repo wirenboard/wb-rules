@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/objx"
 	"github.com/stretchr/testify/assert"
+	duktape "github.com/wirenboard/go-duktape"
 )
 
 var objTests = []string{
@@ -187,4 +188,55 @@ func TestInvokeCallbackOnInvalidContext(t *testing.T) {
 		result = wrappedCb(objx.Map{"key": "value"})
 	})
 	assert.Nil(t, result)
+}
+
+// callbackKeys returns keys of the callbacks stored by the context
+func callbackKeys(ctx *ESContext) []string {
+	ctx.pushCallbacksObject()
+	ctx.Enum(-1, duktape.DUK_ENUM_OWN_PROPERTIES_ONLY)
+	var keys []string
+	for ctx.Next(-1, false) {
+		keys = append(keys, ctx.ToString(-1))
+		ctx.Pop()
+	}
+	ctx.Pop2() // enum, callbacks
+	return keys
+}
+
+// Callbacks must be stored in the thread of their context, not in the heap
+// stash shared by all threads, otherwise they keep the environment
+// of an unloaded script alive
+func TestCallbacksAreKeptPerThread(t *testing.T) {
+	f := newESContextFactory()
+	globalCtx := f.newESContext(nil, "")
+	defer globalCtx.DestroyHeap()
+
+	globalCtx.PevalString("(function() { return 'global'; })")
+	globalKey := globalCtx.storeCallback(-1)
+	globalCtx.Pop()
+
+	globalCtx.PushThreadNewGlobalenv()
+	defer globalCtx.Pop() // thread
+	localCtx := f.newESContextFromDuktape(nil, "local.js", globalCtx.GetContext(-1))
+
+	var localKey ESCallback
+	for range 3 {
+		localCtx.PevalString("(function() { return 'local'; })")
+		localKey = localCtx.storeCallback(-1)
+		localCtx.Pop()
+	}
+
+	assert.Len(t, callbackKeys(localCtx), 3)
+	assert.Len(t, callbackKeys(globalCtx), 1)
+	assert.Equal(t, "local", localCtx.invokeCallback(localKey, nil))
+	assert.Equal(t, "global", globalCtx.invokeCallback(globalKey, nil))
+
+	globalCtx.PushHeapStash()
+	assert.False(t, globalCtx.HasPropString(-1, ESCALLBACKS_OBJ_NAME),
+		"callbacks must not be stored in the heap stash")
+	globalCtx.Pop()
+
+	localCtx.RemoveCallback(localKey)
+	assert.Len(t, callbackKeys(localCtx), 2)
+	assert.Len(t, callbackKeys(globalCtx), 1)
 }

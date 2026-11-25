@@ -867,6 +867,13 @@ func (engine *ESEngine) runCleanups(path string) {
 		localCtx.invalidate()
 
 		delete(engine.localCtxs, path)
+
+		// The script environment is full of reference cycles
+		// (global.global, closures and their scopes, prototypes),
+		// so refcounting can't free it and it waits for the next voluntary
+		// mark-and-sweep, which may let the heap grow up to twice the live
+		// size. Script reloads are rare, so collect it right away.
+		engine.globalCtx.Gc(0)
 	}
 }
 

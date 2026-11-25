@@ -3,6 +3,7 @@ package wbrules
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/wirenboard/wbgong"
@@ -302,6 +303,55 @@ func (s *RuleReloadSuite) TestWriteScript() {
 			s.OverwriteScript("testrules_reload_2.js", "testrules_reload_2_changed.js"))
 		s.verifyReloadCount(n)
 		s.SkipTill("[changed] testrules_reload_2.js")
+	}
+}
+
+type callbacksStorage struct {
+	inHeapStash   bool
+	scriptKeys    []string
+	globalCtxKeys []string
+}
+
+// getCallbacksStorage reports where the callbacks of the script
+// and of the engine global context are stored
+func (s *RuleReloadSuite) getCallbacksStorage(script string) (st callbacksStorage) {
+	done := make(chan struct{})
+	s.engine.CallSync(func() {
+		defer close(done)
+
+		ctx := s.engine.globalCtx
+		ctx.PushHeapStash()
+		st.inHeapStash = ctx.HasPropString(-1, ESCALLBACKS_OBJ_NAME)
+		ctx.Pop()
+
+		st.globalCtxKeys = callbackKeys(ctx)
+		for path, localCtx := range s.engine.localCtxs {
+			if filepath.Base(path) == script {
+				st.scriptKeys = callbackKeys(localCtx)
+			}
+		}
+	})
+	<-done
+	return
+}
+
+// Callbacks of a script must be kept in its own context, not in storage
+// shared with other scripts or the engine, otherwise they keep the old
+// script environment alive and memory grows on every reload
+func (s *RuleReloadSuite) TestReloadKeepsCallbacksInScript() {
+	for range 3 {
+		s.Ck("OverwriteScript()",
+			s.OverwriteScript("testrules_reload_2.js", "testrules_reload_2_changed.js"))
+		s.SkipTill("[changed] testrules_reload_2.js")
+
+		st := s.getCallbacksStorage("testrules_reload_2.js")
+		s.False(st.inHeapStash, "callbacks must not be stored in the heap stash")
+		s.NotEmpty(st.scriptKeys, "script callbacks must be stored in the script context")
+		// keys are unique across contexts, so a shared storage would have them in common
+		for _, key := range st.scriptKeys {
+			s.NotContains(st.globalCtxKeys, key,
+				"script callbacks must not be stored in the engine global context")
+		}
 	}
 }
 

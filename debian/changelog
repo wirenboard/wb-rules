@@ -1,3 +1,11 @@
+wb-rules (2.49.1) stable; urgency=medium
+
+  * Fix memory leak on script reload: keep script callbacks in the script's
+    own thread stash instead of the shared heap stash, so they are freed
+    with the script, and run garbage collection after unloading the script
+
+ -- Nikolay Korotkiy <nikolay.korotkiy@wirenboard.com>  Wed, 25 Nov 2026 11:26:47 +0400
+
 wb-rules (2.49.0) stable; urgency=medium
 
   * Update dependencies
