@@ -1,3 +1,11 @@
+wb-rules (2.49.1) stable; urgency=medium
+
+  * Update LICENSE: Wiren Board as the copyright holder,
+    2015 as the first publication year, use restricted to Wiren Board equipment
+  * Fill debian/copyright in the DEP-5 format
+
+ -- Ekaterina Volkova <ekaterina.volkova@wirenboard.com>  Thu, 26 Nov 2026 18:14:22 +0300
+
 wb-rules (2.49.0) stable; urgency=medium
 
   * Update dependencies
